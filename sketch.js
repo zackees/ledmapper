@@ -8,6 +8,11 @@ const dom_btn_start_capture = document.getElementById("btn_start_capture");
 const dom_btn_end_capture = document.getElementById("btn_end_capture");
 const dom_txt_threshold = document.getElementById("txt_threshold");
 const dom_txtarea_capture_output = document.getElementById("txtarea_capture_output");
+const dom_txt_bottom_margin = document.getElementById("txt_bottom_margin");
+const dom_txt_top_margin = document.getElementById("txt_top_margin");
+const dom_txt_right_margin = document.getElementById("txt_right_margin");
+const dom_txt_left_margin = document.getElementById("txt_left_margin");
+
 
 let capturing = false;
 dom_btn_start_capture.onclick = (evt) => {
@@ -70,6 +75,10 @@ let last_frame_time = time_now();
 let time_last_hit = time_now();
 function draw() {
     const now = time_now();
+    const bottom_margin = Number.parseInt(dom_txt_bottom_margin.value) || 0;
+    const top_margin = Number.parseInt(dom_txt_top_margin.value) || 0;
+    const left_margin = Number.parseInt(dom_txt_left_margin.value) || 0;
+    const right_margin = Number.parseInt(dom_txt_right_margin.value) || 0;
     background(0);
     const capture_w = capture.width;
     const capture_h = capture.height;
@@ -90,8 +99,8 @@ function draw() {
 
     const t = Number.parseInt(dom_txt_threshold.value);
 
-    for (let y = 0; y < img.height; y++) {
-        for (let x = 0; x < img.width; x++) {
+    for (let y = top_margin; y < img.height - bottom_margin; y++) {
+        for (let x = left_margin; x < img.width - right_margin; x++) {
             let b = get_blue(x, y);
             function above_threshold(x,y) {
                 let b = get_blue(x,y);
@@ -201,12 +210,16 @@ function draw() {
         img.pixels[idx + 2] = 255;
         img.pixels[idx + 3] = 255;
     });
-    img.updatePixels();
-    //print(img.width, img.height, canvas.width, canvas.height)
-    image(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
 
+    img.updatePixels();
+    image(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
+    stroke("red");
+
+    line(0, top_margin, canvas.width, top_margin);
+    line(0, canvas.height-bottom_margin, canvas.width, canvas.height-bottom_margin);
+    line(left_margin, 0, left_margin, canvas.height);
+    line(canvas.width-right_margin, 0, canvas.width-right_margin, canvas.height);
     const diff_time = now - last_frame_time;
     last_frame_time = now;
-    //console.log("fps:", 1000 / diff_time);
     dom_fps.innerText = "fps: " + Number.parseFloat(1000 / diff_time, 2).toFixed(2);
 }
