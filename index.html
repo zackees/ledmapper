@@ -5,16 +5,24 @@
 </head>
 
 <body>
-	<p id="print">
-	</p>
+	<p>Make sure and use a high end camera. This was developed using a Sony A6100, but others of similar grade are possible.</p>
+	<p>Make sure the room is dark and the camera has it's iso set to 100</p>
+	<p>Each LED should blink very slowly in sequence.</p>
+	<p id="print"></p>
+	<p id="fps"></p>
 
 	<label for="capture_width">Video capture width:</label>
-	<input id="txt_capture_width" type="text" value="320"></input><br>
+	<input id="txt_capture_width" type="text" value="2000"></input><br>
+	<label for="txt_threshold">Threshold:</label>
+	<input id="txt_threshold" type="text" value="250"></input><br>
 	<label for="chk_draw_capture">Draw Capture Video:</label>
-	<input type="checkbox" id="chk_draw_capture"></body></input>
+	<input type="checkbox" id="chk_draw_capture"></input><br>
+	<input type="button" id="btn_start_capture" value="Start Capture"></input>
+	<input type="button" id="btn_end_capture" value="End Capture"></input>
 
 	<!-- Target of the p5.js drawing-->
 	<main></main>
+	<pre id="txtarea_capture_output" rows="80" cols="80"></pre>
 
 </body>
 
