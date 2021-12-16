@@ -1,0 +1,36 @@
+<html>
+
+<head>
+	<script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js"></script>
+
+	<style>
+		div.sticky {
+			position: -webkit - sticky; /* Safari */
+			position: sticky;
+			top: 0;
+			background-color: white;
+			border-style: solid;
+			width: 100%;
+		}
+	</style>
+
+</head>
+
+<body>
+	<div class="sticky">
+		<p>Click to add a point. shift+click to remove it</p>
+		<label for="txt_zoom">Zoom:</label>
+		<input id="txt_zoom" type="text" value="1"></input><br>
+	</div>
+	<!-- Target of the p5.js drawing-->
+	<main></main>
+	<pre id="txtarea_capture_output"></pre>
+	<textarea id="ta_shape_input" rows="10" cols="80"></textarea>
+	<br>
+	<input type="button" id="btn_submit" value="Submit"></input>
+</body>
+
+
+<script src="sketch.js"></script>
+
+</html>
