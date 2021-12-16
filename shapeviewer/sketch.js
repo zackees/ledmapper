@@ -31,8 +31,10 @@ dom_btn_submit.onclick = () => {
         if (y < ymin) { ymin = y; }
     });
     shape_pts.forEach((pt) => {
-        pt[0] = pt[0] - xmin;
-        pt[1] = pt[1] - ymin;
+        // Add small offset so that the first point is near the
+        // edge but not cut off down the middle.
+        pt[0] = pt[0] - xmin + 10;
+        pt[1] = pt[1] - ymin + 10;
     });
 };
 
@@ -42,7 +44,6 @@ function setup() {
   // createCanvas must be the first statement
   canvas = createCanvas(1000, 1000);
   stroke(255); // Set line drawing color to white
-  fill(color('green'));
   frameRate(30);
 }
 // The statements in draw() are executed until the
@@ -55,5 +56,23 @@ function draw() {
   const zoom = Number.parseFloat(dom_txt_zoom.value) || 1.;
   let scaled_pts = [];
   shape_pts.forEach(([x,y]) => { scaled_pts.push([x*zoom, y*zoom]); });
-  scaled_pts.forEach(([x,y]) => { circle(x, y, 4); });
+
+  fill(color('red'));
+  for (let i = 1; i < scaled_pts.length; ++i) {
+    const [x0, y0] = scaled_pts[i-1];
+    const [x1, y1] = scaled_pts[i];
+    line(x0, y0, x1, y1);
+  }
+
+  for (let i = 0; i < scaled_pts.length; ++i) {
+      let r = 4;
+      if (i === 0) {
+          fill(color("green"));
+          r = 8;
+      } else {
+          fill(color("red"));
+      }
+      const [x, y] = scaled_pts[i];
+      circle(x, y, r);
+  }
 }
