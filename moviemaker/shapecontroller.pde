@@ -2,58 +2,58 @@ import processing.core.*;
 import java.util.*;
 import processing.video.*;
 
-float maskPixelWidth;
-float maskPixelHeight;
-float maskScale = 1.0;
-float maskX = canvasW / 2;
-float maskY = canvasH / 2;
+float shapePixelWidth;
+float shapePixelHeight;
+float shapeScale = 1.0;
+float shapeX = canvasW / 2;
+float shapeY = canvasH / 2;
 
 final float shapeTransitionSpeed = 20.0;  // Larger is slower.
 
-void MaskSetup() {
+void ShapeSetup() {
   GenerateMappingShape(pixMapper);
   
-  maskPixelHeight = canvasH / 2;
-  maskPixelWidth = maskPixelHeight;
+  shapePixelHeight = canvasH / 2;
+  shapePixelWidth = shapePixelHeight;
 }
 
-float targetMaskX = maskX;
-float targetMaskY = maskY;
-void MoveMask(float x, float y) {
-  targetMaskX = x;
-  targetMaskY = y;
+float targetshapeX = shapeX;
+float targetshapeY = shapeY;
+void MoveShape(float x, float y) {
+  targetshapeX = x;
+  targetshapeY = y;
 }
 
-void UpdateMask() {
-  float diffx = targetMaskX - maskX;
-  float diffy = targetMaskY - maskY;
+void UpdateShape() {
+  float diffx = targetshapeX - shapeX;
+  float diffy = targetshapeY - shapeY;
   
   if (abs(diffx) < 0.5f) {
-    maskX = targetMaskX;
+    shapeX = targetshapeX;
   } else {
     float xsign = abs(diffx) / diffx;
     diffx = abs(diffx);
     diffx = diffx / shapeTransitionSpeed;
-    maskX += (diffx * xsign);
+    shapeX += (diffx * xsign);
   }
   
   if (abs(diffy) < 0.5f) {
-    maskY = targetMaskY;
+    shapeY = targetshapeY;
   } else {
     float ysign = abs(diffy) / diffy;
     diffy = abs(diffy);
     diffy = diffy / shapeTransitionSpeed;
-    maskY += (diffy * ysign);
+    shapeY += (diffy * ysign);
   }
 }
 
 List<float[]> GetPixelMap() {
-  float[] centerPt = new float[] {maskX, maskY};
+  float[] centerPt = new float[] {shapeX, shapeY};
   
-  float maskW = maskPixelWidth * maskScale;
-  float maskH = maskPixelHeight * maskScale;
+  float shapeW = shapePixelWidth * shapeScale;
+  float shapeH = shapePixelHeight * shapeScale;
   List<float[]> pixelMap =
-      pixMapper.GeneratePixelMap(centerPt, maskW, maskH);
+      pixMapper.GeneratePixelMap(centerPt, shapeW, shapeH);
   return pixelMap;
 }
 
@@ -81,10 +81,10 @@ color[] GenerateColorMap(PImage frameBuffer) {
   
   PixelMatrix pixelMatrix = new PixelMatrix(frameBuffer.pixels, frameBuffer.width);
   //NullFilter filter = new NullFilter(pixelMatrix);
-  //BoxFilter filter = new BoxFilter(pixelMatrix, SamplingRadius());
+  BoxFilter filter = new BoxFilter(pixelMatrix, SamplingRadius());
   //GaussianFilter filter = new GaussianFilter(pixelMatrix, SamplingRadius(), 1.0);
   //DoubleFilter filter = new DoubleFilter(new GaussianFilter(pixelMatrix, SamplingRadius(), 1.0), SamplingRadius());
-  DoubleFilter filter = new DoubleFilter(new BoxFilter(pixelMatrix, SamplingRadius()), SamplingRadius());
+  //DoubleFilter filter = new DoubleFilter(new BoxFilter(pixelMatrix, SamplingRadius()), SamplingRadius());
 
   for (int i = 0; i < pixelMap.size(); ++i) {
     float[] xy = pixelMap.get(i);
@@ -97,15 +97,12 @@ color[] GenerateColorMap(PImage frameBuffer) {
 }
 
 int SamplingRadius() {
-  return max(1, round(1.5f*maskScale));
+  return max(1, round(1.5f*shapeScale));
 }
 
-void DrawRecordingMask(PGraphics gfx) {
+void DrawRecordingShape(PGraphics gfx) {
   gfx.fill(255);
-  //gfx.strokeWeight(1);
   noStroke();
-  //gfx.stroke(64);
-  
   List<float[]> pixelMap = GetPixelMap();
   for (int i = 0; i < pixelMap.size(); ++i) {
     float[] xy = pixelMap.get(i);
@@ -115,8 +112,7 @@ void DrawRecordingMask(PGraphics gfx) {
 }
 
 color[] lastKnownGoodColorMap = null;
-void DrawOutputMask(PGraphics gfx, color[] colorMap) {
-  
+void DrawOutputShape(PGraphics gfx, color[] colorMap) {
   // Hack to get consistent color when not recieving a colorMap.
   if (colorMap != null) {
     lastKnownGoodColorMap = colorMap;

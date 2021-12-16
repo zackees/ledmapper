@@ -89,7 +89,3 @@ class PixelMapper {
 };
 
 PixelMapper pixMapper = new PixelMapper();
-
-
-
-

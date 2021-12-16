@@ -2,8 +2,6 @@ import g4p_controls.*;
 import javax.swing.*; 
 import de.bezier.guido.*;
 import java.awt.Point;
-
-
 import processing.core.*;
 import java.util.*;
 import processing.video.*;
@@ -22,17 +20,13 @@ OutputStream outputFile;
 
 void setup() {
   background(0);
-  size(800, 600, P3D);
- 
-  
+  size(800, 600, P3D);  
   frameRate(60);
   background(0);
-
   //noSmooth();
   smooth(2);
-
   GuiSetup();
-  MaskSetup();
+  ShapeSetup();
 }
 
 
@@ -88,7 +82,7 @@ void draw() {
 
   
   UI_Update();
-  UpdateMask();
+  UpdateShape();
 
   FrameInfo frameInfo = PopMovieFrame();
   
@@ -99,7 +93,7 @@ void draw() {
   
   // Simple case, just display stuff so that the user can see what's happening.
   if (!isRecording) {
-    DrawRecordingMask(this.g);
+    DrawRecordingShape(this.g);
     return;
   }
   // Output array of pixels.
@@ -147,10 +141,10 @@ void draw() {
     }
   }
 
-  DrawRecordingMask(this.g);
+  DrawRecordingShape(this.g);
   
   // We can draw the output from the mask!
-  DrawOutputMask(this.g, colorMap);
+  DrawOutputShape(this.g, colorMap);
 }
 
 void stop()
