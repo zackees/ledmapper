@@ -16,8 +16,7 @@ void mousePressed(MouseEvent e) { OnMouseEvent(e); }
 void mouseWheel(MouseEvent event) {
   float e = event.getCount();
   
-  float scale = e / 100.f;
+  float scale = e / 10.f;
   maskScale += scale;
   maskScale = max(.1f, maskScale);
 }
-

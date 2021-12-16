@@ -102,14 +102,9 @@ void draw() {
     DrawRecordingMask(this.g);
     return;
   }
-
-
- 
   // Output array of pixels.
   color[] colorMap = null;
- 
-  // Only record when there are new frames.
-
+   // Only record when there are new frames.
   if (isRecording && frameInfo.isNew) {    
     colorMap = GenerateColorMap(get());
 
@@ -123,11 +118,7 @@ void draw() {
     List<Byte> bytesLst = new ArrayList<Byte>();
     // Encode into data stream.
     for (int i = 0; i < colorMap.length; ++i) {
-
-
-
       color c = colorMap[i];
-      
       byte ctr = (byte)0xff;  // Specifies that this is pixel data.
       byte r = (byte)((c >> 16) & 0xff);
       byte g = (byte)((c >> 8)  & 0xff);

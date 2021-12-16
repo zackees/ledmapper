@@ -5,29 +5,22 @@ SimpleButton pausePlay;
 SimpleButton loadBtn;
 
 void GuiSetup() {
-
     Interactive.make( this );
-    
-    
     loadBtn =
       new SimpleButton("Load Src",
                        new LoadSrcFileCallback(),
                        0, 0, 60, 20);
     loadBtn.SetChangesColor(false);
-    
-    
     pausePlay =
       new SimpleButton(">",
                        new TogglePlayPauseCallback(),
                        70, 0, 18, 20);
     pausePlay.SetChangesColor(false);
-    
     font = createFont("Arial",16,true);
 }
 
 void GuiUpdate() {
 }
-
 
 class Callback {
   void OnCallback(SimpleButton btn) {}
@@ -48,37 +41,29 @@ class TogglePlayPauseCallback extends Callback {
       btn.on = false;
       return;
     }
-    
     if (outputFile == null) {
       PromptUserToSelectDataOutput();
       btn.on = false;
       return;
     }
-    
-
     if (btn.on) { srcMovie.play();  btn.mLabel = ">";  }
     else        { srcMovie.pause(); btn.mLabel = "||"; }
-
     isRecording = btn.on;
   }
 }
 
-public class SimpleButton
-{
+public class SimpleButton {
     float x, y, width, height;
     boolean on;
     boolean mChangesColor = true;
     String mLabel;
-    
-    Callback mCallback;
-    
+    Callback mCallback;    
     SimpleButton (String label, Callback callback,
                   float xx, float yy, float w, float h )
     {
         mLabel = label;
         x = xx; y = yy; width = w; height = h;
         mCallback = callback;
-        
         Interactive.add( this ); // register it with the manager
     }
     
@@ -96,9 +81,7 @@ public class SimpleButton
 
     void draw () 
     {
-
         boolean paintActivated = (on && mChangesColor);
-      
         int background = paintActivated ? 200 : 100;
         int textColor = paintActivated ? 50 : 250;
       
@@ -114,8 +97,6 @@ public class SimpleButton
     }
 }
 
-
-
 void PromptUserToSelectSrcMovieFile() {
     selectInput("Select src movie: ", "onSrcMovieFileSelected");
 }
@@ -124,28 +105,22 @@ void PromptUserToSelectDataOutput() {
     selectOutput("Select a destination for video.dat:", "onDestDataFileSelected");
 }
 
-
 void onSrcMovieFileSelected(File selection) {
-  
   if (selection == null) {
   } else {
     println("Movie selected " + selection.getAbsolutePath());
-
     srcMovie = new Movie(this, selection.getAbsolutePath());
   }
 }
 
 
 void onDestDataFileSelected(File selection) {
-  
   if (selection == null) {
   } else {
     println("Output Movie selected " + selection.getAbsolutePath());
     outputFile = createOutput(selection.getAbsolutePath());
-
     //SetDestinationFile(selection.getAbsolutePath());
     //mSrcMovie.play();
-    
     //dstMovie
   }
 }

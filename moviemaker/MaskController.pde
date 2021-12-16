@@ -118,7 +118,7 @@ color[] GenerateColorMap(PImage frameBuffer) {
 }
 
 int SamplingRadius() {
-  return max(1, round(7.0f*maskScale));
+  return max(1, round(1.5f*maskScale));
 }
 
 void DrawRecordingMask(PGraphics gfx) {
@@ -130,7 +130,6 @@ void DrawRecordingMask(PGraphics gfx) {
   List<float[]> pixelMap = GetPixelMap();
   for (int i = 0; i < pixelMap.size(); ++i) {
     float[] xy = pixelMap.get(i);
-
     float size = max(1.0f, SamplingRadius());
     gfx.ellipse(xy[0], xy[1], round(size), round(size));
   }

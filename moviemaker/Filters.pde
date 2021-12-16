@@ -62,7 +62,6 @@ public class DoubleFilter implements Filter  {
     mHalfR = mRadius * .5f;
   }
   
-
   color Apply(int x, int y) {
     color c1 = mFilter.Apply(x,(int)(y-mHalfR));
     color c2 = mFilter.Apply(x,(int)(y+mHalfR));
@@ -79,7 +78,6 @@ public class GaussianFilter implements Filter  {
 
   public float[][] asMatrix() { return kernel; }
   //color Compute(int x, int y, 
-  
   PixelMatrix mPixels;
  
   
@@ -88,9 +86,6 @@ public class GaussianFilter implements Filter  {
                        int r,
                        float s) {
     mPixels = srcPixels;
-    
-
-    
     mDiameter = r * 2 - 1;
     sigma = s;
     kernel = makeKernel();
@@ -161,9 +156,7 @@ public class GaussianFilter implements Filter  {
     
     return color((int)r, (int)g, (int)b);
   }
-  
-
-  
+    
   private int mDiameter;
   private float sigma;
   private float[][] kernel;

@@ -33,14 +33,13 @@ class PixelMapper {
     }
     
     float xScale = maxX - minX;
-    float yScale = maxY - minY;
    
-    // Renormalize so that width and height are exactly 1 and
+    // Renormalize so that width is exactly 1 and
     // the upper left corner is at 0,0.
     for (int i = 0; i < ledMapping.size(); ++i) {
       float[] xy = ledMapping.get(i);
       xy[0] = (xy[0] - minX) / xScale;
-      xy[1] = (xy[1] - minY) / yScale;
+      xy[1] = (xy[1] - minY) / xScale;
     }
     
     // Find new center point.
