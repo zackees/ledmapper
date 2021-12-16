@@ -2,21 +2,19 @@ import processing.core.*;
 import java.util.*;
 import processing.video.*;
 
-float maskWidthToHeightRatio = .80f;
-
 float maskPixelWidth;
 float maskPixelHeight;
 float maskScale = 1.0;
 float maskX = canvasW / 2;
 float maskY = canvasH / 2;
 
-final float maskTransitionSpeed = 20.0;  // Larger is slower.
+final float shapeTransitionSpeed = 20.0;  // Larger is slower.
 
 void MaskSetup() {
   GenerateMappingShape(pixMapper);
   
   maskPixelHeight = canvasH / 2;
-  maskPixelWidth = maskPixelHeight * maskWidthToHeightRatio;
+  maskPixelWidth = maskPixelHeight;
 }
 
 float targetMaskX = maskX;
@@ -35,7 +33,7 @@ void UpdateMask() {
   } else {
     float xsign = abs(diffx) / diffx;
     diffx = abs(diffx);
-    diffx = diffx / maskTransitionSpeed;
+    diffx = diffx / shapeTransitionSpeed;
     maskX += (diffx * xsign);
   }
   
@@ -44,22 +42,9 @@ void UpdateMask() {
   } else {
     float ysign = abs(diffy) / diffy;
     diffy = abs(diffy);
-    diffy = diffy / maskTransitionSpeed;
+    diffy = diffy / shapeTransitionSpeed;
     maskY += (diffy * ysign);
   }
-  
-/*
-  float ysign = abs(diffy) / diffy;
-  
-
-  diffy = abs(diffy);
-  
-
-  diffy = min(5, diffy);
-  
-
-  maskY += diffy * ysign;
-  */
 }
 
 List<float[]> GetPixelMap() {
@@ -88,10 +73,6 @@ class PixelMatrix {
   }
 }
 
-
-
-
-
 color[] GenerateColorMap(PImage frameBuffer) {
   frameBuffer.loadPixels();
   
@@ -107,11 +88,9 @@ color[] GenerateColorMap(PImage frameBuffer) {
 
   for (int i = 0; i < pixelMap.size(); ++i) {
     float[] xy = pixelMap.get(i);
-    
     // Represents the grid coordinates.
     int x = (int)xy[0];
     int y = (int)xy[1];
-
     output[i] = filter.Apply(x,y);
   }
   return output;
@@ -144,52 +123,29 @@ void DrawOutputMask(PGraphics gfx, color[] colorMap) {
   } else {
     colorMap = lastKnownGoodColorMap;
   }
-  
-  
-  println("DrawOutputMask");
   gfx.fill(32);
-  //gfx.stroke(0xFfffffff, 1.0);
   gfx.stroke(128);
-  
-  //int w = gfx.width;
-  //int h = gfx.height;
   int offset = 2;
-  
   int xmin = canvasW - (canvasW/4) - offset;
   int ymin = canvasH - (canvasH/2) - offset;
   int xmax = canvasW - offset;
   int ymax = canvasH - offset;
-  
   int w = xmax - xmin;
   int h = ymax - ymin;
-  
   gfx.rect(xmin, ymin, w, h + 15);
-  
   float[] centerPt = new float[]{
       .5 * (xmin + xmax),
       .5 * (ymin + ymax)
   };
-  
-  //float maskW = maskPixelWidth * maskScale;
-  //float maskH = maskPixelHeight * maskScale;
   List<float[]> pixelMap =
       pixMapper.GeneratePixelMap(centerPt, w - 16, h - 16);
-  
-  
-
   noStroke();
-  
   for (int i = 0; i < pixelMap.size(); ++i) {
     float[] xy = pixelMap.get(i);
     color c = (colorMap != null) ? colorMap[i] :
                                    color(255, 255, 255);
     gfx.fill(c);
-    //gfx.fill(255);
-
-    
-    
     int size = 6;
     gfx.ellipse(xy[0], xy[1], size, size);
   }
-  
 }
