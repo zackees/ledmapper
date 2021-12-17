@@ -82,7 +82,6 @@ dom_btn_end_record.onclick = () => {
     let blob = new Blob(
         new Uint8Array(flat_uint8_array),
         { type: 'application/octet-stream' });
-
     download_blob_as_file(blob, "file.dat");
     color_frames = [];
 }
