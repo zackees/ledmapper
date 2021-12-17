@@ -98,13 +98,25 @@ dom_btn_submit.onclick = () => {
     });
 };
 
+function mouse_in_canvas_area() {
+    // Return false if the mouse is outside the canvas.
+    if (mouseY < 0 || mouseY > movie_height || mouseX < 0 || mouseX > movie_width) {
+        return false;
+    }
+    // Return false if the mouse is on the scrollbar.
+    if (mouseX >= document.documentElement.offsetWidth - canvas.canvas.offsetLeft) {
+        return false;
+    }
+    return true;
+}
+
+
 function mouseWheel(event) {
     // Change the red value according
     // to the scroll delta value
     //console.log("mouseWheel", mouseX, mouseY, event.delta);
     //event.
-    if (mouseY < 0 || mouseY > movie_height || mouseX < 0 || mouseX > movie_width) {
-        // Not in canvas so ignore.
+    if (!mouse_in_canvas_area()) {
         return true;
     }
     if (shift_active) {
@@ -121,7 +133,7 @@ function mouseWheel(event) {
         while (shape_rotate_events.length > 10) {
             shape_rotate_events.splice(0,1);
         }
-        return;
+        return false;
     }
     target_zoom -= event.delta / 10000;  // Typical scroll amount is 200.
     target_zoom = Math.max(target_zoom, 0.05);
@@ -141,8 +153,10 @@ function setup() {
     capture.hide();
 }
 
+
 function update_shape_parameters() {
-    if (mouseIsPressed && mouseY > 0) {
+
+    if (mouseIsPressed && mouse_in_canvas_area()) {
         target_translate[0] = mouseX;
         target_translate[1] = mouseY;
     }
@@ -184,7 +198,7 @@ function update_shape_parameters() {
     }
 }
 
-function draw_shape() {
+function create_transformed_shape() {
     // Deep copy.
     let transformed_pts = [];
     shape_pts.forEach(([x, y]) => { transformed_pts.push([x, y]); });
@@ -211,9 +225,7 @@ function draw_shape() {
             pt[1] = yy * mag;
         });
     }
-
     //print(transformed_pts[0]);
-
     //console.log(curr_zoom, target_zoom);
     //let transformed_pts = [];
     transformed_pts.forEach((pt) => {
@@ -222,25 +234,102 @@ function draw_shape() {
         pt[0] += curr_translate[0];
         pt[1] += curr_translate[1];
     });
+    return transformed_pts;
+}
 
-    noFill();
+function draw_output_pixels_rect(transformed_pts, color_pts) {
+    push();
     stroke(color('white'));
-    for (let i = 0; i < transformed_pts.length; ++i) {
-        let r = 6;
-        const [x, y] = transformed_pts[i];
-        circle(x, y, r);
+    let c = color('black');
+    const width = 200;
+    const height = 200;
+    const left = movie_width-width;
+    const top = movie_height-height;
+    fill(c);
+    rect(left, top, width, height);
+    if (transformed_pts.length == 0) {
+        return;
     }
+    let xavg = 0;
+    let yavg = 0;
+    let xmin = Number.MAX_VALUE;
+    let xmax = -Number.MAX_VALUE;
+    let ymin = Number.MAX_VALUE;
+    let ymax = -Number.MAX_VALUE;
+    transformed_pts.forEach(([x,y]) => {
+        xavg += x;
+        yavg += y;
+        xmin = min(x, xmin);
+        ymin = min(y, ymin);
+        xmax = max(x, xmax);
+        ymax = max(y, ymax);
+    });
+    xavg = xavg / transformed_pts.length;
+    yavg = yavg / transformed_pts.length;
+    const xspan = xmax - xmin;
+    const yspan = ymax - ymin;
+    let factor = 1.0;
+    if (xspan > 0 && yspan > 0) {
+        factor = xspan > yspan ? width / xspan : height / yspan;
+    }
+    factor *= .8;  // center everything slightly.
+    let pts = [];
+    transformed_pts.forEach(([x,y]) => {
+        let xx = x;
+        let yy = y;
+        xx -= xavg;
+        yy -= yavg;
+        xx = xx * factor + left + width/2;
+        yy = yy * factor + top + height/2;
+        pts.push([xx,yy]);
+    });
+    stroke(color('white'));
+    fill(color("red"));
+    pts.forEach(([x,y]) => {
+        circle(x, y, 6);
+    });
+    pop();
 }
 
 // The statements in draw() are executed until the
 // program is stopped. Each statement is executed in
 // sequence and after the last line is read, the first
 // line is executed again.
+let last_time = time_now();
 function draw() {
+    const now = time_now();
+    const frame_time = now - last_time;
+    const fps = Number.parseInt(1000/frame_time);
+    last_time = now;
     background(0); // Set the background to black
     update_shape_parameters();
+    const transformed_pts = create_transformed_shape();
+    const color_pts = [];
     if (capturing_active) {
-        image(capture, 0, 0, movie_width, movie_height);
+        let img = capture.get();
+        img.loadPixels();
+        transformed_pts.forEach(([x,y]) => {
+            const idx = (x + y * width) * 4;
+            const r = img.pixels[idx+0];
+            const g = img.pixels[idx+1];
+            const b = img.pixels[idx+2];
+            color_pts.push([r,g,b]);
+            return;
+        });
+        //const idx = (x + y * width) * 4;
+        img.updatePixels();
+        image(img, 0, 0, movie_width, movie_height);
+        draw_output_pixels_rect(transformed_pts, color_pts);
     }
-    draw_shape();
+
+    noFill();
+    stroke(color('white'));
+    // Draw points.
+    transformed_pts.forEach(([x,y]) => {
+        circle(x, y, 6);
+    });
+
+    stroke(0);
+    fill(255);
+    text(`fps: ${fps}`, 10, 10);
 }
