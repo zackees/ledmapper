@@ -6,6 +6,7 @@ const movie_width = 1280;
 const movie_height = 720;
 
 let canvas;
+let capture;
 let shape_pts = [];
 let target_zoom = 1.;
 let curr_zoom = target_zoom;
@@ -67,7 +68,6 @@ dom_btn_submit.onclick = () => {
     });
 };
 
-
 function mouseWheel(event) {
     // Change the red value according
     // to the scroll delta value
@@ -94,6 +94,9 @@ function setup() {
     canvas = createCanvas(movie_width, movie_height);
     stroke(255); // Set line drawing color to white
     frameRate(30);
+    capture = createCapture(VIDEO);
+    capture.size(movie_width, movie_height);
+    capture.hide();
 }
 // The statements in draw() are executed until the
 // program is stopped. Each statement is executed in
