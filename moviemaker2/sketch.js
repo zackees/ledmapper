@@ -73,17 +73,17 @@ function mouseWheel(event) {
     // to the scroll delta value
     //console.log("mouseWheel", mouseX, mouseY, event.delta);
     //event.
+    if (mouseY < 0 || mouseY > movie_height || mouseX < 0 || mouseX > movie_width) {
+        // Not in canvas so ignore.
+        return true;
+    }
     if (shift_active) {
         target_rotate += event.delta > 0 ? 1 : -1;
         return;
     }
     target_zoom -= event.delta / 10000;  // Typical scroll amount is 200.
     target_zoom = Math.max(target_zoom, 0.05);
-    if (mouseY < 0 || mouseY > movie_height) {
-        return true;
-    } else {
-        return false;
-    }
+    return false;
 }
 
 // The statements in the setup() function
@@ -110,12 +110,14 @@ function draw() {
         const diff_y = target_translate[1] - curr_translate[1];
         if (Math.abs(diff_x) < .05) {
             curr_translate[0] = target_translate[0];
+        } else {
+            curr_translate[0] += diff_x * .05;
         }
         if (Math.abs(diff_y) < .05) {
             curr_translate[1] = target_translate[1];
+        } else {
+            curr_translate[1] += diff_y * .05;
         }
-        curr_translate[0] += diff_x * .05;
-        curr_translate[1] += diff_y * .05;
     }
 
     if (curr_zoom !== target_zoom) {
@@ -131,8 +133,14 @@ function draw() {
         return;  // nothing left to draw
     }
 
-    // TODO: make smooth.
-    curr_rotate = target_rotate;
+    if (curr_rotate !== target_rotate) {
+        const diff_r = target_rotate - curr_rotate;
+        if (Math.abs(diff_r) < .05) {
+            curr_rotate = target_rotate;
+        } else {
+            curr_rotate += diff_r * .1;
+        }
+    }
 
     // Deep copy.
     let transformed_pts = [];

@@ -4,14 +4,9 @@
 	<script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js"></script>
 
 	<style>
-		div.sticky {
-			/*
-			position: -webkit - sticky;
-			position: sticky;
-			*/
+		#menu {
 			top: 0;
 			background-color: white;
-			border-style: solid;
 			width: 100%;
 		}
 	</style>
@@ -19,10 +14,16 @@
 </head>
 
 <body>
-	<div class="sticky">
+	<div id="menu">
 		<p>Paste the shape into the text field below and click submit.</p>
-		<textarea id="ta_shape_input" rows="4" cols="80"></textarea><br>
-		<input type="button" id="btn_submit" value="Submit"></input><br>
+		Movement:
+		<ul>
+			<li>Left Click: Move to point.</li>
+			<li>Mouse Wheel: Zoom in/out</li>
+			<li>Shift + Mouse Wheel: Rotate</li>
+		</ul>
+		<textarea id="ta_shape_input" rows="4" cols="80"></textarea>
+		<input type="button" id="btn_submit" value="Set Shape"></input><br>
 	</div>
 	<!-- Target of the p5.js drawing-->
 	<main></main>
