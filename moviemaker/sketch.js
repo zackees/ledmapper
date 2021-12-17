@@ -137,6 +137,20 @@ function mouseWheel(event) {
     return false;
 }
 
+function estimate_led_size(pts) {
+    // The actual algorithm is O(n^2), yuck... At this point just assume led size
+    // by the median distance between this led and the next.
+    if (pts.length < 2) {
+        return 1.0;
+    }
+    const a = pts[0];
+    const b = pts[1];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const d2 = Math.pow(dx, 2) + Math.pow(dy, 2);
+    return Math.sqrt(d2);
+}
+
 // The statements in the setup() function
 // execute once when the program begins
 function setup() {
@@ -279,6 +293,7 @@ function draw_output_pixels_rect(transformed_pts, color_pts) {
         pts.push([xx, yy]);
     });
     stroke(color(0, 0, 0, 0));
+    const led_size = estimate_led_size(pts);
     for (let i = 0; i < pts.length; ++i) {
         const x = pts[i][0];
         const y = pts[i][1];
@@ -286,7 +301,7 @@ function draw_output_pixels_rect(transformed_pts, color_pts) {
         const g = color_pts[i][1];
         const b = color_pts[i][2];
         fill(color(r, g, b, 255));
-        circle(x, y, 6);
+        circle(x, y, led_size);
     }
     pop();
 }
@@ -308,6 +323,7 @@ function draw() {
     if (capturing_active) {
         let img = capture.get();
         img.loadPixels();
+        
         transformed_pts.forEach(([x, y]) => {
             x = Number.parseInt(x);
             y = Number.parseInt(y);
@@ -323,15 +339,18 @@ function draw() {
             return;
         });
         //const idx = (x + y * width) * 4;
-        img.updatePixels();
+        //img.updatePixels();
+
         image(img, 0, 0, movie_width, movie_height);
         draw_output_pixels_rect(transformed_pts, color_pts);
     }
     noFill();
     stroke(color('white'));
     // Draw points.
+    const led_size = estimate_led_size(transformed_pts);
+    //print("led_size: ", led_size);
     transformed_pts.forEach(([x, y]) => {
-        circle(x, y, 6);
+        circle(x, y, led_size);
     });
     stroke(0);
     fill(255);
