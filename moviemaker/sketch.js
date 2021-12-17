@@ -1,6 +1,8 @@
 
 const dom_btn_submit = document.getElementById("btn_submit");
 const dom_ta_shape_input = document.getElementById("ta_shape_input");
+const dom_btn_start_capture = document.getElementById("btn_start_capture");
+const dom_btn_end_capture = document.getElementById("btn_end_capture");
 
 const movie_width = 1280;
 const movie_height = 720;
@@ -15,8 +17,24 @@ let target_rotate = 0;
 
 let target_translate = [movie_width / 2, movie_height / 2];
 let curr_translate = [movie_width / 2, movie_height / 2];
-
 let shift_active = false;
+let capturing_active = false;
+
+
+dom_btn_end_capture.disabled = true;
+
+dom_btn_start_capture.onclick = () => {
+    capturing_active = true;
+    dom_btn_start_capture.disabled = true;
+    dom_btn_end_capture.disabled = false;
+};
+
+dom_btn_end_capture.onclick = () => {
+    capturing_active = false;
+    dom_btn_start_capture.disabled = false;
+    dom_btn_end_capture.disabled = true;
+};
+
 document.onkeydown = (evt) => {
     if ("Shift" == evt.key) {
         shift_active = true;
@@ -30,6 +48,15 @@ document.onkeyup = (evt) => {
 };
 
 dom_btn_submit.onclick = () => {
+    shape_pts = [];
+    target_zoom = 1.;
+    curr_zoom = target_zoom;
+    curr_rotate = 0;
+    target_rotate = 0;
+    
+    target_translate = [movie_width / 2, movie_height / 2];
+    curr_translate = [movie_width / 2, movie_height / 2];
+
     shape_pts = [];
     const data = dom_ta_shape_input.value;
     data.split("\n").forEach((line) => {
@@ -98,12 +125,8 @@ function setup() {
     capture.size(movie_width, movie_height);
     capture.hide();
 }
-// The statements in draw() are executed until the
-// program is stopped. Each statement is executed in
-// sequence and after the last line is read, the first
-// line is executed again.
-function draw() {
-    background(0); // Set the background to black
+
+function update_shape_parameters() {
     if (mouseIsPressed && mouseY > 0) {
         target_translate[0] = mouseX;
         target_translate[1] = mouseY;
@@ -144,7 +167,9 @@ function draw() {
             curr_rotate += diff_r * .1;
         }
     }
+}
 
+function draw_shape() {
     // Deep copy.
     let transformed_pts = [];
     shape_pts.forEach(([x, y]) => { transformed_pts.push([x, y]); });
@@ -155,6 +180,9 @@ function draw() {
             const r = radians(curr_rotate);
             // get magnitude of said point.
             const mag = Math.sqrt(pt[0]*pt[0] + pt[1]*pt[1]);
+            if (mag == 0) {
+                return;
+            }
             // project point onto sphere.
             let x = pt[0] / mag;
             let y = pt[1] / mag;
@@ -168,6 +196,8 @@ function draw() {
             pt[1] = yy * mag;
         });
     }
+
+    //print(transformed_pts[0]);
 
     //console.log(curr_zoom, target_zoom);
     //let transformed_pts = [];
@@ -185,4 +215,14 @@ function draw() {
         const [x, y] = transformed_pts[i];
         circle(x, y, r);
     }
+}
+
+// The statements in draw() are executed until the
+// program is stopped. Each statement is executed in
+// sequence and after the last line is read, the first
+// line is executed again.
+function draw() {
+    background(0); // Set the background to black
+    update_shape_parameters();
+    draw_shape();
 }
