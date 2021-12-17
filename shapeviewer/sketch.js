@@ -10,9 +10,10 @@ dom_btn_submit.onclick = () => {
     shape_pts = [];
     const data = dom_ta_shape_input.value;
     data.split("\n").forEach((line) => {
-        const d = line.split(",");
-        const x = Number.parseInt(d[1]);
-        const y = Number.parseInt(d[2]);
+        let d = line.split(",");
+        while (d.length > 2) { d.splice(0, 1); }
+        const x = Number.parseInt(d[0]);
+        const y = Number.parseInt(d[1]);
         if (Object.is(x, NaN) || Object.is(y, NaN)) {
             return;
         }
