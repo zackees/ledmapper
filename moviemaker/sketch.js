@@ -3,6 +3,8 @@ const dom_btn_submit = document.getElementById("btn_submit");
 const dom_ta_shape_input = document.getElementById("ta_shape_input");
 const dom_btn_start_capture = document.getElementById("btn_start_capture");
 const dom_btn_end_capture = document.getElementById("btn_end_capture");
+const dom_btn_start_record = document.getElementById("btn_start_record");
+const dom_btn_end_record = document.getElementById("btn_end_record");
 
 const movie_width = 1280;
 const movie_height = 720;
@@ -10,6 +12,7 @@ const movie_height = 720;
 let canvas;
 let capture;
 let shape_pts = [];
+let color_frames = [];  // this is our output data.
 let target_zoom = 1.;
 let curr_zoom = target_zoom;
 let curr_rotate = 0;
@@ -19,10 +22,13 @@ let target_translate = [movie_width / 2, movie_height / 2];
 let curr_translate = [movie_width / 2, movie_height / 2];
 let shift_active = false;
 let capturing_active = false;
+let recording_active = false;
 // Allows quick rotation.
 let shape_rotate_events = [];
 
 dom_btn_end_capture.disabled = true;
+dom_btn_start_record.disabled = true;
+dom_btn_end_record.disabled = true;
 
 function time_now() { return Date.now(); }
 
@@ -30,13 +36,56 @@ dom_btn_start_capture.onclick = () => {
     capturing_active = true;
     dom_btn_start_capture.disabled = true;
     dom_btn_end_capture.disabled = false;
+    const constraints = {
+        video: {},
+        audio: false
+    };
+    capture = createCapture(constraints);
+    capture.size(movie_width, movie_height);
+    capture.hide();
+    dom_btn_start_record.disabled = false;
 };
 
 dom_btn_end_capture.onclick = () => {
     capturing_active = false;
+    recording_active = false;
     dom_btn_start_capture.disabled = false;
     dom_btn_end_capture.disabled = true;
+    dom_btn_start_record.disabled = true;
+    dom_btn_end_record.disabled = true;
+    capture.remove();
 };
+
+dom_btn_start_record.onclick = () => {
+    if (shape_pts.length < 2) {
+        alert("Please load a valid shape first of size >= 2");
+        return;
+    }
+    recording_active = true;
+    dom_btn_start_record.disabled = true;
+    dom_btn_end_record.disabled = false;
+};
+
+dom_btn_end_record.onclick = () => {
+    recording_active = false;
+    dom_btn_end_record.disabled = true;
+    dom_btn_start_record.disabled = false;
+    //dom_btn_start_capture.disabled = true;
+    //print(color_frames);
+
+    let flat_uint8_array = []
+    color_frames.forEach((frame) => {
+        frame.forEach((val) => {
+            flat_uint8_array.push(val);
+        });
+    });
+    let blob = new Blob(
+        new Uint8Array(flat_uint8_array),
+        { type: 'application/octet-stream' });
+
+    download_blob_as_file(blob, "file.dat");
+    color_frames = [];
+}
 
 document.onkeydown = (evt) => {
     if ("Shift" == evt.key) {
@@ -97,6 +146,14 @@ dom_btn_submit.onclick = () => {
         pt[1] = pt[1] - yavg;
     });
 };
+
+function download_blob_as_file(blob, filename) {
+    let link = document.createElement('a');
+    link.download = filename;
+    link.href = URL.createObjectURL(blob);
+    link.click();
+    URL.revokeObjectURL(link.href);  
+}
 
 function mouse_in_canvas_area() {
     // Return false if the mouse is outside the canvas.
@@ -159,13 +216,6 @@ function setup() {
     canvas = createCanvas(movie_width, movie_height);
     stroke(255); // Set line drawing color to white
     frameRate(30);
-    const constraints = {
-        video: {},
-        audio: false
-    };
-    capture = createCapture(constraints);
-    capture.size(movie_width, movie_height);
-    capture.hide();
 }
 
 function update_shape_parameters() {
@@ -297,9 +347,10 @@ function draw_output_pixels_rect(transformed_pts, color_pts) {
     for (let i = 0; i < pts.length; ++i) {
         const x = pts[i][0];
         const y = pts[i][1];
-        const r = color_pts[i][0];
-        const g = color_pts[i][1];
-        const b = color_pts[i][2];
+        const idx = i * 3;
+        const r = color_pts[idx + 0];
+        const g = color_pts[idx + 1];
+        const b = color_pts[idx + 2];
         fill(color(r, g, b, 255));
         circle(x, y, led_size);
     }
@@ -319,11 +370,10 @@ function draw() {
     background(0); // Set the background to black
     update_shape_parameters();
     const transformed_pts = create_transformed_shape();
-    const color_pts = [];
     if (capturing_active) {
+        const color_pts = [];
         let img = capture.get();
         img.loadPixels();
-        
         transformed_pts.forEach(([x, y]) => {
             x = Number.parseInt(x);
             y = Number.parseInt(y);
@@ -332,17 +382,18 @@ function draw() {
                 const r = img.pixels[idx + 0];
                 const g = img.pixels[idx + 1];
                 const b = img.pixels[idx + 2];
-                color_pts.push([r, g, b]);
+                color_pts.push(r, b, g);
+
             } else {
-                color_pts.push([0, 0, 0]);
+                color_pts.push(0, 0, 0);
             }
             return;
         });
-        //const idx = (x + y * width) * 4;
-        //img.updatePixels();
-
         image(img, 0, 0, movie_width, movie_height);
         draw_output_pixels_rect(transformed_pts, color_pts);
+        if (recording_active) {
+            color_frames.push(color_pts);
+        }
     }
     noFill();
     stroke(color('white'));
