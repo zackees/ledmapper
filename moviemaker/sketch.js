@@ -56,7 +56,7 @@ dom_btn_submit.onclick = () => {
     curr_zoom = target_zoom;
     curr_rotate = 0;
     target_rotate = 0;
-    
+
     target_translate = [movie_width / 2, movie_height / 2];
     curr_translate = [movie_width / 2, movie_height / 2];
 
@@ -110,13 +110,10 @@ function mouse_in_canvas_area() {
     return true;
 }
 
-
 function mouseWheel(event) {
     // Change the red value according
     // to the scroll delta value
-    //console.log("mouseWheel", mouseX, mouseY, event.delta);
-    //event.
-    if (!mouse_in_canvas_area()) {
+    if (!mouse_in_canvas_area() || shape_pts.length === 0) {
         return true;
     }
     if (shift_active) {
@@ -131,7 +128,7 @@ function mouseWheel(event) {
         target_rotate += event.delta > 0 ? incr : -incr;
         shape_rotate_events.push(now);
         while (shape_rotate_events.length > 10) {
-            shape_rotate_events.splice(0,1);
+            shape_rotate_events.splice(0, 1);
         }
         return false;
     }
@@ -148,14 +145,16 @@ function setup() {
     canvas = createCanvas(movie_width, movie_height);
     stroke(255); // Set line drawing color to white
     frameRate(30);
-    capture = createCapture(VIDEO);
+    const constraints = {
+        video: {},
+        audio: false
+    };
+    capture = createCapture(constraints);
     capture.size(movie_width, movie_height);
     capture.hide();
 }
 
-
 function update_shape_parameters() {
-
     if (mouseIsPressed && mouse_in_canvas_area()) {
         target_translate[0] = mouseX;
         target_translate[1] = mouseY;
@@ -202,13 +201,12 @@ function create_transformed_shape() {
     // Deep copy.
     let transformed_pts = [];
     shape_pts.forEach(([x, y]) => { transformed_pts.push([x, y]); });
-
     if (curr_rotate != 0) {
         // apply 2d rotation.
         transformed_pts.forEach((pt) => {
             const r = radians(curr_rotate);
             // get magnitude of said point.
-            const mag = Math.sqrt(pt[0]*pt[0] + pt[1]*pt[1]);
+            const mag = Math.sqrt(pt[0] * pt[0] + pt[1] * pt[1]);
             if (mag == 0) {
                 return;
             }
@@ -218,16 +216,13 @@ function create_transformed_shape() {
             const cos_r = Math.cos(r);
             const sin_r = Math.sin(r);
             // Apply matrix rotation.
-            const xx = x*cos_r + y*sin_r;
-            const yy = -(x*sin_r) + y*cos_r;
+            const xx = x * cos_r + y * sin_r;
+            const yy = -(x * sin_r) + y * cos_r;
             // Project back to real space from the unit sphere.
             pt[0] = xx * mag;
             pt[1] = yy * mag;
         });
     }
-    //print(transformed_pts[0]);
-    //console.log(curr_zoom, target_zoom);
-    //let transformed_pts = [];
     transformed_pts.forEach((pt) => {
         pt[0] *= curr_zoom;
         pt[1] *= curr_zoom;
@@ -243,8 +238,8 @@ function draw_output_pixels_rect(transformed_pts, color_pts) {
     let c = color('black');
     const width = 200;
     const height = 200;
-    const left = movie_width-width;
-    const top = movie_height-height;
+    const left = movie_width - width;
+    const top = movie_height - height;
     fill(c);
     rect(left, top, width, height);
     if (transformed_pts.length == 0) {
@@ -256,7 +251,7 @@ function draw_output_pixels_rect(transformed_pts, color_pts) {
     let xmax = -Number.MAX_VALUE;
     let ymin = Number.MAX_VALUE;
     let ymax = -Number.MAX_VALUE;
-    transformed_pts.forEach(([x,y]) => {
+    transformed_pts.forEach(([x, y]) => {
         xavg += x;
         yavg += y;
         xmin = min(x, xmin);
@@ -274,20 +269,25 @@ function draw_output_pixels_rect(transformed_pts, color_pts) {
     }
     factor *= .8;  // center everything slightly.
     let pts = [];
-    transformed_pts.forEach(([x,y]) => {
+    transformed_pts.forEach(([x, y]) => {
         let xx = x;
         let yy = y;
         xx -= xavg;
         yy -= yavg;
-        xx = xx * factor + left + width/2;
-        yy = yy * factor + top + height/2;
-        pts.push([xx,yy]);
+        xx = xx * factor + left + width / 2;
+        yy = yy * factor + top + height / 2;
+        pts.push([xx, yy]);
     });
-    stroke(color('white'));
-    fill(color("red"));
-    pts.forEach(([x,y]) => {
+    stroke(color(0, 0, 0, 0));
+    for (let i = 0; i < pts.length; ++i) {
+        const x = pts[i][0];
+        const y = pts[i][1];
+        const r = color_pts[i][0];
+        const g = color_pts[i][1];
+        const b = color_pts[i][2];
+        fill(color(r, g, b, 255));
         circle(x, y, 6);
-    });
+    }
     pop();
 }
 
@@ -299,7 +299,7 @@ let last_time = time_now();
 function draw() {
     const now = time_now();
     const frame_time = now - last_time;
-    const fps = Number.parseInt(1000/frame_time);
+    const fps = Number.parseInt(1000 / frame_time);
     last_time = now;
     background(0); // Set the background to black
     update_shape_parameters();
@@ -308,12 +308,18 @@ function draw() {
     if (capturing_active) {
         let img = capture.get();
         img.loadPixels();
-        transformed_pts.forEach(([x,y]) => {
+        transformed_pts.forEach(([x, y]) => {
+            x = Number.parseInt(x);
+            y = Number.parseInt(y);
             const idx = (x + y * width) * 4;
-            const r = img.pixels[idx+0];
-            const g = img.pixels[idx+1];
-            const b = img.pixels[idx+2];
-            color_pts.push([r,g,b]);
+            if (idx >= 0 && idx < img.pixels.length) {
+                const r = img.pixels[idx + 0];
+                const g = img.pixels[idx + 1];
+                const b = img.pixels[idx + 2];
+                color_pts.push([r, g, b]);
+            } else {
+                color_pts.push([0, 0, 0]);
+            }
             return;
         });
         //const idx = (x + y * width) * 4;
@@ -321,14 +327,12 @@ function draw() {
         image(img, 0, 0, movie_width, movie_height);
         draw_output_pixels_rect(transformed_pts, color_pts);
     }
-
     noFill();
     stroke(color('white'));
     // Draw points.
-    transformed_pts.forEach(([x,y]) => {
+    transformed_pts.forEach(([x, y]) => {
         circle(x, y, 6);
     });
-
     stroke(0);
     fill(255);
     text(`fps: ${fps}`, 10, 10);
