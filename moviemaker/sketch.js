@@ -381,10 +381,13 @@ function draw() {
                 const r = img.pixels[idx + 0];
                 const g = img.pixels[idx + 1];
                 const b = img.pixels[idx + 2];
-                color_pts.push(r, b, g);
-
+                color_pts.push(r);
+                color_pts.push(g);
+                color_pts.push(b);
             } else {
-                color_pts.push(0, 0, 0);
+                color_pts.push(0);
+                color_pts.push(0);
+                color_pts.push(0);
             }
             return;
         });
