@@ -19,9 +19,12 @@ let target_translate = [movie_width / 2, movie_height / 2];
 let curr_translate = [movie_width / 2, movie_height / 2];
 let shift_active = false;
 let capturing_active = false;
-
+// Allows quick rotation.
+let shape_rotate_events = [];
 
 dom_btn_end_capture.disabled = true;
+
+function time_now() { return Date.now(); }
 
 dom_btn_start_capture.onclick = () => {
     capturing_active = true;
@@ -105,7 +108,19 @@ function mouseWheel(event) {
         return true;
     }
     if (shift_active) {
-        target_rotate += event.delta > 0 ? 1 : -1;
+        const now = time_now();
+        let num_events = 0;
+        shape_rotate_events.forEach((ts) => {
+            if (now - ts < 250) {
+                num_events++;
+            }
+        });
+        let incr = num_events > 3 ? 4 : 1;
+        target_rotate += event.delta > 0 ? incr : -incr;
+        shape_rotate_events.push(now);
+        while (shape_rotate_events.length > 10) {
+            shape_rotate_events.splice(0,1);
+        }
         return;
     }
     target_zoom -= event.delta / 10000;  // Typical scroll amount is 200.
@@ -224,5 +239,8 @@ function draw_shape() {
 function draw() {
     background(0); // Set the background to black
     update_shape_parameters();
+    if (capturing_active) {
+        image(capture, 0, 0, movie_width, movie_height);
+    }
     draw_shape();
 }
