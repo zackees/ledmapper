@@ -36,6 +36,18 @@ document.onkeyup = (evt) => {
     }
 };
 
+function indexOfIntersectMostRecent(x, y, radius) {
+    const radius2 = radius * radius;
+    for (let i = points.length-1; i >= 0; --i) {
+        const [xx, yy] = points[i];
+        const dist2 = Math.pow(x-xx, 2) + Math.pow(y-yy, 2);
+        if (dist2 < radius2) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 function mouseClicked() {
     let x = Number.parseInt(mouseX);
     let y = Number.parseInt(mouseY);
@@ -47,19 +59,18 @@ function mouseClicked() {
             return;
         }
     }
+    let idx = indexOfIntersectMostRecent(x, y, circle_diameter);
     if (shift_active) {
-        for (let i = points.length-1; i >= 0; --i) {
-            const [xx, yy] = points[i];
-            const dist2 = Math.pow(x-xx, 2) + Math.pow(y-yy, 2);
-            if (dist2 < circle_diameter*circle_diameter) {
-                points.splice(i, 1);
-                break;
-            }
+        if (idx !== -1) {
+            // Remove.
+            points.splice(idx, 1);
         }
     } else {
-        points.push([x,y]);
+        if (idx === -1) {
+            // No intersection so push.
+            points.push([x,y]);
+        }
     }
-
     let s = "index,x,y\n";
     for (let i = 0; i < points.length; ++i) {
         [x,y] = points[i];
