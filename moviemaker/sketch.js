@@ -86,17 +86,17 @@ dom_btn_end_record.onclick = () => {
         if (i == 0) {
             console.log("frame.length: ", frame.length);
         }
-        if (frame.length != shape_pts.length) {
-            alert(`Assertion failed: frame.length(${frame.length}) != (${shape_pts.length})shape_pts.length`)
+        const n_pixels = frame.length / 3;
+        if (n_pixels != shape_pts.length) {
+            alert(`Assertion failed: frame.length(${n_pixels}) != (${shape_pts.length})shape_pts.length`)
             debugger;
         }
         frame.forEach((val) => {
             flat_uint8_array[i++] = val;
         });
     });
-    let blob = new Blob(flat_uint8_array, { type: 'application/octet-stream' });
-    print(flat_uint8_array);
-    download_blob_as_file(blob, "file.dat");
+    //print(flat_uint8_array);
+    download_binary_as_file(flat_uint8_array, "file.dat");
     color_frames = [];
 }
 
@@ -160,12 +160,18 @@ dom_btn_submit.onclick = () => {
     });
 };
 
-function download_blob_as_file(blob, filename) {
+function download_binary_as_file(uint8_array, filename) {
+    let blob = new Blob([uint8_array.buffer], { type: 'application/octet-stream' });
     let link = document.createElement('a');
+    link.style.display = 'none';
+    document.body.appendChild(link);
     link.download = filename;
     link.href = URL.createObjectURL(blob);
+    print("href: ", link.href);
     link.click();
-    URL.revokeObjectURL(link.href);  
+    document.body.removeChild(link);
+    // Cleanup after one minute.
+    setTimeout(() => {URL.revokeObjectURL(link.href)}, 60 * 1000);
 }
 
 function mouse_in_canvas_area() {
