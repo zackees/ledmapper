@@ -42,15 +42,34 @@ dom_btn_submit.onclick = () => {
     const first_pt = shape_pts[0];
     let xmin = first_pt[0];
     let ymin = first_pt[1];
+    let xmax = xmin;
+    let ymax = ymin;
+    let xavg = 0;
+    let yavg = 0;
     shape_pts.forEach(([x,y]) => {
-        if (x < xmin) { xmin = x; }
-        if (y < ymin) { ymin = y; }
+        xmin = min(x, xmin);
+        ymin = min(y, ymin);
+        xmax = max(x, xmax);
+        ymax = max(y, ymax);
+        xavg += x;
+        yavg += y;
     });
+    xavg /= shape_pts.length;
+    yavg /= shape_pts.length;
+    const width  = xmax - xmin;
+    const height = ymax - ymin;
+    const xscale = .8 * canvas.width / width;
+    const yscale = .8 * canvas.height / height;
+    const min_scale = yscale < xscale ? yscale : xscale;
     shape_pts.forEach((pt) => {
         // Add small offset so that the first point is near the
         // edge but not cut off down the middle.
-        pt[0] = pt[0] - xmin + 10;
-        pt[1] = pt[1] - ymin + 10;
+        pt[0] -= xavg;
+        pt[1] -= yavg;
+        pt[0] *= min_scale;
+        pt[1] *= min_scale;
+        pt[0] += canvas.width / 2;
+        pt[1] += canvas.height / 2;
     });
 };
 
@@ -69,11 +88,17 @@ function setup() {
 function draw() {
   background(0); // Set the background to black
 
+  if (shape_pts.length == 0) {
+      return;
+  }
+
   const zoom = Number.parseFloat(dom_txt_zoom.value) || 1.;
   let scaled_pts = [];
   shape_pts.forEach(([x,y]) => { scaled_pts.push([x*zoom, y*zoom]); });
 
+  push();
   fill(color('red'));
+  stroke(color('white'));
   for (let i = 1; i < scaled_pts.length; ++i) {
     const [x0, y0] = scaled_pts[i-1];
     const [x1, y1] = scaled_pts[i];
@@ -91,4 +116,8 @@ function draw() {
       const [x, y] = scaled_pts[i];
       circle(x, y, r);
   }
+  fill(color("white"));
+  noStroke();
+  text('Start', scaled_pts[0][0] + 10, scaled_pts[0][1]);
+  pop();
 }
