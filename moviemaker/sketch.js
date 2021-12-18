@@ -66,6 +66,8 @@ dom_btn_start_record.onclick = () => {
     dom_btn_end_record.disabled = false;
 };
 
+let video_download_index = 0;
+
 dom_btn_end_record.onclick = () => {
     recording_active = false;
     dom_btn_end_record.disabled = true;
@@ -95,8 +97,8 @@ dom_btn_end_record.onclick = () => {
             flat_uint8_array[i++] = val;
         });
     });
-    //print(flat_uint8_array);
-    download_binary_as_file(flat_uint8_array, "file.dat");
+    download_binary_as_file(flat_uint8_array, `video${video_download_index}.dat`);
+    video_download_index++;
     color_frames = [];
 }
 
