@@ -9,6 +9,11 @@ let shape_pts = [];
 dom_btn_submit.onclick = () => {
     shape_pts = [];
     const data = dom_ta_shape_input.value;
+    /*
+    let last_x = null;
+    let last_y = null;
+    */
+
     data.split("\n").forEach((line) => {
         let d = line.split(",");
         while (d.length > 2) { d.splice(0, 1); }
@@ -17,6 +22,16 @@ dom_btn_submit.onclick = () => {
         if (Object.is(x, NaN) || Object.is(y, NaN)) {
             return;
         }
+        /*
+        if (last_x != null && last_y != null) {
+            const dx2 = Math.pow(x - last_x, 2);
+            const dy2 = Math.pow(y - last_y, 2);
+            if (Math.pow(17, 2) > (dx2 + dy2)) {
+                alert("Bad point: ", line);
+            }
+        }
+        last_x = x; last_y = y;
+        */
         shape_pts.push([x,y]);
     });
     if (shape_pts.length == 0) {

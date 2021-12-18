@@ -73,15 +73,29 @@ dom_btn_end_record.onclick = () => {
     //dom_btn_start_capture.disabled = true;
     //print(color_frames);
 
-    let flat_uint8_array = []
+    let n = 0;
     color_frames.forEach((frame) => {
         frame.forEach((val) => {
-            flat_uint8_array.push(val);
+            n++;
         });
     });
-    let blob = new Blob(
-        new Uint8Array(flat_uint8_array),
-        { type: 'application/octet-stream' });
+
+    let flat_uint8_array = new Uint8Array(n);
+    let i = 0;
+    color_frames.forEach((frame) => {
+        if (i == 0) {
+            console.log("frame.length: ", frame.length);
+        }
+        if (frame.length != shape_pts.length) {
+            alert(`Assertion failed: frame.length(${frame.length}) != (${shape_pts.length})shape_pts.length`)
+            debugger;
+        }
+        frame.forEach((val) => {
+            flat_uint8_array[i++] = val;
+        });
+    });
+    let blob = new Blob(flat_uint8_array, { type: 'application/octet-stream' });
+    print(flat_uint8_array);
     download_blob_as_file(blob, "file.dat");
     color_frames = [];
 }
