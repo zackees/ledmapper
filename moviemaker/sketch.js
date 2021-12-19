@@ -6,8 +6,11 @@ const dom_btn_end_capture = document.getElementById("btn_end_capture");
 const dom_btn_start_record = document.getElementById("btn_start_record");
 const dom_btn_end_record = document.getElementById("btn_end_record");
 
-const movie_width = 1280;
-const movie_height = 720;
+// For performance reasons, we reduce the size of the movie.
+const movie_hw_ratio = 0.5625
+const movie_width = 1280 / 2;
+const movie_height = Math.round(movie_width * movie_hw_ratio);
+const frame_rate = 30;
 
 let canvas;
 let capture;
@@ -38,7 +41,8 @@ dom_btn_start_capture.onclick = () => {
     dom_btn_end_capture.disabled = false;
     const constraints = {
         video: {},
-        audio: false
+        audio: false,
+        optional: [{ maxFrameRate: frame_rate }]
     };
     capture = createCapture(constraints);
     capture.size(movie_width, movie_height);
@@ -236,7 +240,7 @@ function setup() {
     pixelDensity(1);  // Needed for retina displays.
     canvas = createCanvas(movie_width, movie_height);
     stroke(255); // Set line drawing color to white
-    frameRate(30);
+    frameRate(frame_rate);
 }
 
 function update_shape_parameters() {
@@ -321,8 +325,9 @@ function draw_output_pixels_rect(transformed_pts, color_pts) {
     push();
     stroke(color('white'));
     let c = color('black');
-    const width = 200;
-    const height = 200;
+    const side = 200 * movie_width / 1280;
+    const width = side;
+    const height = side;
     const left = movie_width - width;
     const top = movie_height - height;
     fill(c);
