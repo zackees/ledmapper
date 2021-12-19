@@ -42,7 +42,12 @@ dom_btn_start_capture.onclick = () => {
     const constraints = {
         video: {},
         audio: false,
-        optional: [{ maxFrameRate: frame_rate }]
+        optional: [
+            {
+                maxFrameRate: frame_rate,
+                minFrameRate: frame_rate,
+            }
+        ]
     };
     capture = createCapture(constraints);
     capture.size(movie_width, movie_height);
