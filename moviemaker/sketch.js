@@ -1,6 +1,5 @@
 
-const dom_btn_submit = document.getElementById("btn_submit");
-const dom_ta_shape_input = document.getElementById("ta_shape_input");
+const dom_btn_upload_shape = document.getElementById("btn_upload_shape");
 const dom_btn_start_capture = document.getElementById("btn_start_capture");
 const dom_btn_end_capture = document.getElementById("btn_end_capture");
 const dom_btn_start_record = document.getElementById("btn_start_record");
@@ -150,7 +149,8 @@ function transform_to_center2(shape_pts) {
     return out;
 }
 
-dom_btn_submit.onclick = () => {
+
+function load_shape_data(data) {
     shape_pts = [];
     target_zoom = 1.;
     curr_zoom = target_zoom;
@@ -160,12 +160,20 @@ dom_btn_submit.onclick = () => {
     target_translate = [movie_width / 2, movie_height / 2];
     curr_translate = [movie_width / 2, movie_height / 2];
 
-    shape_pts = parse_shape_data(dom_ta_shape_input.value);
+    shape_pts = parse_shape_data(data);
     if (shape_pts.length == 0) {
         return;
     }
     shape_pts = transform_to_center2(shape_pts);
+}
+
+dom_btn_upload_shape.onchange = (evt) => {
+    const file = dom_btn_upload_shape.files[0];
+    const reader = new FileReader();
+    reader.onload = (evt) => { load_shape_data(evt.target.result); };
+    reader.readAsText(file);
 };
+
 
 function mouse_in_canvas_area() {
     // Return false if the mouse is outside the canvas.
