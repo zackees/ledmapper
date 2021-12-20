@@ -133,18 +133,7 @@ dom_btn_submit.onclick = () => {
     target_translate = [movie_width / 2, movie_height / 2];
     curr_translate = [movie_width / 2, movie_height / 2];
 
-    shape_pts = [];
-    const data = dom_ta_shape_input.value;
-    data.split("\n").forEach((line) => {
-        let d = line.split(",");
-        while (d.length > 2) { d.splice(0, 1); }
-        const x = Number.parseInt(d[0]);
-        const y = Number.parseInt(d[1]);
-        if (Object.is(x, NaN) || Object.is(y, NaN)) {
-            return;
-        }
-        shape_pts.push([x, y]);
-    });
+    shape_pts = parse_shape_data(dom_ta_shape_input.value);
     if (shape_pts.length == 0) {
         return;
     }
