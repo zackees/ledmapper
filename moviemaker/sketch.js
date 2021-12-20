@@ -5,6 +5,9 @@ const dom_btn_end_capture = document.getElementById("btn_end_capture");
 const dom_btn_start_record = document.getElementById("btn_start_record");
 const dom_btn_end_record = document.getElementById("btn_end_record");
 
+const dom_rng_brightness = document.getElementById("rng_brightness");
+const dom_txt_curr_bri = document.getElementById("txt_curr_bri");
+
 // For performance reasons, we reduce the size of the movie.
 const movie_hw_ratio = 0.5625
 const movie_width = 1280 / 2;
@@ -33,6 +36,10 @@ dom_btn_start_record.disabled = true;
 dom_btn_end_record.disabled = true;
 
 function time_now() { return Date.now(); }
+
+dom_rng_brightness.oninput = () => {
+    dom_txt_curr_bri.innerText = `${dom_rng_brightness.value}%`;
+}
 
 dom_btn_start_capture.onclick = () => {
     capturing_active = true;
@@ -371,6 +378,7 @@ function draw_output_pixels_rect(transformed_pts, color_pts) {
 // line is executed again.
 let last_time = time_now();
 function draw() {
+    const bri_bias = Number.parseInt(dom_rng_brightness.value) / 100.;
     let avg_brightness = 0.;
     const now = time_now();
     const frame_time = now - last_time;
@@ -388,9 +396,9 @@ function draw() {
             y = Number.parseInt(y);
             const idx = (x + y * width) * 4;
             if (idx >= 0 && idx < img.pixels.length) {
-                const r = img.pixels[idx + 0];
-                const g = img.pixels[idx + 1];
-                const b = img.pixels[idx + 2];
+                const r = Number.parseInt(img.pixels[idx + 0] * bri_bias);
+                const g = Number.parseInt(img.pixels[idx + 1] * bri_bias);
+                const b = Number.parseInt(img.pixels[idx + 2] * bri_bias);
                 color_pts.push(r);
                 color_pts.push(g);
                 color_pts.push(b);

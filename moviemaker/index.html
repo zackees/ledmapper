@@ -24,11 +24,12 @@
 		</ul>
 		<label for="btn_upload_shape">Upload Shape (*.csv):</label>
 		<input type="file" id="btn_upload_shape" accept=".csv"></input><br>
-
 		<input type="button" id="btn_start_capture" value="Start Video"></input>
 		<input type="button" id="btn_end_capture" value="End Video"></input><br>
 		<input type="button" id="btn_start_record" value="Start Recording"></input>
 		<input type="button" id="btn_end_record" value="End Recording"></input><br>
+		<label for="rng_brightness">Brightness factor:</label>
+		<input type="range" min="0" max="100" value="100" class="slider" id="rng_brightness"></input><span id="txt_curr_bri">100%</span>
 		<p>Downloaded binary contains raw stream of pixels represented as uint8_t of r,g,b</p>
 	</div>
 	<!-- Target of the p5.js drawing-->
