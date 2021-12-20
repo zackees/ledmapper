@@ -7,70 +7,11 @@ let canvas;
 let shape_pts = [];
 
 dom_btn_submit.onclick = () => {
-    shape_pts = [];
-    const data = dom_ta_shape_input.value;
-    /*
-    let last_x = null;
-    let last_y = null;
-    */
-
-    data.split("\n").forEach((line) => {
-        let d = line.split(",");
-        while (d.length > 2) { d.splice(0, 1); }
-        const x = Number.parseInt(d[0]);
-        const y = Number.parseInt(d[1]);
-        if (Object.is(x, NaN) || Object.is(y, NaN)) {
-            return;
-        }
-        /*
-        if (last_x != null && last_y != null) {
-            const dx2 = Math.pow(x - last_x, 2);
-            const dy2 = Math.pow(y - last_y, 2);
-            if (Math.pow(17, 2) > (dx2 + dy2)) {
-                alert("Bad point: ", line);
-            }
-        }
-        last_x = x; last_y = y;
-        */
-        shape_pts.push([x,y]);
-    });
+    shape_pts = parse_shape_data(dom_ta_shape_input.value);
     if (shape_pts.length == 0) {
         return;
     }
-    // now format so that the entire thing is contained in the
-    // canvas.
-    const first_pt = shape_pts[0];
-    let xmin = first_pt[0];
-    let ymin = first_pt[1];
-    let xmax = xmin;
-    let ymax = ymin;
-    let xavg = 0;
-    let yavg = 0;
-    shape_pts.forEach(([x,y]) => {
-        xmin = min(x, xmin);
-        ymin = min(y, ymin);
-        xmax = max(x, xmax);
-        ymax = max(y, ymax);
-        xavg += x;
-        yavg += y;
-    });
-    xavg /= shape_pts.length;
-    yavg /= shape_pts.length;
-    const width  = xmax - xmin;
-    const height = ymax - ymin;
-    const xscale = .8 * canvas.width / width;
-    const yscale = .8 * canvas.height / height;
-    const min_scale = yscale < xscale ? yscale : xscale;
-    shape_pts.forEach((pt) => {
-        // Add small offset so that the first point is near the
-        // edge but not cut off down the middle.
-        pt[0] -= xavg;
-        pt[1] -= yavg;
-        pt[0] *= min_scale;
-        pt[1] *= min_scale;
-        pt[0] += canvas.width / 2;
-        pt[1] += canvas.height / 2;
-    });
+    shape_pts = transform_to_center_of_canvas(shape_pts, canvas.width, canvas.height);
 };
 
 // The statements in the setup() function
