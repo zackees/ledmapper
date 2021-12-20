@@ -1,17 +1,24 @@
 
-const dom_btn_submit = document.getElementById("btn_submit");
-const dom_ta_shape_input = document.getElementById("ta_shape_input");
+const dom_btn_upload_shape = document.getElementById("btn_upload_shape");
 const dom_txt_zoom = document.getElementById("txt_zoom");
 
 let canvas;
 let shape_pts = [];
 
-dom_btn_submit.onclick = () => {
-    shape_pts = parse_shape_data(dom_ta_shape_input.value);
+
+function load_shape_data(text) {
+    shape_pts = parse_shape_data(text);
     if (shape_pts.length == 0) {
         return;
     }
     shape_pts = transform_to_center_of_canvas(shape_pts, canvas.width, canvas.height);
+}
+
+dom_btn_upload_shape.onchange = (evt) => {
+    const file = dom_btn_upload_shape.files[0];
+    const reader = new FileReader();
+    reader.onload = (evt) => { load_shape_data(evt.target.result); };
+    reader.readAsText(file);
 };
 
 // The statements in the setup() function
