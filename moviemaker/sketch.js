@@ -371,6 +371,7 @@ function draw_output_pixels_rect(transformed_pts, color_pts) {
 // line is executed again.
 let last_time = time_now();
 function draw() {
+    let avg_brightness = 0.;
     const now = time_now();
     const frame_time = now - last_time;
     const fps = Number.parseInt(1000 / frame_time);
@@ -393,6 +394,7 @@ function draw() {
                 color_pts.push(r);
                 color_pts.push(g);
                 color_pts.push(b);
+                avg_brightness += r + b + g;
             } else {
                 color_pts.push(0);
                 color_pts.push(0);
@@ -416,5 +418,13 @@ function draw() {
     });
     stroke(0);
     fill(255);
-    text(`fps: ${fps}`, 10, 10);
+    text(`FPS: ${fps}`, 10, 10);
+
+    if (avg_brightness > 0.) {
+        avg_brightness /= transformed_pts.length * 3;
+        avg_brightness /= 255;
+    }
+    avg_brightness = Number.parseFloat(avg_brightness).toFixed(2);
+    const perc_bri = Number.parseInt(avg_brightness * 100);
+    text(`Avg Brightness: ${perc_bri}%`, 10, 20);
 }
