@@ -8,6 +8,9 @@ const dom_btn_end_record = document.getElementById("btn_end_record");
 const dom_rng_brightness = document.getElementById("rng_brightness");
 const dom_txt_curr_bri = document.getElementById("txt_curr_bri");
 
+const dom_rng_gamma = document.getElementById("rng_gamma");
+const dom_txt_curr_gamma = document.getElementById("txt_curr_gamma");
+
 // For performance reasons, we reduce the size of the movie.
 const movie_hw_ratio = 0.5625
 const movie_width = 1280 / 2;
@@ -37,8 +40,13 @@ dom_btn_end_record.disabled = true;
 
 function time_now() { return Date.now(); }
 
-dom_rng_brightness.oninput = () => {
+dom_rng_brightness.oninput = (evt) => {
     dom_txt_curr_bri.innerText = `${dom_rng_brightness.value}%`;
+}
+
+dom_rng_gamma.oninput = () => {
+    const v = dom_rng_gamma.value / 10.;
+    dom_txt_curr_gamma.innerText = `${v}`;
 }
 
 dom_btn_start_capture.onclick = () => {
@@ -387,6 +395,9 @@ function draw() {
     background(0); // Set the background to black
     update_shape_parameters();
     const transformed_pts = create_transformed_shape();
+
+    const gamm_val = dom_rng_gamma.value / 10.;
+    const gamma = (v_u8) => { return Math.pow(v_u8/255., gamm_val) * 255; };
     if (capturing_active) {
         const color_pts = [];
         let img = capture.get();
@@ -396,9 +407,9 @@ function draw() {
             y = Number.parseInt(y);
             const idx = (x + y * width) * 4;
             if (idx >= 0 && idx < img.pixels.length) {
-                const r = Number.parseInt(img.pixels[idx + 0] * bri_bias);
-                const g = Number.parseInt(img.pixels[idx + 1] * bri_bias);
-                const b = Number.parseInt(img.pixels[idx + 2] * bri_bias);
+                const r = Number.parseInt(gamma(img.pixels[idx + 0]) * bri_bias);
+                const g = Number.parseInt(gamma(img.pixels[idx + 1]) * bri_bias);
+                const b = Number.parseInt(gamma(img.pixels[idx + 2]) * bri_bias);
                 color_pts.push(r);
                 color_pts.push(g);
                 color_pts.push(b);

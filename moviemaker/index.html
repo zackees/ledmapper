@@ -29,8 +29,10 @@
 		<input type="button" id="btn_start_record" value="Start Recording"></input>
 		<input type="button" id="btn_end_record" value="End Recording"></input><br>
 		<label for="rng_brightness">Brightness factor:</label>
-		<input type="range" min="0" max="100" value="100" class="slider" id="rng_brightness"></input><span id="txt_curr_bri">100%</span>
-		<p>Downloaded binary contains raw stream of pixels represented as uint8_t of r,g,b</p>
+		<input type="range" min="0" max="100" value="100" class="slider" id="rng_brightness"></input><span id="txt_curr_bri">100%</span><br>
+		<label for="rng_gamma">Gamma factor:</label>
+		<input type="range" min="1" max="40" value="10" class="slider" id="rng_gamma"></input><span id="txt_curr_gamma">1.0</span>
+		<p>Downloaded binary contains raw stream of pixels represented as uint8_t of r, g, b</p>
 	</div>
 	<!-- Target of the p5.js drawing-->
 	<main></main>
