@@ -98,6 +98,7 @@ function load_movie_data(array_buffer) {
         return;
     }
     dom_btn_play.disabled = false;
+    set_dom_btn_play(false);
     let frames = [];
     const n_frames = num_pixels / shape_pts.length
     for (let i = 0; i < n_frames; ++i) {
@@ -148,6 +149,8 @@ function draw() {
         curr_frame_idx = 0;
       }
       curr_frame = movie_frames[curr_frame_idx++];
+  } else {
+    curr_frame = null;
   }
   for (let i = 0; i < scaled_pts.length; ++i) {
       let c = color(255, 255, 255, 0);
