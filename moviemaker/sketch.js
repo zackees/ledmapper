@@ -123,6 +123,33 @@ document.onkeyup = (evt) => {
     }
 };
 
+function transform_to_center2(shape_pts) {
+    // now format so that the entire thing is contained in the
+    // canvas.
+    let out = [];
+    shape_pts.forEach(([x,y]) => { out.push([x,y]); });
+    const first_pt = out[0];
+    let xmin = first_pt[0];
+    let ymin = first_pt[1];
+    let xavg = 0;
+    let yavg = 0;
+    out.forEach(([x, y]) => {
+        xavg += x;
+        yavg += y;
+        if (x < xmin) { xmin = x; }
+        if (y < ymin) { ymin = y; }
+    });
+    xavg /= shape_pts.length;
+    yavg /= shape_pts.length;
+    out.forEach((pt) => {
+        // Add small offset so that the first point is near the
+        // edge but not cut off down the middle.
+        pt[0] = pt[0] - xavg;
+        pt[1] = pt[1] - yavg;
+    });
+    return out;
+}
+
 dom_btn_submit.onclick = () => {
     shape_pts = [];
     target_zoom = 1.;
@@ -137,42 +164,8 @@ dom_btn_submit.onclick = () => {
     if (shape_pts.length == 0) {
         return;
     }
-    // now format so that the entire thing is contained in the
-    // canvas.
-    const first_pt = shape_pts[0];
-    let xmin = first_pt[0];
-    let ymin = first_pt[1];
-    let xavg = 0;
-    let yavg = 0;
-    shape_pts.forEach(([x, y]) => {
-        xavg += x;
-        yavg += y;
-        if (x < xmin) { xmin = x; }
-        if (y < ymin) { ymin = y; }
-    });
-    xavg /= shape_pts.length;
-    yavg /= shape_pts.length;
-    shape_pts.forEach((pt) => {
-        // Add small offset so that the first point is near the
-        // edge but not cut off down the middle.
-        pt[0] = pt[0] - xavg;
-        pt[1] = pt[1] - yavg;
-    });
+    shape_pts = transform_to_center2(shape_pts);
 };
-
-function download_binary_as_file(uint8_array, filename) {
-    let blob = new Blob([uint8_array.buffer], { type: 'application/octet-stream' });
-    let link = document.createElement('a');
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.download = filename;
-    link.href = URL.createObjectURL(blob);
-    print("href: ", link.href);
-    link.click();
-    document.body.removeChild(link);
-    // Cleanup after one minute.
-    setTimeout(() => {URL.revokeObjectURL(link.href)}, 60 * 1000);
-}
 
 function mouse_in_canvas_area() {
     // Return false if the mouse is outside the canvas.
@@ -213,19 +206,6 @@ function mouseWheel(event) {
     return false;
 }
 
-function estimate_led_size(pts) {
-    // The actual algorithm is O(n^2), yuck... At this point just assume led size
-    // by the median distance between this led and the next.
-    if (pts.length < 2) {
-        return 1.0;
-    }
-    const a = pts[0];
-    const b = pts[1];
-    const dx = b[0] - a[0];
-    const dy = b[1] - a[1];
-    const d2 = Math.pow(dx, 2) + Math.pow(dy, 2);
-    return Math.sqrt(d2);
-}
 
 // The statements in the setup() function
 // execute once when the program begins

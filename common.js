@@ -48,3 +48,32 @@ function transform_to_center_of_canvas(shape_pts, canvas_width, canvas_height) {
     });
     return out;
 }
+
+function download_binary_as_file(uint8_array, filename) {
+    let blob = new Blob([uint8_array.buffer], { type: 'application/octet-stream' });
+    let link = document.createElement('a');
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.download = filename;
+    link.href = URL.createObjectURL(blob);
+    print("href: ", link.href);
+    link.click();
+    document.body.removeChild(link);
+    // Cleanup after one minute.
+    setTimeout(() => {URL.revokeObjectURL(link.href)}, 60 * 1000);
+}
+
+
+function estimate_led_size(pts) {
+    // The actual algorithm is O(n^2), yuck... At this point just assume led size
+    // by the median distance between this led and the next.
+    if (pts.length < 2) {
+        return 1.0;
+    }
+    const a = pts[0];
+    const b = pts[1];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const d2 = Math.pow(dx, 2) + Math.pow(dy, 2);
+    return Math.sqrt(d2);
+}
