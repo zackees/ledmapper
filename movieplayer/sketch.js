@@ -61,6 +61,7 @@ function load_movie_data(array_buffer) {
         frames.push(frame);
     }
     movie_frames = frames; 
+    dom_btn_play.click();
 }
 
 dom_btn_load_movie.onchange = (evt) => {
