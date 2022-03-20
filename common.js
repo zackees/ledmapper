@@ -49,8 +49,8 @@ function transform_to_center_of_canvas(shape_pts, canvas_width, canvas_height) {
     return out;
 }
 
-function download_binary_as_file(uint8_array, filename) {
-    let blob = new Blob([uint8_array.buffer], { type: 'application/octet-stream' });
+// Example download_blob_as_file(new Blob([uint8_array.buffer], { type: 'application/octet-stream' });)
+function download_blob_as_file(blob, filename) {
     let link = document.createElement('a');
     link.style.display = 'none';
     document.body.appendChild(link);
@@ -61,6 +61,16 @@ function download_binary_as_file(uint8_array, filename) {
     document.body.removeChild(link);
     // Cleanup after one minute.
     setTimeout(() => {URL.revokeObjectURL(link.href)}, 60 * 1000);
+}
+
+function download_binary_as_file(uint8_array, filename) {
+    let blob = new Blob([uint8_array.buffer], { type: 'application/octet-stream' });
+    download_blob_as_file(blob, filename);
+}
+
+function download_text_as_file(text, filename) {
+    let blob = new Blob([text], { type: 'text/plain' });
+    download_blob_as_file(blob, filename);
 }
 
 

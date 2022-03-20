@@ -2,13 +2,13 @@ let capture;
 let canvas;
 const cam_ratio = 2160 / 3480;
 const dom_capture_width = document.getElementById("txt_capture_width");
-const dom_fps = document.getElementById("fps");
-const dom_txtarea_capture_output = document.getElementById("txtarea_capture_output");
 const dom_btn_snapshot = document.getElementById("btn_snapshot");
 const dom_btn_clear = document.getElementById("btn_clear");
 const dom_btn_delete_last = document.getElementById("btn_delete_last");
+const dom_btn_download = document.getElementById("btn_download");
 const dom_txt_rotate = document.getElementById("txt_rotate");
 const dom_txt_zoom = document.getElementById("txt_zoom");
+
 
 const dom_txt_x_translate = document.getElementById("txt_x_translate");
 const dom_txt_y_translate = document.getElementById("txt_y_translate");
@@ -20,8 +20,13 @@ const circle_diameter = 8;
 let points = []
 
 function time_now() { return Date.now(); }
-dom_btn_clear.onclick = () => { points = []; }
+dom_btn_clear.onclick = () => {
+    if (confirm("Delete all?")) {
+        points = [];
+    }
+}
 dom_btn_delete_last.onclick = () => { points.pop(); };
+dom_btn_download.onclick = () => { downloadShape(); };
 
 let shift_active = false;
 document.onkeydown = (evt) => {
@@ -36,6 +41,10 @@ document.onkeyup = (evt) => {
     }
 };
 
+function downloadShape() {
+    download_text_as_file(points_to_string(), `shape.csv`);
+}
+
 function indexOfIntersectMostRecent(x, y, radius) {
     const radius2 = radius * radius;
     for (let i = points.length-1; i >= 0; --i) {
@@ -46,6 +55,15 @@ function indexOfIntersectMostRecent(x, y, radius) {
         }
     }
     return -1;
+}
+
+function points_to_string() {
+    let s = "index,x,y\n";
+    for (let i = 0; i < points.length; ++i) {
+        [x,y] = points[i];
+        s += `${i},${x},${y}\n`;
+    }
+    return s;
 }
 
 function mouseClicked() {
@@ -71,12 +89,6 @@ function mouseClicked() {
             points.push([x,y]);
         }
     }
-    let s = "index,x,y\n";
-    for (let i = 0; i < points.length; ++i) {
-        [x,y] = points[i];
-        s += `${i},${x},${y}\n`;
-    }
-    dom_txtarea_capture_output.innerText = s;
 }
 
 function setup_gfx(width) {
@@ -111,6 +123,9 @@ let last_frame_time = time_now();
 function draw() {
     const y_translate = Number.parseInt(dom_txt_y_translate.value) || 0;
     const x_translate = Number.parseInt(dom_txt_x_translate.value) || 0;
+    dom_btn_download.disabled = !points.length;
+    dom_btn_clear.disabled = !points.length;
+    dom_btn_delete_last.disabled = !points.length;
     let zoom = Number.parseFloat(dom_txt_zoom.value) || 1.0;
     let r = Number.parseInt(dom_txt_rotate.value) || 0;
     const now = time_now();
@@ -135,9 +150,16 @@ function draw() {
 
     let c = color('green');
     fill(c);
+    fill(color('red'));
+    stroke(color('white'));
+    for (let i = 1; i < points.length; ++i) {
+      const [x0, y0] = points[i-1];
+      const [x1, y1] = points[i];
+      line(x0, y0, x1, y1);
+    }
     points.forEach(([x,y]) => { circle(x, y, circle_diameter); });
+
 
     const diff_time = now - last_frame_time;
     last_frame_time = now;
-    dom_fps.innerText = "fps: " + Number.parseFloat(1000 / diff_time, 2).toFixed(2);
 }

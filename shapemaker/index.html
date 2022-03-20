@@ -1,15 +1,16 @@
 <html>
 
 <head>
-	<script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js"></script>
+	
 </head>
 
 <body>
-	<p>Click to add a point. shift+click to remove it</p>
+	<p>Click to add a point. shift+click to remove it. When you are done, click "Download Shape"</p>
 	<p id="print"></p>
-	<p id="fps"></p>
 
-	<label for="capture_width">Video capture width:</label>
+	<input type="button" id="btn_snapshot" value="Take Picture from Camera"></input>
+	<br>
+	<label for="capture_width">Image capture width:</label>
 	<input id="txt_capture_width" type="text" value="2000"></input><br>
 	<label for="txt_rotate">Rotate:</label>
 	<input id="txt_rotate" type="text" value="0"></input><br>
@@ -22,17 +23,20 @@
 	<label for="txt_y_translate">Y Translate:</label>
 	<input id="txt_y_translate" type="text" value="0"></input><br>
 
-	<input type="button" id="btn_snapshot" value="Take Snapshot"></input>
+	
+	<br>
+	<input type="button" id="btn_delete_last" value="Undo Last Point"></input>
 	<input type="button" id="btn_clear" value="Clear all points"></input>
-	<input type="button" id="btn_delete_last" value="Delete Last Point"></input>
+	<br>
+	<input type="button" id="btn_download" value="Download Shape"></input>
 
 	<!-- Target of the p5.js drawing-->
 	<main></main>
-	<pre id="txtarea_capture_output" rows="80" cols="80"></pre>
 
 </body>
 
-
+<script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js"></script>
+<script src="/common.js"></script>
 <script src="sketch.js"></script>
 
 </html>
