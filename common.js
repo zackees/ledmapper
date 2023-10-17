@@ -3,8 +3,8 @@ function parse_shape_data(text) {
     text.split("\n").forEach((line) => {
         let d = line.split(",");
         while (d.length > 2) { d.splice(0, 1); }
-        const x = Number.parseInt(d[0]);
-        const y = Number.parseInt(d[1]);
+        const x = Number.parseFloat(d[0]);
+        const y = Number.parseFloat(d[1]);
         if (Object.is(x, NaN) || Object.is(y, NaN)) {
             return;
         }
