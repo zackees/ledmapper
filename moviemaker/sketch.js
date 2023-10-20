@@ -398,6 +398,71 @@ function getFrame(now_us) {
     return frame_idx;
 }
 
+function gaussianKernel(radius, sigma) {
+    const kernelSize = 2 * radius + 1;
+    let kernel = Array(kernelSize).fill().map(() => Array(kernelSize).fill(0));
+    let sum = 0;
+
+    for (let y = -radius; y <= radius; y++) {
+        for (let x = -radius; x <= radius; x++) {
+            const value = (1 / (2 * Math.PI * sigma * sigma)) * Math.exp(-(x * x + y * y) / (2 * sigma * sigma));
+            kernel[y + radius][x + radius] = value;
+            sum += value;
+        }
+    }
+
+    // Normalize the kernel
+    for (let y = 0; y < kernelSize; y++) {
+        for (let x = 0; x < kernelSize; x++) {
+            kernel[y][x] /= sum;
+        }
+    }
+
+    return kernel;
+}
+
+const radius = 6;
+const sigma = 3;
+const kernel = gaussianKernel(radius, sigma);
+
+function gaussianBlur(pixels, x, y, width, height) {
+    const kernelSize = kernel.length;
+
+    let rSum = 0;
+    let gSum = 0;
+    let bSum = 0;
+    let weightSum = 0;
+
+    for (let yy = -radius; yy <= radius; yy++) {
+        for (let xx = -radius; xx <= radius; xx++) {
+            const xi = x + xx;
+            const yi = y + yy;
+
+            if (xi >= 0 && yi >= 0 && xi < width && yi < height) {
+                const idx = (xi + yi * width) * 4;
+                const r = pixels[idx + 0];
+                const g = pixels[idx + 1];
+                const b = pixels[idx + 2];
+
+                const weight = kernel[yy + radius][xx + radius];
+
+                rSum += r * weight;
+                gSum += g * weight;
+                bSum += b * weight;
+                weightSum += weight;
+            }
+        }
+    }
+
+    return [
+        rSum / weightSum,
+        gSum / weightSum,
+        bSum / weightSum
+    ];
+}
+
+
+
 
 
 // The statements in draw() are executed until the
@@ -429,9 +494,10 @@ function draw() {
             y = Number.parseInt(y);
             const idx = (x + y * width) * 4;
             if (idx >= 0 && idx < img.pixels.length) {
-                const r = Number.parseInt(gamma(img.pixels[idx + 0]) * bri_bias);
-                const g = Number.parseInt(gamma(img.pixels[idx + 1]) * bri_bias);
-                const b = Number.parseInt(gamma(img.pixels[idx + 2]) * bri_bias);
+                let [r,g,b] = gaussianBlur(img.pixels, x, y, width, height);
+                r = Number.parseInt(gamma(r) * bri_bias);
+                g = Number.parseInt(gamma(g) * bri_bias);
+                b = Number.parseInt(gamma(b) * bri_bias);
                 color_pts.push(r);
                 color_pts.push(g);
                 color_pts.push(b);
