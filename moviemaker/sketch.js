@@ -11,6 +11,9 @@ const dom_txt_curr_bri = document.getElementById("txt_curr_bri");
 const dom_rng_gamma = document.getElementById("rng_gamma");
 const dom_txt_curr_gamma = document.getElementById("txt_curr_gamma");
 
+const dom_rng_blur = document.getElementById("rng_blur");
+const dom_rng_blur_sigma = document.getElementById("rng_blur_sigma");
+
 // We try and capture at 30 fps.
 const FRAME_TIME_US = 30 * 1000;
 
@@ -91,6 +94,23 @@ dom_btn_start_record.onclick = () => {
     dom_btn_start_record.disabled = true;
     dom_btn_end_record.disabled = false;
 };
+
+
+dom_rng_blur.oninput = () => {
+    const v = dom_rng_blur.value;
+    dom_rng_blur.value = v;
+    document.getElementById("txt_curr_blur").innerText = v;
+    updateGuassianBlur();
+}
+
+
+dom_rng_blur_sigma.oninput = () => {
+    const v = dom_rng_blur_sigma.value;
+    dom_rng_blur_sigma.value = v;
+    document.getElementById("txt_curr_blur_sigma").innerText = v;
+    updateGuassianBlur();
+}
+
 
 let video_download_index = 0;
 
@@ -421,11 +441,25 @@ function gaussianKernel(radius, sigma) {
     return kernel;
 }
 
-const radius = 6;
-const sigma = 3;
-const kernel = gaussianKernel(radius, sigma);
+
+let radius = Number.parseInt(dom_rng_blur.value);
+let sigma = Number.parseInt(dom_rng_blur_sigma.value);
+let kernel = gaussianKernel(radius, sigma);
+
+function updateGuassianBlur() {
+    radius = Number.parseInt(dom_rng_blur.value);
+    sigma = Number.parseInt(dom_rng_blur_sigma.value);
+    kernel = gaussianKernel(radius, sigma);
+}
 
 function gaussianBlur(pixels, x, y, width, height) {
+    if (radius == 0 || sigma == 0) {
+        return [
+            pixels[(x + y * width) * 4 + 0],
+            pixels[(x + y * width) * 4 + 1],
+            pixels[(x + y * width) * 4 + 2]
+        ];
+    }
     const kernelSize = kernel.length;
 
     let rSum = 0;

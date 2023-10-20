@@ -32,6 +32,12 @@
 		<input type="range" min="0" max="100" value="100" class="slider" id="rng_brightness"></input><span id="txt_curr_bri">100%</span><br>
 		<label for="rng_gamma">Gamma factor:</label>
 		<input type="range" min="1" max="40" value="10" class="slider" id="rng_gamma"></input><span id="txt_curr_gamma">1.0</span>
+		<br>
+		<!-- guassian blur, first radius then sigma -->
+		<label for="rng_blur">Blur factor:</label>
+		<input type="range" min="1" max="20" value="3" class="slider" id="rng_blur"></input><span id="txt_curr_blur">3</span><br>
+		<label for="rng_blur_sigma">Blur sigma:</label>
+		<input type="range" min="0" max="7" value="1" class="slider" id="rng_blur_sigma"></input><span id="txt_curr_blur_sigma">1</span><br>
 		<p>Downloaded binary contains raw stream of pixels represented as uint8_t of r, g, b</p>
 	</div>
 	<!-- Target of the p5.js drawing-->
