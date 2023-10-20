@@ -27,7 +27,7 @@ function setup() {
   // createCanvas must be the first statement
   canvas = createCanvas(1000, 1000);
   stroke(255); // Set line drawing color to white
-  frameRate(30);
+  frameRate(60);
 }
 // The statements in draw() are executed until the
 // program is stopped. Each statement is executed in

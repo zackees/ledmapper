@@ -11,11 +11,14 @@ const dom_txt_curr_bri = document.getElementById("txt_curr_bri");
 const dom_rng_gamma = document.getElementById("rng_gamma");
 const dom_txt_curr_gamma = document.getElementById("txt_curr_gamma");
 
+// We try and capture at 30 fps.
+const FRAME_TIME_US = 30 * 1000;
+
 // For performance reasons, we reduce the size of the movie.
 const movie_hw_ratio = 0.5625
 const movie_width = 1280 / 2;
 const movie_height = Math.round(movie_width * movie_hw_ratio);
-const frame_rate = 30;
+const frame_rate = 60;
 
 let canvas;
 let capture;
@@ -375,10 +378,27 @@ function draw_output_pixels_rect(transformed_pts, color_pts) {
         const g = color_pts[idx + 1];
         const b = color_pts[idx + 2];
         fill(color(r, g, b, 255));
-        circle(x, y, led_size);
+        //circle(x, y, led_size);
+        rect(x - led_size / 2, y - led_size / 2, led_size, led_size);
     }
     pop();
 }
+
+function timeMicros() {
+    const timeInMicroseconds = performance.now() * 1000
+    return Number.parseInt(timeInMicroseconds);
+}
+
+let g_recording = false;
+let g_recording_start_time_us = 0;
+let g_last_frame_idx = -1;
+
+function getFrame(now_us) {
+    const frame_idx = Number.parseInt((now_us - g_recording_start_time_us) / FRAME_TIME_US);
+    return frame_idx;
+}
+
+
 
 // The statements in draw() are executed until the
 // program is stopped. Each statement is executed in
@@ -389,6 +409,7 @@ function draw() {
     const bri_bias = Number.parseInt(dom_rng_brightness.value) / 100.;
     let avg_brightness = 0.;
     const now = time_now();
+    const now_us = timeMicros();
     const frame_time = now - last_time;
     const fps = Number.parseInt(1000 / frame_time);
     last_time = now;
@@ -399,6 +420,7 @@ function draw() {
     const gamm_val = dom_rng_gamma.value / 10.;
     const gamma = (v_u8) => { return Math.pow(v_u8/255., gamm_val) * 255; };
     if (capturing_active) {
+        image(capture, 0, 0, movie_width, movie_height);
         const color_pts = [];
         let img = capture.get();
         img.loadPixels();
@@ -421,10 +443,27 @@ function draw() {
             }
             return;
         });
-        image(img, 0, 0, movie_width, movie_height);
+
         draw_output_pixels_rect(transformed_pts, color_pts);
         if (recording_active) {
-            color_frames.push(color_pts);
+            if (!g_recording) {
+                g_recording = true;
+                g_recording_start_time_us = now_us;
+                //g_last_frame_idx = 0;
+            }
+            const frame_idx = getFrame(now_us);
+            if (frame_idx > g_last_frame_idx) {
+                //console.log(`frame_idx: ${frame_idx}`);
+                g_last_frame_idx = frame_idx;
+                color_frames.push(color_pts);
+            }
+        } else {
+            if (g_recording) {
+                g_recording = false;
+                const recording_time = timeMicros() - g_recording_start_time_us;
+                console.log(`Recording time: ${recording_time} us`);
+                g_last_frame_idx = -1;
+            }
         }
     }
     noFill();
