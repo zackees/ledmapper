@@ -166,7 +166,7 @@ let show_render_status = true;
 dom_chk_show_status.onchange = (evt) => {
     const checked = dom_chk_show_status.checked;
     console.log("checked: ", checked);
-    show_render_status = false;
+    show_render_status = checked;
 }
 
 function transform_to_center2(shape_pts) {
