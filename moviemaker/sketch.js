@@ -13,6 +13,7 @@ const dom_txt_curr_gamma = document.getElementById("txt_curr_gamma");
 
 const dom_rng_blur = document.getElementById("rng_blur");
 const dom_rng_blur_sigma = document.getElementById("rng_blur_sigma");
+const dom_chk_show_status = document.getElementById("chk_show_status");
 
 // We try and capture at 30 fps.
 const FRAME_TIME_US = 30 * 1000;
@@ -159,6 +160,14 @@ document.onkeyup = (evt) => {
         shift_active = false;
     }
 };
+
+let show_render_status = true;
+
+dom_chk_show_status.onchange = (evt) => {
+    const checked = dom_chk_show_status.checked;
+    console.log("checked: ", checked);
+    show_render_status = false;
+}
 
 function transform_to_center2(shape_pts) {
     // now format so that the entire thing is contained in the
@@ -497,8 +506,6 @@ function gaussianBlur(pixels, x, y, width, height) {
 
 
 
-
-
 // The statements in draw() are executed until the
 // program is stopped. Each statement is executed in
 // sequence and after the last line is read, the first
@@ -544,7 +551,9 @@ function draw() {
             return;
         });
 
-        draw_output_pixels_rect(transformed_pts, color_pts);
+        if (show_render_status) {
+            draw_output_pixels_rect(transformed_pts, color_pts);
+        }
         if (recording_active) {
             if (!g_recording) {
                 g_recording = true;
