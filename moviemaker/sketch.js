@@ -1,4 +1,6 @@
 
+const dom_rng_rotation = document.getElementById("rng_rotation");
+
 const dom_btn_upload_shape = document.getElementById("btn_upload_shape");
 const dom_btn_start_capture = document.getElementById("btn_start_capture");
 const dom_btn_end_capture = document.getElementById("btn_end_capture");
@@ -32,6 +34,7 @@ let target_zoom = 1.;
 let curr_zoom = target_zoom;
 let curr_rotate = 0;
 let target_rotate = 0;
+let video_download_index = 0;
 
 let target_translate = [movie_width / 2, movie_height / 2];
 let curr_translate = [movie_width / 2, movie_height / 2];
@@ -46,6 +49,18 @@ dom_btn_start_record.disabled = true;
 dom_btn_end_record.disabled = true;
 
 function time_now() { return Date.now(); }
+
+
+
+function set_target_rotate(val) {
+    target_rotate = Number.parseInt(val);
+    document.getElementById("txt_curr_rotation").innerText = val;
+};
+
+dom_rng_rotation.oninput = () => {
+    const v = dom_rng_rotation.value;
+    set_target_rotate(v);
+}
 
 dom_rng_brightness.oninput = (evt) => {
     dom_txt_curr_bri.innerText = `${dom_rng_brightness.value}%`;
@@ -113,7 +128,7 @@ dom_rng_blur_sigma.oninput = () => {
 }
 
 
-let video_download_index = 0;
+
 
 dom_btn_end_record.onclick = () => {
     recording_active = false;
@@ -202,7 +217,7 @@ function load_shape_data(data) {
     target_zoom = 1.;
     curr_zoom = target_zoom;
     curr_rotate = 0;
-    target_rotate = 0;
+    set_target_rotate(0);
 
     target_translate = [movie_width / 2, movie_height / 2];
     curr_translate = [movie_width / 2, movie_height / 2];
@@ -234,6 +249,7 @@ function mouse_in_canvas_area() {
     return true;
 }
 
+
 function mouseWheel(event) {
     // Change the red value according
     // to the scroll delta value
@@ -249,7 +265,7 @@ function mouseWheel(event) {
             }
         });
         let incr = num_events > 3 ? 4 : 1;
-        target_rotate += event.delta > 0 ? incr : -incr;
+        set_target_rotate(target_rotate + event.delta > 0 ? incr : -incr);
         shape_rotate_events.push(now);
         while (shape_rotate_events.length > 10) {
             shape_rotate_events.splice(0, 1);
@@ -552,6 +568,7 @@ function draw() {
         });
 
         if (show_render_status) {
+            debugger;
             draw_output_pixels_rect(transformed_pts, color_pts);
         }
         if (recording_active) {
