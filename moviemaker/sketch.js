@@ -29,7 +29,7 @@ let blurWorker = null;
 let canvas;
 let capture;
 let shape_pts = [];
-let color_frames = [];  // this is our output data.
+let gColorFrames = [];  // this is our output data.
 let target_zoom = 1.;
 let curr_zoom = target_zoom;
 let curr_rotate = 0;
@@ -142,10 +142,10 @@ dom_btn_end_record.onclick = () => {
     dom_btn_end_record.disabled = true;
     dom_btn_start_record.disabled = false;
     //dom_btn_start_capture.disabled = true;
-    //print(color_frames);
+    //print(gColorFrames);
 
     let n = 0;
-    color_frames.forEach((frame) => {
+    gColorFrames.forEach((frame) => {
         frame.forEach((val) => {
             n++;
         });
@@ -153,7 +153,7 @@ dom_btn_end_record.onclick = () => {
 
     let flat_uint8_array = new Uint8Array(n);
     let i = 0;
-    color_frames.forEach((frame) => {
+    gColorFrames.forEach((frame) => {
         if (i == 0) {
             console.log("frame.length: ", frame.length);
         }
@@ -168,7 +168,7 @@ dom_btn_end_record.onclick = () => {
     });
     download_binary_as_file(flat_uint8_array, `video${video_download_index}.dat`);
     video_download_index++;
-    color_frames = [];
+    gColorFrames = [];
 }
 
 document.onkeydown = (evt) => {
@@ -478,7 +478,7 @@ function initWorkers() {
         blurWorker.onmessage = function(e) {
             const data = e.data;
             const frameId = data.frameId;
-            console.log('Message received from worker:', data);
+            // console.log('Message received from worker:', data);
             gFinishedFrames.set(frameId, data);
         };
     
@@ -505,7 +505,7 @@ function updateGuassianBlur() {
     g_gausian_blur.set(radius, sigma);
 }
 
-
+let gLastDrawnFrame = null;
 
 // The statements in draw() are executed until the
 // program is stopped. Each statement is executed in
@@ -518,7 +518,6 @@ function draw() {
     g_frame_id++;
 
     const bri_bias = Number.parseInt(dom_rng_brightness.value) / 100.;
-    let avg_brightness = 0.;
     const now = time_now();
     const now_us = timeMicros();
     const frame_time = now - last_time;
@@ -530,43 +529,47 @@ function draw() {
 
     const gamm_val = dom_rng_gamma.value / 10.;
     if (capturing_active) {
-        image(capture, 0, 0, movie_width, movie_height);
-
         let img = capture.get();
         img.loadPixels();
-        const [color_pts, ab] = processPixels(
-            img.pixels,
-            gamm_val,
-            bri_bias,
-            transformed_pts,
-            width,
-            height,
-            g_gausian_blur
-        );
         const blurContext = new BlurContext(
             frameId, now_us, img.pixels,
             bri_bias, gamm_val, width, height, transformed_pts,
             radius, sigma
         );
         blurWorker.postMessage({context: blurContext});
-
-        avg_brightness = ab;
-
-        if (show_render_status) {
-            draw_output_pixels_rect(transformed_pts, color_pts);
+        image(img, 0, 0, movie_width, movie_height);
+    }
+    // const doneFrame = gFinishedFrames.popLowestValue();
+    let doneFrames = []
+    while (true) {
+        const doneFrame = gFinishedFrames.popLowestValue();
+        if (doneFrame === null) {
+            break;
         }
+        gLastDrawnFrame = doneFrame;
+        doneFrames.push(doneFrame);
+    }
+
+    if (show_render_status && gLastDrawnFrame) {
+        const pts = gLastDrawnFrame.pts;
+        const rgbPts = gLastDrawnFrame.rgbPts;
+        draw_output_pixels_rect(pts, rgbPts);
+    }
+    if (doneFrames.length) {
         if (recording_active) {
             if (!g_recording) {
                 g_recording = true;
                 g_recording_start_time_us = now_us;
                 //g_last_frame_idx = 0;
             }
-            const frame_idx = getFrame(now_us);
-            if (frame_idx > g_last_frame_idx) {
-                //console.log(`frame_idx: ${frame_idx}`);
-                g_last_frame_idx = frame_idx;
-                color_frames.push(color_pts);
-
+            for (let i = 0; i < doneFrames.length; ++i) {
+                const doneFrame = doneFrames[i];
+                const frame_idx = getFrame(doneFrame.frameTime);
+                if (frame_idx > g_last_frame_idx) {
+                    //console.log(`frame_idx: ${frame_idx}`);
+                    g_last_frame_idx = frame_idx;
+                    gColorFrames.push(doneFrame.rgbPts);
+                }
             }
         } else {
             if (g_recording) {
@@ -577,29 +580,32 @@ function draw() {
             }
         }
     }
-
-    const doneFrame = gFinishedFrames.popLowestValue();
-    // console.log(`lowestDoneFrame: ${lowestDoneFrame}`);
     noFill();
     stroke(color('white'));
     // Draw points.
-    const led_size = estimate_led_size(transformed_pts);
-    //print("led_size: ", led_size);
-    transformed_pts.forEach(([x, y]) => {
-        circle(x, y, led_size);
-        //square(x - led_size / 2, y - led_size / 2, led_size);
-    });
+    if (gLastDrawnFrame) {
+        const pts = gLastDrawnFrame.pts;
+        const led_size = estimate_led_size(pts);
+        pts.forEach(([x, y]) => {
+            circle(x, y, led_size);
+            //square(x - led_size / 2, y - led_size / 2, led_size);
+        });
+    }
     stroke(0);
     fill(255);
     text(`FPS: ${fps}`, 10, 10);
 
-    if (avg_brightness > 0.) {
-        avg_brightness /= transformed_pts.length * 3;
-        avg_brightness /= 255;
+    if (gLastDrawnFrame) {
+        let averageBrightness = gLastDrawnFrame.averageBrightness;
+        const pts = gLastDrawnFrame.pts;
+        if (averageBrightness > 0.) {
+            averageBrightness /= pts.length * 3;
+            averageBrightness /= 255;
+        }
+        averageBrightness = Number.parseFloat(averageBrightness).toFixed(2);
+        const perc_bri = Number.parseInt(averageBrightness * 100);
+        text(`Avg Brightness: ${perc_bri}%`, 10, 20);
     }
-    avg_brightness = Number.parseFloat(avg_brightness).toFixed(2);
-    const perc_bri = Number.parseInt(avg_brightness * 100);
-    text(`Avg Brightness: ${perc_bri}%`, 10, 20);
 }
 
 

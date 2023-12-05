@@ -4,6 +4,7 @@ let gGaussianBlur = new GaussianBlur(1, 1);
 
 
 function blur(context) {
+    const frameTime = context.nowMicros;
     const pixels = context.pixels;
     const width = context.width;
     const height = context.height;
@@ -21,7 +22,7 @@ function blur(context) {
         height,
         gGaussianBlur
     );
-    return new OutputFrame(frameId, rgbPts, averageBrightness);
+    return new OutputFrame(frameId, frameTime, rgbPts, pts, averageBrightness);
 }
 
 class WorkerContext {

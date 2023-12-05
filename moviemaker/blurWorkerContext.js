@@ -127,9 +127,11 @@ class BlurContext {
 }
 
 class OutputFrame {
-    constructor(frameId, rgbPts, avgBrightness) {
+    constructor(frameId, frameTime, rgbPts, pts, averageBrightness) {
         this.frameId = frameId;
+        this.frameTime = frameTime;
         this.rgbPts = rgbPts;
-        this.avgBrightness = avgBrightness;
+        this.pts = pts;
+        this.averageBrightness = averageBrightness;
     }
 }
