@@ -460,33 +460,10 @@ function getFrame(now_us) {
     return frame_idx;
 }
 
-function gaussianKernel(radius, sigma) {
-    const kernelSize = 2 * radius + 1;
-    let kernel = Array(kernelSize).fill().map(() => Array(kernelSize).fill(0));
-    let sum = 0;
-
-    for (let y = -radius; y <= radius; y++) {
-        for (let x = -radius; x <= radius; x++) {
-            const value = (1 / (2 * Math.PI * sigma * sigma)) * Math.exp(-(x * x + y * y) / (2 * sigma * sigma));
-            kernel[y + radius][x + radius] = value;
-            sum += value;
-        }
-    }
-
-    // Normalize the kernel
-    for (let y = 0; y < kernelSize; y++) {
-        for (let x = 0; x < kernelSize; x++) {
-            kernel[y][x] /= sum;
-        }
-    }
-
-    return kernel;
-}
-
-
 let radius = Number.parseInt(dom_rng_blur.value);
 let sigma = Number.parseInt(dom_rng_blur_sigma.value);
 let kernel = gaussianKernel(radius, sigma);
+
 
 function updateGuassianBlur() {
     radius = Number.parseInt(dom_rng_blur.value);
@@ -537,11 +514,12 @@ function gaussianBlur(pixels, x, y, width, height) {
     ];
 }
 
-function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pts, avg_brightness) {
+function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pts, avg_brightness, width, height) {
     const gamma = (v_u8) => { return Math.pow(v_u8/255., gamm_val) * 255; };
     transformed_pts.forEach(([x, y]) => {
         x = Number.parseInt(x);
         y = Number.parseInt(y);
+        debugger
         const idx = (x + y * width) * 4;
         if (idx >= 0 && idx < pixels.length) {
             let [r,g,b] = gaussianBlur(pixels, x, y, width, height);
@@ -588,7 +566,16 @@ function draw() {
         const color_pts = [];
         let img = capture.get();
         img.loadPixels();
-        processPixels(img.pixels, gamm_val, bri_bias, transformed_pts, color_pts, avg_brightness);
+        processPixels(
+            img.pixels,
+            gamm_val,
+            bri_bias,
+            transformed_pts,
+            color_pts,
+            avg_brightness,
+            width,
+            height
+        );
         if (show_render_status) {
             draw_output_pixels_rect(transformed_pts, color_pts);
         }
