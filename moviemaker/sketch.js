@@ -460,69 +460,25 @@ function getFrame(now_us) {
     return frame_idx;
 }
 
+
 let radius = Number.parseInt(dom_rng_blur.value);
 let sigma = Number.parseInt(dom_rng_blur_sigma.value);
-let kernel = gaussianKernel(radius, sigma);
-
+let g_gausian_blur = new GaussianBlur(radius, sigma);
 
 function updateGuassianBlur() {
     radius = Number.parseInt(dom_rng_blur.value);
     sigma = Number.parseInt(dom_rng_blur_sigma.value);
-    kernel = gaussianKernel(radius, sigma);
+    g_gausian_blur = new GaussianBlur(radius, sigma);
 }
 
-function gaussianBlur(pixels, x, y, width, height) {
-    if (radius == 0 || sigma == 0) {
-        return [
-            pixels[(x + y * width) * 4 + 0],
-            pixels[(x + y * width) * 4 + 1],
-            pixels[(x + y * width) * 4 + 2]
-        ];
-    }
-    const kernelSize = kernel.length;
-
-    let rSum = 0;
-    let gSum = 0;
-    let bSum = 0;
-    let weightSum = 0;
-
-    for (let yy = -radius; yy <= radius; yy++) {
-        for (let xx = -radius; xx <= radius; xx++) {
-            const xi = x + xx;
-            const yi = y + yy;
-
-            if (xi >= 0 && yi >= 0 && xi < width && yi < height) {
-                const idx = (xi + yi * width) * 4;
-                const r = pixels[idx + 0];
-                const g = pixels[idx + 1];
-                const b = pixels[idx + 2];
-
-                const weight = kernel[yy + radius][xx + radius];
-
-                rSum += r * weight;
-                gSum += g * weight;
-                bSum += b * weight;
-                weightSum += weight;
-            }
-        }
-    }
-
-    return [
-        rSum / weightSum,
-        gSum / weightSum,
-        bSum / weightSum
-    ];
-}
-
-function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pts, avg_brightness, width, height) {
+function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pts, avg_brightness, width, height, gausianBlur) {
     const gamma = (v_u8) => { return Math.pow(v_u8/255., gamm_val) * 255; };
     transformed_pts.forEach(([x, y]) => {
         x = Number.parseInt(x);
         y = Number.parseInt(y);
-        debugger
         const idx = (x + y * width) * 4;
         if (idx >= 0 && idx < pixels.length) {
-            let [r,g,b] = gaussianBlur(pixels, x, y, width, height);
+            let [r, g, b] = gausianBlur.applyBlur(pixels, x, y, width, height);
             r = Number.parseInt(gamma(r) * bri_bias);
             g = Number.parseInt(gamma(g) * bri_bias);
             b = Number.parseInt(gamma(b) * bri_bias);
@@ -574,7 +530,8 @@ function draw() {
             color_pts,
             avg_brightness,
             width,
-            height
+            height,
+            g_gausian_blur
         );
         if (show_render_status) {
             draw_output_pixels_rect(transformed_pts, color_pts);
