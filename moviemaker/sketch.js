@@ -442,6 +442,35 @@ function timeMicros() {
     return Number.parseInt(timeInMicroseconds);
 }
 
+class OrderedMap {
+    constructor() {
+        this.map = new Map();
+    }
+
+    set(key, value) {
+        this.map.set(key, value);
+    }
+
+    popLowestValue() {
+        // pop it if it exists. else undefined
+        const lowestKey = this.map.keys().next().value;
+        if (lowestKey === undefined) {
+            return null;
+        }
+        const lowestValue = this.map.get(lowestKey);
+        if (lowestValue === undefined || lowestValue === null) {
+            return null;
+        }
+        this.map.delete(lowestKey);
+        return lowestValue;
+    }
+
+}
+
+
+// list map of frameId = optional OutputFrame
+let gFinishedFrames = new OrderedMap();
+
 function initWorkers() {
     if (window.Worker) {
         blurWorker = new Worker('blurWorker.js');
@@ -450,6 +479,7 @@ function initWorkers() {
             const data = e.data;
             const frameId = data.frameId;
             console.log('Message received from worker:', data);
+            gFinishedFrames.set(frameId, data);
         };
     
         blurWorker.onerror = function(e) {
@@ -547,6 +577,9 @@ function draw() {
             }
         }
     }
+
+    const doneFrame = gFinishedFrames.popLowestValue();
+    // console.log(`lowestDoneFrame: ${lowestDoneFrame}`);
     noFill();
     stroke(color('white'));
     // Draw points.

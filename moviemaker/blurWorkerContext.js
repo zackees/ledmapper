@@ -126,7 +126,7 @@ class BlurContext {
     }
 }
 
-class BlurOutput {
+class OutputFrame {
     constructor(frameId, rgbPts, avgBrightness) {
         this.frameId = frameId;
         this.rgbPts = rgbPts;

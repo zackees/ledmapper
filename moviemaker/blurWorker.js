@@ -21,7 +21,7 @@ function blur(context) {
         height,
         gGaussianBlur
     );
-    return new BlurOutput(frameId, rgbPts, averageBrightness);
+    return new OutputFrame(frameId, rgbPts, averageBrightness);
 }
 
 class WorkerContext {
