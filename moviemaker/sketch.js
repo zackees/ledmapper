@@ -26,6 +26,7 @@ const movie_width = 1280 / 2;
 const movie_height = Math.round(movie_width * movie_hw_ratio);
 const frame_rate = 60;
 
+let blurWorker = null;
 let canvas;
 let capture;
 let shape_pts = [];
@@ -434,6 +435,27 @@ function timeMicros() {
     return Number.parseInt(timeInMicroseconds);
 }
 
+function initWorkers() {
+    if (window.Worker) {
+        blurWorker = new Worker('blurWorker.js');
+    
+        blurWorker.onmessage = function(e) {
+            console.log('Message received from worker:', e.data);
+        };
+    
+        blurWorker.onerror = function(e) {
+            console.error('Error in worker:', e);
+        };
+    
+        // Sending a message to the worker
+        blurWorker.postMessage('Hello, worker!');
+    } else {
+        alert('Your browser doesn\'t support web workers.');
+    }
+}
+
+
+
 let g_recording = false;
 let g_recording_start_time_us = 0;
 let g_last_frame_idx = -1;
@@ -520,6 +542,29 @@ function gaussianBlur(pixels, x, y, width, height) {
     ];
 }
 
+function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pts, avg_brightness) {
+    const gamma = (v_u8) => { return Math.pow(v_u8/255., gamm_val) * 255; };
+    transformed_pts.forEach(([x, y]) => {
+        x = Number.parseInt(x);
+        y = Number.parseInt(y);
+        const idx = (x + y * width) * 4;
+        if (idx >= 0 && idx < pixels.length) {
+            let [r,g,b] = gaussianBlur(pixels, x, y, width, height);
+            r = Number.parseInt(gamma(r) * bri_bias);
+            g = Number.parseInt(gamma(g) * bri_bias);
+            b = Number.parseInt(gamma(b) * bri_bias);
+            out_color_pts.push(r);
+            out_color_pts.push(g);
+            out_color_pts.push(b);
+            avg_brightness += r + b + g;
+        } else {
+            out_color_pts.push(0);
+            out_color_pts.push(0);
+            out_color_pts.push(0);
+        }
+        return;
+    });
+}
 
 
 // The statements in draw() are executed until the
@@ -528,6 +573,7 @@ function gaussianBlur(pixels, x, y, width, height) {
 // line is executed again.
 let last_time = time_now();
 function draw() {
+    // blurWorker.postMessage('Hello, worker!');
     const bri_bias = Number.parseInt(dom_rng_brightness.value) / 100.;
     let avg_brightness = 0.;
     const now = time_now();
@@ -540,35 +586,13 @@ function draw() {
     const transformed_pts = create_transformed_shape();
 
     const gamm_val = dom_rng_gamma.value / 10.;
-    const gamma = (v_u8) => { return Math.pow(v_u8/255., gamm_val) * 255; };
     if (capturing_active) {
         image(capture, 0, 0, movie_width, movie_height);
         const color_pts = [];
         let img = capture.get();
         img.loadPixels();
-        transformed_pts.forEach(([x, y]) => {
-            x = Number.parseInt(x);
-            y = Number.parseInt(y);
-            const idx = (x + y * width) * 4;
-            if (idx >= 0 && idx < img.pixels.length) {
-                let [r,g,b] = gaussianBlur(img.pixels, x, y, width, height);
-                r = Number.parseInt(gamma(r) * bri_bias);
-                g = Number.parseInt(gamma(g) * bri_bias);
-                b = Number.parseInt(gamma(b) * bri_bias);
-                color_pts.push(r);
-                color_pts.push(g);
-                color_pts.push(b);
-                avg_brightness += r + b + g;
-            } else {
-                color_pts.push(0);
-                color_pts.push(0);
-                color_pts.push(0);
-            }
-            return;
-        });
-
+        processPixels(img.pixels, gamm_val, bri_bias, transformed_pts, color_pts, avg_brightness);
         if (show_render_status) {
-            debugger;
             draw_output_pixels_rect(transformed_pts, color_pts);
         }
         if (recording_active) {
@@ -612,3 +636,7 @@ function draw() {
     const perc_bri = Number.parseInt(avg_brightness * 100);
     text(`Avg Brightness: ${perc_bri}%`, 10, 20);
 }
+
+
+
+initWorkers();
