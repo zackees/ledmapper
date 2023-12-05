@@ -45,7 +45,7 @@ function gaussianBlur(pixels, x, y, width, height) {
 }
 
 function blur(context) {
-    return context;
+    return new BlurOutput();
 }
 
 class WorkerContext {

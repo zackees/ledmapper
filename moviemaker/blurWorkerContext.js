@@ -137,3 +137,8 @@ class BlurContext {
         this.pixels = pixels;
     }
 }
+
+class BlurOutput {
+    constructor() {
+    }
+}
