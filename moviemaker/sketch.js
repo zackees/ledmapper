@@ -501,20 +501,19 @@ function draw() {
     const gamm_val = dom_rng_gamma.value / 10.;
     if (capturing_active) {
         image(capture, 0, 0, movie_width, movie_height);
-        const color_pts = [];
+
         let img = capture.get();
         img.loadPixels();
-        processPixels(
+        const [color_pts, ab] = processPixels(
             img.pixels,
             gamm_val,
             bri_bias,
             transformed_pts,
-            color_pts,
-            avg_brightness,
             width,
             height,
             g_gausian_blur
         );
+        avg_brightness = ab;
 
         if (show_render_status) {
             draw_output_pixels_rect(transformed_pts, color_pts);
@@ -551,6 +550,7 @@ function draw() {
     //print("led_size: ", led_size);
     transformed_pts.forEach(([x, y]) => {
         circle(x, y, led_size);
+        //square(x - led_size / 2, y - led_size / 2, led_size);
     });
     stroke(0);
     fill(255);

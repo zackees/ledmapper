@@ -101,9 +101,11 @@ function gaussianKernel(radius, sigma) {
     return kernel;
 }
 
-function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pts, avg_brightness, width, height, gausianBlur) {
+function processPixels(pixels, gamm_val, bri_bias, shape_pts, width, height, gausianBlur) {
+    const out = [];
+    let avg_brightness = 0;
     const gamma = (v_u8) => { return Math.pow(v_u8/255., gamm_val) * 255; };
-    transformed_pts.forEach(([x, y]) => {
+    shape_pts.forEach(([x, y]) => {
         x = Number.parseInt(x);
         y = Number.parseInt(y);
         const idx = (x + y * width) * 4;
@@ -112,17 +114,17 @@ function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pt
             r = Number.parseInt(gamma(r) * bri_bias);
             g = Number.parseInt(gamma(g) * bri_bias);
             b = Number.parseInt(gamma(b) * bri_bias);
-            out_color_pts.push(r);
-            out_color_pts.push(g);
-            out_color_pts.push(b);
+            out.push(r);
+            out.push(g);
+            out.push(b);
             avg_brightness += r + b + g;
         } else {
-            out_color_pts.push(0);
-            out_color_pts.push(0);
-            out_color_pts.push(0);
+            out.push(0);
+            out.push(0);
+            out.push(0);
         }
-        return;
     });
+    return [out, avg_brightness];
 }
 
 // Assume Blur is some class that performs the blur operation
