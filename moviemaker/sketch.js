@@ -1,4 +1,3 @@
-
 const dom_rng_rotation = document.getElementById("rng_rotation");
 
 const dom_btn_upload_shape = document.getElementById("btn_upload_shape");
