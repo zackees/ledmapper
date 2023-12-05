@@ -48,6 +48,15 @@ dom_btn_end_capture.disabled = true;
 dom_btn_start_record.disabled = true;
 dom_btn_end_record.disabled = true;
 
+let g_recording = false;
+let g_recording_start_time_us = 0;
+let g_last_frame_idx = -1;
+
+let radius = Number.parseInt(dom_rng_blur.value);
+let sigma = Number.parseInt(dom_rng_blur_sigma.value);
+let g_gausian_blur = new GaussianBlur(radius, sigma);
+let g_frame_id = 0;
+
 function time_now() { return Date.now(); }
 
 
@@ -453,19 +462,11 @@ function initWorkers() {
 
 
 
-let g_recording = false;
-let g_recording_start_time_us = 0;
-let g_last_frame_idx = -1;
-
 function getFrame(now_us) {
     const frame_idx = Number.parseInt((now_us - g_recording_start_time_us) / FRAME_TIME_US);
     return frame_idx;
 }
 
-
-let radius = Number.parseInt(dom_rng_blur.value);
-let sigma = Number.parseInt(dom_rng_blur_sigma.value);
-let g_gausian_blur = new GaussianBlur(radius, sigma);
 
 function updateGuassianBlur() {
     radius = Number.parseInt(dom_rng_blur.value);
@@ -475,7 +476,6 @@ function updateGuassianBlur() {
 }
 
 
-let g_frame_id = 0;
 
 // The statements in draw() are executed until the
 // program is stopped. Each statement is executed in
@@ -516,7 +516,7 @@ function draw() {
         const blurContext = new BlurContext(
             frameId, now_us, img.pixels,
             bri_bias, gamm_val, width, height, transformed_pts,
-            g_gausian_blur.radius, g_gausian_blur.sigma
+            radius, sigma
         );
         blurWorker.postMessage({context: blurContext});
 
