@@ -102,7 +102,7 @@ function gaussianKernel(radius, sigma) {
 }
 
 function processPixels(pixels, gamm_val, bri_bias, shape_pts, width, height, gausianBlur) {
-    const out = [];
+    const rgbPts = [];
     let avg_brightness = 0;
     const gamma = (v_u8) => { return Math.pow(v_u8/255., gamm_val) * 255; };
     shape_pts.forEach(([x, y]) => {
@@ -114,29 +114,28 @@ function processPixels(pixels, gamm_val, bri_bias, shape_pts, width, height, gau
             r = Number.parseInt(gamma(r) * bri_bias);
             g = Number.parseInt(gamma(g) * bri_bias);
             b = Number.parseInt(gamma(b) * bri_bias);
-            out.push(r);
-            out.push(g);
-            out.push(b);
+            rgbPts.push(r);
+            rgbPts.push(g);
+            rgbPts.push(b);
             avg_brightness += r + b + g;
         } else {
-            out.push(0);
-            out.push(0);
-            out.push(0);
+            rgbPts.push(0);
+            rgbPts.push(0);
+            rgbPts.push(0);
         }
     });
-    return [out, avg_brightness];
+    return [rgbPts, avg_brightness];
 }
 
 // Assume Blur is some class that performs the blur operation
 class BlurContext {
     // data only
     constructor(
-        frameId, nowMicros, gaussianBlur, pixels, brightnessBias, gammaVal,
+        frameId, nowMicros, pixels, brightnessBias, gammaVal,
         width, height, pts, blurRadius, blurSigma
     ) {
         this.frameId = frameId;
         this.nowMicros = nowMicros;
-        this.gaussianBlur = gaussianBlur;
         this.pixels = pixels;
         this.brightnessBias = brightnessBias;
         this.gammaVal = gammaVal;
@@ -149,6 +148,8 @@ class BlurContext {
 }
 
 class BlurOutput {
-    constructor() {
+    constructor(rgbPts, avgBrightness) {
+        this.rgbPts = rgbPts;
+        this.avgBrightness = avgBrightness;
     }
 }

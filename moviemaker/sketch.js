@@ -514,7 +514,7 @@ function draw() {
             g_gausian_blur
         );
         const blurContext = new BlurContext(
-            frameId, now_us, g_gausian_blur, img.pixels,
+            frameId, now_us, img.pixels,
             bri_bias, gamm_val, width, height, transformed_pts,
             g_gausian_blur.radius, g_gausian_blur.sigma
         );
