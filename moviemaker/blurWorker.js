@@ -45,6 +45,26 @@ function gaussianBlur(pixels, x, y, width, height) {
 }
 
 function blur(context) {
+    const pixels = context.pixels;
+    const width = context.width;
+    const height = context.height;
+    const brightnessBias = context.brightnessBias;
+    const gammaVal = context.gammaVal;
+    const pts = context.pts;
+
+    // debugger;
+
+    let gb = new GaussianBlur(context.blurRadius, context.blurSigma);
+    const [color_pts, ab] = processPixels(
+        pixels,
+        gammaVal,
+        brightnessBias,
+        pts,
+        width,
+        height,
+        gb
+    );
+
     return new BlurOutput();
 }
 

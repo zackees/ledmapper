@@ -513,6 +513,13 @@ function draw() {
             height,
             g_gausian_blur
         );
+        const blurContext = new BlurContext(
+            frameId, now_us, g_gausian_blur, img.pixels,
+            bri_bias, gamm_val, width, height, transformed_pts,
+            g_gausian_blur.radius, g_gausian_blur.sigma
+        );
+        blurWorker.postMessage({context: blurContext});
+
         avg_brightness = ab;
 
         if (show_render_status) {
@@ -529,10 +536,7 @@ function draw() {
                 //console.log(`frame_idx: ${frame_idx}`);
                 g_last_frame_idx = frame_idx;
                 color_frames.push(color_pts);
-                const blurContext = new BlurContext(
-                    frameId, now_us, g_gausian_blur, img.pixels
-                );
-                blurWorker.postMessage({context: blurContext});
+
             }
         } else {
             if (g_recording) {

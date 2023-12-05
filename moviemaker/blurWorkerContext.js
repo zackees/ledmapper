@@ -130,11 +130,21 @@ function processPixels(pixels, gamm_val, bri_bias, shape_pts, width, height, gau
 // Assume Blur is some class that performs the blur operation
 class BlurContext {
     // data only
-    constructor(frameId, nowMicros, gaussianBlur, pixels) {
+    constructor(
+        frameId, nowMicros, gaussianBlur, pixels, brightnessBias, gammaVal,
+        width, height, pts, blurRadius, blurSigma
+    ) {
         this.frameId = frameId;
         this.nowMicros = nowMicros;
         this.gaussianBlur = gaussianBlur;
         this.pixels = pixels;
+        this.brightnessBias = brightnessBias;
+        this.gammaVal = gammaVal;
+        this.width = width;
+        this.height = height;
+        this.pts = pts;
+        this.blurRadius = blurRadius;
+        this.blurSigma = blurSigma;
     }
 }
 
