@@ -11,6 +11,7 @@ function blur(context) {
     const gammaVal = context.gammaVal;
     const pts = context.pts;
     gGaussianBlur.set(context.blurRadius, context.blurSigma);
+    const frameId = context.frameId;
     const [rgbPts, averageBrightness] = processPixels(
         pixels,
         gammaVal,
@@ -20,7 +21,7 @@ function blur(context) {
         height,
         gGaussianBlur
     );
-    return new BlurOutput(rgbPts, averageBrightness);
+    return new BlurOutput(frameId, rgbPts, averageBrightness);
 }
 
 class WorkerContext {
