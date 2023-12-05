@@ -1,0 +1,14 @@
+{
+    // Controls the rendering size of tabs in characters. If set to auto, the value will be guessed based on the opened file.
+    "editor.tabSize": 4,
+    // Controls if the editor will insert spaces for tabs. If set to auto, the value will be guessed based on the opened file.
+    "editor.insertSpaces": true,
+    "C_Cpp.clang_format_fallbackStyle": "Google",
+    "terminal.integrated.defaultProfile.windows": "Git Bash",
+    "terminal.integrated.profiles.windows": {
+        "Git Bash": {
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe",
+            "args": ["--login"]
+        }
+    },
+}
