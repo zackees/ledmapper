@@ -104,8 +104,9 @@ function gaussianKernel(radius, sigma) {
 // Assume Blur is some class that performs the blur operation
 class BlurContext {
     // data only
-    constructor(frame_id, gaussianBlur) {
+    constructor(frame_id, gaussianBlur, pixels) {
         this.frame_id = frame_id;
         this.gaussianBlur = gaussianBlur;
+        this.pixels = pixels;
     }
 }

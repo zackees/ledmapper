@@ -44,13 +44,6 @@ function gaussianBlur(pixels, x, y, width, height) {
     ];
 }
 
-onmessage = function(e) {
-    console.log('Message received from main script');
-    const workerResult = 'Result from worker: ' + e.data;
-    console.log('Posting message back to main script');
-    postMessage(workerResult);
-};
-
 function blur(context) {
     return context;
 }
@@ -76,5 +69,5 @@ class BlurWorkerContext extends WorkerContext {
     }
 }
 
-const context = new BlurWorkerContext();
-self.onmessage = context.onmessage.bind(context);
+const worker = new BlurWorkerContext();
+self.onmessage = worker.onmessage.bind(worker);

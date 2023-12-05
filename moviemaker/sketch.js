@@ -537,7 +537,7 @@ function draw() {
             height,
             g_gausian_blur
         );
-        const blurContext = new BlurContext(frame_id, g_gausian_blur);
+        const blurContext = new BlurContext(frame_id, g_gausian_blur, img.pixels);
         blurWorker.postMessage({context: blurContext});
         if (show_render_status) {
             draw_output_pixels_rect(transformed_pts, color_pts);
