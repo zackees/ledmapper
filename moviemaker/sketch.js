@@ -468,7 +468,8 @@ let g_gausian_blur = new GaussianBlur(radius, sigma);
 function updateGuassianBlur() {
     radius = Number.parseInt(dom_rng_blur.value);
     sigma = Number.parseInt(dom_rng_blur_sigma.value);
-    g_gausian_blur = new GaussianBlur(radius, sigma);
+    // g_gausian_blur = new GaussianBlur(radius, sigma);
+    g_gausian_blur.set(radius, sigma);
 }
 
 function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pts, avg_brightness, width, height, gausianBlur) {
@@ -496,6 +497,8 @@ function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pt
 }
 
 
+let g_frame_id = 0;
+
 // The statements in draw() are executed until the
 // program is stopped. Each statement is executed in
 // sequence and after the last line is read, the first
@@ -503,8 +506,9 @@ function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pt
 let last_time = time_now();
 function draw() {
     // blurWorker.postMessage('Hello, worker!');
-    const blurContext = new BlurContext({gaussianBlur: 2});
-    blurWorker.postMessage({context: blurContext});
+    const frame_id = g_frame_id;
+    g_frame_id++;
+
     const bri_bias = Number.parseInt(dom_rng_brightness.value) / 100.;
     let avg_brightness = 0.;
     const now = time_now();
@@ -533,6 +537,8 @@ function draw() {
             height,
             g_gausian_blur
         );
+        const blurContext = new BlurContext(frame_id, g_gausian_blur);
+        blurWorker.postMessage({context: blurContext});
         if (show_render_status) {
             draw_output_pixels_rect(transformed_pts, color_pts);
         }

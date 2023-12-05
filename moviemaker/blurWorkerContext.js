@@ -8,6 +8,15 @@ class GaussianBlur {
         this.kernel = this.generateKernel(radius, sigma);
     }
 
+    set(radius, sigma) {
+        if (this.radius === radius && this.sigma === sigma) {
+            return;
+        }
+        this.radius = radius;
+        this.sigma = sigma;
+        this.kernel = this.generateKernel(radius, sigma);
+    }
+
     generateKernel(radius, sigma) {
         const kernelSize = 2 * radius + 1;
         let kernel = new Array(kernelSize).fill().map(() => new Array(kernelSize).fill(0));
@@ -71,16 +80,6 @@ class GaussianBlur {
 }
 
 
-// Assume Blur is some class that performs the blur operation
-class BlurContext {
-    // data only
-    constructor(gaussionSigma, gaussionRadius) {
-        this.gaussionSigma = gaussionSigma;
-        this.gaussionRadius = gaussionRadius;
-        this.kernel = gaussianKernel(radius, sigma);
-    }
-}
-
 function gaussianKernel(radius, sigma) {
     const kernelSize = 2 * radius + 1;
     let kernel = Array(kernelSize).fill().map(() => Array(kernelSize).fill(0));
@@ -100,4 +99,13 @@ function gaussianKernel(radius, sigma) {
         }
     }
     return kernel;
+}
+
+// Assume Blur is some class that performs the blur operation
+class BlurContext {
+    // data only
+    constructor(frame_id, gaussianBlur) {
+        this.frame_id = frame_id;
+        this.gaussianBlur = gaussianBlur;
+    }
 }
