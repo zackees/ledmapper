@@ -438,15 +438,12 @@ function initWorkers() {
         blurWorker = new Worker('blurWorker.js');
     
         blurWorker.onmessage = function(e) {
-            //console.log('Message received from worker:', e.data);
+            console.log('Message received from worker:', e.data);
         };
     
         blurWorker.onerror = function(e) {
-            //console.error('Error in worker:', e);
+            console.error('Error in worker:', e);
         };
-    
-        // Sending a message to the worker
-        blurWorker.postMessage('Hello, worker!');
     } else {
         alert('Your browser doesn\'t support web workers.');
     }
