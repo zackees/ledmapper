@@ -438,7 +438,9 @@ function initWorkers() {
         blurWorker = new Worker('blurWorker.js');
     
         blurWorker.onmessage = function(e) {
-            console.log('Message received from worker:', e.data);
+            const data = e.data;
+            const frameId = data.frameId;
+            console.log('Message received from worker:', data);
         };
     
         blurWorker.onerror = function(e) {
@@ -472,30 +474,6 @@ function updateGuassianBlur() {
     g_gausian_blur.set(radius, sigma);
 }
 
-function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pts, avg_brightness, width, height, gausianBlur) {
-    const gamma = (v_u8) => { return Math.pow(v_u8/255., gamm_val) * 255; };
-    transformed_pts.forEach(([x, y]) => {
-        x = Number.parseInt(x);
-        y = Number.parseInt(y);
-        const idx = (x + y * width) * 4;
-        if (idx >= 0 && idx < pixels.length) {
-            let [r, g, b] = gausianBlur.applyBlur(pixels, x, y, width, height);
-            r = Number.parseInt(gamma(r) * bri_bias);
-            g = Number.parseInt(gamma(g) * bri_bias);
-            b = Number.parseInt(gamma(b) * bri_bias);
-            out_color_pts.push(r);
-            out_color_pts.push(g);
-            out_color_pts.push(b);
-            avg_brightness += r + b + g;
-        } else {
-            out_color_pts.push(0);
-            out_color_pts.push(0);
-            out_color_pts.push(0);
-        }
-        return;
-    });
-}
-
 
 let g_frame_id = 0;
 
@@ -506,7 +484,7 @@ let g_frame_id = 0;
 let last_time = time_now();
 function draw() {
     // blurWorker.postMessage('Hello, worker!');
-    const frame_id = g_frame_id;
+    const frameId = g_frame_id;
     g_frame_id++;
 
     const bri_bias = Number.parseInt(dom_rng_brightness.value) / 100.;
@@ -537,8 +515,7 @@ function draw() {
             height,
             g_gausian_blur
         );
-        const blurContext = new BlurContext(frame_id, g_gausian_blur, img.pixels);
-        blurWorker.postMessage({context: blurContext});
+
         if (show_render_status) {
             draw_output_pixels_rect(transformed_pts, color_pts);
         }
@@ -553,6 +530,10 @@ function draw() {
                 //console.log(`frame_idx: ${frame_idx}`);
                 g_last_frame_idx = frame_idx;
                 color_frames.push(color_pts);
+                const blurContext = new BlurContext(
+                    frameId, now_us, g_gausian_blur, img.pixels
+                );
+                blurWorker.postMessage({context: blurContext});
             }
         } else {
             if (g_recording) {

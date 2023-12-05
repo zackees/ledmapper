@@ -101,11 +101,36 @@ function gaussianKernel(radius, sigma) {
     return kernel;
 }
 
+function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pts, avg_brightness, width, height, gausianBlur) {
+    const gamma = (v_u8) => { return Math.pow(v_u8/255., gamm_val) * 255; };
+    transformed_pts.forEach(([x, y]) => {
+        x = Number.parseInt(x);
+        y = Number.parseInt(y);
+        const idx = (x + y * width) * 4;
+        if (idx >= 0 && idx < pixels.length) {
+            let [r, g, b] = gausianBlur.applyBlur(pixels, x, y, width, height);
+            r = Number.parseInt(gamma(r) * bri_bias);
+            g = Number.parseInt(gamma(g) * bri_bias);
+            b = Number.parseInt(gamma(b) * bri_bias);
+            out_color_pts.push(r);
+            out_color_pts.push(g);
+            out_color_pts.push(b);
+            avg_brightness += r + b + g;
+        } else {
+            out_color_pts.push(0);
+            out_color_pts.push(0);
+            out_color_pts.push(0);
+        }
+        return;
+    });
+}
+
 // Assume Blur is some class that performs the blur operation
 class BlurContext {
     // data only
-    constructor(frame_id, gaussianBlur, pixels) {
-        this.frame_id = frame_id;
+    constructor(frameId, nowMicros, gaussianBlur, pixels) {
+        this.frameId = frameId;
+        this.nowMicros = nowMicros;
         this.gaussianBlur = gaussianBlur;
         this.pixels = pixels;
     }
