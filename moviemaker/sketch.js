@@ -128,8 +128,6 @@ dom_rng_blur_sigma.oninput = () => {
 }
 
 
-
-
 dom_btn_end_record.onclick = () => {
     recording_active = false;
     dom_btn_end_record.disabled = true;
@@ -574,6 +572,8 @@ function processPixels(pixels, gamm_val, bri_bias, transformed_pts, out_color_pt
 let last_time = time_now();
 function draw() {
     // blurWorker.postMessage('Hello, worker!');
+    const blurContext = new BlurContext({gaussianBlur: 2});
+    blurWorker.postMessage({context: blurContext});
     const bri_bias = Number.parseInt(dom_rng_brightness.value) / 100.;
     let avg_brightness = 0.;
     const now = time_now();
