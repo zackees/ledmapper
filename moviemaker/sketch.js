@@ -287,6 +287,7 @@ function setup() {
     canvas = createCanvas(movie_width, movie_height);
     stroke(255); // Set line drawing color to white
     frameRate(frame_rate);
+    initWorkers();
 }
 
 function update_shape_parameters() {
@@ -440,11 +441,11 @@ function initWorkers() {
         blurWorker = new Worker('blurWorker.js');
     
         blurWorker.onmessage = function(e) {
-            console.log('Message received from worker:', e.data);
+            //console.log('Message received from worker:', e.data);
         };
     
         blurWorker.onerror = function(e) {
-            console.error('Error in worker:', e);
+            //console.error('Error in worker:', e);
         };
     
         // Sending a message to the worker
@@ -639,4 +640,4 @@ function draw() {
 
 
 
-initWorkers();
+// initWorkers();
