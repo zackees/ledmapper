@@ -505,7 +505,7 @@ function updateGuassianBlur() {
     g_gausian_blur.set(radius, sigma);
 }
 
-let gLastDrawnFrame = null;
+let gLastProcessedFrame = null;
 
 // The statements in draw() are executed until the
 // program is stopped. Each statement is executed in
@@ -540,30 +540,30 @@ function draw() {
         image(img, 0, 0, movie_width, movie_height);
     }
     // const doneFrame = gFinishedFrames.popLowestValue();
-    let doneFrames = []
+    let processedFrames = []
     while (true) {
         const doneFrame = gFinishedFrames.popLowestValue();
         if (doneFrame === null) {
             break;
         }
-        gLastDrawnFrame = doneFrame;
-        doneFrames.push(doneFrame);
+        gLastProcessedFrame = doneFrame;
+        processedFrames.push(doneFrame);
     }
 
-    if (show_render_status && gLastDrawnFrame) {
-        const pts = gLastDrawnFrame.pts;
-        const rgbPts = gLastDrawnFrame.rgbPts;
+    if (show_render_status && gLastProcessedFrame) {
+        const pts = gLastProcessedFrame.pts;
+        const rgbPts = gLastProcessedFrame.rgbPts;
         draw_output_pixels_rect(pts, rgbPts);
     }
-    if (doneFrames.length) {
+    if (processedFrames.length) {
         if (recording_active) {
             if (!g_recording) {
                 g_recording = true;
                 g_recording_start_time_us = now_us;
                 //g_last_frame_idx = 0;
             }
-            for (let i = 0; i < doneFrames.length; ++i) {
-                const doneFrame = doneFrames[i];
+            for (let i = 0; i < processedFrames.length; ++i) {
+                const doneFrame = processedFrames[i];
                 const frame_idx = getFrame(doneFrame.frameTime);
                 if (frame_idx > g_last_frame_idx) {
                     //console.log(`frame_idx: ${frame_idx}`);
@@ -583,8 +583,8 @@ function draw() {
     noFill();
     stroke(color('white'));
     // Draw points.
-    if (gLastDrawnFrame) {
-        const pts = gLastDrawnFrame.pts;
+    if (gLastProcessedFrame) {
+        const pts = gLastProcessedFrame.pts;
         const led_size = estimate_led_size(pts);
         pts.forEach(([x, y]) => {
             circle(x, y, led_size);
@@ -595,9 +595,9 @@ function draw() {
     fill(255);
     text(`FPS: ${fps}`, 10, 10);
 
-    if (gLastDrawnFrame) {
-        let averageBrightness = gLastDrawnFrame.averageBrightness;
-        const pts = gLastDrawnFrame.pts;
+    if (gLastProcessedFrame) {
+        let averageBrightness = gLastProcessedFrame.averageBrightness;
+        const pts = gLastProcessedFrame.pts;
         if (averageBrightness > 0.) {
             averageBrightness /= pts.length * 3;
             averageBrightness /= 255;
