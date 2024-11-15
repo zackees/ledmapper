@@ -42,7 +42,8 @@ document.onkeyup = (evt) => {
 };
 
 function downloadShape() {
-    download_text_as_file(points_to_string(), `shape.csv`);
+    download_text_as_file(points_to_csv_str(), `shape.csv`);
+    download_text_as_file(points_to_json_str(), `shape.json`);
 }
 
 function indexOfIntersectMostRecent(x, y, radius) {
@@ -57,13 +58,28 @@ function indexOfIntersectMostRecent(x, y, radius) {
     return -1;
 }
 
-function points_to_string() {
+function points_to_csv_str() {
     let s = "index,x,y\n";
     for (let i = 0; i < points.length; ++i) {
         [x,y] = points[i];
         s += `${i},${x},${y}\n`;
     }
     return s;
+}
+
+function points_to_json_str() {
+    let json = {}
+    json["map"] = {};
+    json["map"]["strip1"] = {};
+    json["map"]["strip1"]["x"] = [];
+    json["map"]["strip1"]["y"] = [];
+    json["map"]["strip1"]["diameter"] = 0.5;
+    for (let i = 0; i < points.length; ++i) {
+        [x,y] = points[i];
+        json["map"]["strip1"]["x"].push(x);
+        json["map"]["strip1"]["y"].push(y);
+    }
+    return JSON.stringify(json);
 }
 
 function mouseClicked() {
