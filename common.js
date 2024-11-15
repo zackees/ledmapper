@@ -1,4 +1,4 @@
-function parse_shape_data(text) {
+function parse_shape_data_csv(text) {
     let out = [];
     text.split("\n").forEach((line) => {
         let d = line.split(",");
@@ -11,6 +11,35 @@ function parse_shape_data(text) {
         out.push([x,y]);
     });
     return out;
+}
+
+function parse_shape_data_json(text) {
+    let out = [];
+    let json = JSON.parse(text);
+    let map = json["map"];
+    let strip1 = map["strip1"];
+    let x = strip1["x"];
+    let y = strip1["y"];
+    for (let i = 0; i < x.length; ++i) {
+        out.push([x[i], y[i]]);
+    }
+    return out;
+}
+
+function is_json_str(text) {
+    try {
+        JSON.parse(text);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function parse_shape_data(text) {
+    if (is_json_str(text)) {
+        return parse_shape_data_json(text);
+    }
+    return parse_shape_data_csv(text);
 }
 
 
