@@ -23,12 +23,16 @@ a:hover {
     color: #ffffff;
 }
 
+body {
+    padding: 20px;
+}
+
 input[type="button"], button {
     background-color: #2a2a2a;
     color: #b0b0b0;
     border: none;
     padding: 10px 15px;
-    margin: 5px;
+    margin: 10px 5px;
     border-radius: 5px;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -45,11 +49,26 @@ input[type="number"], input[type="range"] {
     border: 1px solid #444;
     padding: 5px;
     border-radius: 3px;
+    margin: 5px 0;
 }
 
 label {
     color: #b0b0b0;
     margin-right: 10px;
+    display: inline-block;
+    width: 60px;
+}
+
+p {
+    margin: 20px 0;
+}
+
+div {
+    margin: 15px 0;
+}
+
+#print {
+    margin-bottom: 20px;
 }
 
 #popup {
