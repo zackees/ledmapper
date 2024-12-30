@@ -1,11 +1,9 @@
 
 // Removed upload shape button
-const dom_btn_load_movie = document.getElementById("btn_load_movie");
 const dom_btn_play = document.getElementById("btn_play");
 const dom_rng_diameter = document.getElementById("rng_diameter");
 const dom_txt_curr_diameter = document.getElementById("txt_curr_diameter");
 
-dom_btn_load_movie.disabled = true;
 dom_btn_play.disabled = true;
 
 let canvas;
@@ -26,7 +24,6 @@ let playing = false;
 
 function load_shape_data(jsonBlob) {
     shape_pts = parse_shape_data_json(jsonBlob);
-    dom_btn_load_movie.disabled = (shape_pts.length === 0);
     if (shape_pts.length == 0) {
         return;
     }
@@ -39,10 +36,23 @@ function fetchAndLoadJSON() {
         .then(response => response.json())
         .then(jsonBlob => {
             load_shape_data(jsonBlob);
+            fetchAndLoadVideo();
         })
         .catch(error => {
             console.error("Error loading JSON:", error);
             alert("Error loading screenmap.json. Please check the file path and try again.");
+        });
+}
+
+function fetchAndLoadVideo() {
+    fetch('/demo/color_line_bubbles.rgb')
+        .then(response => response.arrayBuffer())
+        .then(arrayBuffer => {
+            load_movie_data(arrayBuffer);
+        })
+        .catch(error => {
+            console.error("Error loading video:", error);
+            alert("Error loading color_line_bubbles.rgb. Please check the file path and try again.");
         });
 }
 
@@ -83,11 +93,7 @@ function load_movie_data(array_buffer) {
     dom_btn_play.click();
 }
 
-dom_btn_load_movie.onchange = (evt) => {
-    set_dom_btn_play(false);
-    const file = dom_btn_load_movie.files[0];
-    file.arrayBuffer().then(load_movie_data);
-};
+// Removed dom_btn_load_movie.onchange event listener
 
 // The statements in the setup() function
 // execute once when the program begins
