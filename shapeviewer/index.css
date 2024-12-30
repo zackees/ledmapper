@@ -36,7 +36,7 @@ a:hover {
     z-index: 1000;
 }
 
-input[type="button"], button, input[type="file"] {
+input[type="button"], button {
     background-color: #2196f3;
     color: #ffffff;
     border: none;
@@ -48,7 +48,7 @@ input[type="button"], button, input[type="file"] {
     font-size: 0.9em;
 }
 
-input[type="button"]:hover, button:hover, input[type="file"]:hover {
+input[type="button"]:hover, button:hover {
     background-color: #1976d2;
 }
 
@@ -58,7 +58,7 @@ input[type="button"]:disabled, button:disabled {
     cursor: not-allowed;
 }
 
-input[type="text"], input[type="number"] {
+input[type="text"], input[type="number"], input[type="file"] {
     background-color: #333;
     color: #ffffff;
     border: 1px solid #555;
@@ -66,6 +66,37 @@ input[type="text"], input[type="number"] {
     border-radius: 4px;
     margin: 5px 0;
     font-size: 0.9em;
+}
+
+input[type="file"] {
+    color: #ffffff;
+    padding: 8px;
+    background-color: #333;
+    border: 1px solid #555;
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+input[type="file"]::-webkit-file-upload-button {
+    background-color: #333;
+    color: #ffffff;
+    border: 1px solid #555;
+    padding: 8px 16px;
+    margin-right: 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+input[type="file"]::-webkit-file-upload-button:hover {
+    background-color: #444;
+}
+
+input[type="file"]:focus {
+    outline: none;
+    border-color: #777;
 }
 
 label {

@@ -62,25 +62,47 @@ function draw() {
     translate(width / 2, height / 2);
     
     // Draw grid
-    stroke(50);
-    strokeWeight(0.5);
-    for (let x = -width; x < width; x += 50) {
-        line(x, -height, x, height);
-    }
-    for (let y = -height; y < height; y += 50) {
-        line(-width, y, width, y);
-    }
+    drawGrid();
     
     // Draw shape
+    drawShape(scaled_pts);
+
+    // Draw points
+    drawPoints(scaled_pts);
+    
+    // Draw labels
+    drawLabels(scaled_pts);
+    
+    pop();
+    
+    // Draw info
+    drawInfo();
+}
+
+function drawGrid() {
+    stroke(50);
+    strokeWeight(0.5);
+    const gridSize = 50;
+    for (let x = -width; x < width; x += gridSize) {
+        line(x, -height, x, height);
+    }
+    for (let y = -height; y < height; y += gridSize) {
+        line(-width, y, width, y);
+    }
+}
+
+function drawShape(scaled_pts) {
     noFill();
     stroke(33, 150, 243);
+    strokeWeight(2);
     beginShape();
     scaled_pts.forEach(([x, y]) => {
         vertex(x, y);
     });
     endShape(CLOSE);
+}
 
-    // Draw points
+function drawPoints(scaled_pts) {
     for (let i = 0; i < scaled_pts.length; ++i) {
         let r = 6;
         if (i === 0) {
@@ -92,18 +114,19 @@ function draw() {
         const [x, y] = scaled_pts[i];
         circle(x, y, r);
     }
-    
-    // Draw labels
+}
+
+function drawLabels(scaled_pts) {
     fill(255);
     noStroke();
     textAlign(LEFT, CENTER);
     textSize(14);
     text('Start', scaled_pts[0][0] + 15, scaled_pts[0][1]);
-    
-    pop();
-    
-    // Draw info
+}
+
+function drawInfo() {
     fill(255);
+    noStroke();
     textAlign(LEFT, TOP);
     textSize(14);
     text(`Points: ${shape_pts.length}`, 10, 10);
