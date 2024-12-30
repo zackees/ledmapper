@@ -12,15 +12,23 @@ const dom_txt_zoom = document.getElementById("txt_zoom");
 const dom_slider_zoom = document.getElementById("slider_zoom");
 
 // Synchronize rotation input and slider
-dom_txt_rotate.oninput = () => {
-    let value = parseFloat(dom_txt_rotate.value);
+function updateRotation(value) {
+    value = parseFloat(value);
     value = isNaN(value) ? 0 : Math.max(0, Math.min(360, value));
     dom_txt_rotate.value = value.toFixed(1);
     dom_slider_rotate.value = value;
+}
+
+dom_txt_rotate.oninput = () => {
+    updateRotation(dom_txt_rotate.value);
+};
+
+dom_txt_rotate.onchange = () => {
+    updateRotation(dom_txt_rotate.value);
 };
 
 dom_slider_rotate.oninput = () => {
-    dom_txt_rotate.value = parseFloat(dom_slider_rotate.value).toFixed(1);
+    updateRotation(dom_slider_rotate.value);
 };
 
 // Synchronize zoom input and slider
