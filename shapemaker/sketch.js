@@ -175,7 +175,17 @@ dom_btn_snapshot.onclick = () => {
     img_snapshot = capture.get();
     pictureTaken = true;
     showPopup();
+    dom_btn_snapshot.disabled = true;
 };
+
+dom_btn_clear.onclick = () => {
+    if (confirm("Delete all?")) {
+        points = [];
+        pictureTaken = false;
+        img_snapshot = null;
+        dom_btn_snapshot.disabled = false;
+    }
+}
 
 function showPopup() {
     const popup = document.getElementById('popup');
@@ -213,7 +223,7 @@ function windowResized() {
 let last_frame_time = time_now();
 function draw() {
     dom_btn_download.disabled = !points.length;
-    dom_btn_clear.disabled = !points.length;
+    dom_btn_clear.disabled = !pictureTaken;
     dom_btn_delete_last.disabled = !points.length;
     let zoom = Number.parseFloat(dom_txt_zoom.value) || 1.0;
     let r = Number.parseFloat(dom_txt_rotate.value) || 0;
