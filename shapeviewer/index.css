@@ -1,0 +1,97 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+
+body {
+    font-family: 'Roboto', sans-serif;
+    line-height: 1.6;
+    color: #b0b0b0;
+    margin: 0;
+    padding: 0;
+    background-color: #1a1a1a;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: #d0d0d0;
+}
+
+a {
+    color: #b0b0b0;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+a:hover {
+    color: #ffffff;
+}
+
+body {
+    padding: 5px;
+}
+
+input[type="button"], button {
+    background-color: #2a2a2a;
+    color: #b0b0b0;
+    border: none;
+    padding: 3px 8px;
+    margin: 2px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 0.9em;
+}
+
+input[type="button"]:hover, button:hover {
+    background-color: #333;
+    color: #ffffff;
+}
+
+input[type="button"]:disabled, button:disabled {
+    background-color: #1a1a1a;
+    color: #555;
+    cursor: not-allowed;
+}
+
+input[type="number"], input[type="range"] {
+    background-color: #2a2a2a;
+    color: #b0b0b0;
+    border: 1px solid #444;
+    padding: 2px;
+    border-radius: 2px;
+    margin: 1px 0;
+    font-size: 0.9em;
+}
+
+label {
+    color: #b0b0b0;
+    margin-right: 3px;
+    display: inline-block;
+    width: 40px;
+    font-size: 0.9em;
+}
+
+p {
+    margin: 5px 0;
+    font-size: 0.9em;
+}
+
+div {
+    margin: 4px 0;
+}
+
+#controls {
+    position: fixed;
+    top: 5px;
+    left: 5px;
+    z-index: 1000;
+    background-color: rgba(26, 26, 26, 0.8);
+    padding: 5px;
+    border-radius: 3px;
+}
+
+#print {
+    margin-bottom: 20px;
+}
+
+#popup {
+    background-color: rgba(34, 34, 34, 0.9);
+    color: #d0d0d0;
+}
