@@ -419,7 +419,7 @@ function draw_output_pixels_rect(transformed_pts, color_pts) {
     push();
     stroke(color('white'));
     let c = color('black');
-    const side = 200 * movie_width / 1280;
+    const side = 200;
     const width = side;
     const height = side;
     const left = movie_width - width;
