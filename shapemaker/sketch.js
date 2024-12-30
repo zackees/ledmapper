@@ -14,7 +14,7 @@ const dom_slider_zoom = document.getElementById("slider_zoom");
 // Synchronize rotation input and slider
 function updateRotation(value) {
     value = parseFloat(value);
-    value = isNaN(value) ? 0 : Math.max(0, Math.min(360, value));
+    value = isNaN(value) ? 0 : Math.max(-180, Math.min(180, value));
     dom_txt_rotate.value = value.toFixed(1);
     dom_slider_rotate.value = value;
 }
