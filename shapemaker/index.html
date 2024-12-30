@@ -46,11 +46,10 @@
 	<input type="button" id="btn_snapshot" value="Take Picture from Camera"></input>
 	<br>
 	<label for="txt_rotate">Rotate:</label>
-	<input id="txt_rotate" type="text" value="0"></input><br>
+	<input id="txt_rotate" type="number" value="0" min="0" max="360"></input>
+	<input id="slider_rotate" type="range" min="0" max="360" value="0"></input><br>
 	<label for="txt_zoom">Zoom:</label>
 	<input id="txt_zoom" type="text" value="1"></input><br>
-
-	
 	<br>
 	<input type="button" id="btn_delete_last" value="Undo Last Point"></input>
 	<input type="button" id="btn_clear" value="Clear all points"></input>

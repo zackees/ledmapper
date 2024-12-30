@@ -7,9 +7,20 @@ const dom_btn_clear = document.getElementById("btn_clear");
 const dom_btn_delete_last = document.getElementById("btn_delete_last");
 const dom_btn_download = document.getElementById("btn_download");
 const dom_txt_rotate = document.getElementById("txt_rotate");
+const dom_slider_rotate = document.getElementById("slider_rotate");
 const dom_txt_zoom = document.getElementById("txt_zoom");
 
+// Synchronize rotation input and slider
+dom_txt_rotate.oninput = () => {
+    let value = parseInt(dom_txt_rotate.value);
+    value = isNaN(value) ? 0 : Math.max(0, Math.min(360, value));
+    dom_txt_rotate.value = value;
+    dom_slider_rotate.value = value;
+};
 
+dom_slider_rotate.oninput = () => {
+    dom_txt_rotate.value = dom_slider_rotate.value;
+};
 
 const circle_diameter = 8;
 
