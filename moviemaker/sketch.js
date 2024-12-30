@@ -15,6 +15,8 @@ const dom_txt_curr_gamma = document.getElementById("txt_curr_gamma");
 const dom_rng_blur = document.getElementById("rng_blur");
 const dom_rng_blur_sigma = document.getElementById("rng_blur_sigma");
 const dom_chk_show_status = document.getElementById("chk_show_status");
+const dom_rng_zoom = document.getElementById("rng_zoom");
+const dom_txt_curr_zoom = document.getElementById("txt_curr_zoom");
 
 // We try and capture at 30 fps.
 const FRAME_TIME_US = 30 * 1000;
@@ -44,9 +46,34 @@ let recording_active = false;
 // Allows quick rotation.
 let shape_rotate_events = [];
 
-dom_btn_end_capture.disabled = true;
-dom_btn_start_record.disabled = true;
-dom_btn_end_record.disabled = true;
+// Function to update element states based on shape validity
+function updateElementStates() {
+    const elements = [
+        dom_btn_start_capture,
+        dom_btn_end_capture,
+        dom_btn_start_record,
+        dom_btn_end_record,
+        dom_rng_rotation,
+        dom_rng_brightness,
+        dom_rng_gamma,
+        dom_rng_blur,
+        dom_rng_blur_sigma,
+        dom_chk_show_status,
+        dom_rng_zoom
+    ];
+    
+    elements.forEach(element => {
+        element.disabled = !shapeValid;
+    });
+
+    // Special cases
+    dom_btn_end_capture.disabled = !capturing_active || !shapeValid;
+    dom_btn_start_record.disabled = !capturing_active || !shapeValid;
+    dom_btn_end_record.disabled = !recording_active || !shapeValid;
+}
+
+// Initial state
+updateElementStates();
 
 let g_recording = false;
 let g_recording_start_time_us = 0;
@@ -134,6 +161,13 @@ dom_rng_blur_sigma.oninput = () => {
     dom_rng_blur_sigma.value = v;
     document.getElementById("txt_curr_blur_sigma").innerText = v;
     updateGuassianBlur();
+}
+
+dom_rng_zoom.oninput = () => {
+    const v = parseFloat(dom_rng_zoom.value).toFixed(1);
+    dom_rng_zoom.value = v;
+    dom_txt_curr_zoom.innerText = v;
+    target_zoom = parseFloat(v);
 }
 
 
@@ -231,12 +265,17 @@ function load_shape_data(data) {
 
     shape_pts = parse_shape_data(data);
     if (shape_pts.length == 0) {
-        return;
+        shapeValid = false;
+    } else {
+        shape_pts = transform_to_center2(shape_pts);
+        shapeValid = true;
     }
-    shape_pts = transform_to_center2(shape_pts);
+    updateElementStates();
 }
 
 dom_btn_upload_shape.onchange = (evt) => {
+    shapeValid = false;
+    updateElementStates();
     const file = dom_btn_upload_shape.files[0];
     const reader = new FileReader();
     reader.onload = (evt) => { load_shape_data(evt.target.result); };
@@ -280,7 +319,9 @@ function mouseWheel(event) {
         return false;
     }
     target_zoom -= event.delta / 10000;  // Typical scroll amount is 200.
-    target_zoom = Math.max(target_zoom, 0.05);
+    target_zoom = Math.max(Math.min(target_zoom, 30), 0.1);
+    dom_rng_zoom.value = target_zoom.toFixed(1);
+    dom_txt_curr_zoom.innerText = target_zoom.toFixed(1);
     return false;
 }
 

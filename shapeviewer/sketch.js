@@ -1,6 +1,27 @@
 
 const dom_btn_upload_shape = document.getElementById("btn_upload_shape");
 const dom_txt_zoom = document.getElementById("txt_zoom");
+const dom_slider_zoom = document.getElementById("slider_zoom");
+
+// Synchronize zoom input and slider
+function updateZoom(value) {
+    value = parseFloat(value);
+    value = isNaN(value) ? 1 : Math.max(0.1, Math.min(10, value));
+    dom_txt_zoom.value = value.toFixed(1);
+    dom_slider_zoom.value = value;
+}
+
+dom_txt_zoom.oninput = () => {
+    updateZoom(dom_txt_zoom.value);
+};
+
+dom_txt_zoom.onchange = () => {
+    updateZoom(dom_txt_zoom.value);
+};
+
+dom_slider_zoom.oninput = () => {
+    updateZoom(dom_slider_zoom.value);
+};
 
 let canvas;
 let shape_pts = [];
