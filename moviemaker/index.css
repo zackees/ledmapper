@@ -12,6 +12,32 @@ body {
     min-height: 100vh;
 }
 
+.top-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0 auto 20px;
+    max-width: 1200px;
+    padding: 0 20px;
+}
+
+.left-section, .right-section {
+    flex: 1;
+    max-width: 300px;
+}
+
+.middle-section {
+    flex: 2;
+    display: flex;
+    justify-content: center;
+    margin: 0 20px;
+}
+
+.middle-section .control-group {
+    width: 100%;
+    max-width: 400px;
+}
+
 h1, h2, h3, h4, h5, h6 {
     color: #ffffff;
     margin-bottom: 10px;

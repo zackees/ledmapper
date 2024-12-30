@@ -9,9 +9,19 @@
 </head>
 <body>
     <div id="menu">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-            <h1>Movie Maker</h1>
-            <button id="btn_how_to">👉 How to get the best video</button>
+        <div class="top-row">
+            <div class="left-section">
+                <h1>Movie Maker</h1>
+            </div>
+            <div class="middle-section">
+                <div class="control-group">
+                    <label for="btn_upload_shape">Upload Screenmap.json (*.json):</label>
+                    <input type="file" id="btn_upload_shape" accept=".csv,.json">
+                </div>
+            </div>
+            <div class="right-section">
+                <button id="btn_how_to">👉 How to get the best video</button>
+            </div>
         </div>
         <p>Create movies for your LED shapes.</p>
         <div class="controls">
@@ -22,10 +32,6 @@
                     <li>Mouse Wheel: Zoom in/out</li>
                     <li>Shift + Mouse Wheel: Rotate</li>
                 </ul>
-            </div>
-            <div class="control-group">
-                <label for="btn_upload_shape">Upload Screenmap.json (*.json):</label>
-                <input type="file" id="btn_upload_shape" accept=".csv,.json">
             </div>
             <div class="control-group">
                 <input type="button" id="btn_start_capture" value="Start Video">
