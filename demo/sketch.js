@@ -25,16 +25,24 @@ let playing = false;
 function load_shape_data(jsonBlob) {
     shape_pts = parse_shape_data_json(jsonBlob);
     if (shape_pts.length == 0) {
+        console.error("Failed to load shape data");
         return;
     }
     shape_pts = transform_to_center_of_canvas(shape_pts, canvas.width, canvas.height);
+    dom_btn_play.disabled = false;  // Enable the play button when shape is loaded
 }
 
 // Function to fetch and load the JSON file
 function fetchAndLoadJSON() {
-    fetch('/demo/screenmap.json')
-        .then(response => response.json())
+    fetch('screenmap.json')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
         .then(jsonBlob => {
+            console.log("Shape data loaded successfully");
             load_shape_data(jsonBlob);
             fetchAndLoadVideo();
         })
@@ -45,7 +53,7 @@ function fetchAndLoadJSON() {
 }
 
 function fetchAndLoadVideo() {
-    fetch('/demo/color_line_bubbles.rgb')
+    fetch('color_line_bubbles.rgb')
         .then(response => response.arrayBuffer())
         .then(arrayBuffer => {
             load_movie_data(arrayBuffer);

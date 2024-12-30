@@ -282,8 +282,13 @@ dom_btn_upload_shape.onchange = (evt) => {
     updateElementStates();
     const file = dom_btn_upload_shape.files[0];
     const reader = new FileReader();
-    reader.onload = (evt) => { load_shape_data(evt.target.result); };
-    reader.readAsText(file);
+    try {
+        reader.onload = (evt) => { load_shape_data(evt.target.result); };
+        reader.readAsText(file);
+    } catch (e) {
+        alert("Error loading shape file: " + e);
+    }
+
 };
 
 
