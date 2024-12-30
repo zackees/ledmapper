@@ -9,6 +9,7 @@ const dom_btn_download = document.getElementById("btn_download");
 const dom_txt_rotate = document.getElementById("txt_rotate");
 const dom_slider_rotate = document.getElementById("slider_rotate");
 const dom_txt_zoom = document.getElementById("txt_zoom");
+const dom_slider_zoom = document.getElementById("slider_zoom");
 
 // Synchronize rotation input and slider
 dom_txt_rotate.oninput = () => {
@@ -20,6 +21,18 @@ dom_txt_rotate.oninput = () => {
 
 dom_slider_rotate.oninput = () => {
     dom_txt_rotate.value = dom_slider_rotate.value;
+};
+
+// Synchronize zoom input and slider
+dom_txt_zoom.oninput = () => {
+    let value = parseFloat(dom_txt_zoom.value);
+    value = isNaN(value) ? 1 : Math.max(1, Math.min(5, value));
+    dom_txt_zoom.value = value.toFixed(1);
+    dom_slider_zoom.value = value;
+};
+
+dom_slider_zoom.oninput = () => {
+    dom_txt_zoom.value = parseFloat(dom_slider_zoom.value).toFixed(1);
 };
 
 const circle_diameter = 8;
