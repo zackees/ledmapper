@@ -25,10 +25,10 @@ const FRAME_TIME_US = 30 * 1000;
 dom_btn_how_to.onclick = () => {
     Swal.fire({
         title: 'How to get the best video',
-        text: 'Hello World',
+        text: 'For best results, use OBS and use the virtual web cam. This will appear like a regular web cam but it will be high quality screen capturing. For WS2812 please increase the gamma correction or else the results will be under saturated / too white. APA102/Dotstar looks the best by far when in APA102HD mode. To maximize capture quality load up your desired videos directly into OBS and stream them out through the virtual web cam. Smaller frame sizes like 640p will give the best capture performance if you want something like 60fps or above.',
         confirmButtonText: 'Got it!',
         didOpen: () => {
-            console.log('Hello world');
+            console.log('How-to popup opened');
         }
     });
 };
