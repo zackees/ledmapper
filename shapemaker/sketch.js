@@ -102,7 +102,18 @@ function points_to_json_str() {
     return JSON.stringify(json);
 }
 
-function mouseClicked() {
+function mouseClicked(event) {
+    // Check if the click occurred on a button or within the controls div
+    if (event.target.tagName === 'INPUT' || event.target.tagName === 'BUTTON' || event.target.closest('#controls')) {
+        // If it's a button or within controls, don't process the click for the canvas
+        return;
+    }
+
+    if (!pictureTaken) {
+        alert("Please take a picture first before adding points.");
+        return;
+    }
+
     let x = Number.parseInt(mouseX);
     let y = Number.parseInt(mouseY);
     if (x < 0 || y < 0) {
@@ -143,8 +154,10 @@ function setup_gfx() {
 
 
 let img_snapshot;
+let pictureTaken = false;
 dom_btn_snapshot.onclick = () => {
     img_snapshot = capture.get();
+    pictureTaken = true;
     showPopup();
 };
 
