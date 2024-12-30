@@ -37,9 +37,25 @@
 			object-fit: contain;
 		}
 	</style>
+	<style>
+		#popup {
+			position: fixed;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			background-color: rgba(0, 0, 0, 0.8);
+			color: white;
+			padding: 20px;
+			border-radius: 10px;
+			display: none;
+			opacity: 0;
+			transition: opacity 0.5s ease-in-out;
+		}
+	</style>
 </head>
 
 <body>
+	<div id="popup">Click the picture to start drawing your LEDs</div>
 	<p>Click to add a point. shift+click to remove it. When you are done, click "Download Shape"</p>
 	<p id="print"></p>
 

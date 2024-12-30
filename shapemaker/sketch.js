@@ -145,7 +145,22 @@ function setup_gfx() {
 let img_snapshot;
 dom_btn_snapshot.onclick = () => {
     img_snapshot = capture.get();
+    showPopup();
 };
+
+function showPopup() {
+    const popup = document.getElementById('popup');
+    popup.style.display = 'block';
+    setTimeout(() => {
+        popup.style.opacity = '1';
+    }, 10);
+    setTimeout(() => {
+        popup.style.opacity = '0';
+        setTimeout(() => {
+            popup.style.display = 'none';
+        }, 500);
+    }, 3000);
+}
 
 function setup() {
     setup_gfx();
