@@ -350,7 +350,10 @@ function setup() {
 function startCapture() {
     capturing_active = true;
     const constraints = {
-        video: {},
+        video: {
+            width: 640,
+            height: 480
+        },
         audio: false,
         optional: [
             {
