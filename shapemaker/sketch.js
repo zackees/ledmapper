@@ -1,7 +1,9 @@
 let capture;
 let canvas;
-const cam_ratio = 2160 / 3480;
+let capture_width = 640;
+let capture_height = 480;
 const dom_capture_width = document.getElementById("txt_capture_width");
+const dom_capture_height = document.getElementById("txt_capture_height");
 const dom_btn_snapshot = document.getElementById("btn_snapshot");
 const dom_btn_clear = document.getElementById("btn_clear");
 const dom_btn_delete_last = document.getElementById("btn_delete_last");
@@ -107,21 +109,24 @@ function mouseClicked() {
     }
 }
 
-function setup_gfx(width) {
+function setup_gfx() {
     if (capture) {
         capture.remove();
     }
     capture = createCapture(VIDEO);
     pixelDensity(1);  // Needed for retina displays.
-    const h = Number.parseInt(width * cam_ratio);
-    canvas = createCanvas(width, h);
-    capture.size(width, h);
+    canvas = createCanvas(capture_width, capture_height);
+    capture.size(capture_width, capture_height);
 }
 
 dom_capture_width.onchange = (evt) => {
-    const w = Number.parseInt(evt.target.value);
-    console.log(evt.target.value);
-    setup_gfx(w);
+    capture_width = Number.parseInt(evt.target.value);
+    setup_gfx();
+}
+
+dom_capture_height.onchange = (evt) => {
+    capture_height = Number.parseInt(evt.target.value);
+    setup_gfx();
 }
 
 let img_snapshot;
@@ -130,8 +135,9 @@ dom_btn_snapshot.onclick = () => {
 };
 
 function setup() {
-    const w = Number.parseInt(dom_capture_width.value);
-    setup_gfx(w);
+    capture_width = Number.parseInt(dom_capture_width.value);
+    capture_height = Number.parseInt(dom_capture_height.value);
+    setup_gfx();
 }
 
 
