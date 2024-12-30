@@ -78,8 +78,9 @@ document.onkeyup = (evt) => {
 };
 
 function downloadShape() {
-    download_text_as_file(points_to_csv_str(), `shape.csv`);
-    download_text_as_file(points_to_json_str(), `shape.json`);
+    //download_text_as_file(points_to_csv_str(), `shape.csv`);
+    const options = { type: 'application/json' };
+    download_text_as_file(points_to_json_str(), `shape.json`, options);
 }
 
 function indexOfIntersectMostRecent(x, y, radius) {

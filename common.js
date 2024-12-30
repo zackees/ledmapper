@@ -97,8 +97,9 @@ function download_binary_as_file(uint8_array, filename) {
     download_blob_as_file(blob, filename);
 }
 
-function download_text_as_file(text, filename) {
-    let blob = new Blob([text], { type: 'text/plain' });
+function download_text_as_file(text, filename, options = {}) {
+    const type = options.type || 'text/plain';
+    let blob = new Blob([text], { type: type });
     download_blob_as_file(blob, filename);
 }
 
