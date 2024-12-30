@@ -27,8 +27,17 @@ function parse_shape_data_json(jsonBlob) {
                 strip1 = map[keys[0]];
             }
         }
+        if (!strip1) {
+            throw "No strip data found";
+        }
         let x = strip1["x"];
         let y = strip1["y"];
+        if (!x) {
+            throw "No x data found";
+        }
+        if (!y) {
+            throw "No y data found";
+        }
         for (let i = 0; i < x.length; ++i) {
             out.push([x[i], y[i]]);
         }
