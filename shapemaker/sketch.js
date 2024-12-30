@@ -117,6 +117,7 @@ function setup_gfx() {
     pixelDensity(1);  // Needed for retina displays.
     canvas = createCanvas(capture_width, capture_height);
     capture.size(capture_width, capture_height);
+    capture.parent('captureContainer');
 }
 
 dom_capture_width.onchange = (evt) => {
