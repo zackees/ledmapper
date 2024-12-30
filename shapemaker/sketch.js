@@ -118,6 +118,9 @@ function setup_gfx() {
     canvas = createCanvas(capture_width, capture_height);
     capture.size(capture_width, capture_height);
     capture.parent('captureContainer');
+    capture.style('width', '100%');
+    capture.style('height', '100%');
+    capture.style('object-fit', 'cover');
 }
 
 dom_capture_width.onchange = (evt) => {
