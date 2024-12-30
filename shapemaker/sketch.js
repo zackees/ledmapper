@@ -115,7 +115,7 @@ function setup_gfx() {
     }
     capture = createCapture(VIDEO);
     pixelDensity(1);  // Needed for retina displays.
-    canvas = createCanvas(capture_width, capture_height);
+    canvas = createCanvas(windowWidth, windowHeight);
     capture.size(capture_width, capture_height);
     capture.parent('captureContainer');
     capture.style('width', '100%');
@@ -142,6 +142,11 @@ function setup() {
     capture_width = Number.parseInt(dom_capture_width.value);
     capture_height = Number.parseInt(dom_capture_height.value);
     setup_gfx();
+    windowResized(); // Call this to set initial canvas size
+}
+
+function windowResized() {
+    resizeCanvas(windowWidth, windowHeight);
 }
 
 
@@ -155,22 +160,23 @@ function draw() {
     let zoom = Number.parseFloat(dom_txt_zoom.value) || 1.0;
     let r = Number.parseInt(dom_txt_rotate.value) || 0;
     const now = time_now();
+    
     push();
     background(0);
-    translate(canvas.width / 2, canvas.height / 2);
+    
+    // Calculate scaling factor to fit the content to the canvas
+    let scaleFactor = min(width / capture_width, height / capture_height);
+    
+    translate(width / 2, height / 2);
     rotate(radians(r));
-    translate(-canvas.width / 2, -canvas.height / 2);
-    scale(zoom);
-    translate(x_translate, y_translate);
+    scale(scaleFactor * zoom);
+    translate(-capture_width / 2 + x_translate, -capture_height / 2 + y_translate);
+    
     if (img_snapshot) {
-        image(img_snapshot,
-              0, 0,
-              img_snapshot.width, img_snapshot.height,
-              0, 0,
-              canvas.width, canvas.height);
+        image(img_snapshot, 0, 0, capture_width, capture_height);
     } else {
-        const img = canvas.get();
-        image(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
+        const img = capture.get();
+        image(img, 0, 0, capture_width, capture_height);
     }
     pop();
 
