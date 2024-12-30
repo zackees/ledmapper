@@ -11,13 +11,14 @@
     <div class="sidebar">
         <h1>FastLED Video Mapper</h1>
         <ul class="tool-list">
+            <li><a href="demo/index.html">🎮 Demo</a></li>
             <li><a href="screenmap">🔷 Screenmap Maker</a></li>
             <li><a href="moviemaker/index.html">🎬 Mapped Video Maker</a></li>
             <li><a href="movieplayer/index.html">▶️ Mapped Video Player</a></li>
         </ul>
     </div>
     <div class="main-content">
-        <iframe id="tool-frame" src="screenmap/index.html" name="tool-frame"></iframe>
+        <iframe id="tool-frame" src="demo/index.html" name="tool-frame"></iframe>
     </div>
     <script>
         document.querySelectorAll('.tool-list a').forEach(link => {
@@ -31,7 +32,7 @@
 
         // Highlight the ScreenMap Maker link on page load
         window.addEventListener('load', function() {
-            document.querySelector('.tool-list a[href="shapemaker/index.html"]').parentElement.classList.add('selected');
+            document.querySelector('.tool-list a[href="demo/index.html"]').parentElement.classList.add('selected');
         });
     </script>
 </body>
