@@ -20,6 +20,13 @@ function parse_shape_data_json(jsonBlob) {
         let out = [];
         let map = jsonBlob["map"];
         let strip1 = map["strip1"];
+        // we prefer strip1, else use the first strip.
+        if (!strip1) {
+            const keys = Object.keys(map);
+            if (keys.length > 0) {
+                strip1 = map[keys[0]];
+            }
+        }
         let x = strip1["x"];
         let y = strip1["y"];
         for (let i = 0; i < x.length; ++i) {
