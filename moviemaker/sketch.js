@@ -63,12 +63,25 @@ function updateElementStates() {
     
     elements.forEach(element => {
         element.disabled = !shapeValid;
+        const controlGroup = element.closest('.control-group');
+        if (controlGroup) {
+            controlGroup.classList.toggle('disabled', !shapeValid);
+        }
     });
 
     // Special cases
     dom_btn_end_capture.disabled = !capturing_active || !shapeValid;
     dom_btn_start_record.disabled = !capturing_active || !shapeValid;
     dom_btn_end_record.disabled = !recording_active || !shapeValid;
+    
+    // Update control groups for special cases
+    const specialCases = [dom_btn_end_capture, dom_btn_start_record, dom_btn_end_record];
+    specialCases.forEach(element => {
+        const controlGroup = element.closest('.control-group');
+        if (controlGroup) {
+            controlGroup.classList.toggle('disabled', element.disabled);
+        }
+    });
 }
 
 // Initial state
