@@ -21,10 +21,9 @@ const dom_txt_curr_zoom = document.getElementById("txt_curr_zoom");
 // We try and capture at 30 fps.
 const FRAME_TIME_US = 30 * 1000;
 
-// For performance reasons, we reduce the size of the movie.
-const movie_hw_ratio = 0.5625
-const movie_width = 1280 / 2;
-const movie_height = Math.round(movie_width * movie_hw_ratio);
+// We'll set these variables dynamically when we start the capture
+let movie_width;
+let movie_height;
 const frame_rate = 60;
 
 let blurWorker = null;
@@ -121,9 +120,21 @@ dom_btn_start_capture.onclick = () => {
             }
         ]
     };
-    capture = createCapture(constraints);
-    capture.size(movie_width, movie_height);
-    capture.hide();
+    capture = createCapture(constraints, function(stream) {
+        const track = stream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        movie_width = settings.width;
+        movie_height = settings.height;
+        
+        // Resize the canvas to match the capture dimensions
+        resizeCanvas(movie_width, movie_height);
+        
+        // Update any UI elements that depend on canvas size
+        updateUIForNewDimensions();
+        
+        capture.size(movie_width, movie_height);
+        capture.hide(); // Hide the default video element
+    });
     dom_btn_start_record.disabled = false;
 };
 
@@ -254,21 +265,23 @@ function transform_to_center2(shape_pts) {
 
 
 function load_shape_data(data) {
-    shape_pts = [];
-    target_zoom = 1.;
-    curr_zoom = target_zoom;
-    curr_rotate = 0;
-    set_target_rotate(0);
-
-    target_translate = [movie_width / 2, movie_height / 2];
-    curr_translate = [movie_width / 2, movie_height / 2];
-
     shape_pts = parse_shape_data(data);
-    if (shape_pts.length == 0) {
+    if (shape_pts.length === 0) {
         shapeValid = false;
     } else {
         shape_pts = transform_to_center2(shape_pts);
         shapeValid = true;
+        
+        // Reset transformation parameters
+        target_zoom = 1;
+        curr_zoom = 1;
+        curr_rotate = 0;
+        set_target_rotate(0);
+        
+        // Center the shape
+        const canvasCenter = [width / 2, height / 2];
+        target_translate = [...canvasCenter];
+        curr_translate = [...canvasCenter];
     }
     updateElementStates();
 }
@@ -331,10 +344,16 @@ function mouseWheel(event) {
 function setup() {
     // createCanvas must be the first statement
     pixelDensity(1);  // Needed for retina displays.
-    canvas = createCanvas(movie_width, movie_height);
+    canvas = createCanvas(640, 480); // Default size, will be updated later
     stroke(255); // Set line drawing color to white
     frameRate(frame_rate);
     initWorkers();
+}
+
+function updateUIForNewDimensions() {
+    // Update any UI elements that depend on canvas size
+    // For example, you might need to adjust the position of buttons or sliders
+    // This function can be expanded as needed
 }
 
 function update_shape_parameters() {
@@ -381,37 +400,28 @@ function update_shape_parameters() {
 }
 
 function create_transformed_shape() {
+    if (shape_pts.length === 0) {
+        return [];
+    }
     // Deep copy.
-    let transformed_pts = [];
-    shape_pts.forEach(([x, y]) => { transformed_pts.push([x, y]); });
-    if (curr_rotate != 0) {
-        // apply 2d rotation.
-        transformed_pts.forEach((pt) => {
-            const r = radians(curr_rotate);
-            // get magnitude of said point.
-            const mag = Math.sqrt(pt[0] * pt[0] + pt[1] * pt[1]);
-            if (mag == 0) {
-                return;
-            }
-            // project point onto sphere.
-            let x = pt[0] / mag;
-            let y = pt[1] / mag;
-            const cos_r = Math.cos(r);
-            const sin_r = Math.sin(r);
-            // Apply matrix rotation.
-            const xx = x * cos_r + y * sin_r;
-            const yy = -(x * sin_r) + y * cos_r;
-            // Project back to real space from the unit sphere.
-            pt[0] = xx * mag;
-            pt[1] = yy * mag;
+    let transformed_pts = shape_pts.map(([x, y]) => [x, y]);
+    
+    if (curr_rotate !== 0) {
+        const r = radians(curr_rotate);
+        const cos_r = Math.cos(r);
+        const sin_r = Math.sin(r);
+        transformed_pts = transformed_pts.map(([x, y]) => {
+            const xx = x * cos_r - y * sin_r;
+            const yy = x * sin_r + y * cos_r;
+            return [xx, yy];
         });
     }
-    transformed_pts.forEach((pt) => {
-        pt[0] *= curr_zoom;
-        pt[1] *= curr_zoom;
-        pt[0] += curr_translate[0];
-        pt[1] += curr_translate[1];
-    });
+    
+    transformed_pts = transformed_pts.map(([x, y]) => [
+        x * curr_zoom + curr_translate[0],
+        y * curr_zoom + curr_translate[1]
+    ]);
+    
     return transformed_pts;
 }
 
@@ -554,7 +564,6 @@ let gLastProcessedFrame = null;
 // line is executed again.
 let last_time = time_now();
 function draw() {
-    // blurWorker.postMessage('Hello, worker!');
     const frameId = g_frame_id;
     g_frame_id++;
 
@@ -578,9 +587,9 @@ function draw() {
             radius, sigma
         );
         blurWorker.postMessage({context: blurContext});
-        image(img, 0, 0, movie_width, movie_height);
+        image(img, 0, 0, width, height);
     }
-    // const doneFrame = gFinishedFrames.popLowestValue();
+
     let processedFrames = []
     while (true) {
         const doneFrame = gFinishedFrames.popLowestValue();
@@ -591,47 +600,40 @@ function draw() {
         processedFrames.push(doneFrame);
     }
 
+    // Always draw the shape, regardless of capturing status
+    noFill();
+    stroke(color('white'));
+    const led_size = estimate_led_size(transformed_pts);
+    transformed_pts.forEach(([x, y]) => {
+        circle(x, y, led_size);
+    });
+
     if (show_render_status && gLastProcessedFrame) {
         const pts = gLastProcessedFrame.pts;
         const rgbPts = gLastProcessedFrame.rgbPts;
         draw_output_pixels_rect(pts, rgbPts);
     }
-    if (processedFrames.length) {
-        if (recording_active) {
-            if (!g_recording) {
-                g_recording = true;
-                g_recording_start_time_us = now_us;
-                //g_last_frame_idx = 0;
-            }
-            for (let i = 0; i < processedFrames.length; ++i) {
-                const doneFrame = processedFrames[i];
-                const frame_idx = getFrame(doneFrame.frameTime);
-                if (frame_idx > g_last_frame_idx) {
-                    //console.log(`frame_idx: ${frame_idx}`);
-                    g_last_frame_idx = frame_idx;
-                    gColorFrames.push(doneFrame.rgbPts);
-                }
-            }
-        } else {
-            if (g_recording) {
-                g_recording = false;
-                const recording_time = timeMicros() - g_recording_start_time_us;
-                console.log(`Recording time: ${recording_time} us`);
-                g_last_frame_idx = -1;
+
+    if (processedFrames.length && recording_active) {
+        if (!g_recording) {
+            g_recording = true;
+            g_recording_start_time_us = now_us;
+        }
+        for (let i = 0; i < processedFrames.length; ++i) {
+            const doneFrame = processedFrames[i];
+            const frame_idx = getFrame(doneFrame.frameTime);
+            if (frame_idx > g_last_frame_idx) {
+                g_last_frame_idx = frame_idx;
+                gColorFrames.push(doneFrame.rgbPts);
             }
         }
+    } else if (g_recording) {
+        g_recording = false;
+        const recording_time = timeMicros() - g_recording_start_time_us;
+        console.log(`Recording time: ${recording_time} us`);
+        g_last_frame_idx = -1;
     }
-    noFill();
-    stroke(color('white'));
-    // Draw points.
-    if (gLastProcessedFrame) {
-        const pts = gLastProcessedFrame.pts;
-        const led_size = estimate_led_size(pts);
-        pts.forEach(([x, y]) => {
-            circle(x, y, led_size);
-            //square(x - led_size / 2, y - led_size / 2, led_size);
-        });
-    }
+
     stroke(0);
     fill(255);
     text(`FPS: ${fps}`, 10, 10);
