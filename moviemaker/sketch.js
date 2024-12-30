@@ -1,8 +1,7 @@
 const dom_rng_rotation = document.getElementById("rng_rotation");
 
 const dom_btn_upload_shape = document.getElementById("btn_upload_shape");
-const dom_btn_start_record = document.getElementById("btn_start_record");
-const dom_btn_end_record = document.getElementById("btn_end_record");
+const dom_btn_toggle_record = document.getElementById("btn_toggle_record");
 
 const dom_rng_brightness = document.getElementById("rng_brightness");
 const dom_txt_curr_bri = document.getElementById("txt_curr_bri");
@@ -74,8 +73,6 @@ let shape_rotate_events = [];
 // Function to update element states based on shape validity
 function updateElementStates() {
     const elements = [
-        dom_btn_start_record,
-        dom_btn_end_record,
         dom_rng_rotation,
         dom_rng_brightness,
         dom_rng_gamma,
@@ -93,18 +90,14 @@ function updateElementStates() {
         }
     });
 
-    // Special cases
-    dom_btn_start_record.disabled = !capturing_active || !shapeValid;
-    dom_btn_end_record.disabled = !recording_active || !shapeValid;
+    // Special case
+    dom_btn_toggle_record.disabled = !capturing_active || !shapeValid;
     
-    // Update control groups for special cases
-    const specialCases = [dom_btn_start_record, dom_btn_end_record];
-    specialCases.forEach(element => {
-        const controlGroup = element.closest('.control-group');
-        if (controlGroup) {
-            controlGroup.classList.toggle('disabled', element.disabled);
-        }
-    });
+    // Update control group for special case
+    const controlGroup = dom_btn_toggle_record.closest('.control-group');
+    if (controlGroup) {
+        controlGroup.classList.toggle('disabled', dom_btn_toggle_record.disabled);
+    }
 }
 
 // Initial state
@@ -142,16 +135,18 @@ dom_rng_gamma.oninput = () => {
     dom_txt_curr_gamma.innerText = `${v}`;
 }
 
-dom_btn_start_record.onclick = () => {
-    if (shape_pts.length < 2) {
+dom_btn_toggle_record.onclick = () => {
+    if (!recording_active && shape_pts.length < 2) {
         alert("Please load a valid shape first of size >= 2");
         return;
     }
-    recording_active = true;
-    dom_btn_start_record.disabled = true;
-    dom_btn_end_record.disabled = false;
+    recording_active = !recording_active;
+    dom_btn_toggle_record.value = recording_active ? "Stop Recording" : "Start Recording";
+    
+    if (!recording_active) {
+        endRecording();
+    }
 };
-
 
 dom_rng_blur.oninput = () => {
     const v = dom_rng_blur.value;
@@ -176,13 +171,7 @@ dom_rng_zoom.oninput = () => {
 }
 
 
-dom_btn_end_record.onclick = () => {
-    recording_active = false;
-    dom_btn_end_record.disabled = true;
-    dom_btn_start_record.disabled = false;
-    //dom_btn_start_capture.disabled = true;
-    //print(gColorFrames);
-
+function endRecording() {
     let n = 0;
     gColorFrames.forEach((frame) => {
         frame.forEach((val) => {
@@ -372,7 +361,7 @@ function startCapture() {
         capture.size(movie_width, movie_height);
         capture.hide(); // Hide the default video element
     });
-    dom_btn_start_record.disabled = false;
+    updateElementStates();
 }
 
 function updateUIForNewDimensions() {
