@@ -181,7 +181,6 @@ dom_btn_snapshot.onclick = () => {
 dom_btn_clear.onclick = () => {
     if (confirm("Delete all?")) {
         points = [];
-        pictureTaken = false;
         img_snapshot = null;
         dom_btn_snapshot.disabled = false;
     }
