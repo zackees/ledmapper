@@ -13,14 +13,14 @@ const dom_slider_zoom = document.getElementById("slider_zoom");
 
 // Synchronize rotation input and slider
 dom_txt_rotate.oninput = () => {
-    let value = parseInt(dom_txt_rotate.value);
+    let value = parseFloat(dom_txt_rotate.value);
     value = isNaN(value) ? 0 : Math.max(0, Math.min(360, value));
-    dom_txt_rotate.value = value;
+    dom_txt_rotate.value = value.toFixed(1);
     dom_slider_rotate.value = value;
 };
 
 dom_slider_rotate.oninput = () => {
-    dom_txt_rotate.value = dom_slider_rotate.value;
+    dom_txt_rotate.value = parseFloat(dom_slider_rotate.value).toFixed(1);
 };
 
 // Synchronize zoom input and slider
@@ -172,7 +172,7 @@ function draw() {
     dom_btn_clear.disabled = !points.length;
     dom_btn_delete_last.disabled = !points.length;
     let zoom = Number.parseFloat(dom_txt_zoom.value) || 1.0;
-    let r = Number.parseInt(dom_txt_rotate.value) || 0;
+    let r = Number.parseFloat(dom_txt_rotate.value) || 0;
     const now = time_now();
     
     push();
