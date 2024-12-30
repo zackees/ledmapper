@@ -24,16 +24,16 @@ a:hover {
 }
 
 body {
-    padding: 20px;
+    padding: 10px;
 }
 
 input[type="button"], button {
     background-color: #2a2a2a;
     color: #b0b0b0;
     border: none;
-    padding: 10px 15px;
-    margin: 10px 5px;
-    border-radius: 5px;
+    padding: 5px 10px;
+    margin: 5px 3px;
+    border-radius: 3px;
     cursor: pointer;
     transition: all 0.3s ease;
 }
@@ -53,24 +53,24 @@ input[type="number"], input[type="range"] {
     background-color: #2a2a2a;
     color: #b0b0b0;
     border: 1px solid #444;
-    padding: 5px;
+    padding: 3px;
     border-radius: 3px;
-    margin: 5px 0;
+    margin: 2px 0;
 }
 
 label {
     color: #b0b0b0;
-    margin-right: 10px;
+    margin-right: 5px;
     display: inline-block;
-    width: 60px;
+    width: 50px;
 }
 
 p {
-    margin: 20px 0;
+    margin: 10px 0;
 }
 
 div {
-    margin: 15px 0;
+    margin: 8px 0;
 }
 
 #print {

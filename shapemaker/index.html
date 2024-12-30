@@ -55,19 +55,21 @@
 	<div id="popup">Click the picture to start drawing your LEDs</div>
 	<p>Click to add a point. shift+click to remove it. When you are done, click "Download Shape"</p>
 	<p id="print"></p>
-
-	<label for="txt_rotate">Rotate:</label>
-	<input id="txt_rotate" type="number" value="0" min="0" max="360" step="0.1"></input>
-	<input id="slider_rotate" type="range" min="0" max="360" value="0" step="0.1"></input><br>
-	<label for="txt_zoom">Zoom:</label>
-	<input id="txt_zoom" type="number" value="1" min="1" max="5" step="0.1"></input>
-	<input id="slider_zoom" type="range" min="1" max="5" value="1" step="0.1"></input><br>
-	<br>
-	<div style="display: flex; gap: 10px;">
-		<input type="button" id="btn_snapshot" value="Take Picture from Camera"></input>
-		<input type="button" id="btn_delete_last" value="Undo Last Point"></input>
-		<input type="button" id="btn_clear" value="Clear all points"></input>
-		<input type="button" id="btn_download" value="Download Shape"></input>
+	<div>
+		<label for="txt_rotate">Rotate:</label>
+		<input id="txt_rotate" type="number" value="0" min="0" max="360" step="0.1">
+		<input id="slider_rotate" type="range" min="0" max="360" value="0" step="0.1">
+	</div>
+	<div>
+		<label for="txt_zoom">Zoom:</label>
+		<input id="txt_zoom" type="number" value="1" min="1" max="5" step="0.1">
+		<input id="slider_zoom" type="range" min="1" max="5" value="1" step="0.1">
+	</div>
+	<div style="display: flex; gap: 5px; flex-wrap: wrap;">
+		<input type="button" id="btn_snapshot" value="Take Picture">
+		<input type="button" id="btn_delete_last" value="Undo Last">
+		<input type="button" id="btn_clear" value="Clear All">
+		<input type="button" id="btn_download" value="Download">
 	</div>
 
 	<!-- Target of the p5.js drawing-->
