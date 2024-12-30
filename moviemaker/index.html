@@ -12,52 +12,56 @@
         <h1>Movie Maker</h1>
         <p>Create movies for your LED shapes.</p>
         <div class="controls">
-            <h2>Movement</h2>
-            <ul>
-                <li>Left Click: Move to point</li>
-                <li>Mouse Wheel: Zoom in/out</li>
-                <li>Shift + Mouse Wheel: Rotate</li>
-            </ul>
-            <div>
+            <div class="control-group">
+                <h2>Movement</h2>
+                <ul>
+                    <li>Left Click: Move to point</li>
+                    <li>Mouse Wheel: Zoom in/out</li>
+                    <li>Shift + Mouse Wheel: Rotate</li>
+                </ul>
+            </div>
+            <div class="control-group">
                 <label for="btn_upload_shape">Upload Shape (*.csv,*.json):</label>
                 <input type="file" id="btn_upload_shape" accept=".csv,.json">
             </div>
-            <div>
+            <div class="control-group">
                 <input type="button" id="btn_start_capture" value="Start Video">
                 <input type="button" id="btn_end_capture" value="End Video">
-            </div>
-            <div>
                 <input type="button" id="btn_start_record" value="Start Recording">
                 <input type="button" id="btn_end_record" value="End Recording">
             </div>
-            <div>
-                <label for="rng_rotation">Rotation:</label>
-                <input type="range" min="-180" max="180" value="0" class="slider" id="rng_rotation">
-                <span id="txt_curr_rotation">0</span>
+            <div class="control-group">
+                <div class="slider-container">
+                    <label for="rng_rotation">Rotation:</label>
+                    <input type="range" min="-180" max="180" value="0" class="slider" id="rng_rotation">
+                    <span id="txt_curr_rotation">0</span>
+                </div>
+                <div class="slider-container">
+                    <label for="rng_brightness">Brightness:</label>
+                    <input type="range" min="0" max="100" value="100" class="slider" id="rng_brightness">
+                    <span id="txt_curr_bri">100%</span>
+                </div>
+                <div class="slider-container">
+                    <label for="rng_gamma">Gamma:</label>
+                    <input type="range" min="1" max="100" value="10" class="slider" id="rng_gamma">
+                    <span id="txt_curr_gamma">1.0</span>
+                </div>
+                <div class="slider-container">
+                    <label for="rng_blur">Blur:</label>
+                    <input type="range" min="1" max="20" value="3" class="slider" id="rng_blur">
+                    <span id="txt_curr_blur">3</span>
+                </div>
+                <div class="slider-container">
+                    <label for="rng_blur_sigma">Blur sigma:</label>
+                    <input type="range" min="0" max="7" value="1" class="slider" id="rng_blur_sigma">
+                    <span id="txt_curr_blur_sigma">1</span>
+                </div>
             </div>
-            <div>
-                <label for="rng_brightness">Brightness factor:</label>
-                <input type="range" min="0" max="100" value="100" class="slider" id="rng_brightness">
-                <span id="txt_curr_bri">100%</span>
-            </div>
-            <div>
-                <label for="rng_gamma">Gamma factor:</label>
-                <input type="range" min="1" max="100" value="10" class="slider" id="rng_gamma">
-                <span id="txt_curr_gamma">1.0</span>
-            </div>
-            <div>
-                <label for="rng_blur">Blur factor:</label>
-                <input type="range" min="1" max="20" value="3" class="slider" id="rng_blur">
-                <span id="txt_curr_blur">3</span>
-            </div>
-            <div>
-                <label for="rng_blur_sigma">Blur sigma:</label>
-                <input type="range" min="0" max="7" value="1" class="slider" id="rng_blur_sigma">
-                <span id="txt_curr_blur_sigma">1</span>
-            </div>
-            <div>
-                <label for="chk_show_status">Show status (faster when disabled):</label>
-                <input type="checkbox" id="chk_show_status" checked>
+            <div class="control-group">
+                <label for="chk_show_status">
+                    <input type="checkbox" id="chk_show_status" checked>
+                    Show status (faster when disabled)
+                </label>
             </div>
         </div>
         <p>Downloaded binary contains raw stream of pixels represented as uint8_t of r, g, b</p>

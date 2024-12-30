@@ -14,6 +14,7 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
     color: #ffffff;
+    margin-bottom: 10px;
 }
 
 a {
@@ -33,12 +34,24 @@ a:hover {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.control-group {
+    flex: 1 1 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
 input[type="button"], button {
     background-color: #2196f3;
     color: #ffffff;
     border: none;
     padding: 8px 16px;
-    margin: 5px;
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -61,7 +74,6 @@ input[type="file"] {
     border: 1px solid #555;
     padding: 8px;
     border-radius: 4px;
-    margin: 5px 0;
     font-size: 0.9em;
     width: 100%;
     box-sizing: border-box;
@@ -82,9 +94,15 @@ input[type="file"]::-webkit-file-upload-button:hover {
     background-color: #1976d2;
 }
 
+.slider-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .slider {
     -webkit-appearance: none;
-    width: 100%;
+    flex-grow: 1;
     height: 15px;
     border-radius: 5px;
     background: #333;
@@ -117,9 +135,8 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 label {
     color: #b0b0b0;
-    margin-right: 10px;
-    display: inline-block;
     font-size: 0.9em;
+    min-width: 100px;
 }
 
 main {
@@ -138,6 +155,10 @@ canvas {
 @media (max-width: 600px) {
     #menu {
         padding: 10px;
+    }
+    
+    .control-group {
+        flex-basis: 100%;
     }
     
     input[type="button"], button, input[type="file"] {
