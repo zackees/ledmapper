@@ -322,7 +322,7 @@ function mouseWheel(event) {
         return false;
     }
     target_zoom -= event.delta / 10000;  // Typical scroll amount is 200.
-    target_zoom = Math.max(Math.min(target_zoom, 3), 0.01);
+    target_zoom = Math.max(Math.min(target_zoom, 3), 0.15);
     dom_rng_zoom.value = target_zoom.toFixed(1);
     dom_txt_curr_zoom.innerText = target_zoom.toFixed(1);
     return false;
