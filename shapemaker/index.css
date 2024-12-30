@@ -43,6 +43,12 @@ input[type="button"]:hover, button:hover {
     color: #ffffff;
 }
 
+input[type="button"]:disabled, button:disabled {
+    background-color: #1a1a1a;
+    color: #555;
+    cursor: not-allowed;
+}
+
 input[type="number"], input[type="range"] {
     background-color: #2a2a2a;
     color: #b0b0b0;
