@@ -17,9 +17,21 @@ const dom_rng_blur_sigma = document.getElementById("rng_blur_sigma");
 const dom_chk_show_status = document.getElementById("chk_show_status");
 const dom_rng_zoom = document.getElementById("rng_zoom");
 const dom_txt_curr_zoom = document.getElementById("txt_curr_zoom");
+const dom_btn_how_to = document.getElementById("btn_how_to");
 
 // We try and capture at 30 fps.
 const FRAME_TIME_US = 30 * 1000;
+
+dom_btn_how_to.onclick = () => {
+    Swal.fire({
+        title: 'How to get the best video',
+        text: 'Hello World',
+        confirmButtonText: 'Got it!',
+        didOpen: () => {
+            console.log('Hello world');
+        }
+    });
+};
 
 // We'll set these variables dynamically when we start the capture
 let movie_width;
