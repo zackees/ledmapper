@@ -1,5 +1,6 @@
 let capture;
 let canvas;
+let videoCheckInterval;
 const capture_width = 640;
 const capture_height = 480;
 const dom_btn_snapshot = document.getElementById("btn_snapshot");
@@ -155,6 +156,13 @@ function mouseClicked(event) {
     }
 }
 
+function checkForVideo() {
+    if (capture.elt && capture.elt.readyState === 4) {  // 4 means video is ready
+        alert("Camera is ready!");
+        clearInterval(videoCheckInterval);  // Stop checking
+    }
+}
+
 function setup_gfx() {
     if (capture) {
         capture.remove();
@@ -167,6 +175,7 @@ function setup_gfx() {
     capture.style('width', '100%');
     capture.style('height', '100%');
     capture.style('object-fit', 'cover');
+    videoCheckInterval = setInterval(checkForVideo, 100);  // Check every 100ms
 }
 
 
