@@ -25,12 +25,14 @@
             link.addEventListener('click', function(e) {
                 e.preventDefault();
                 document.getElementById('tool-frame').src = this.href;
+                document.querySelectorAll('.tool-list li').forEach(item => item.classList.remove('selected'));
+                this.parentElement.classList.add('selected');
             });
         });
 
         // Highlight the Shape Maker link on page load
         window.addEventListener('load', function() {
-            document.querySelector('.tool-list a[href="shapemaker/index.html"]').parentElement.style.backgroundColor = '#2980b9';
+            document.querySelector('.tool-list a[href="shapemaker/index.html"]').parentElement.classList.add('selected');
         });
     </script>
 </body>

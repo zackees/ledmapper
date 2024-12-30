@@ -50,6 +50,11 @@ h1 {
     box-shadow: 0 0 10px rgba(255,255,255,0.1);
 }
 
+.tool-list li.selected {
+    background-color: #2980b9;
+    box-shadow: 0 0 15px rgba(41, 128, 185, 0.5);
+}
+
 .tool-list a {
     color: #b0b0b0;
     text-decoration: none;
@@ -59,7 +64,8 @@ h1 {
     transition: color 0.3s ease;
 }
 
-.tool-list a:hover {
+.tool-list a:hover,
+.tool-list li.selected a {
     color: #ffffff;
 }
 
