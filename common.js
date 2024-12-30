@@ -13,10 +13,9 @@ function parse_shape_data_csv(text) {
     return out;
 }
 
-function parse_shape_data_json(text) {
+function parse_shape_data_json(jsonBlob) {
     let out = [];
-    let json = JSON.parse(text);
-    let map = json["map"];
+    let map = jsonBlob["map"];
     let strip1 = map["strip1"];
     let x = strip1["x"];
     let y = strip1["y"];

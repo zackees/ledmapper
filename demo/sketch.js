@@ -24,8 +24,8 @@ let movie_frames = [];
 let playing = false;
 
 
-function load_shape_data(text) {
-    shape_pts = parse_shape_data(text);
+function load_shape_data(jsonBlob) {
+    shape_pts = parse_shape_data_json(jsonBlob);
     dom_btn_load_movie.disabled = (shape_pts.length === 0);
     if (shape_pts.length == 0) {
         return;
@@ -37,7 +37,15 @@ dom_btn_upload_shape.onchange = (evt) => {
     set_dom_btn_play(false);
     const file = dom_btn_upload_shape.files[0];
     const reader = new FileReader();
-    reader.onload = (evt) => { load_shape_data(evt.target.result); };
+    reader.onload = (evt) => {
+        try {
+            const jsonBlob = JSON.parse(evt.target.result);
+            load_shape_data(jsonBlob);
+        } catch (error) {
+            console.error("Error parsing JSON:", error);
+            alert("Invalid JSON file. Please upload a valid JSON blob.");
+        }
+    };
     reader.readAsText(file);
 };
 
