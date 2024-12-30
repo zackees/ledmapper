@@ -14,7 +14,7 @@ body {
 
 .top-row {
     display: flex;
-    justify-content: center;
+    justify-content: space-between;
     align-items: center;
     margin: 0 auto 20px;
     max-width: 1200px;
@@ -27,7 +27,7 @@ body {
 }
 
 .middle-section {
-    flex: 2;
+    flex: 1;
     display: flex;
     justify-content: center;
     margin: 0 20px;
