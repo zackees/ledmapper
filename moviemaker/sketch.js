@@ -1,8 +1,6 @@
 const dom_rng_rotation = document.getElementById("rng_rotation");
 
 const dom_btn_upload_shape = document.getElementById("btn_upload_shape");
-const dom_btn_start_capture = document.getElementById("btn_start_capture");
-const dom_btn_end_capture = document.getElementById("btn_end_capture");
 const dom_btn_start_record = document.getElementById("btn_start_record");
 const dom_btn_end_record = document.getElementById("btn_end_record");
 
@@ -60,8 +58,6 @@ let shape_rotate_events = [];
 // Function to update element states based on shape validity
 function updateElementStates() {
     const elements = [
-        dom_btn_start_capture,
-        dom_btn_end_capture,
         dom_btn_start_record,
         dom_btn_end_record,
         dom_rng_rotation,
@@ -82,12 +78,11 @@ function updateElementStates() {
     });
 
     // Special cases
-    dom_btn_end_capture.disabled = !capturing_active || !shapeValid;
     dom_btn_start_record.disabled = !capturing_active || !shapeValid;
     dom_btn_end_record.disabled = !recording_active || !shapeValid;
     
     // Update control groups for special cases
-    const specialCases = [dom_btn_end_capture, dom_btn_start_record, dom_btn_end_record];
+    const specialCases = [dom_btn_start_record, dom_btn_end_record];
     specialCases.forEach(element => {
         const controlGroup = element.closest('.control-group');
         if (controlGroup) {
@@ -130,18 +125,6 @@ dom_rng_gamma.oninput = () => {
     const v = dom_rng_gamma.value / 10.;
     dom_txt_curr_gamma.innerText = `${v}`;
 }
-
-dom_btn_start_capture.onclick = startCapture;
-
-dom_btn_end_capture.onclick = () => {
-    capturing_active = false;
-    recording_active = false;
-    dom_btn_start_capture.disabled = false;
-    dom_btn_end_capture.disabled = true;
-    dom_btn_start_record.disabled = true;
-    dom_btn_end_record.disabled = true;
-    capture.remove();
-};
 
 dom_btn_start_record.onclick = () => {
     if (shape_pts.length < 2) {
@@ -348,8 +331,6 @@ function setup() {
 
 function startCapture() {
     capturing_active = true;
-    dom_btn_start_capture.disabled = true;
-    dom_btn_end_capture.disabled = false;
     const constraints = {
         video: {},
         audio: false,
