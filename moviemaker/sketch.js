@@ -23,8 +23,24 @@ const FRAME_TIME_US = 30 * 1000;
 dom_btn_how_to.onclick = () => {
     Swal.fire({
         title: 'How to get the best video',
-        text: 'For best results, use OBS and use the virtual web cam. This will appear like a regular web cam but it will be high quality screen capturing. For WS2812 please increase the gamma correction or else the results will be under saturated / too white. APA102/Dotstar looks the best by far when in APA102HD mode. To maximize capture quality load up your desired videos directly into OBS and stream them out through the virtual web cam. Smaller frame sizes like 640p will give the best capture performance if you want something like 60fps or above. Downloaded binary contains raw stream of pixels represented as uint8_t of r, g, b.',
+        html: `
+            <div style="text-align: left; margin-bottom: 15px;">
+                <h3>Best Practices:</h3>
+                <ul>
+                    <li>Use OBS with a virtual webcam for high-quality screen capturing.</li>
+                    <li>For WS2812 LEDs, increase gamma correction to avoid under-saturation.</li>
+                    <li>APA102/Dotstar performs best in APA102HD mode.</li>
+                    <li>Load desired videos directly into OBS for maximum capture quality.</li>
+                    <li>Use smaller frame sizes (e.g., 640p) for better performance at higher frame rates (60fps+).</li>
+                </ul>
+                <p><strong>Note:</strong> Downloaded binary contains raw stream of pixels represented as uint8_t of r, g, b.</p>
+            </div>
+        `,
         confirmButtonText: 'Got it!',
+        customClass: {
+            popup: 'custom-popup-class',
+            content: 'custom-content-class'
+        },
         didOpen: () => {
             console.log('How-to popup opened');
         }
