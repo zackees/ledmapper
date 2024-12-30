@@ -1,28 +1,33 @@
-<html>
-
+<!DOCTYPE html>
+<html lang="en">
 <head>
-	<script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js"></script>
-
-	<style>
-	</style>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movie Player</title>
+    <link rel="stylesheet" href="index.css">
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js"></script>
 </head>
-
 <body>
-	<div>
-		<p>Plays the movies created with "moviemaker".</p>
-		<label for="btn_upload_shape">Upload Shape (*.json):</label>
-		<input type="file" id="btn_upload_shape" accept=".json"></input><br>
-		<label for="btn_load_movie">Upload Movie (*.rgb):</label>
-		<input type="file" id="btn_load_movie" accept=".dat"></input></br>
-		<input type="button" id="btn_play" value="Play"></input>
-	</div>
-	<!-- Target of the p5.js drawing-->
-	<main></main>
+    <div class="controls">
+        <h1>Movie Player</h1>
+        <p>Plays the movies created with "moviemaker".</p>
+        <div>
+            <label for="btn_upload_shape">Upload Shape (*.json):</label>
+            <input type="file" id="btn_upload_shape" accept=".json">
+        </div>
+        <div>
+            <label for="btn_load_movie">Upload Movie (*.rgb):</label>
+            <input type="file" id="btn_load_movie" accept=".dat">
+        </div>
+        <div>
+            <input type="button" id="btn_play" value="Play">
+        </div>
+    </div>
+    <main>
+        <!-- Target of the p5.js drawing -->
+    </main>
 
+    <script src="/common.js"></script>
+    <script src="sketch.js"></script>
 </body>
-
-<script src="/common.js"></script>
-<script src="sketch.js"></script>
-
 </html>
