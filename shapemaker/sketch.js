@@ -1,9 +1,7 @@
 let capture;
 let canvas;
-let capture_width = 640;
-let capture_height = 480;
-const dom_capture_width = document.getElementById("txt_capture_width");
-const dom_capture_height = document.getElementById("txt_capture_height");
+const capture_width = 640;
+const capture_height = 480;
 const dom_btn_snapshot = document.getElementById("btn_snapshot");
 const dom_btn_clear = document.getElementById("btn_clear");
 const dom_btn_delete_last = document.getElementById("btn_delete_last");
@@ -123,15 +121,6 @@ function setup_gfx() {
     capture.style('object-fit', 'cover');
 }
 
-dom_capture_width.onchange = (evt) => {
-    capture_width = Number.parseInt(evt.target.value);
-    setup_gfx();
-}
-
-dom_capture_height.onchange = (evt) => {
-    capture_height = Number.parseInt(evt.target.value);
-    setup_gfx();
-}
 
 let img_snapshot;
 dom_btn_snapshot.onclick = () => {
@@ -139,8 +128,6 @@ dom_btn_snapshot.onclick = () => {
 };
 
 function setup() {
-    capture_width = Number.parseInt(dom_capture_width.value);
-    capture_height = Number.parseInt(dom_capture_height.value);
     setup_gfx();
     windowResized(); // Call this to set initial canvas size
 }
