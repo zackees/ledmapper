@@ -57,11 +57,20 @@ dom_btn_upload_shape.onchange = (evt) => {
     reader.readAsText(file);
 };
 
+async function fetchScreenMap() {
+    console.log("Fetching screen map");
+    const response = await fetch('screenmap.json');
+    const text = await response.text();
+    load_shape_data(text);
+}
+
+
 function setup() {
     canvas = createCanvas(windowWidth * 0.9, windowHeight * 0.8);
     canvas.parent('main');
     strokeWeight(2);
     frameRate(60);
+    fetchScreenMap();
 }
 
 function draw() {
@@ -157,3 +166,5 @@ function drawInfo() {
 function windowResized() {
     resizeCanvas(windowWidth * 0.9, windowHeight * 0.8);
 }
+
+setTimeout(fetchScreenMap, 1000);
