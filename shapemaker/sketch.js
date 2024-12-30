@@ -126,6 +126,15 @@ dom_btn_snapshot.onclick = () => {
 function setup() {
     setup_gfx();
     windowResized(); // Call this to set initial canvas size
+    
+    // Add event listeners for mouse enter and leave
+    const captureContainer = document.getElementById('captureContainer');
+    captureContainer.addEventListener('mouseenter', () => {
+        captureContainer.style.opacity = '0';
+    });
+    captureContainer.addEventListener('mouseleave', () => {
+        captureContainer.style.opacity = '1';
+    });
 }
 
 function windowResized() {
