@@ -142,6 +142,7 @@ dom_btn_toggle_record.onclick = () => {
     }
     recording_active = !recording_active;
     dom_btn_toggle_record.value = recording_active ? "Stop Recording" : "Start Recording";
+    dom_btn_toggle_record.classList.toggle('recording', recording_active);
     
     if (!recording_active) {
         endRecording();

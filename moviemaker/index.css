@@ -105,6 +105,10 @@ input[type="button"]:disabled, button:disabled {
     cursor: not-allowed;
 }
 
+#btn_toggle_record.recording {
+    background-color: #ff0000;
+}
+
 input[type="file"] {
     background-color: #333;
     color: #ffffff;
