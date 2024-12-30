@@ -131,37 +131,7 @@ dom_rng_gamma.oninput = () => {
     dom_txt_curr_gamma.innerText = `${v}`;
 }
 
-dom_btn_start_capture.onclick = () => {
-    capturing_active = true;
-    dom_btn_start_capture.disabled = true;
-    dom_btn_end_capture.disabled = false;
-    const constraints = {
-        video: {},
-        audio: false,
-        optional: [
-            {
-                maxFrameRate: frame_rate,
-                minFrameRate: frame_rate,
-            }
-        ]
-    };
-    capture = createCapture(constraints, function(stream) {
-        const track = stream.getVideoTracks()[0];
-        const settings = track.getSettings();
-        movie_width = settings.width;
-        movie_height = settings.height;
-        
-        // Resize the canvas to match the capture dimensions
-        resizeCanvas(movie_width, movie_height);
-        
-        // Update any UI elements that depend on canvas size
-        updateUIForNewDimensions();
-        
-        capture.size(movie_width, movie_height);
-        capture.hide(); // Hide the default video element
-    });
-    dom_btn_start_record.disabled = false;
-};
+dom_btn_start_capture.onclick = startCapture;
 
 dom_btn_end_capture.onclick = () => {
     capturing_active = false;
@@ -373,6 +343,39 @@ function setup() {
     stroke(255); // Set line drawing color to white
     frameRate(frame_rate);
     initWorkers();
+    startCapture();
+}
+
+function startCapture() {
+    capturing_active = true;
+    dom_btn_start_capture.disabled = true;
+    dom_btn_end_capture.disabled = false;
+    const constraints = {
+        video: {},
+        audio: false,
+        optional: [
+            {
+                maxFrameRate: frame_rate,
+                minFrameRate: frame_rate,
+            }
+        ]
+    };
+    capture = createCapture(constraints, function(stream) {
+        const track = stream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        movie_width = settings.width;
+        movie_height = settings.height;
+        
+        // Resize the canvas to match the capture dimensions
+        resizeCanvas(movie_width, movie_height);
+        
+        // Update any UI elements that depend on canvas size
+        updateUIForNewDimensions();
+        
+        capture.size(movie_width, movie_height);
+        capture.hide(); // Hide the default video element
+    });
+    dom_btn_start_record.disabled = false;
 }
 
 function updateUIForNewDimensions() {
