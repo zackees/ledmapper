@@ -32,15 +32,23 @@ dom_slider_rotate.oninput = () => {
 };
 
 // Synchronize zoom input and slider
-dom_txt_zoom.oninput = () => {
-    let value = parseFloat(dom_txt_zoom.value);
+function updateZoom(value) {
+    value = parseFloat(value);
     value = isNaN(value) ? 1 : Math.max(1, Math.min(5, value));
-    dom_txt_zoom.value = value.toFixed(1);
+    dom_txt_zoom.value = value.toFixed(2);
     dom_slider_zoom.value = value;
+}
+
+dom_txt_zoom.oninput = () => {
+    updateZoom(dom_txt_zoom.value);
+};
+
+dom_txt_zoom.onchange = () => {
+    updateZoom(dom_txt_zoom.value);
 };
 
 dom_slider_zoom.oninput = () => {
-    dom_txt_zoom.value = parseFloat(dom_slider_zoom.value).toFixed(1);
+    updateZoom(dom_slider_zoom.value);
 };
 
 const circle_diameter = 8;
