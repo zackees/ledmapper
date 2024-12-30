@@ -135,6 +135,25 @@ input[type="file"]::-webkit-file-upload-button:hover {
     background-color: #1976d2;
 }
 
+select {
+    background-color: #333;
+    color: #ffffff;
+    border: 1px solid #555;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    cursor: pointer;
+}
+
+select:hover {
+    background-color: #444;
+}
+
+select:focus {
+    outline: none;
+    border-color: #2196f3;
+}
+
 .slider-container {
     display: flex;
     align-items: center;

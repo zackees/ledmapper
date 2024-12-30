@@ -15,6 +15,7 @@ const dom_chk_show_status = document.getElementById("chk_show_status");
 const dom_rng_zoom = document.getElementById("rng_zoom");
 const dom_txt_curr_zoom = document.getElementById("txt_curr_zoom");
 const dom_btn_how_to = document.getElementById("btn_how_to");
+const dom_sel_resolution = document.getElementById("sel_resolution");
 
 // We try and capture at 30 fps.
 const FRAME_TIME_US = 30 * 1000;
@@ -347,12 +348,18 @@ function setup() {
     startCapture();
 }
 
+function parseResolution(resStr) {
+    const [width, height] = resStr.split('x').map(num => parseInt(num));
+    return { width, height };
+}
+
 function startCapture() {
     capturing_active = true;
+    const resolution = parseResolution(dom_sel_resolution.value);
     const constraints = {
         video: {
-            width: 640,
-            height: 480
+            width: resolution.width,
+            height: resolution.height
         },
         audio: false,
         optional: [
@@ -379,6 +386,13 @@ function startCapture() {
     });
     updateElementStates();
 }
+
+dom_sel_resolution.onchange = () => {
+    if (capture) {
+        capture.remove();
+    }
+    startCapture();
+};
 
 function updateUIForNewDimensions() {
     // Update any UI elements that depend on canvas size
