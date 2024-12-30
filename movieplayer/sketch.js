@@ -2,12 +2,23 @@
 const dom_btn_upload_shape = document.getElementById("btn_upload_shape");
 const dom_btn_load_movie = document.getElementById("btn_load_movie");
 const dom_btn_play = document.getElementById("btn_play");
+const dom_rng_diameter = document.getElementById("rng_diameter");
+const dom_txt_curr_diameter = document.getElementById("txt_curr_diameter");
 
 dom_btn_load_movie.disabled = true;
 dom_btn_play.disabled = true;
 
-
 let canvas;
+let ledDiameter = 6;
+
+// Function to update LED diameter
+function updateDiameter() {
+    ledDiameter = parseInt(dom_rng_diameter.value);
+    dom_txt_curr_diameter.innerText = ledDiameter;
+}
+
+// Add event listener for diameter slider
+dom_rng_diameter.addEventListener('input', updateDiameter);
 let shape_pts = [];
 let movie_frames = [];
 let playing = false;
@@ -114,7 +125,7 @@ function draw() {
       }
       fill(c);
       const [x, y] = scaled_pts[i];
-      circle(x, y, 4);
+      circle(x, y, ledDiameter);
   }
   pop();
 }

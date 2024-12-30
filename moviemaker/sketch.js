@@ -200,7 +200,7 @@ dom_btn_end_record.onclick = () => {
             flat_uint8_array[i++] = val;
         });
     });
-    download_binary_as_file(flat_uint8_array, `video${video_download_index}.dat`);
+    download_binary_as_file(flat_uint8_array, `video${video_download_index}.rgb`);
     video_download_index++;
     gColorFrames = [];
 }
