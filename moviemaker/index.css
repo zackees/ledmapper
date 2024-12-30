@@ -66,6 +66,12 @@ a:hover {
     gap: 20px;
 }
 
+.bottom-controls {
+    margin-top: 20px;
+    display: flex;
+    justify-content: flex-end;
+}
+
 .control-group {
     flex: 1 1 300px;
     display: flex;
