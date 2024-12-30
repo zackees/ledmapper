@@ -220,29 +220,36 @@ dom_chk_show_status.onchange = (evt) => {
 }
 
 function transform_to_center2(shape_pts) {
-    // now format so that the entire thing is contained in the
-    // canvas.
     let out = [];
     shape_pts.forEach(([x,y]) => { out.push([x,y]); });
-    const first_pt = out[0];
-    let xmin = first_pt[0];
-    let ymin = first_pt[1];
-    let xavg = 0;
-    let yavg = 0;
+    
+    // Find bounding box
+    let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
     out.forEach(([x, y]) => {
-        xavg += x;
-        yavg += y;
-        if (x < xmin) { xmin = x; }
-        if (y < ymin) { ymin = y; }
+        xmin = Math.min(xmin, x);
+        xmax = Math.max(xmax, x);
+        ymin = Math.min(ymin, y);
+        ymax = Math.max(ymax, y);
     });
-    xavg /= shape_pts.length;
-    yavg /= shape_pts.length;
+    
+    // Calculate center and dimensions
+    let xcenter = (xmin + xmax) / 2;
+    let ycenter = (ymin + ymax) / 2;
+    let width = xmax - xmin;
+    let height = ymax - ymin;
+    
+    // Calculate scaling factor
+    const margin = 20; // Margin in pixels
+    let scaleX = (movie_width - 2 * margin) / width;
+    let scaleY = (movie_height - 2 * margin) / height;
+    let scale = Math.min(scaleX, scaleY);
+    
+    // Apply transformation
     out.forEach((pt) => {
-        // Add small offset so that the first point is near the
-        // edge but not cut off down the middle.
-        pt[0] = pt[0] - xavg;
-        pt[1] = pt[1] - yavg;
+        pt[0] = (pt[0] - xcenter) * scale;
+        pt[1] = (pt[1] - ycenter) * scale;
     });
+    
     return out;
 }
 
