@@ -14,15 +14,23 @@ function parse_shape_data_csv(text) {
 }
 
 function parse_shape_data_json(jsonBlob) {
-    let out = [];
-    let map = jsonBlob["map"];
-    let strip1 = map["strip1"];
-    let x = strip1["x"];
-    let y = strip1["y"];
-    for (let i = 0; i < x.length; ++i) {
-        out.push([x[i], y[i]]);
+    if (typeof jsonBlob === "string")
+        jsonBlob = JSON.parse(jsonBlob);
+    try {
+        let out = [];
+        let map = jsonBlob["map"];
+        let strip1 = map["strip1"];
+        let x = strip1["x"];
+        let y = strip1["y"];
+        for (let i = 0; i < x.length; ++i) {
+            out.push([x[i], y[i]]);
+        }
+        return out;
+    } catch (e) {
+        alert("Error parsing JSON: " + e);
+        throw e;
     }
-    return out;
+
 }
 
 function is_json_str(text) {
