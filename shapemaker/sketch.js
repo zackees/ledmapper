@@ -10,10 +10,6 @@ const dom_txt_rotate = document.getElementById("txt_rotate");
 const dom_txt_zoom = document.getElementById("txt_zoom");
 
 
-const dom_txt_x_translate = document.getElementById("txt_x_translate");
-const dom_txt_y_translate = document.getElementById("txt_y_translate");
-//<label for="txt_x_translate">X Translate:</label>
-//<input id="txt_x_translate" type="text" value="0"></input><br>
 
 const circle_diameter = 8;
 
@@ -139,8 +135,6 @@ function windowResized() {
 
 let last_frame_time = time_now();
 function draw() {
-    const y_translate = Number.parseInt(dom_txt_y_translate.value) || 0;
-    const x_translate = Number.parseInt(dom_txt_x_translate.value) || 0;
     dom_btn_download.disabled = !points.length;
     dom_btn_clear.disabled = !points.length;
     dom_btn_delete_last.disabled = !points.length;
@@ -157,7 +151,7 @@ function draw() {
     translate(width / 2, height / 2);
     rotate(radians(r));
     scale(scaleFactor * zoom);
-    translate(-capture_width / 2 + x_translate, -capture_height / 2 + y_translate);
+    translate(-capture_width / 2, -capture_height / 2);
     
     if (img_snapshot) {
         image(img_snapshot, 0, 0, capture_width, capture_height);
