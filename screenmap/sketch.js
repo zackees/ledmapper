@@ -158,7 +158,12 @@ function mouseClicked(event) {
 
 function checkForVideo() {
     if (capture.elt && capture.elt.readyState === 4) {  // 4 means video is ready
-        alert("Camera is ready!");
+        console.log("Video dimensions:", {
+            width: capture.width,
+            height: capture.height,
+            videoWidth: capture.elt.videoWidth,
+            videoHeight: capture.elt.videoHeight
+        });
         clearInterval(videoCheckInterval);  // Stop checking
     }
 }
@@ -167,10 +172,15 @@ function setup_gfx() {
     if (capture) {
         capture.remove();
     }
-    capture = createCapture(VIDEO);
+    const constraints = {
+        video: {
+            width: { ideal: capture_width },
+            height: { ideal: capture_height }
+        }
+    };
+    capture = createCapture(constraints);
     pixelDensity(1);  // Needed for retina displays.
     canvas = createCanvas(windowWidth, windowHeight);
-    capture.size(capture_width, capture_height);
     capture.parent('captureContainer');
     capture.style('width', '100%');
     capture.style('height', '100%');
