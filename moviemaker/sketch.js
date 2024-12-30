@@ -164,7 +164,7 @@ dom_rng_blur_sigma.oninput = () => {
 }
 
 dom_rng_zoom.oninput = () => {
-    const v = parseFloat(dom_rng_zoom.value).toFixed(1);
+    const v = parseFloat(dom_rng_zoom.value).toFixed(2);
     dom_rng_zoom.value = v;
     dom_txt_curr_zoom.innerText = v;
     target_zoom = parseFloat(v);
@@ -322,7 +322,7 @@ function mouseWheel(event) {
         return false;
     }
     target_zoom -= event.delta / 10000;  // Typical scroll amount is 200.
-    target_zoom = Math.max(Math.min(target_zoom, 30), 0.1);
+    target_zoom = Math.max(Math.min(target_zoom, 3), 0.01);
     dom_rng_zoom.value = target_zoom.toFixed(1);
     dom_txt_curr_zoom.innerText = target_zoom.toFixed(1);
     return false;
