@@ -3,95 +3,111 @@
 body {
     font-family: 'Roboto', sans-serif;
     line-height: 1.6;
-    color: #b0b0b0;
+    color: #e0e0e0;
     margin: 0;
     padding: 0;
-    background-color: #1a1a1a;
+    background-color: #121212;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
 }
 
 h1, h2, h3, h4, h5, h6 {
-    color: #d0d0d0;
+    color: #ffffff;
 }
 
 a {
-    color: #b0b0b0;
+    color: #64b5f6;
     text-decoration: none;
     transition: color 0.3s ease;
 }
 
 a:hover {
+    color: #90caf9;
+}
+
+.sticky {
+    position: sticky;
+    top: 0;
+    background-color: #1e1e1e;
+    border-bottom: 1px solid #333;
+    padding: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    z-index: 1000;
+}
+
+input[type="button"], button, input[type="file"] {
+    background-color: #2196f3;
     color: #ffffff;
-}
-
-body {
-    padding: 5px;
-}
-
-input[type="button"], button {
-    background-color: #2a2a2a;
-    color: #b0b0b0;
     border: none;
-    padding: 3px 8px;
-    margin: 2px;
-    border-radius: 2px;
+    padding: 8px 16px;
+    margin: 5px;
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.3s ease;
     font-size: 0.9em;
 }
 
-input[type="button"]:hover, button:hover {
-    background-color: #333;
-    color: #ffffff;
+input[type="button"]:hover, button:hover, input[type="file"]:hover {
+    background-color: #1976d2;
 }
 
 input[type="button"]:disabled, button:disabled {
-    background-color: #1a1a1a;
-    color: #555;
+    background-color: #555;
+    color: #888;
     cursor: not-allowed;
 }
 
-input[type="number"], input[type="range"] {
-    background-color: #2a2a2a;
-    color: #b0b0b0;
-    border: 1px solid #444;
-    padding: 2px;
-    border-radius: 2px;
-    margin: 1px 0;
+input[type="text"], input[type="number"] {
+    background-color: #333;
+    color: #ffffff;
+    border: 1px solid #555;
+    padding: 8px;
+    border-radius: 4px;
+    margin: 5px 0;
     font-size: 0.9em;
 }
 
 label {
     color: #b0b0b0;
-    margin-right: 3px;
+    margin-right: 10px;
     display: inline-block;
-    width: 40px;
     font-size: 0.9em;
 }
 
 p {
-    margin: 5px 0;
-    font-size: 0.9em;
+    margin: 10px 0;
+    font-size: 1em;
 }
 
-div {
-    margin: 4px 0;
+main {
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+canvas {
+    border: 1px solid #444;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
 }
 
 #controls {
-    position: fixed;
-    top: 5px;
-    left: 5px;
-    z-index: 1000;
-    background-color: rgba(26, 26, 26, 0.8);
-    padding: 5px;
-    border-radius: 3px;
-}
-
-#print {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
     margin-bottom: 20px;
 }
 
-#popup {
-    background-color: rgba(34, 34, 34, 0.9);
-    color: #d0d0d0;
+@media (max-width: 600px) {
+    .sticky {
+        position: static;
+    }
+    
+    input[type="button"], button, input[type="file"] {
+        width: 100%;
+    }
 }

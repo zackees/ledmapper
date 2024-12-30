@@ -4,14 +4,29 @@ const dom_txt_zoom = document.getElementById("txt_zoom");
 
 let canvas;
 let shape_pts = [];
-
+let minX, minY, maxX, maxY;
 
 function load_shape_data(text) {
     shape_pts = parse_shape_data(text);
     if (shape_pts.length == 0) {
         return;
     }
+    calculateBounds();
     shape_pts = transform_to_center_of_canvas(shape_pts, canvas.width, canvas.height);
+}
+
+function calculateBounds() {
+    minX = Infinity;
+    minY = Infinity;
+    maxX = -Infinity;
+    maxY = -Infinity;
+    
+    shape_pts.forEach(([x, y]) => {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+    });
 }
 
 dom_btn_upload_shape.onchange = (evt) => {
@@ -21,51 +36,80 @@ dom_btn_upload_shape.onchange = (evt) => {
     reader.readAsText(file);
 };
 
-// The statements in the setup() function
-// execute once when the program begins
 function setup() {
-  // createCanvas must be the first statement
-  canvas = createCanvas(1000, 1000);
-  stroke(255); // Set line drawing color to white
-  frameRate(60);
+    canvas = createCanvas(windowWidth * 0.9, windowHeight * 0.8);
+    canvas.parent('main');
+    strokeWeight(2);
+    frameRate(60);
 }
-// The statements in draw() are executed until the
-// program is stopped. Each statement is executed in
-// sequence and after the last line is read, the first
-// line is executed again.
+
 function draw() {
-  background(0); // Set the background to black
+    background(18, 18, 18);
 
-  if (shape_pts.length == 0) {
-      return;
-  }
+    if (shape_pts.length == 0) {
+        fill(255);
+        textAlign(CENTER, CENTER);
+        textSize(24);
+        text("Upload a shape file to begin", width / 2, height / 2);
+        return;
+    }
 
-  const zoom = Number.parseFloat(dom_txt_zoom.value) || 1.;
-  let scaled_pts = [];
-  shape_pts.forEach(([x,y]) => { scaled_pts.push([x*zoom, y*zoom]); });
+    const zoom = Number.parseFloat(dom_txt_zoom.value) || 1;
+    let scaled_pts = [];
+    shape_pts.forEach(([x,y]) => { scaled_pts.push([x*zoom, y*zoom]); });
 
-  push();
-  fill(color('red'));
-  stroke(color('white'));
-  for (let i = 1; i < scaled_pts.length; ++i) {
-    const [x0, y0] = scaled_pts[i-1];
-    const [x1, y1] = scaled_pts[i];
-    line(x0, y0, x1, y1);
-  }
+    push();
+    translate(width / 2, height / 2);
+    
+    // Draw grid
+    stroke(50);
+    strokeWeight(0.5);
+    for (let x = -width; x < width; x += 50) {
+        line(x, -height, x, height);
+    }
+    for (let y = -height; y < height; y += 50) {
+        line(-width, y, width, y);
+    }
+    
+    // Draw shape
+    noFill();
+    stroke(33, 150, 243);
+    beginShape();
+    scaled_pts.forEach(([x, y]) => {
+        vertex(x, y);
+    });
+    endShape(CLOSE);
 
-  for (let i = 0; i < scaled_pts.length; ++i) {
-      let r = 4;
-      if (i === 0) {
-          fill(color("green"));
-          r = 8;
-      } else {
-          fill(color("red"));
-      }
-      const [x, y] = scaled_pts[i];
-      circle(x, y, r);
-  }
-  fill(color("white"));
-  noStroke();
-  text('Start', scaled_pts[0][0] + 10, scaled_pts[0][1]);
-  pop();
+    // Draw points
+    for (let i = 0; i < scaled_pts.length; ++i) {
+        let r = 6;
+        if (i === 0) {
+            fill(76, 175, 80);
+            r = 10;
+        } else {
+            fill(244, 67, 54);
+        }
+        const [x, y] = scaled_pts[i];
+        circle(x, y, r);
+    }
+    
+    // Draw labels
+    fill(255);
+    noStroke();
+    textAlign(LEFT, CENTER);
+    textSize(14);
+    text('Start', scaled_pts[0][0] + 15, scaled_pts[0][1]);
+    
+    pop();
+    
+    // Draw info
+    fill(255);
+    textAlign(LEFT, TOP);
+    textSize(14);
+    text(`Points: ${shape_pts.length}`, 10, 10);
+    text(`Bounds: (${minX.toFixed(2)}, ${minY.toFixed(2)}) to (${maxX.toFixed(2)}, ${maxY.toFixed(2)})`, 10, 30);
+}
+
+function windowResized() {
+    resizeCanvas(windowWidth * 0.9, windowHeight * 0.8);
 }
