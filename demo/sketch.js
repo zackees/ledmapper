@@ -1,5 +1,5 @@
 
-const dom_btn_upload_shape = document.getElementById("btn_upload_shape");
+// Removed upload shape button
 const dom_btn_load_movie = document.getElementById("btn_load_movie");
 const dom_btn_play = document.getElementById("btn_play");
 const dom_rng_diameter = document.getElementById("rng_diameter");
@@ -33,21 +33,21 @@ function load_shape_data(jsonBlob) {
     shape_pts = transform_to_center_of_canvas(shape_pts, canvas.width, canvas.height);
 }
 
-dom_btn_upload_shape.onchange = (evt) => {
-    set_dom_btn_play(false);
-    const file = dom_btn_upload_shape.files[0];
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-        try {
-            const jsonBlob = JSON.parse(evt.target.result);
+// Function to fetch and load the JSON file
+function fetchAndLoadJSON() {
+    fetch('/demo/screenmap.json')
+        .then(response => response.json())
+        .then(jsonBlob => {
             load_shape_data(jsonBlob);
-        } catch (error) {
-            console.error("Error parsing JSON:", error);
-            alert("Invalid JSON file. Please upload a valid JSON blob.");
-        }
-    };
-    reader.readAsText(file);
-};
+        })
+        .catch(error => {
+            console.error("Error loading JSON:", error);
+            alert("Error loading screenmap.json. Please check the file path and try again.");
+        });
+}
+
+// Call the function when the page loads
+window.onload = fetchAndLoadJSON;
 
 function set_dom_btn_play(on) {
     playing = on;
