@@ -1,7 +1,7 @@
 let capture;
 let canvas;
 let videoCheckInterval;
-const capture_width = 640;
+const capture_width = 480;
 const capture_height = 480;
 const dom_btn_snapshot = document.getElementById("btn_snapshot");
 const dom_btn_clear = document.getElementById("btn_clear");

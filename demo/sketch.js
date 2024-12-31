@@ -63,7 +63,7 @@ function fetchAndLoadJSON() {
 
 async function fetchAndLoadVideo() {
     try {
-        const response = await fetch('color_line_bubbles.rgb');
+        const response = await fetch('video.rgb');
         if (!response.ok) throw new Error('Network response was not ok');
         if (!response.body) throw new Error('ReadableStream not supported');
 
@@ -71,7 +71,7 @@ async function fetchAndLoadVideo() {
         streamVideoData();
     } catch (error) {
         console.error("Error loading video:", error);
-        alert("Error loading color_line_bubbles.rgb. Please check the file path and try again.");
+        alert("Error loading video.rgb. Please check the file path and try again.");
     }
 }
 
