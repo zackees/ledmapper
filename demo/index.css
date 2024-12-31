@@ -178,3 +178,14 @@ canvas {
         width: 100%;
     }
 }
+
+input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 5px;
+    cursor: pointer;
+}
+
+input[type="checkbox"]:checked {
+    accent-color: #2196f3;
+}
