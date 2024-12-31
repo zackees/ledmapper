@@ -282,13 +282,7 @@ function draw() {
             }
         }
         
-        // Connect last point to first point
-        const [firstX, firstY] = scaled_pts[0];
-        const [lastX, lastY] = scaled_pts[scaled_pts.length - 1];
-        const finalHue = (120 + scaled_pts.length * 2) % 360;
-        stroke(color(`hsl(${finalHue}, 100%, 50%)`));
-        line(lastX, lastY, firstX, firstY);
-        
+
         // Add "Start LED" text near the first LED with thick black outline
         const [startX, startY] = scaled_pts[0];
         textSize(12);
