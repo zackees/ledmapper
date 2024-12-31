@@ -205,7 +205,18 @@ function draw() {
   let scaled_pts = [];
   shape_pts.forEach(([x,y]) => { scaled_pts.push([x*zoom, y*zoom]); });
   push();
-  stroke(color('white'));
+  // Draw connecting lines - increase brightness to make them more visible
+  stroke(color(100, 100, 100)); // Brighter gray color
+  strokeWeight(2); // Thicker lines for better visibility
+  for (let i = 0; i < scaled_pts.length - 1; i++) {
+    const [x1, y1] = scaled_pts[i];
+    const [x2, y2] = scaled_pts[i + 1];
+    line(x1, y1, x2, y2);
+  }
+  // Connect last point to first point to close the shape
+  const [firstX, firstY] = scaled_pts[0];
+  const [lastX, lastY] = scaled_pts[scaled_pts.length - 1];
+  line(lastX, lastY, firstX, firstY);
   if (movie_frames.length && playing) {
     if (curr_frame_idx >= movie_frames.length) {
         curr_frame_idx = 0;
@@ -221,7 +232,7 @@ function draw() {
         const g = curr_frame[i*3+1];
         const b = curr_frame[i*3+2];
         c = color(r ,g, b, 255);
-        noStroke();
+        noStroke();  // Move this inside the if statement so it only affects colored LEDs
       }
       fill(c);
       const [x, y] = scaled_pts[i];
