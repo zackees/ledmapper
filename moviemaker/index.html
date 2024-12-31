@@ -15,14 +15,6 @@
                     <label for="btn_upload_shape">Upload Screenmap.json (*.json):</label>
                     <input type="file" id="btn_upload_shape" accept=".csv,.json">
                 </div>
-                <div class="control-group">
-                    <label for="sel_resolution">Capture Resolution:</label>
-                    <select id="sel_resolution">
-                        <option value="640x480">640x480</option>
-                        <option value="1280x720">1280x720</option>
-                        <option value="1080x1920">1080x1920 (Portrait)</option>
-                    </select>
-                </div>
             </div>
             <div class="right-section">
                 <button id="btn_how_to">👉 Readme</button>
@@ -39,6 +31,14 @@
                 </ul>
             </div>
             <div class="control-group">
+                <div class="slider-container">
+                    <label for="sel_resolution">Capture Resolution:</label>
+                    <select id="sel_resolution">
+                        <option value="640x480">640x480</option>
+                        <option value="1280x720">1280x720</option>
+                        <option value="1080x1920">1080x1920 (Portrait)</option>
+                    </select>
+                </div>
                 <div class="slider-container">
                     <label for="rng_rotation">Rotation:</label>
                     <input type="range" min="-180" max="180" value="0" class="slider" id="rng_rotation">
