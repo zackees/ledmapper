@@ -235,6 +235,9 @@ function draw() {
             if (i === 0 || i === 1) {
                 fill(0, 255, 0, i === 0 ? 255 : 128); // Green for first LED
                 circle(x, y, i == 0 ? 8 : 6); // Small 4-pixel radius dot
+            } else if (i === scaled_pts.length - 1) {
+                fill(255, 0, 0, 255); // Red for last LED
+                circle(x, y, 8); // Same size as start LED
             } else {
                 fill(255, 255, 255, 128); // Semi-transparent white
                 circle(x, y, 4); // Small 4-pixel radius dot
@@ -319,6 +322,37 @@ function draw() {
         // Draw white text on top
         fill(255); // White text
         text("Start LED", startX + 4, startY);
+
+        // Add "End LED" text near the last LED with thick black outline
+        const [endX, endY] = scaled_pts[scaled_pts.length - 1];
+        textSize(12);
+        textAlign(LEFT, CENTER);
+        
+        // Draw thick black outline
+        noStroke();
+        fill(0); // Black
+        // Outer ring
+        for (let i = 0; i < 360; i += 45) {
+            const dx = cos(i) * 2;
+            const dy = sin(i) * 2;
+            text("End LED", endX + 4 + dx, endY + dy);
+        }
+        // Middle ring
+        for (let i = 0; i < 360; i += 45) {
+            const dx = cos(i) * 1.5;
+            const dy = sin(i) * 1.5;
+            text("End LED", endX + 4 + dx, endY + dy);
+        }
+        // Inner ring
+        for (let i = 0; i < 360; i += 45) {
+            const dx = cos(i);
+            const dy = sin(i);
+            text("End LED", endX + 4 + dx, endY + dy);
+        }
+        
+        // Draw white text on top
+        fill(255); // White text
+        text("End LED", endX + 4, endY);
     }
 
 
