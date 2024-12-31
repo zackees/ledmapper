@@ -78,8 +78,8 @@ async function fetchAndLoadVideo() {
 async function streamVideoData() {
     try {
         while (true) {
-            const {done, value} = await videoReader.read();
-            
+            const { done, value } = await videoReader.read();
+
             if (done) {
                 console.log("Finished streaming video data");
                 break;
@@ -94,11 +94,11 @@ async function streamVideoData() {
             // Process complete frames from buffer
             const frameSize = shape_pts.length * 3;
             const completeFrames = Math.floor(videoBuffer.length / frameSize);
-            
+
             if (completeFrames > 0) {
                 const frameData = videoBuffer.slice(0, completeFrames * frameSize);
                 processNewFrames(frameData);
-                
+
                 // Keep remaining incomplete frame data in buffer
                 videoBuffer = videoBuffer.slice(completeFrames * frameSize);
             }
@@ -111,7 +111,7 @@ async function streamVideoData() {
 function processNewFrames(frameData) {
     const frameSize = shape_pts.length * 3;
     const numNewFrames = frameData.length / frameSize;
-    
+
     for (let i = 0; i < numNewFrames; i++) {
         const start = i * frameSize;
         const end = start + frameSize;
@@ -158,7 +158,7 @@ dom_btn_download_screenmap.onclick = () => {
             }
         }
     };
-    const blob = new Blob([JSON.stringify(screenmap, null, 2)], {type: 'application/json'});
+    const blob = new Blob([JSON.stringify(screenmap, null, 2)], { type: 'application/json' });
     download_blob_as_file(blob, 'screenmap.json');
 };
 
@@ -175,7 +175,7 @@ dom_btn_download_video.onclick = () => {
         videoData.set(frame, offset);
         offset += frame.length;
     });
-    const blob = new Blob([videoData], {type: 'application/octet-stream'});
+    const blob = new Blob([videoData], { type: 'application/octet-stream' });
     download_blob_as_file(blob, 'video.rgb');
 };
 
@@ -185,10 +185,10 @@ dom_btn_download_video.onclick = () => {
 // The statements in the setup() function
 // execute once when the program begins
 function setup() {
-  // createCanvas must be the first statement
-  canvas = createCanvas(800, 800);
-  stroke(255); // Set line drawing color to white
-  frameRate(parseInt(dom_sel_framerate.value));
+    // createCanvas must be the first statement
+    canvas = createCanvas(800, 800);
+    stroke(255); // Set line drawing color to white
+    frameRate(parseInt(dom_sel_framerate.value));
 }
 // The statements in draw() are executed until the
 // program is stopped. Each statement is executed in
@@ -197,58 +197,74 @@ function setup() {
 let curr_frame_idx = 0;
 let curr_frame;
 function draw() {
-  background(0); // Set the background to black
-  if (shape_pts.length == 0) {
-      return;
-  }
-  const zoom = 1.0;
-  let scaled_pts = [];
-  shape_pts.forEach(([x,y]) => { scaled_pts.push([x*zoom, y*zoom]); });
-  push();
-
-  // Draw the LED points first
-  if (movie_frames.length && playing) {
-    if (curr_frame_idx >= movie_frames.length) {
-        curr_frame_idx = 0;
-      }
-      curr_frame = movie_frames[curr_frame_idx++];
-  } else {
-    curr_frame = null;
-  }
-  for (let i = 0; i < scaled_pts.length; ++i) {
-      // Draw the LED color/animation
-      let c = color(255, 255, 255, 0);
-      if (curr_frame) {
-        const r = curr_frame[i*3+0];
-        const g = curr_frame[i*3+1];
-        const b = curr_frame[i*3+2];
-        c = color(r ,g, b, 255);
-        noStroke();
-      }
-      fill(c);
-      const [x, y] = scaled_pts[i];
-      circle(x, y, ledDiameter);
-      
-      // Draw small white dot at center of each LED
-      noStroke();
-      fill(255, 255, 255, 128); // Semi-transparent white
-      circle(x, y, 4); // Small 4-pixel radius dot
-  }
-
-  // Only draw lines if checkbox is checked
-  if (dom_chk_show_lines.checked) {
-    stroke(color(100, 100, 100)); // Brighter gray color
-    strokeWeight(2); // Thicker lines for better visibility
-    for (let i = 0; i < scaled_pts.length - 1; i++) {
-      const [x1, y1] = scaled_pts[i];
-      const [x2, y2] = scaled_pts[i + 1];
-      line(x1, y1, x2, y2);
+    background(0); // Set the background to black
+    if (shape_pts.length == 0) {
+        return;
     }
-    // Connect last point to first point to close the shape
-    const [firstX, firstY] = scaled_pts[0];
-    const [lastX, lastY] = scaled_pts[scaled_pts.length - 1];
-    line(lastX, lastY, firstX, firstY);
-  }
-  
-  pop();
+    const zoom = 1.0;
+    let scaled_pts = [];
+    shape_pts.forEach(([x, y]) => { scaled_pts.push([x * zoom, y * zoom]); });
+    push();
+
+    // Draw the LED points first
+    if (movie_frames.length && playing) {
+        if (curr_frame_idx >= movie_frames.length) {
+            curr_frame_idx = 0;
+        }
+        curr_frame = movie_frames[curr_frame_idx++];
+    } else {
+        curr_frame = null;
+    }
+    for (let i = 0; i < scaled_pts.length; ++i) {
+        // Draw the LED color/animation
+        let c = color(255, 255, 255, 0);
+        if (curr_frame) {
+            const r = curr_frame[i * 3 + 0];
+            const g = curr_frame[i * 3 + 1];
+            const b = curr_frame[i * 3 + 2];
+            c = color(r, g, b, 255);
+            noStroke();
+        }
+        fill(c);
+        const [x, y] = scaled_pts[i];
+        circle(x, y, ledDiameter);
+
+        // Draw small dot at center of each LED
+        if (dom_chk_show_lines.checked) {
+            noStroke();
+            if (i === 0 || i === 1) {
+                fill(0, 255, 0, i === 0 ? 255 : 128); // Green for first LED
+                circle(x, y, 8); // Small 4-pixel radius dot
+            } else {
+                fill(255, 255, 255, 128); // Semi-transparent white
+                circle(x, y, 4); // Small 4-pixel radius dot
+            }
+        }
+    }
+
+    // Only draw lines if checkbox is checked
+    if (dom_chk_show_lines.checked) {
+        stroke(color(100, 100, 100)); // Brighter gray color
+        strokeWeight(2); // Thicker lines for better visibility
+        for (let i = 0; i < scaled_pts.length - 1; i++) {
+            const [x1, y1] = scaled_pts[i];
+            const [x2, y2] = scaled_pts[i + 1];
+            line(x1, y1, x2, y2);
+        }
+        // Connect last point to first point to close the shape
+        const [firstX, firstY] = scaled_pts[0];
+        const [lastX, lastY] = scaled_pts[scaled_pts.length - 1];
+        line(lastX, lastY, firstX, firstY);
+
+        // Add "Start LED" text near the first LED
+        const [startX, startY] = scaled_pts[0];
+        noStroke();
+        fill(255); // White text
+        textSize(16);
+        textAlign(LEFT, CENTER);
+        text("Start LED", startX + ledDiameter + 5, startY); // Position text 5 pixels to the right of the LED
+    }
+
+
+    pop();
 }
