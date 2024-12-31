@@ -5,6 +5,7 @@ const dom_rng_diameter = document.getElementById("rng_diameter");
 const dom_txt_curr_diameter = document.getElementById("txt_curr_diameter");
 const dom_btn_download_screenmap = document.getElementById("btn_download_screenmap");
 const dom_btn_download_video = document.getElementById("btn_download_video");
+const dom_sel_framerate = document.getElementById("sel_framerate");
 
 dom_btn_play.disabled = true;
 
@@ -78,6 +79,11 @@ dom_btn_play.onclick = (evt) => {
     set_dom_btn_play(!playing);
 };
 
+dom_sel_framerate.onchange = () => {
+    const fps = parseInt(dom_sel_framerate.value);
+    frameRate(fps);
+};
+
 dom_btn_download_screenmap.onclick = () => {
     if (!shape_pts || shape_pts.length === 0) {
         alert("No shape data available to download!");
@@ -146,7 +152,7 @@ function setup() {
   // createCanvas must be the first statement
   canvas = createCanvas(1000, 1000);
   stroke(255); // Set line drawing color to white
-  frameRate(30);
+  frameRate(parseInt(dom_sel_framerate.value));
 }
 // The statements in draw() are executed until the
 // program is stopped. Each statement is executed in
