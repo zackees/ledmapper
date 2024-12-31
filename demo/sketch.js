@@ -244,8 +244,6 @@ function draw() {
         }
     }
 
-    let counter = 0;
-
     // Only draw lines if checkbox is checked
     if (dom_chk_show_lines.checked) {
         strokeWeight(2); // Thicker lines for better visibility
@@ -262,7 +260,7 @@ function draw() {
         }
         
         for (let i = 0; i < scaled_pts.length - 1; i++) {
-            const doDrawArray = i % 10 === 1;
+            const doDrawArray = i % 10 === 1 || i === scaled_pts.length - 2;
             const [x1, y1] = scaled_pts[i];
             const [x2, y2] = scaled_pts[i + 1];
             
