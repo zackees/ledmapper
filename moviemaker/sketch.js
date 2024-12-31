@@ -213,7 +213,7 @@ document.onkeyup = (evt) => {
     }
 };
 
-let show_render_status = true;
+let show_render_status = false;
 
 dom_chk_show_status.onchange = (evt) => {
     const checked = dom_chk_show_status.checked;
