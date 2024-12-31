@@ -12,7 +12,7 @@
 <body>
     <div class="controls">
         <h1>Demo</h1>
-        <p>See Fastled/examples/FxSdCard/data/ for video.rgb and screenmap.json examples</p>
+        <p>This demo uses a 4x serpentine matrix to display mapped video</p>
         
         <!-- Hidden file inputs -->
         <div style="display: none;">
@@ -22,18 +22,17 @@
 
         <!-- New flex container for the three sections -->
         <div class="controls-container">
-            <!-- Left section - Play/Pause -->
+            <!-- Left section - Play/Pause and Show Lines -->
             <div class="control-section">
                 <input type="button" id="btn_play" value="Play">
+                <div class="slider-container">
+                    <label for="chk_show_lines">Show LED Connections:</label>
+                    <input type="checkbox" id="chk_show_lines">
+                </div>
             </div>
 
             <!-- Middle section - Sliders -->
             <div class="control-section">
-                <div class="slider-container">
-                    <label for="rng_diameter">LED Diameter:</label>
-                    <input type="range" min="1" max="20" value="6" step="1" class="slider" id="rng_diameter">
-                    <span id="txt_curr_diameter">6</span>
-                </div>
                 <div class="slider-container">
                     <label for="sel_framerate">Frame Rate:</label>
                     <select id="sel_framerate">
@@ -47,8 +46,9 @@
                     </select>
                 </div>
                 <div class="slider-container">
-                    <label for="chk_show_lines">Show Leds Connections:</label>
-                    <input type="checkbox" id="chk_show_lines">
+                    <label for="rng_diameter">LED Diameter:</label>
+                    <input type="range" min="1" max="20" value="6" step="1" class="slider" id="rng_diameter">
+                    <span id="txt_curr_diameter">6</span>
                 </div>
             </div>
 

@@ -228,10 +228,9 @@ function draw() {
         fill(c);
         const [x, y] = scaled_pts[i];
         circle(x, y, ledDiameter);
-
+        noStroke();
         // Draw small dot at center of each LED
         if (dom_chk_show_lines.checked) {
-            noStroke();
             if (i === 0 || i === 1) {
                 fill(0, 255, 0, i === 0 ? 255 : 128); // Green for first LED
                 circle(x, y, i == 0 ? 8 : 6); // Small 4-pixel radius dot
