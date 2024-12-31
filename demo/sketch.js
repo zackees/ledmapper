@@ -260,9 +260,9 @@ function draw() {
         const [startX, startY] = scaled_pts[0];
         noStroke();
         fill(255); // White text
-        textSize(16);
+        textSize(12);
         textAlign(LEFT, CENTER);
-        text("Start LED", startX + ledDiameter + 5, startY); // Position text 5 pixels to the right of the LED
+        text("Start LED", startX + 4, startY); // Position text 5 pixels to the right of the LED
     }
 
 
