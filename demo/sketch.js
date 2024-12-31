@@ -150,7 +150,7 @@ function load_movie_data(array_buffer) {
 // execute once when the program begins
 function setup() {
   // createCanvas must be the first statement
-  canvas = createCanvas(1000, 1000);
+  canvas = createCanvas(800, 800);
   stroke(255); // Set line drawing color to white
   frameRate(parseInt(dom_sel_framerate.value));
 }
