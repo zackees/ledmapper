@@ -660,7 +660,7 @@ function draw() {
         circle(x, y, led_size);
     });
 
-    if (show_render_status && gLastProcessedFrame) {
+    if (gLastProcessedFrame && (!recording_active || show_render_status)) {
         const pts = gLastProcessedFrame.pts;
         const rgbPts = gLastProcessedFrame.rgbPts;
         draw_output_pixels_rect(pts, rgbPts);
