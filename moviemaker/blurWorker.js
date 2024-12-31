@@ -13,6 +13,7 @@ function blur(context) {
     const pts = context.pts;
     gGaussianBlur.set(context.blurRadius, context.blurSigma);
     const frameId = context.frameId;
+    // NOTE: averageBrightness is misnamed, it is actually the sum of the brightnesses.
     const [rgbPts, averageBrightness] = processPixels(
         pixels,
         gammaVal,
