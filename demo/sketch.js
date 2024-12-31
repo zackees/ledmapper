@@ -179,6 +179,26 @@ dom_btn_download_video.onclick = () => {
     download_blob_as_file(blob, 'video.rgb');
 };
 
+const dom_btn_download_screenmap_16x16_serpentine = document.getElementById("btn_download_screenmap_16x16_serpentine");
+
+dom_btn_download_screenmap_16x16_serpentine.onclick = () => {
+    fetch('16x16_serpentine.json')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(jsonData => {
+            const blob = new Blob([JSON.stringify(jsonData, null)], { type: 'application/json' });
+            download_blob_as_file(blob, '16x16_serpentine.json');
+        })
+        .catch(error => {
+            console.error("Error loading 16x16 serpentine JSON:", error);
+            alert("Error loading 16x16_serpentine.json. Please check the file path and try again.");
+        });
+};
+
 
 // Removed dom_btn_load_movie.onchange event listener
 
