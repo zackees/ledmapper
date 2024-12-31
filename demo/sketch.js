@@ -246,9 +246,7 @@ function draw() {
 
     // Only draw lines if checkbox is checked
     if (dom_chk_show_lines.checked) {
-        stroke(color(100, 100, 100)); // Brighter gray color
         strokeWeight(2); // Thicker lines for better visibility
-
 
         // Function to draw an arrow at a point
         function drawArrow(x, y, angle) {
@@ -262,53 +260,34 @@ function draw() {
         }
         
         for (let i = 0; i < scaled_pts.length - 1; i++) {
-            const doDrawArray = counter++ % 3 === 1;
+            const doDrawArray = i % 3 === 1;
             const [x1, y1] = scaled_pts[i];
             const [x2, y2] = scaled_pts[i + 1];
+            
+            // Calculate hue based on position in sequence
+            const hue = (i * 2) % 360;
+            stroke(color(`hsl(${hue}, 100%, 50%)`));
             
             // Draw the main line
             line(x1, y1, x2, y2);
             
-            // Calculate distance and angle
-            const dx = x2 - x1;
-            const dy = y2 - y1;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            const angle = Math.atan2(dy, dx);
-            
-            // Place arrows every 5 units along the line
-            const arrowSpacing = 5;
-            const numArrows = 2;
-            
             if (doDrawArray) {
-                // for (let j = 1; j < numArrows; j++) {
-                //     const t = (j * arrowSpacing) / distance;
-                //     const arrowX = x1 + dx * t;
-                //     const arrowY = y1 + dy * t;
-                //     drawArrow(arrowX, arrowY, angle);
-                // }
-                // just draw one
-                const t = (1 * arrowSpacing) / distance;
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const angle = Math.atan2(dy, dx);
+                const t = 0.2; // Draw arrow 20% along the line
                 const arrowX = x1 + dx * t;
                 const arrowY = y1 + dy * t;
                 drawArrow(arrowX, arrowY, angle);
             }
-
         }
         
-        // Connect last point to first point with arrows
+        // Connect last point to first point
         const [firstX, firstY] = scaled_pts[0];
         const [lastX, lastY] = scaled_pts[scaled_pts.length - 1];
-        
+        const finalHue = (scaled_pts.length * 2) % 360;
+        stroke(color(`hsl(${finalHue}, 100%, 50%)`));
         line(lastX, lastY, firstX, firstY);
-        
-        // Calculate arrows for the closing line
-        const dx = firstX - lastX;
-        const dy = firstY - lastY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx);
-        
-        const arrowSpacing = 5;
-        const numArrows = Math.floor(distance / arrowSpacing);
         
         // Add "Start LED" text near the first LED
         const [startX, startY] = scaled_pts[0];
