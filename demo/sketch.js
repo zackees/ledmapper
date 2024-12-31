@@ -260,12 +260,12 @@ function draw() {
         }
         
         for (let i = 0; i < scaled_pts.length - 1; i++) {
-            const doDrawArray = i % 3 === 1;
+            const doDrawArray = i % 10 === 1;
             const [x1, y1] = scaled_pts[i];
             const [x2, y2] = scaled_pts[i + 1];
             
-            // Calculate hue based on position in sequence
-            const hue = (i * 2) % 360;
+            // Calculate hue based on position in sequence, starting from green (120)
+            const hue = (120 + i * 2) % 360;
             stroke(color(`hsl(${hue}, 100%, 50%)`));
             
             // Draw the main line
@@ -285,7 +285,7 @@ function draw() {
         // Connect last point to first point
         const [firstX, firstY] = scaled_pts[0];
         const [lastX, lastY] = scaled_pts[scaled_pts.length - 1];
-        const finalHue = (scaled_pts.length * 2) % 360;
+        const finalHue = (120 + scaled_pts.length * 2) % 360;
         stroke(color(`hsl(${finalHue}, 100%, 50%)`));
         line(lastX, lastY, firstX, firstY);
         
