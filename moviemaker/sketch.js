@@ -16,9 +16,10 @@ const dom_rng_zoom = document.getElementById("rng_zoom");
 const dom_txt_curr_zoom = document.getElementById("txt_curr_zoom");
 const dom_btn_how_to = document.getElementById("btn_how_to");
 const dom_sel_resolution = document.getElementById("sel_resolution");
+const dom_sel_framerate = document.getElementById("sel_framerate");
 
-// We try and capture at 30 fps.
-const FRAME_TIME_US = 30 * 1000;
+let frame_rate = 30; // default to 30fps
+const FRAME_TIME_US = frame_rate * 1000;
 
 dom_btn_how_to.onclick = () => {
     Swal.fire({
@@ -50,7 +51,6 @@ dom_btn_how_to.onclick = () => {
 // We'll set these variables dynamically when we start the capture
 let movie_width;
 let movie_height;
-const frame_rate = 60;
 
 let blurWorker = null;
 let canvas;
@@ -343,8 +343,8 @@ function setup() {
     pixelDensity(1);  // Needed for retina displays.
     canvas = createCanvas(640, 480); // Default size, will be updated later
     stroke(255); // Set line drawing color to white
-    frameRate(frame_rate);
-    initWorkers();
+    updateFrameRate();
+    initWorkers(); 
     startCapture();
 }
 
@@ -359,15 +359,10 @@ function startCapture() {
     const constraints = {
         video: {
             width: resolution.width,
-            height: resolution.height
+            height: resolution.height,
+            frameRate: frame_rate
         },
-        audio: false,
-        optional: [
-            {
-                maxFrameRate: frame_rate,
-                minFrameRate: frame_rate,
-            }
-        ]
+        audio: false
     };
     capture = createCapture(constraints, function(stream) {
         const track = stream.getVideoTracks()[0];
@@ -387,7 +382,20 @@ function startCapture() {
     updateElementStates();
 }
 
+function updateFrameRate() {
+    frame_rate = parseInt(dom_sel_framerate.value);
+    frameRate(frame_rate);
+}
+
 dom_sel_resolution.onchange = () => {
+    if (capture) {
+        capture.remove();
+    }
+    startCapture();
+};
+
+dom_sel_framerate.onchange = () => {
+    updateFrameRate();
     if (capture) {
         capture.remove();
     }
