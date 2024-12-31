@@ -189,3 +189,14 @@ input[type="checkbox"] {
 input[type="checkbox"]:checked {
     accent-color: #2196f3;
 }
+
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 10px;
+}
+
+.checkbox-container label {
+    margin: 0;
+}
