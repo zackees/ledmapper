@@ -96,7 +96,11 @@ function processPixels(pixels, gamm_val, bri_bias, shape_pts, width, height, gau
             rgbPts.push(r);
             rgbPts.push(g);
             rgbPts.push(b);
-            avg_brightness += r + b + g;
+            const bri = r + b + g;
+            // if not nan
+            if (bri === bri) {
+                avg_brightness += bri;
+            }
         } else {
             rgbPts.push(0);
             rgbPts.push(0);
