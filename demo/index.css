@@ -82,6 +82,35 @@ input[type="file"]::-webkit-file-upload-button:hover {
     background-color: #1976d2;
 }
 
+select {
+    background-color: #333;
+    color: #ffffff;
+    border: 1px solid #555;
+    padding: 8px;
+    border-radius: 4px;
+    margin: 5px 0;
+    font-size: 0.9em;
+    width: 100%;
+    max-width: 200px;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+select:hover {
+    background-color: #444;
+    border-color: #666;
+}
+
+select:focus {
+    outline: none;
+    border-color: #2196f3;
+}
+
+select option {
+    background-color: #333;
+    color: #ffffff;
+}
+
 label {
     color: #b0b0b0;
     margin-right: 10px;
