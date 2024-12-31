@@ -158,7 +158,7 @@ dom_btn_download_screenmap.onclick = () => {
             }
         }
     };
-    const blob = new Blob([JSON.stringify(screenmap, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(screenmap, null)], { type: 'application/json' });
     download_blob_as_file(blob, 'screenmap.json');
 };
 
