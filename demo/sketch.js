@@ -289,13 +289,36 @@ function draw() {
         stroke(color(`hsl(${finalHue}, 100%, 50%)`));
         line(lastX, lastY, firstX, firstY);
         
-        // Add "Start LED" text near the first LED
+        // Add "Start LED" text near the first LED with thick black outline
         const [startX, startY] = scaled_pts[0];
-        noStroke();
-        fill(255); // White text
         textSize(12);
         textAlign(LEFT, CENTER);
-        text("Start LED", startX + 4, startY); // Position text 5 pixels to the right of the LED
+        
+        // Draw thick black outline
+        noStroke();
+        fill(0); // Black
+        // Outer ring
+        for (let i = 0; i < 360; i += 45) {
+            const dx = cos(i) * 2;
+            const dy = sin(i) * 2;
+            text("Start LED", startX + 4 + dx, startY + dy);
+        }
+        // Middle ring
+        for (let i = 0; i < 360; i += 45) {
+            const dx = cos(i) * 1.5;
+            const dy = sin(i) * 1.5;
+            text("Start LED", startX + 4 + dx, startY + dy);
+        }
+        // Inner ring
+        for (let i = 0; i < 360; i += 45) {
+            const dx = cos(i);
+            const dy = sin(i);
+            text("Start LED", startX + 4 + dx, startY + dy);
+        }
+        
+        // Draw white text on top
+        fill(255); // White text
+        text("Start LED", startX + 4, startY);
     }
 
 
