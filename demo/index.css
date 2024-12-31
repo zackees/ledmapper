@@ -78,8 +78,24 @@ input[type="file"]::-webkit-file-upload-button {
     transition: all 0.3s ease;
 }
 
-input[type="file"]::-webkit-file-upload-button:hover {
-    background-color: #1976d2;
+.controls-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.control-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.button-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 select {
