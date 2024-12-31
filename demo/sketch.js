@@ -216,6 +216,7 @@ function draw() {
     curr_frame = null;
   }
   for (let i = 0; i < scaled_pts.length; ++i) {
+      // Draw the LED color/animation
       let c = color(255, 255, 255, 0);
       if (curr_frame) {
         const r = curr_frame[i*3+0];
@@ -227,6 +228,11 @@ function draw() {
       fill(c);
       const [x, y] = scaled_pts[i];
       circle(x, y, ledDiameter);
+      
+      // Draw small white dot at center of each LED
+      noStroke();
+      fill(255, 255, 255, 128); // Semi-transparent white
+      circle(x, y, 4); // Small 4-pixel radius dot
   }
 
   // Only draw lines if checkbox is checked
