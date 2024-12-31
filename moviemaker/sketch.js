@@ -306,33 +306,38 @@ function mouse_in_canvas_area() {
 }
 
 
-function mouseWheel(event) {
-    // Change the red value according
-    // to the scroll delta value
-    if (!mouse_in_canvas_area() || shape_pts.length === 0) {
-        return true;
+let lastMouseX = 0;
+let lastMouseY = 0;
+let isDraggingRight = false;
+
+function mousePressed() {
+    if (mouseButton === RIGHT && mouse_in_canvas_area() && shape_pts.length > 0) {
+        isDraggingRight = true;
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+        return false; // Prevent default right-click menu
     }
-    if (shift_active) {
-        const now = time_now();
-        let num_events = 0;
-        shape_rotate_events.forEach((ts) => {
-            if (now - ts < 250) {
-                num_events++;
-            }
-        });
-        let incr = num_events > 3 ? 4 : 1;
-        set_target_rotate(target_rotate + event.delta > 0 ? incr : -incr);
-        shape_rotate_events.push(now);
-        while (shape_rotate_events.length > 10) {
-            shape_rotate_events.splice(0, 1);
-        }
-        return false;
+}
+
+function mouseReleased() {
+    if (mouseButton === RIGHT) {
+        isDraggingRight = false;
     }
-    target_zoom -= event.delta / 10000;  // Typical scroll amount is 200.
-    target_zoom = Math.max(Math.min(target_zoom, 3), 0.15);
-    dom_rng_zoom.value = target_zoom.toFixed(1);
-    dom_txt_curr_zoom.innerText = target_zoom.toFixed(1);
-    return false;
+}
+
+function mouseDragged() {
+    if (isDraggingRight && mouse_in_canvas_area() && shape_pts.length > 0) {
+        const dy = mouseY - lastMouseY;
+        // Adjust zoom based on vertical movement
+        target_zoom -= dy * 0.01;  
+        target_zoom = Math.max(Math.min(target_zoom, 3), 0.15);
+        dom_rng_zoom.value = target_zoom.toFixed(1);
+        dom_txt_curr_zoom.innerText = target_zoom.toFixed(1);
+        
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+        return false; // Prevent default behavior
+    }
 }
 
 
@@ -346,6 +351,7 @@ function setup() {
     updateFrameRate();
     initWorkers(); 
     startCapture();
+    document.addEventListener('contextmenu', event => event.preventDefault());
 }
 
 function parseResolution(resStr) {
@@ -409,7 +415,8 @@ function updateUIForNewDimensions() {
 }
 
 function update_shape_parameters() {
-    if (mouseIsPressed && mouse_in_canvas_area()) {
+    // Only allow translation with left mouse button
+    if (mouseIsPressed && mouseButton === LEFT && mouse_in_canvas_area()) {
         target_translate[0] = mouseX;
         target_translate[1] = mouseY;
     }
