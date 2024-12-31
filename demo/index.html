@@ -4,14 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Movie Player</title>
+    <title>Demo</title>
     <link rel="stylesheet" href="index.css">
     <script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js"></script>
 </head>
 
 <body>
     <div class="controls">
-        <h1>Movie Player</h1>
+        <h1>Demo</h1>
         <p>See Fastled/examples/FxSdCard/data/ for video.rgb and screenmap.json examples</p>
         <div>
             <div style="display: none;">
@@ -30,6 +30,10 @@
             <label for="rng_diameter">LED Diameter:</label>
             <input type="range" min="1" max="20" value="6" step="1" class="slider" id="rng_diameter">
             <span id="txt_curr_diameter">6</span>
+        </div>
+        <div class="button-container">
+            <button id="btn_download_screenmap">Download Screenmap</button>
+            <button id="btn_download_video">Download Video</button>
         </div>
         <script>
 

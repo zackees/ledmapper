@@ -3,6 +3,8 @@
 const dom_btn_play = document.getElementById("btn_play");
 const dom_rng_diameter = document.getElementById("rng_diameter");
 const dom_txt_curr_diameter = document.getElementById("txt_curr_diameter");
+const dom_btn_download_screenmap = document.getElementById("btn_download_screenmap");
+const dom_btn_download_video = document.getElementById("btn_download_video");
 
 dom_btn_play.disabled = true;
 
@@ -74,6 +76,41 @@ function set_dom_btn_play(on) {
 
 dom_btn_play.onclick = (evt) => {
     set_dom_btn_play(!playing);
+};
+
+dom_btn_download_screenmap.onclick = () => {
+    if (!shape_pts || shape_pts.length === 0) {
+        alert("No shape data available to download!");
+        return;
+    }
+    const screenmap = {
+        map: {
+            strip1: {
+                x: shape_pts.map(pt => pt[0]),
+                y: shape_pts.map(pt => pt[1]),
+                diameter: 0.25
+            }
+        }
+    };
+    const blob = new Blob([JSON.stringify(screenmap, null, 2)], {type: 'application/json'});
+    download_blob_as_file(blob, 'screenmap.json');
+};
+
+dom_btn_download_video.onclick = () => {
+    if (!movie_frames || movie_frames.length === 0) {
+        alert("No video data available to download!");
+        return;
+    }
+    // Concatenate all frames into a single Uint8Array
+    const totalLength = movie_frames.reduce((sum, frame) => sum + frame.length, 0);
+    const videoData = new Uint8Array(totalLength);
+    let offset = 0;
+    movie_frames.forEach(frame => {
+        videoData.set(frame, offset);
+        offset += frame.length;
+    });
+    const blob = new Blob([videoData], {type: 'application/octet-stream'});
+    download_blob_as_file(blob, 'video.rgb');
 };
 
 function load_movie_data(array_buffer) {
