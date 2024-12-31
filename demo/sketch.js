@@ -1,5 +1,10 @@
 
-// Removed upload shape button
+// Global variables
+let videoReader = null;
+let videoBuffer = new Uint8Array();
+const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
+
+// DOM elements
 const dom_btn_play = document.getElementById("btn_play");
 const dom_rng_diameter = document.getElementById("rng_diameter");
 const dom_txt_curr_diameter = document.getElementById("txt_curr_diameter");
@@ -55,16 +60,70 @@ function fetchAndLoadJSON() {
         });
 }
 
-function fetchAndLoadVideo() {
-    fetch('color_line_bubbles.rgb')
-        .then(response => response.arrayBuffer())
-        .then(arrayBuffer => {
-            load_movie_data(arrayBuffer);
-        })
-        .catch(error => {
-            console.error("Error loading video:", error);
-            alert("Error loading color_line_bubbles.rgb. Please check the file path and try again.");
-        });
+async function fetchAndLoadVideo() {
+    try {
+        const response = await fetch('color_line_bubbles.rgb');
+        if (!response.ok) throw new Error('Network response was not ok');
+        if (!response.body) throw new Error('ReadableStream not supported');
+
+        videoReader = response.body.getReader();
+        streamVideoData();
+    } catch (error) {
+        console.error("Error loading video:", error);
+        alert("Error loading color_line_bubbles.rgb. Please check the file path and try again.");
+    }
+}
+
+async function streamVideoData() {
+    try {
+        while (true) {
+            const {done, value} = await videoReader.read();
+            
+            if (done) {
+                console.log("Finished streaming video data");
+                break;
+            }
+
+            // Append new chunk to buffer
+            const newBuffer = new Uint8Array(videoBuffer.length + value.length);
+            newBuffer.set(videoBuffer);
+            newBuffer.set(value, videoBuffer.length);
+            videoBuffer = newBuffer;
+
+            // Process complete frames from buffer
+            const frameSize = shape_pts.length * 3;
+            const completeFrames = Math.floor(videoBuffer.length / frameSize);
+            
+            if (completeFrames > 0) {
+                const frameData = videoBuffer.slice(0, completeFrames * frameSize);
+                processNewFrames(frameData);
+                
+                // Keep remaining incomplete frame data in buffer
+                videoBuffer = videoBuffer.slice(completeFrames * frameSize);
+            }
+        }
+    } catch (error) {
+        console.error("Error streaming video:", error);
+    }
+}
+
+function processNewFrames(frameData) {
+    const frameSize = shape_pts.length * 3;
+    const numNewFrames = frameData.length / frameSize;
+    
+    for (let i = 0; i < numNewFrames; i++) {
+        const start = i * frameSize;
+        const end = start + frameSize;
+        const frame = frameData.slice(start, end);
+        movie_frames.push(frame);
+    }
+
+    // Enable play button if this is our first frame
+    if (movie_frames.length === numNewFrames) {
+        dom_btn_play.disabled = false;
+        set_dom_btn_play(false);
+        dom_btn_play.click();
+    }
 }
 
 // Call the function when the page loads
@@ -119,30 +178,6 @@ dom_btn_download_video.onclick = () => {
     download_blob_as_file(blob, 'video.rgb');
 };
 
-function load_movie_data(array_buffer) {
-    const uint8_array = new Uint8Array(array_buffer);
-    if (shape_pts.length === 0) {
-        alert("No shape is loaded!");
-        return;
-    }
-    const num_pixels = uint8_array.length / 3;
-    if (num_pixels % shape_pts.length !== 0) {
-        alert("Frame size should be a multiple of the number of shape pts!");
-        return;
-    }
-    dom_btn_play.disabled = false;
-    set_dom_btn_play(false);
-    let frames = [];
-    const n_frames = num_pixels / shape_pts.length
-    for (let i = 0; i < n_frames; ++i) {
-        const start = i * shape_pts.length * 3;
-        const end = (i+1) * shape_pts.length * 3;
-        const frame = uint8_array.slice(start, end);
-        frames.push(frame);
-    }
-    movie_frames = frames; 
-    dom_btn_play.click();
-}
 
 // Removed dom_btn_load_movie.onchange event listener
 
