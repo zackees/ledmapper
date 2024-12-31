@@ -234,7 +234,7 @@ function draw() {
             noStroke();
             if (i === 0 || i === 1) {
                 fill(0, 255, 0, i === 0 ? 255 : 128); // Green for first LED
-                circle(x, y, 8); // Small 4-pixel radius dot
+                circle(x, y, i == 0 ? 8 : 6); // Small 4-pixel radius dot
             } else {
                 fill(255, 255, 255, 128); // Semi-transparent white
                 circle(x, y, 4); // Small 4-pixel radius dot
@@ -242,20 +242,74 @@ function draw() {
         }
     }
 
+    let counter = 0;
+
     // Only draw lines if checkbox is checked
     if (dom_chk_show_lines.checked) {
         stroke(color(100, 100, 100)); // Brighter gray color
         strokeWeight(2); // Thicker lines for better visibility
+
+
+        // Function to draw an arrow at a point
+        function drawArrow(x, y, angle) {
+            push();
+            translate(x, y);
+            rotate(angle);
+            // Draw the arrow head
+            line(0, 0, -8, -4);
+            line(0, 0, -8, 4);
+            pop();
+        }
+        
         for (let i = 0; i < scaled_pts.length - 1; i++) {
+            const doDrawArray = counter++ % 3 === 1;
             const [x1, y1] = scaled_pts[i];
             const [x2, y2] = scaled_pts[i + 1];
+            
+            // Draw the main line
             line(x1, y1, x2, y2);
+            
+            // Calculate distance and angle
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx);
+            
+            // Place arrows every 5 units along the line
+            const arrowSpacing = 5;
+            const numArrows = 2;
+            
+            if (doDrawArray) {
+                // for (let j = 1; j < numArrows; j++) {
+                //     const t = (j * arrowSpacing) / distance;
+                //     const arrowX = x1 + dx * t;
+                //     const arrowY = y1 + dy * t;
+                //     drawArrow(arrowX, arrowY, angle);
+                // }
+                // just draw one
+                const t = (1 * arrowSpacing) / distance;
+                const arrowX = x1 + dx * t;
+                const arrowY = y1 + dy * t;
+                drawArrow(arrowX, arrowY, angle);
+            }
+
         }
-        // Connect last point to first point to close the shape
+        
+        // Connect last point to first point with arrows
         const [firstX, firstY] = scaled_pts[0];
         const [lastX, lastY] = scaled_pts[scaled_pts.length - 1];
+        
         line(lastX, lastY, firstX, firstY);
-
+        
+        // Calculate arrows for the closing line
+        const dx = firstX - lastX;
+        const dy = firstY - lastY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
+        
+        const arrowSpacing = 5;
+        const numArrows = Math.floor(distance / arrowSpacing);
+        
         // Add "Start LED" text near the first LED
         const [startX, startY] = scaled_pts[0];
         noStroke();
