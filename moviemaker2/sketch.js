@@ -1,6 +1,6 @@
 const videoPlayer = document.getElementById('videoPlayer');
-const videoCanvas = document.getElementById('videoCanvas');
-const copyCanvas = document.getElementById('copyCanvas');
+const blurredCanvas = document.getElementById('videoCanvas');
+const originalCanvas = document.getElementById('copyCanvas');
 const loadButton = document.getElementById('loadButton');
 const playPauseButton = document.getElementById('playPauseButton');
 let isPlaying = false;
@@ -11,12 +11,12 @@ videoPlayer.muted = true;
 // Three.js setup
 const scene = new THREE.Scene();
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-const renderer = new THREE.WebGLRenderer({ canvas: videoCanvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas: blurredCanvas, antialias: true });
 const geometry = new THREE.PlaneGeometry(2, 2);
 const texture = new THREE.VideoTexture(videoPlayer);
 
-// Setup for copy canvas
-const copyContext = copyCanvas.getContext('2d');
+// Setup for original canvas
+const originalContext = originalCanvas.getContext('2d');
 
 // Custom shader material for Gaussian blur
 const material = new THREE.ShaderMaterial({
@@ -66,54 +66,11 @@ const material = new THREE.ShaderMaterial({
 const mesh = new THREE.Mesh(geometry, material);
 scene.add(mesh);
 
-// Add blur controls
-const blurControlsContainer = document.createElement('div');
-blurControlsContainer.style.marginTop = '10px';
-document.body.appendChild(blurControlsContainer);
-
-const blurRadiusLabel = document.createElement('label');
-blurRadiusLabel.textContent = 'Blur Radius: ';
-blurControlsContainer.appendChild(blurRadiusLabel);
-
-const blurRadiusSlider = document.createElement('input');
-blurRadiusSlider.type = 'range';
-blurRadiusSlider.min = '0';
-blurRadiusSlider.max = '20';
-blurRadiusSlider.value = '0';
-blurRadiusSlider.step = '1';
-blurControlsContainer.appendChild(blurRadiusSlider);
-
-const blurRadiusValue = document.createElement('input');
-blurRadiusValue.type = 'number';
-blurRadiusValue.min = '0';
-blurRadiusValue.max = '20';
-blurRadiusValue.value = '0';
-blurRadiusValue.step = '1';
-blurRadiusValue.style.width = '50px';
-blurControlsContainer.appendChild(blurRadiusValue);
-
-blurControlsContainer.appendChild(document.createElement('br'));
-
-const sigmaLabel = document.createElement('label');
-sigmaLabel.textContent = 'Sigma: ';
-blurControlsContainer.appendChild(sigmaLabel);
-
-const sigmaSlider = document.createElement('input');
-sigmaSlider.type = 'range';
-sigmaSlider.min = '0.1';
-sigmaSlider.max = '10';
-sigmaSlider.value = '1';
-sigmaSlider.step = '0.1';
-blurControlsContainer.appendChild(sigmaSlider);
-
-const sigmaValue = document.createElement('input');
-sigmaValue.type = 'number';
-sigmaValue.min = '0.1';
-sigmaValue.max = '10';
-sigmaValue.value = '1';
-sigmaValue.step = '0.1';
-sigmaValue.style.width = '50px';
-blurControlsContainer.appendChild(sigmaValue);
+// Blur controls
+const blurRadiusSlider = document.getElementById('blurRadiusSlider');
+const blurRadiusValue = document.getElementById('blurRadiusValue');
+const sigmaSlider = document.getElementById('sigmaSlider');
+const sigmaValue = document.getElementById('sigmaValue');
 
 blurRadiusSlider.addEventListener('input', updateBlur);
 sigmaSlider.addEventListener('input', updateBlur);
@@ -136,10 +93,11 @@ function updateBlurFromValue() {
 }
 
 function updateCanvas() {
-    renderer.render(scene, camera);
+    // Draw the original video frame on the right canvas
+    originalContext.drawImage(videoPlayer, 0, 0, originalCanvas.width, originalCanvas.height);
     
-    // Copy the frame to the copy canvas
-    copyContext.drawImage(videoCanvas, 0, 0, copyCanvas.width, copyCanvas.height);
+    // Apply blur effect and render on the left canvas
+    renderer.render(scene, camera);
     
     requestAnimationFrame(updateCanvas);
 }
@@ -161,10 +119,10 @@ function resizeCanvas() {
         newWidth = newHeight * aspectRatio;
     }
 
-    videoCanvas.width = newWidth;
-    videoCanvas.height = newHeight;
-    copyCanvas.width = newWidth;
-    copyCanvas.height = newHeight;
+    blurredCanvas.width = newWidth;
+    blurredCanvas.height = newHeight;
+    originalCanvas.width = newWidth;
+    originalCanvas.height = newHeight;
 
     // Update Three.js renderer size
     renderer.setSize(newWidth, newHeight);
