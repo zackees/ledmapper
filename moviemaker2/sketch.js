@@ -42,26 +42,16 @@ const material = new THREE.ShaderMaterial({
 
         void main() {
             vec2 invSize = 1.0 / resolution;
-            float fSigma = sigma;
-            float weightSum = gaussianPdf(0.0, fSigma);
-            vec3 diffuseSum = texture2D(tDiffuse, vUv).rgb * weightSum;
+            vec3 diffuseSum = vec3(0.0);
+            float weightSum = 0.0;
 
-            for (float i = 1.0; i <= blurRadius; i++) {
-                float x = i * invSize.x;
-                float w = gaussianPdf(x, fSigma);
-                vec3 sample1 = texture2D(tDiffuse, vUv + vec2(x, 0.0)).rgb;
-                vec3 sample2 = texture2D(tDiffuse, vUv - vec2(x, 0.0)).rgb;
-                diffuseSum += (sample1 + sample2) * w;
-                weightSum += 2.0 * w;
-            }
-
-            for (float i = 1.0; i <= blurRadius; i++) {
-                float y = i * invSize.y;
-                float w = gaussianPdf(y, fSigma);
-                vec3 sample1 = texture2D(tDiffuse, vUv + vec2(0.0, y)).rgb;
-                vec3 sample2 = texture2D(tDiffuse, vUv - vec2(0.0, y)).rgb;
-                diffuseSum += (sample1 + sample2) * w;
-                weightSum += 2.0 * w;
+            for (float x = -blurRadius; x <= blurRadius; x++) {
+                for (float y = -blurRadius; y <= blurRadius; y++) {
+                    vec2 offset = vec2(x, y) * invSize;
+                    float weight = gaussianPdf(length(offset) * resolution.x, sigma);
+                    diffuseSum += texture2D(tDiffuse, vUv + offset).rgb * weight;
+                    weightSum += weight;
+                }
             }
 
             gl_FragColor = vec4(diffuseSum / weightSum, 1.0);
