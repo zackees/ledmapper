@@ -4,11 +4,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Player</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        #container { text-align: center; }
+        html, body {
+            overflow-x: hidden;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            text-align: center;
+        }
+        #container { 
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 100%;
+            box-sizing: border-box;
+        }
         #videoPlayer { display: none; }
-        #videoCanvas { border: 2px solid black; }
+        #videoCanvas { 
+            border: 2px solid black;
+            max-width: 100%;
+            height: auto;
+        }
     </style>
 </head>
 <body>
@@ -22,7 +43,6 @@
     <script>
         const videoPlayer = document.getElementById('videoPlayer');
         const videoCanvas = document.getElementById('videoCanvas');
-        const ctx = videoCanvas.getContext('2d');
         const loadButton = document.getElementById('loadButton');
         const playPauseButton = document.getElementById('playPauseButton');
         let isPlaying = false;
@@ -30,11 +50,28 @@
         // Ensure video is always muted
         videoPlayer.muted = true;
 
+        // Three.js setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ canvas: videoCanvas, antialias: true });
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const texture = new THREE.VideoTexture(videoPlayer);
+        const material = new THREE.MeshBasicMaterial({ map: texture });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
         function updateCanvas() {
-            if (!videoPlayer.paused && !videoPlayer.ended) {
-                ctx.drawImage(videoPlayer, 0, 0, videoCanvas.width, videoCanvas.height);
-                requestAnimationFrame(updateCanvas);
-            }
+            renderer.render(scene, camera);
+            
+            // Capture frame pixels
+            const gl = renderer.getContext();
+            const pixels = new Uint8Array(4);
+            gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+            
+            // Log RGB of first pixel
+            console.log(`First pixel RGB: (${pixels[0]}, ${pixels[1]}, ${pixels[2]})`);
+            
+            requestAnimationFrame(updateCanvas);
         }
 
         function resizeCanvas() {
@@ -52,13 +89,36 @@
 
             videoCanvas.width = newWidth;
             videoCanvas.height = newHeight;
+            
+            // Update Three.js renderer size
+            renderer.setSize(newWidth, newHeight);
+            
+            // Update camera to maintain aspect ratio
+            const newAspectRatio = newWidth / newHeight;
+            camera.left = -newAspectRatio;
+            camera.right = newAspectRatio;
+            camera.top = 1;
+            camera.bottom = -1;
+            camera.updateProjectionMatrix();
+            
+            // Update mesh scale to fit the new aspect ratio
+            mesh.scale.set(newAspectRatio, 1, 1);
+            
+            // Render the scene
+            renderer.render(scene, camera);
         }
 
         videoPlayer.addEventListener('loadedmetadata', function() {
             resizeCanvas();
         });
 
-        videoPlayer.addEventListener('play', function() {
+        videoPlayer.addEventListener('loadedmetadata', function() {
+            resizeCanvas();
+            updateCanvas();
+        });
+
+        window.addEventListener('resize', function() {
+            resizeCanvas();
             updateCanvas();
         });
 

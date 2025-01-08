@@ -31,9 +31,10 @@ class GaussianBlur {
         }
 
         // Normalize the kernel
+        const inv_sum = 1 / sum;
         for (let y = 0; y < kernelSize; y++) {
             for (let x = 0; x < kernelSize; x++) {
-                kernel[y][x] /= sum;
+                kernel[y][x] *= inv_sum;
             }
         }
 
