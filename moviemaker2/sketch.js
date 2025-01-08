@@ -13,21 +13,136 @@ const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const renderer = new THREE.WebGLRenderer({ canvas: videoCanvas, antialias: true });
 const geometry = new THREE.PlaneGeometry(2, 2);
 const texture = new THREE.VideoTexture(videoPlayer);
-const material = new THREE.MeshBasicMaterial({ map: texture });
+
+// Custom shader material for Gaussian blur
+const material = new THREE.ShaderMaterial({
+    uniforms: {
+        tDiffuse: { value: texture },
+        resolution: { value: new THREE.Vector2() },
+        blurRadius: { value: 0 },
+        sigma: { value: 1.0 }
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform vec2 resolution;
+        uniform float blurRadius;
+        uniform float sigma;
+        varying vec2 vUv;
+
+        float gaussianPdf(in float x, in float sigma) {
+            return 0.39894 * exp(-0.5 * x * x / (sigma * sigma)) / sigma;
+        }
+
+        void main() {
+            vec2 invSize = 1.0 / resolution;
+            float fSigma = sigma;
+            float weightSum = gaussianPdf(0.0, fSigma);
+            vec3 diffuseSum = texture2D(tDiffuse, vUv).rgb * weightSum;
+
+            for (float i = 1.0; i <= blurRadius; i++) {
+                float x = i * invSize.x;
+                float w = gaussianPdf(x, fSigma);
+                vec3 sample1 = texture2D(tDiffuse, vUv + vec2(x, 0.0)).rgb;
+                vec3 sample2 = texture2D(tDiffuse, vUv - vec2(x, 0.0)).rgb;
+                diffuseSum += (sample1 + sample2) * w;
+                weightSum += 2.0 * w;
+            }
+
+            for (float i = 1.0; i <= blurRadius; i++) {
+                float y = i * invSize.y;
+                float w = gaussianPdf(y, fSigma);
+                vec3 sample1 = texture2D(tDiffuse, vUv + vec2(0.0, y)).rgb;
+                vec3 sample2 = texture2D(tDiffuse, vUv - vec2(0.0, y)).rgb;
+                diffuseSum += (sample1 + sample2) * w;
+                weightSum += 2.0 * w;
+            }
+
+            gl_FragColor = vec4(diffuseSum / weightSum, 1.0);
+        }
+    `
+});
+
 const mesh = new THREE.Mesh(geometry, material);
 scene.add(mesh);
 
+// Add blur controls
+const blurControlsContainer = document.createElement('div');
+blurControlsContainer.style.marginTop = '10px';
+document.body.appendChild(blurControlsContainer);
+
+const blurRadiusLabel = document.createElement('label');
+blurRadiusLabel.textContent = 'Blur Radius: ';
+blurControlsContainer.appendChild(blurRadiusLabel);
+
+const blurRadiusSlider = document.createElement('input');
+blurRadiusSlider.type = 'range';
+blurRadiusSlider.min = '0';
+blurRadiusSlider.max = '20';
+blurRadiusSlider.value = '0';
+blurRadiusSlider.step = '1';
+blurControlsContainer.appendChild(blurRadiusSlider);
+
+const blurRadiusValue = document.createElement('input');
+blurRadiusValue.type = 'number';
+blurRadiusValue.min = '0';
+blurRadiusValue.max = '20';
+blurRadiusValue.value = '0';
+blurRadiusValue.step = '1';
+blurRadiusValue.style.width = '50px';
+blurControlsContainer.appendChild(blurRadiusValue);
+
+blurControlsContainer.appendChild(document.createElement('br'));
+
+const sigmaLabel = document.createElement('label');
+sigmaLabel.textContent = 'Sigma: ';
+blurControlsContainer.appendChild(sigmaLabel);
+
+const sigmaSlider = document.createElement('input');
+sigmaSlider.type = 'range';
+sigmaSlider.min = '0.1';
+sigmaSlider.max = '10';
+sigmaSlider.value = '1';
+sigmaSlider.step = '0.1';
+blurControlsContainer.appendChild(sigmaSlider);
+
+const sigmaValue = document.createElement('input');
+sigmaValue.type = 'number';
+sigmaValue.min = '0.1';
+sigmaValue.max = '10';
+sigmaValue.value = '1';
+sigmaValue.step = '0.1';
+sigmaValue.style.width = '50px';
+blurControlsContainer.appendChild(sigmaValue);
+
+blurRadiusSlider.addEventListener('input', updateBlur);
+sigmaSlider.addEventListener('input', updateBlur);
+blurRadiusValue.addEventListener('input', updateBlurFromValue);
+sigmaValue.addEventListener('input', updateBlurFromValue);
+
+function updateBlur() {
+    const blurRadius = parseFloat(blurRadiusSlider.value);
+    const sigma = parseFloat(sigmaSlider.value);
+    material.uniforms.blurRadius.value = blurRadius;
+    material.uniforms.sigma.value = sigma;
+    blurRadiusValue.value = blurRadius.toFixed(1);
+    sigmaValue.value = sigma.toFixed(1);
+}
+
+function updateBlurFromValue() {
+    blurRadiusSlider.value = blurRadiusValue.value;
+    sigmaSlider.value = sigmaValue.value;
+    updateBlur();
+}
+
 function updateCanvas() {
     renderer.render(scene, camera);
-    
-    // Capture frame pixels
-    const gl = renderer.getContext();
-    const pixels = new Uint8Array(4);
-    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-    
-    // Log RGB of first pixel
-    console.log(`First pixel RGB: (${pixels[0]}, ${pixels[1]}, ${pixels[2]})`);
-    
     requestAnimationFrame(updateCanvas);
 }
 
@@ -60,6 +175,9 @@ function resizeCanvas() {
     
     // Update mesh scale to fit the new aspect ratio
     mesh.scale.set(newAspectRatio, 1, 1);
+    
+    // Update resolution uniform for the shader
+    material.uniforms.resolution.value.set(newWidth, newHeight);
     
     // Render the scene
     renderer.render(scene, camera);
