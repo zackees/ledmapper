@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Player</title>
+    <style>
+        body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        #container { text-align: center; }
+        #videoPlayer { display: none; }
+        #videoCanvas { border: 2px solid black; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="videoCanvas"></canvas><br>
+        <video id="videoPlayer" style="display: none;" loop muted></video>
+        <button id="loadButton">Load Video</button>
+        <button id="playPauseButton" disabled>Play</button>
+    </div>
+
+    <script>
+        const videoPlayer = document.getElementById('videoPlayer');
+        const videoCanvas = document.getElementById('videoCanvas');
+        const ctx = videoCanvas.getContext('2d');
+        const loadButton = document.getElementById('loadButton');
+        const playPauseButton = document.getElementById('playPauseButton');
+        let isPlaying = false;
+
+        // Ensure video is always muted
+        videoPlayer.muted = true;
+
+        function updateCanvas() {
+            if (!videoPlayer.paused && !videoPlayer.ended) {
+                ctx.drawImage(videoPlayer, 0, 0, videoCanvas.width, videoCanvas.height);
+                requestAnimationFrame(updateCanvas);
+            }
+        }
+
+        function resizeCanvas() {
+            const aspectRatio = videoPlayer.videoWidth / videoPlayer.videoHeight;
+            const maxWidth = window.innerWidth * 0.8;
+            const maxHeight = window.innerHeight * 0.8;
+            
+            let newWidth = maxWidth;
+            let newHeight = newWidth / aspectRatio;
+
+            if (newHeight > maxHeight) {
+                newHeight = maxHeight;
+                newWidth = newHeight * aspectRatio;
+            }
+
+            videoCanvas.width = newWidth;
+            videoCanvas.height = newHeight;
+        }
+
+        videoPlayer.addEventListener('loadedmetadata', function() {
+            resizeCanvas();
+        });
+
+        videoPlayer.addEventListener('play', function() {
+            updateCanvas();
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        loadButton.addEventListener('click', function() {
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'video/*';
+            input.onchange = function(e) {
+                var file = e.target.files[0];
+                var fileURL = URL.createObjectURL(file);
+                videoPlayer.src = fileURL;
+                videoPlayer.onloadedmetadata = function() {
+                    resizeCanvas();
+                    playPauseButton.disabled = false;
+                    playPauseButton.textContent = 'Play';
+                    isPlaying = false;
+                };
+            };
+            input.click();
+        });
+
+        playPauseButton.addEventListener('click', function() {
+            if (isPlaying) {
+                videoPlayer.pause();
+                this.textContent = 'Play';
+            } else {
+                videoPlayer.play();
+                this.textContent = 'Pause';
+            }
+            isPlaying = !isPlaying;
+        });
+    </script>
+</body>
+</html>
