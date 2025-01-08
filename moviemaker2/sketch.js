@@ -15,6 +15,10 @@ const renderer = new THREE.WebGLRenderer({ canvas: blurredCanvas, antialias: tru
 const geometry = new THREE.PlaneGeometry(2, 2);
 const texture = new THREE.VideoTexture(videoPlayer);
 
+// Screen map variables
+let shape_pts = [];
+let shapeValid = false;
+
 // Setup for original canvas
 const originalContext = originalCanvas.getContext('2d');
 
@@ -182,3 +186,106 @@ playPauseButton.addEventListener('click', function() {
     }
     isPlaying = !isPlaying;
 });
+
+// Screen map loading functionality
+function loadScreenMap() {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,.csv';
+    input.onchange = function(e) {
+        var file = e.target.files[0];
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            loadShapeData(e.target.result);
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
+function loadShapeData(data) {
+    shape_pts = parseShapeData(data);
+    if (shape_pts.length === 0) {
+        shapeValid = false;
+    } else {
+        shape_pts = transformToCenter(shape_pts);
+        shapeValid = true;
+    }
+    updateElementStates();
+}
+
+function parseShapeData(text) {
+    if (isJsonStr(text)) {
+        return parse_shape_data_json(text);
+    } else {
+        return parseShapeDataCsv(text);
+    }
+}
+
+function isJsonStr(text) {
+    try {
+        JSON.parse(text);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+
+function parseShapeDataCsv(text) {
+    let out = [];
+    const lines = text.split('\n');
+    lines.forEach(line => {
+        line = line.trim();
+        if (line.length === 0) return;
+        const parts = line.split(',');
+        if (parts.length >= 2) {
+            const x = parseFloat(parts[0]);
+            const y = parseFloat(parts[1]);
+            if (!isNaN(x) && !isNaN(y)) {
+                out.push([x, y]);
+            }
+        }
+    });
+    return out;
+}
+
+function transformToCenter(shape_pts) {
+    let out = shape_pts.map(([x, y]) => [x, y]);
+    
+    let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+    out.forEach(([x, y]) => {
+        xmin = Math.min(xmin, x);
+        xmax = Math.max(xmax, x);
+        ymin = Math.min(ymin, y);
+        ymax = Math.max(ymax, y);
+    });
+    
+    let xcenter = (xmin + xmax) / 2;
+    let ycenter = (ymin + ymax) / 2;
+    let width = xmax - xmin;
+    let height = ymax - ymin;
+    
+    const margin = 20;
+    let scaleX = (blurredCanvas.width - 2 * margin) / width;
+    let scaleY = (blurredCanvas.height - 2 * margin) / height;
+    let scale = Math.min(scaleX, scaleY);
+    
+    out.forEach((pt) => {
+        pt[0] = (pt[0] - xcenter) * scale + blurredCanvas.width / 2;
+        pt[1] = (pt[1] - ycenter) * scale + blurredCanvas.height / 2;
+    });
+    
+    return out;
+}
+
+function updateElementStates() {
+    // Update UI elements based on shape validity
+    // This function can be expanded as needed
+}
+
+// Add a button for loading the screen map
+const loadScreenMapButton = document.createElement('button');
+loadScreenMapButton.textContent = 'Load Screen Map';
+loadScreenMapButton.addEventListener('click', loadScreenMap);
+document.getElementById('controls').appendChild(loadScreenMapButton);
