@@ -1,5 +1,6 @@
 const videoPlayer = document.getElementById('videoPlayer');
 const videoCanvas = document.getElementById('videoCanvas');
+const copyCanvas = document.getElementById('copyCanvas');
 const loadButton = document.getElementById('loadButton');
 const playPauseButton = document.getElementById('playPauseButton');
 let isPlaying = false;
@@ -13,6 +14,9 @@ const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const renderer = new THREE.WebGLRenderer({ canvas: videoCanvas, antialias: true });
 const geometry = new THREE.PlaneGeometry(2, 2);
 const texture = new THREE.VideoTexture(videoPlayer);
+
+// Setup for copy canvas
+const copyContext = copyCanvas.getContext('2d');
 
 // Custom shader material for Gaussian blur
 const material = new THREE.ShaderMaterial({
@@ -133,42 +137,51 @@ function updateBlurFromValue() {
 
 function updateCanvas() {
     renderer.render(scene, camera);
+    
+    // Copy the frame to the copy canvas
+    copyContext.drawImage(videoCanvas, 0, 0, copyCanvas.width, copyCanvas.height);
+    
     requestAnimationFrame(updateCanvas);
 }
 
 function resizeCanvas() {
+    const containerWidth = window.innerWidth * 0.9; // 90% of window width for both canvases
+    const containerHeight = window.innerHeight * 0.8;
     const aspectRatio = videoPlayer.videoWidth / videoPlayer.videoHeight;
-    const maxWidth = window.innerWidth * 0.8;
-    const maxHeight = window.innerHeight * 0.8;
-    
-    let newWidth = maxWidth;
-    let newHeight = newWidth / aspectRatio;
 
-    if (newHeight > maxHeight) {
-        newHeight = maxHeight;
+    let newWidth, newHeight;
+
+    if (containerWidth / 2 / aspectRatio <= containerHeight) {
+        // Width constrained
+        newWidth = containerWidth / 2;
+        newHeight = newWidth / aspectRatio;
+    } else {
+        // Height constrained
+        newHeight = containerHeight;
         newWidth = newHeight * aspectRatio;
     }
 
     videoCanvas.width = newWidth;
     videoCanvas.height = newHeight;
-    
+    copyCanvas.width = newWidth;
+    copyCanvas.height = newHeight;
+
     // Update Three.js renderer size
     renderer.setSize(newWidth, newHeight);
-    
-    // Update camera to maintain aspect ratio
-    const newAspectRatio = newWidth / newHeight;
-    camera.left = -newAspectRatio;
-    camera.right = newAspectRatio;
-    camera.top = 1;
-    camera.bottom = -1;
+
+    // Update camera
+    camera.left = -1;
+    camera.right = 1;
+    camera.top = 1 / aspectRatio;
+    camera.bottom = -1 / aspectRatio;
     camera.updateProjectionMatrix();
-    
-    // Update mesh scale to fit the new aspect ratio
-    mesh.scale.set(newAspectRatio, 1, 1);
-    
+
+    // Update mesh scale
+    mesh.scale.set(1, 1 / aspectRatio, 1);
+
     // Update resolution uniform for the shader
     material.uniforms.resolution.value.set(newWidth, newHeight);
-    
+
     // Render the scene
     renderer.render(scene, camera);
 }

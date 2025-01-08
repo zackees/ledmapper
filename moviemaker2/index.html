@@ -14,34 +14,56 @@
             padding: 0;
         }
         body {
-            text-align: center;
-        }
-        #container { 
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            max-width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
             box-sizing: border-box;
         }
+        #container { 
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
         #videoPlayer { display: none; }
-        #videoCanvas { 
+        #videoCanvas, #copyCanvas { 
             border: 2px solid black;
-            max-width: 100%;
+            width: 100%;
             height: auto;
+        }
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #controls {
+            margin-top: 20px;
+        }
+        button {
+            margin: 0 10px;
         }
     </style>
 </head>
 <body>
     <div id="container">
-
+        <div class="canvas-container">
+            <canvas id="videoCanvas"></canvas>
+            <div>Blurred Video</div>
+        </div>
+        <div class="canvas-container">
+            <canvas id="copyCanvas"></canvas>
+            <div>Original Video</div>
+        </div>
+    </div>
+    <div id="controls">
         <button id="loadButton">Load Video</button>
         <button id="playPauseButton" disabled>Play</button>
-
-        <canvas id="videoCanvas"></canvas><br>
-        <video id="videoPlayer" style="display: none;" loop muted></video>
-
     </div>
+    <video id="videoPlayer" style="display: none;" loop muted></video>
 
     <script src="sketch.js"></script>
 </body>
