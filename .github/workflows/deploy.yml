@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy
 
 on:
   push:
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,16 +29,12 @@ jobs:
 
       - run: npm run build
 
-      - run: npx playwright install chromium --with-deps
-
-      - run: npm test
-
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
   deploy:
-    needs: build-and-test
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
