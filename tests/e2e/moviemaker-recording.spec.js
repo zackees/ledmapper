@@ -54,7 +54,9 @@ async function recordAndDownload(page, durationMs = 2000) {
     return data;
 }
 
+// WebGL recording doesn't work in headless CI Chromium (no GPU)
 test.describe('Moviemaker Recording Workflow', () => {
+    test.skip(!!process.env.CI, 'WebGL recording tests require GPU, skipped in CI');
     test.describe('Video file loading and recording', () => {
         test('loads video via file chooser, records, and downloads .rgb', async ({ page }) => {
             test.setTimeout(60000);
