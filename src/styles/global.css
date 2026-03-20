@@ -2,7 +2,7 @@
    FastLED Video Mapper — Design System
    ═══════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+/* Google Fonts loaded via <link> in index.html to avoid render-blocking @import */
 
 /* ── Design Tokens ──────────────────────────────────────────── */
 
@@ -52,7 +52,6 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    animation: lm-page-enter 300ms var(--lm-ease) both;
 }
 
 @keyframes lm-page-enter {

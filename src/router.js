@@ -61,14 +61,11 @@ export function createRouter(appEl) {
             currentDestroy = null;
         }
 
-        // Clear app container
+        // Clear app container and hide it until content + CSS are ready
         appEl.innerHTML = '';
         appEl.dataset.tool = tool;
-
-        // Re-trigger page enter animation
         appEl.style.animation = 'none';
-        appEl.offsetHeight; // force reflow
-        appEl.style.animation = '';
+        appEl.style.opacity = '0';
 
         // Update nav active state
         updateActiveLink(path);
@@ -92,12 +89,21 @@ export function createRouter(appEl) {
             // Abort if a newer navigation started while we were loading
             if (thisLoad !== loadId) return;
 
-            // Swap tool CSS (URL exported from module via ?url import)
+            // Wait for tool CSS to load before injecting content
             if (mod.css) {
-                toolCssLink.href = mod.css;
+                const currentHref = toolCssLink.getAttribute('href');
+                if (currentHref !== mod.css) {
+                    await new Promise((resolve) => {
+                        toolCssLink.onload = resolve;
+                        toolCssLink.onerror = resolve;
+                        toolCssLink.href = mod.css;
+                    });
+                }
             } else {
                 toolCssLink.removeAttribute('href');
             }
+
+            if (thisLoad !== loadId) return;
 
             if (mod.init) {
                 const destroy = mod.init(appEl);
@@ -105,9 +111,17 @@ export function createRouter(appEl) {
                     currentDestroy = destroy;
                 }
             }
+
+            // Content and CSS are ready — trigger entrance animation
+            appEl.style.opacity = '';
+            appEl.style.animation = '';
+            appEl.offsetHeight; // force reflow
+            appEl.style.animation = 'lm-page-enter 300ms var(--lm-ease) both';
         } catch (e) {
             if (thisLoad !== loadId) return;
             console.error(`Failed to load tool "${tool}":`, e);
+            appEl.style.opacity = '';
+            appEl.style.animation = '';
             appEl.innerHTML = `<div style="color:red;padding:20px;">Failed to load tool: ${e.message}</div>`;
         }
     }
