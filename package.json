@@ -23,7 +23,6 @@
   },
   "homepage": "https://github.com/zackees/ledmapper#readme",
   "dependencies": {
-    "p5": "^2.2.2",
     "sweetalert2": "^11.26.21",
     "three": "^0.183.2"
   },

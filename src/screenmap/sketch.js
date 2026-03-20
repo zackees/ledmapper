@@ -1,23 +1,13 @@
-import p5 from 'p5';
 import { download_text_as_file } from '../common.js';
 import { initNav } from '../nav.js';
 
-// Expose p5 globally so its internal error handler can reference it
-window.p5 = p5;
-
-// Suppress autoplay restriction errors from p5's createCapture
-const _origPlay = HTMLVideoElement.prototype.play;
-HTMLVideoElement.prototype.play = function () {
-    return _origPlay.call(this).catch(() => {});
-};
-
 initNav();
 
-let capture;
-let myCanvas;
-let videoCheckInterval;
+let videoElement;
+let canvas, ctx;
 const capture_width = 480;
 const capture_height = 480;
+
 const dom_btn_snapshot = document.getElementById("btn_snapshot");
 const dom_btn_clear = document.getElementById("btn_clear");
 const dom_btn_delete_last = document.getElementById("btn_delete_last");
@@ -54,22 +44,15 @@ dom_slider_zoom.oninput = () => { updateZoom(dom_slider_zoom.value); };
 const circle_diameter = 8;
 let points = [];
 
-function time_now() { return Date.now(); }
-
 dom_btn_delete_last.onclick = () => { points.pop(); };
 dom_btn_download.onclick = () => { downloadShape(); };
 
 let shift_active = false;
 document.onkeydown = (evt) => {
-    if ("Shift" === evt.key) {
-        shift_active = true;
-    }
+    if ("Shift" === evt.key) shift_active = true;
 };
-
 document.onkeyup = (evt) => {
-    if ("Shift" === evt.key) {
-        shift_active = false;
-    }
+    if ("Shift" === evt.key) shift_active = false;
 };
 
 function downloadShape() {
@@ -79,12 +62,10 @@ function downloadShape() {
 
 function indexOfIntersectMostRecent(x, y, radius) {
     const radius2 = radius * radius;
-    for (let i = points.length-1; i >= 0; --i) {
+    for (let i = points.length - 1; i >= 0; --i) {
         const [xx, yy] = points[i];
-        const dist2 = Math.pow(x-xx, 2) + Math.pow(y-yy, 2);
-        if (dist2 < radius2) {
-            return i;
-        }
+        const dist2 = Math.pow(x - xx, 2) + Math.pow(y - yy, 2);
+        if (dist2 < radius2) return i;
     }
     return -1;
 }
@@ -102,19 +83,7 @@ function points_to_json_str() {
     return JSON.stringify(json);
 }
 
-function checkForVideo() {
-    if (capture && capture.elt && capture.elt.readyState === 4) {
-        console.log("Video dimensions:", {
-            width: capture.width,
-            height: capture.height,
-            videoWidth: capture.elt.videoWidth,
-            videoHeight: capture.elt.videoHeight
-        });
-        clearInterval(videoCheckInterval);
-    }
-}
-
-let img_snapshot;
+let snapshotCanvas = null;
 let pictureTaken = false;
 
 function showPopup() {
@@ -127,47 +96,24 @@ function showPopup() {
     }, 3000);
 }
 
-let last_frame_time = time_now();
-
-const sketch = (p) => {
-    function setup_gfx() {
-        if (capture) {
-            capture.remove();
-        }
-        const constraints = {
-            video: {
-                width: { ideal: capture_width },
-                height: { ideal: capture_height }
-            }
-        };
-        capture = p.createCapture(constraints);
-        p.pixelDensity(1);
-        myCanvas = p.createCanvas(p.windowWidth, p.windowHeight);
-        capture.parent('captureContainer');
-        capture.style('width', '100%');
-        capture.style('height', '100%');
-        capture.style('object-fit', 'cover');
-        videoCheckInterval = setInterval(checkForVideo, 100);
-    }
-
-    dom_btn_snapshot.onclick = () => {
-        img_snapshot = capture.get();
-        pictureTaken = true;
-        showPopup();
-        dom_btn_snapshot.disabled = true;
-    };
-
-    dom_btn_clear.onclick = () => {
-        if (confirm("Delete all?")) {
-            points = [];
-            img_snapshot = null;
-            dom_btn_snapshot.disabled = false;
+// --- Webcam setup using native browser API ---
+function startWebcam() {
+    const constraints = {
+        video: {
+            width: { ideal: capture_width },
+            height: { ideal: capture_height }
         }
     };
+    navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+        videoElement = document.createElement('video');
+        videoElement.srcObject = stream;
+        videoElement.setAttribute('autoplay', '');
+        videoElement.setAttribute('playsinline', '');
+        videoElement.muted = true;
+        videoElement.play().catch(() => {});
 
-    p.setup = () => {
-        setup_gfx();
-        p.windowResized();
+        const container = document.getElementById('captureContainer');
+        container.appendChild(videoElement);
 
         const captureContainer = document.getElementById('captureContainer');
         captureContainer.addEventListener('mouseenter', () => {
@@ -176,83 +122,131 @@ const sketch = (p) => {
         captureContainer.addEventListener('mouseleave', () => {
             captureContainer.style.opacity = '1';
         });
-    };
+    }).catch(err => {
+        console.error('Webcam error:', err);
+    });
+}
 
-    p.windowResized = () => {
-        p.resizeCanvas(p.windowWidth, p.windowHeight);
-    };
+// --- Canvas setup ---
+function initCanvas() {
+    canvas = document.createElement('canvas');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    ctx = canvas.getContext('2d');
+    document.querySelector('main').appendChild(canvas);
+}
 
-    p.mouseClicked = (event) => {
-        if (event.target.tagName === 'INPUT' || event.target.tagName === 'BUTTON' || event.target.closest('#controls')) {
-            return;
-        }
+function handleResize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
 
-        if (!pictureTaken) {
-            alert("Please take a picture first before adding points.");
-            return;
-        }
+window.addEventListener('resize', handleResize);
 
-        const x = Number.parseInt(p.mouseX);
-        const y = Number.parseInt(p.mouseY);
-        if (x < 0 || y < 0) {
-            return;
-        }
-        if (myCanvas) {
-            if (x > myCanvas.width || y > myCanvas.height) {
-                return;
-            }
-        }
-        const idx = indexOfIntersectMostRecent(x, y, circle_diameter);
-        if (shift_active) {
-            if (idx !== -1) {
-                points.splice(idx, 1);
-            }
-        } else {
-            if (idx === -1) {
-                points.push([x, y]);
-            }
-        }
-    };
-
-    p.draw = () => {
-        dom_btn_download.disabled = !points.length;
-        dom_btn_clear.disabled = !pictureTaken;
-        dom_btn_delete_last.disabled = !points.length;
-        const zoom = Number.parseFloat(dom_txt_zoom.value) || 1.0;
-        const r = Number.parseFloat(dom_txt_rotate.value) || 0;
-        const now = time_now();
-
-        p.push();
-        p.background(0);
-
-        const scaleFactor = Math.min(p.width / capture_width, p.height / capture_height);
-
-        p.translate(p.width / 2, p.height / 2);
-        p.rotate(p.radians(r));
-        p.scale(scaleFactor * zoom);
-        p.translate(-capture_width / 2, -capture_height / 2);
-
-        if (img_snapshot) {
-            p.image(img_snapshot, 0, 0, capture_width, capture_height);
-        } else if (capture) {
-            const img = capture.get();
-            p.image(img, 0, 0, capture_width, capture_height);
-        }
-        p.pop();
-
-        const c = p.color('green');
-        p.fill(c);
-        p.fill(p.color('red'));
-        p.stroke(p.color('white'));
-        for (let i = 1; i < points.length; ++i) {
-            const [x0, y0] = points[i-1];
-            const [x1, y1] = points[i];
-            p.line(x0, y0, x1, y1);
-        }
-        points.forEach(([x,y]) => { p.circle(x, y, circle_diameter); });
-
-        last_frame_time = now;
-    };
+// --- Snapshot ---
+dom_btn_snapshot.onclick = () => {
+    if (!videoElement) return;
+    snapshotCanvas = document.createElement('canvas');
+    snapshotCanvas.width = videoElement.videoWidth || capture_width;
+    snapshotCanvas.height = videoElement.videoHeight || capture_height;
+    const snapCtx = snapshotCanvas.getContext('2d');
+    snapCtx.drawImage(videoElement, 0, 0, snapshotCanvas.width, snapshotCanvas.height);
+    pictureTaken = true;
+    showPopup();
+    dom_btn_snapshot.disabled = true;
 };
 
-new p5(sketch);
+// --- Clear ---
+dom_btn_clear.onclick = () => {
+    if (confirm("Delete all?")) {
+        points = [];
+        snapshotCanvas = null;
+        pictureTaken = false;
+        dom_btn_snapshot.disabled = false;
+    }
+};
+
+// --- Click handling ---
+function handleClick(event) {
+    if (event.target.tagName === 'INPUT' || event.target.tagName === 'BUTTON' || event.target.closest('#controls')) {
+        return;
+    }
+
+    if (!pictureTaken) {
+        alert("Please take a picture first before adding points.");
+        return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor(event.clientX - rect.left);
+    const y = Math.floor(event.clientY - rect.top);
+
+    if (x < 0 || y < 0) return;
+    if (x > canvas.width || y > canvas.height) return;
+
+    const idx = indexOfIntersectMostRecent(x, y, circle_diameter);
+    if (shift_active) {
+        if (idx !== -1) points.splice(idx, 1);
+    } else {
+        if (idx === -1) points.push([x, y]);
+    }
+}
+
+// --- Render loop ---
+function draw() {
+    requestAnimationFrame(draw);
+
+    dom_btn_download.disabled = !points.length;
+    dom_btn_clear.disabled = !pictureTaken;
+    dom_btn_delete_last.disabled = !points.length;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    const zoom = Number.parseFloat(dom_txt_zoom.value) || 1.0;
+    const r = Number.parseFloat(dom_txt_rotate.value) || 0;
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, w, h);
+
+    const scaleFactor = Math.min(w / capture_width, h / capture_height);
+
+    // Draw background image (video or snapshot) with transforms
+    ctx.save();
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(r * Math.PI / 180);
+    ctx.scale(scaleFactor * zoom, scaleFactor * zoom);
+    ctx.translate(-capture_width / 2, -capture_height / 2);
+
+    if (snapshotCanvas) {
+        ctx.drawImage(snapshotCanvas, 0, 0, capture_width, capture_height);
+    } else if (videoElement && videoElement.readyState >= 2) {
+        ctx.drawImage(videoElement, 0, 0, capture_width, capture_height);
+    }
+    ctx.restore();
+
+    // Draw connection lines (in screen coordinates)
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < points.length; ++i) {
+        const [x0, y0] = points[i - 1];
+        const [x1, y1] = points[i];
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.stroke();
+    }
+
+    // Draw points
+    ctx.fillStyle = 'red';
+    for (const [x, y] of points) {
+        ctx.beginPath();
+        ctx.arc(x, y, circle_diameter / 2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+// --- Initialize ---
+initCanvas();
+startWebcam();
+canvas.addEventListener('click', handleClick);
+requestAnimationFrame(draw);

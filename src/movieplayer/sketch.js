@@ -1,5 +1,5 @@
-import p5 from 'p5';
 import { parse_shape_data, transform_to_center_of_canvas } from '../common.js';
+import { createCircleTexture, createRendererAndScene, buildPointsMesh, createAnimationLoop } from '../three-utils.js';
 import { initNav } from '../nav.js';
 
 initNav();
@@ -13,27 +13,68 @@ const dom_txt_curr_diameter = document.getElementById("txt_curr_diameter");
 dom_btn_load_movie.disabled = true;
 dom_btn_play.disabled = true;
 
+const CANVAS_SIZE = 1000;
 let ledDiameter = 6;
+
+let shape_pts = [];
+let movie_frames = [];
+let playing = false;
+let curr_frame_idx = 0;
+let curr_frame;
+
+// Pre-computed inverse for byte-to-float conversion
+const INV_255 = 1 / 255;
+
+// Three.js objects
+let pointsGeometry, pointsMaterial, pointsMesh;
+let colorAttribute;
+
+const circleTexture = createCircleTexture(64);
+
+const main = document.querySelector('main');
+const { renderer, scene, camera } = createRendererAndScene({
+    width: CANVAS_SIZE,
+    height: CANVAS_SIZE,
+    parent: main,
+});
 
 function updateDiameter() {
     ledDiameter = parseInt(dom_rng_diameter.value);
     dom_txt_curr_diameter.innerText = ledDiameter;
+    if (pointsMaterial) {
+        pointsMaterial.size = ledDiameter;
+    }
 }
 
 dom_rng_diameter.addEventListener('input', updateDiameter);
-let shape_pts = [];
-let movie_frames = [];
-let playing = false;
 
-let myCanvas;
+function buildPoints() {
+    if (pointsMesh) {
+        scene.remove(pointsMesh);
+        pointsGeometry.dispose();
+        pointsMaterial.dispose();
+    }
+
+    const result = buildPointsMesh({
+        points: shape_pts,
+        circleTexture,
+        diameter: ledDiameter,
+    });
+
+    pointsGeometry = result.geometry;
+    pointsMaterial = result.material;
+    pointsMesh = result.mesh;
+    colorAttribute = result.colorAttribute;
+
+    scene.add(pointsMesh);
+}
 
 function load_shape_data(text) {
     shape_pts = parse_shape_data(text);
     dom_btn_load_movie.disabled = (shape_pts.length === 0);
-    if (shape_pts.length === 0) {
-        return;
-    }
-    shape_pts = transform_to_center_of_canvas(shape_pts, myCanvas.width, myCanvas.height);
+    if (shape_pts.length === 0) return;
+    shape_pts = transform_to_center_of_canvas(shape_pts, CANVAS_SIZE, CANVAS_SIZE);
+    buildPoints();
 }
 
 dom_btn_upload_shape.onchange = () => {
@@ -70,7 +111,7 @@ function load_movie_data(array_buffer) {
     const n_frames = num_pixels / shape_pts.length;
     for (let i = 0; i < n_frames; ++i) {
         const start = i * shape_pts.length * 3;
-        const end = (i+1) * shape_pts.length * 3;
+        const end = (i + 1) * shape_pts.length * 3;
         const frame = uint8_array.slice(start, end);
         frames.push(frame);
     }
@@ -84,49 +125,31 @@ dom_btn_load_movie.onchange = () => {
     file.arrayBuffer().then(load_movie_data);
 };
 
-let curr_frame_idx = 0;
-let curr_frame;
+// --- Animation loop ---
+createAnimationLoop({
+    targetFPS: 30,
+    onFrame() {
+        if (shape_pts.length === 0) return;
 
-const sketch = (p) => {
-    p.setup = () => {
-        myCanvas = p.createCanvas(1000, 1000);
-        p.stroke(255);
-        p.frameRate(30);
-    };
-
-    p.draw = () => {
-        p.background(0);
-        if (shape_pts.length === 0) {
-            return;
-        }
-        const zoom = 1.0;
-        const scaled_pts = [];
-        shape_pts.forEach(([x,y]) => { scaled_pts.push([x*zoom, y*zoom]); });
-        p.push();
-        p.stroke(p.color('white'));
         if (movie_frames.length && playing) {
-            if (curr_frame_idx >= movie_frames.length) {
-                curr_frame_idx = 0;
-            }
+            if (curr_frame_idx >= movie_frames.length) curr_frame_idx = 0;
             curr_frame = movie_frames[curr_frame_idx++];
         } else {
             curr_frame = null;
         }
-        for (let i = 0; i < scaled_pts.length; ++i) {
-            let c = p.color(255, 255, 255, 0);
-            if (curr_frame) {
-                const r = curr_frame[i*3+0];
-                const g = curr_frame[i*3+1];
-                const b = curr_frame[i*3+2];
-                c = p.color(r, g, b, 255);
-                p.noStroke();
-            }
-            p.fill(c);
-            const [x, y] = scaled_pts[i];
-            p.circle(x, y, ledDiameter);
-        }
-        p.pop();
-    };
-};
 
-new p5(sketch);
+        if (curr_frame && colorAttribute) {
+            const arr = colorAttribute.array;
+            const count = shape_pts.length;
+            for (let i = 0; i < count; i++) {
+                const i3 = i * 3;
+                arr[i3    ] = curr_frame[i3    ] * INV_255;
+                arr[i3 + 1] = curr_frame[i3 + 1] * INV_255;
+                arr[i3 + 2] = curr_frame[i3 + 2] * INV_255;
+            }
+            colorAttribute.needsUpdate = true;
+        }
+
+        renderer.render(scene, camera);
+    }
+});
