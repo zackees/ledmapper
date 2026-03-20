@@ -1,0 +1,158 @@
+<div class="app-layout">
+    <aside id="sidebar">
+        <div class="sidebar-scroll">
+            <details class="panel" open>
+                <summary>Video Source</summary>
+                <div class="panel-body">
+                    <div class="control-group">
+                        <div class="source-buttons">
+                            <button id="btn_load_video" type="button">Load Video</button>
+                            <button id="btn_start_webcam" type="button">Webcam</button>
+                        </div>
+                        <div id="webcam-options" style="display:none">
+                            <div class="slider-container">
+                                <label for="sel_resolution">Res</label>
+                                <select id="sel_resolution">
+                                    <option value="640x480">640x480</option>
+                                    <option value="1280x720">1280x720</option>
+                                    <option value="1080x1920">1080x1920 (Portrait)</option>
+                                </select>
+                            </div>
+                            <div class="slider-container">
+                                <label for="sel_framerate">FPS</label>
+                                <select id="sel_framerate">
+                                    <option value="30">30 FPS</option>
+                                    <option value="60">60 FPS</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="video-playback" style="display:none">
+                            <button id="btn_play_pause" type="button" disabled>Play</button>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="panel" open>
+                <summary>Screenmap</summary>
+                <div class="panel-body">
+                    <div class="control-group">
+                        <span class="field-label">Presets</span>
+                        <div class="preset-buttons">
+                            <button id="btn_preset_16x16" type="button" class="preset-btn">16x16</button>
+                            <button id="btn_preset_8x8" type="button" class="preset-btn">8x8</button>
+                            <button id="btn_preset_strip" type="button" class="preset-btn">Strip 60</button>
+                            <button id="btn_preset_ring" type="button" class="preset-btn">Ring 24</button>
+                        </div>
+                        <label class="field-label" for="btn_upload_shape">Upload custom</label>
+                        <input type="file" id="btn_upload_shape" accept=".csv,.json">
+                    </div>
+                </div>
+            </details>
+
+            <details class="panel" open>
+                <summary>Recording</summary>
+                <div class="panel-body">
+                    <div class="control-group">
+                        <label class="checkbox-row">
+                            <input type="checkbox" id="chk_show_status">
+                            <span>Show output when recording</span>
+                        </label>
+                    </div>
+                </div>
+            </details>
+        </div>
+    </aside>
+
+    <div class="canvas-row">
+        <aside id="canvas-controls">
+            <details class="panel" open>
+                <summary>Camera Position</summary>
+                <div class="panel-body">
+                    <div class="control-group">
+                        <div class="slider-container">
+                            <label for="rng_rotation">Rotation</label>
+                            <input type="range" min="-180" max="180" value="0" class="slider" id="rng_rotation">
+                            <span id="txt_curr_rotation">0</span>
+                        </div>
+                        <div class="slider-container">
+                            <label for="rng_zoom">Zoom</label>
+                            <input type="range" min="0.15" max="3" value="1" step="0.01" class="slider" id="rng_zoom">
+                            <span id="txt_curr_zoom">1</span>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="panel" open>
+                <summary>Pixel Effects</summary>
+                <div class="panel-body">
+                    <div class="control-group">
+                        <div class="slider-container">
+                            <label for="rng_brightness">Bright</label>
+                            <input type="range" min="0" max="100" value="100" class="slider" id="rng_brightness">
+                            <span id="txt_curr_bri">100%</span>
+                        </div>
+                        <div class="slider-container">
+                            <label for="rng_gamma">Gamma</label>
+                            <input type="range" min="1" max="100" value="10" class="slider" id="rng_gamma">
+                            <span id="txt_curr_gamma">1.0</span>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="panel" open>
+                <summary>Blur</summary>
+                <div class="panel-body">
+                    <div class="control-group">
+                        <div class="slider-container">
+                            <label for="rng_blur">Radius</label>
+                            <input type="range" min="0" max="100" value="3" class="slider" id="rng_blur">
+                            <span id="txt_curr_blur">3</span>
+                        </div>
+                        <div class="slider-container">
+                            <label for="rng_blur_sigma">Sigma</label>
+                            <input type="range" min="0.1" max="50" value="1" step="0.1" class="slider" id="rng_blur_sigma">
+                            <span id="txt_curr_blur_sigma">1</span>
+                        </div>
+                    </div>
+                </div>
+            </details>
+        </aside>
+
+        <main class="canvas-area">
+            <div id="welcome-overlay">
+                <div class="welcome-content">
+                    <h2 class="welcome-title">Mapped Video Maker</h2>
+                    <p class="welcome-sub">Load a video source to start mapping LEDs</p>
+                    <div class="welcome-actions">
+                        <button type="button" class="welcome-btn" data-trigger="btn_load_video">
+                            <span class="welcome-btn-icon">&#9654;</span>
+                            Load Video File
+                        </button>
+                        <button type="button" class="welcome-btn welcome-btn-secondary" data-trigger="btn_start_webcam">
+                            <span class="welcome-btn-icon">&#9673;</span>
+                            Use Webcam
+                        </button>
+                    </div>
+                    <div class="welcome-status">
+                        <span class="status-dot"></span>
+                        16x16 grid preset ready
+                    </div>
+                    <p class="welcome-hint">Change LED layout or adjust effects in the toolbar</p>
+                </div>
+            </div>
+            <div id="canvas-container">
+                <canvas id="renderCanvas"></canvas>
+                <canvas id="overlayCanvas"></canvas>
+                <div class="canvas-toolbar">
+                    <input type="button" id="btn_toggle_record" value="Start Recording" disabled>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<button id="btn_how_to" type="button" class="help-fab" title="Help &amp; tips">?</button>
+<video id="videoPlayer" style="display:none" loop muted></video>

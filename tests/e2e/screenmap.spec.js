@@ -7,7 +7,7 @@ test.describe('Screenmap Maker', () => {
     });
 
     test('loads page with controls', async ({ page }) => {
-        await page.goto('/screenmap/index.html');
+        await page.goto('/screenmap/');
         await expect(page.locator('#btn_snapshot')).toBeVisible();
         await expect(page.locator('#btn_download')).toBeVisible();
         await expect(page.locator('#btn_clear')).toBeVisible();
@@ -15,7 +15,7 @@ test.describe('Screenmap Maker', () => {
     });
 
     test('has rotation and zoom controls', async ({ page }) => {
-        await page.goto('/screenmap/index.html');
+        await page.goto('/screenmap/');
         await expect(page.locator('#txt_rotate')).toBeVisible();
         await expect(page.locator('#slider_rotate')).toBeVisible();
         await expect(page.locator('#txt_zoom')).toBeVisible();
@@ -23,13 +23,13 @@ test.describe('Screenmap Maker', () => {
     });
 
     test('canvas renders with webcam mock', async ({ page }) => {
-        await page.goto('/screenmap/index.html');
+        await page.goto('/screenmap/');
         const canvas = page.locator('canvas');
         await expect(canvas).toBeVisible({ timeout: 10000 });
     });
 
     test('snapshot button is clickable', async ({ page }) => {
-        await page.goto('/screenmap/index.html');
+        await page.goto('/screenmap/');
         // Wait for canvas to render
         await page.locator('canvas').waitFor({ timeout: 10000 });
         const snapshotBtn = page.locator('#btn_snapshot');
@@ -37,14 +37,14 @@ test.describe('Screenmap Maker', () => {
     });
 
     test('download button starts disabled', async ({ page }) => {
-        await page.goto('/screenmap/index.html');
+        await page.goto('/screenmap/');
         await page.locator('canvas').waitFor({ timeout: 10000 });
         // Download should be disabled when no points exist
         await expect(page.locator('#btn_download')).toBeDisabled();
     });
 
     test('rotation slider syncs with text input', async ({ page }) => {
-        await page.goto('/screenmap/index.html');
+        await page.goto('/screenmap/');
         const slider = page.locator('#slider_rotate');
         const input = page.locator('#txt_rotate');
         await slider.fill('45');

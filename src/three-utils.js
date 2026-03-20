@@ -130,19 +130,22 @@ export function buildPointsMesh({ points, circleTexture, diameter, defaultColor 
 export function createAnimationLoop({ targetFPS, onFrame }) {
     let fps = targetFPS;
     let lastFrameTime = 0;
+    let rafId = null;
+    let stopped = false;
 
     function animate(time) {
-        requestAnimationFrame(animate);
+        if (stopped) return;
+        rafId = requestAnimationFrame(animate);
         const interval = 1000 / fps;
         const delta = time - lastFrameTime;
         if (delta < interval) return;
         lastFrameTime = time - (delta % interval);
         onFrame(time);
     }
-
-    requestAnimationFrame(animate);
+    rafId = requestAnimationFrame(animate);
 
     return {
-        setTargetFPS(newFPS) { fps = newFPS; }
+        setTargetFPS(newFPS) { fps = newFPS; },
+        stop() { stopped = true; if (rafId) cancelAnimationFrame(rafId); }
     };
 }

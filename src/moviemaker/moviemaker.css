@@ -32,30 +32,24 @@
 
 /* ── Base ───────────────────────────────────────────────────── */
 
-body {
+[data-tool="moviemaker"] {
     font-family: 'Outfit', system-ui, -apple-system, sans-serif;
-    background: var(--mm-bg);
     color: var(--mm-text);
-    margin: 0;
-    padding: 0;
     line-height: 1.5;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
     -webkit-font-smoothing: antialiased;
 }
 
-h1, h2, h3, h4, h5, h6 {
+[data-tool="moviemaker"] h1, [data-tool="moviemaker"] h2, [data-tool="moviemaker"] h3, [data-tool="moviemaker"] h4, [data-tool="moviemaker"] h5, [data-tool="moviemaker"] h6 {
     color: var(--mm-text);
     margin: 0;
 }
 
-a {
+[data-tool="moviemaker"] a {
     color: var(--mm-accent);
     text-decoration: none;
 }
 
-a:hover {
+[data-tool="moviemaker"] a:hover {
     color: #60a5fa;
 }
 
@@ -272,8 +266,8 @@ a:hover {
 
 /* ── Buttons ────────────────────────────────────────────────── */
 
-button,
-input[type="button"] {
+.app-layout button,
+.app-layout input[type="button"] {
     font-family: inherit;
     font-size: 0.8rem;
     font-weight: 500;
@@ -287,13 +281,13 @@ input[type="button"] {
     line-height: 1.4;
 }
 
-button:hover,
-input[type="button"]:hover {
+.app-layout button:hover,
+.app-layout input[type="button"]:hover {
     background: var(--mm-accent-hover);
 }
 
-button:disabled,
-input[type="button"]:disabled {
+.app-layout button:disabled,
+.app-layout input[type="button"]:disabled {
     background: var(--mm-surface-3);
     color: var(--mm-text-muted);
     cursor: not-allowed;
@@ -361,7 +355,7 @@ button.active-source:hover {
     gap: 8px;
 }
 
-label {
+.app-layout label {
     color: var(--mm-text-secondary);
     font-size: 0.75rem;
     font-weight: 400;
@@ -443,7 +437,7 @@ label {
     grid-template-columns: 56px 1fr;
 }
 
-select {
+.app-layout select {
     font-family: inherit;
     background: var(--mm-surface-2);
     color: var(--mm-text);
@@ -455,18 +449,18 @@ select {
     transition: border-color var(--mm-dur) var(--mm-ease);
 }
 
-select:hover {
+.app-layout select:hover {
     border-color: var(--mm-border-hover);
 }
 
-select:focus {
+.app-layout select:focus {
     outline: none;
     border-color: var(--mm-accent);
 }
 
 /* ── File Input ─────────────────────────────────────────────── */
 
-input[type="file"] {
+.app-layout input[type="file"] {
     font-family: inherit;
     font-size: 0.72rem;
     background: var(--mm-surface-2);
@@ -480,11 +474,11 @@ input[type="file"] {
     transition: border-color var(--mm-dur) var(--mm-ease);
 }
 
-input[type="file"]:hover {
+.app-layout input[type="file"]:hover {
     border-color: var(--mm-accent);
 }
 
-input[type="file"]::-webkit-file-upload-button {
+.app-layout input[type="file"]::-webkit-file-upload-button {
     font-family: inherit;
     background: var(--mm-accent);
     color: #fff;
@@ -497,7 +491,7 @@ input[type="file"]::-webkit-file-upload-button {
     transition: background var(--mm-dur) var(--mm-ease);
 }
 
-input[type="file"]::-webkit-file-upload-button:hover {
+.app-layout input[type="file"]::-webkit-file-upload-button:hover {
     background: var(--mm-accent-hover);
 }
 

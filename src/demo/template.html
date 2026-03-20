@@ -1,0 +1,52 @@
+<div class="controls">
+    <h1>Demo</h1>
+    <p>This demo uses a 4x serpentine matrix to display mapped video. See in FastLED: </p>
+    <p><a href="https://zackees.github.io/fastled-wasm/FxSdCard">https://zackees.github.io/fastled-wasm/FxSdCard</a></p>
+
+    <!-- Hidden file inputs -->
+    <div style="display: none;">
+        <input type="file" id="btn_upload_shape" accept=".json">
+        <input type="file" id="btn_load_movie" accept=".rgb">
+    </div>
+
+    <!-- New flex container for the three sections -->
+    <div class="controls-container">
+        <!-- Left section - Play/Pause -->
+        <div class="control-section">
+            <input type="button" id="btn_play" value="Play">
+        </div>
+
+        <!-- Middle section - Sliders -->
+        <div class="control-section">
+            <div class="slider-container">
+                <label for="sel_framerate">Frame Rate:</label>
+                <select id="sel_framerate">
+                    <option value="60">60 FPS</option>
+                    <option value="30">30 FPS</option>
+                    <option value="15">15 FPS</option>
+                    <option value="10">10 FPS</option>
+                    <option value="5">5 FPS</option>
+                    <option value="3">3 FPS</option>
+                    <option value="1">1 FPS</option>
+                </select>
+            </div>
+            <div class="slider-container">
+                <label for="rng_diameter">LED Diameter:</label>
+                <input type="range" min="1" max="20" value="6" step="1" class="slider" id="rng_diameter">
+                <span id="txt_curr_diameter">6</span>
+            </div>
+        </div>
+
+        <!-- Right section - Download buttons -->
+        <div class="control-section">
+            <div class="button-container">
+                <button id="btn_download_screenmap">Download Screenmap</button>
+                <button id="btn_download_screenmap_16x16_serpentine">Download 16x16 Serpentine Screenmap</button>
+                <button id="btn_download_video">Download Mapped Video</button>
+            </div>
+        </div>
+    </div>
+</div>
+<main>
+    <!-- Three.js canvas injected here by sketch.js -->
+</main>

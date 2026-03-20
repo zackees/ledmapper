@@ -4,21 +4,29 @@ import { resolve } from 'path';
 export default defineConfig({
   root: 'src',
   publicDir: '../public',
+  plugins: [{
+    name: 'spa-fallback',
+    configureServer(server) {
+      return () => {
+        server.middlewares.use((req, res, next) => {
+          if (req.url && !req.url.includes('.') && req.url !== '/') {
+            req.url = '/index.html';
+          }
+          next();
+        });
+      };
+    }
+  }],
   server: {
     port: 8080,
-    open: '/index.html',
+    open: '/',
   },
   build: {
     outDir: '../dist',
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        hub: resolve(__dirname, 'src/index.html'),
-        demo: resolve(__dirname, 'src/demo/index.html'),
-        screenmap: resolve(__dirname, 'src/screenmap/index.html'),
-        moviemaker: resolve(__dirname, 'src/moviemaker/index.html'),
-        movieplayer: resolve(__dirname, 'src/movieplayer/index.html'),
-        shapeviewer: resolve(__dirname, 'src/shapeviewer/index.html'),
+        main: resolve(__dirname, 'src/index.html'),
       },
       treeshake: {
         preset: 'smallest',

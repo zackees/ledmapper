@@ -64,7 +64,7 @@ test.describe('Moviemaker Recording Workflow', () => {
             const errors = [];
             page.on('pageerror', err => errors.push(err.message));
 
-            await page.goto('/moviemaker/index.html');
+            await page.goto('/moviemaker/');
 
             // Load video via file chooser (button creates dynamic <input type="file">)
             const fileChooserPromise = page.waitForEvent('filechooser');
@@ -110,7 +110,7 @@ test.describe('Moviemaker Recording Workflow', () => {
         test('records webcam feed and downloads valid .rgb file', async ({ page }) => {
             test.setTimeout(60000);
 
-            await page.goto('/moviemaker/index.html');
+            await page.goto('/moviemaker/');
 
             // Start webcam
             await page.locator('#btn_start_webcam').click();
@@ -131,7 +131,7 @@ test.describe('Moviemaker Recording Workflow', () => {
         test('can switch presets and record with each', async ({ page }) => {
             test.setTimeout(60000);
 
-            await page.goto('/moviemaker/index.html');
+            await page.goto('/moviemaker/');
             await page.locator('#btn_start_webcam').click();
             await waitForSourceActive(page);
 
@@ -149,7 +149,7 @@ test.describe('Moviemaker Recording Workflow', () => {
         test('records with custom screenmap upload', async ({ page }) => {
             test.setTimeout(60000);
 
-            await page.goto('/moviemaker/index.html');
+            await page.goto('/moviemaker/');
             await page.locator('#btn_start_webcam').click();
             await waitForSourceActive(page);
 
@@ -176,7 +176,7 @@ test.describe('Moviemaker Recording Workflow', () => {
 
             // Helper to set up a recording session from scratch
             async function setupAndRecord(pg, blurVal, sigmaVal, recordMs) {
-                await pg.goto('/moviemaker/index.html');
+                await pg.goto('/moviemaker/');
                 await pg.locator('#btn_start_webcam').click();
                 await waitForSourceActive(pg);
 
