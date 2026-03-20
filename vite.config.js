@@ -20,6 +20,9 @@ export default defineConfig({
         movieplayer: resolve(__dirname, 'src/movieplayer/index.html'),
         shapeviewer: resolve(__dirname, 'src/shapeviewer/index.html'),
       },
+      treeshake: {
+        preset: 'smallest',
+      },
     },
   },
 });

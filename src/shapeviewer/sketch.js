@@ -1,4 +1,13 @@
-import * as THREE from 'three';
+import {
+    WebGLRenderer,
+    Scene,
+    OrthographicCamera,
+    BufferGeometry,
+    Float32BufferAttribute,
+    LineSegments,
+    LineBasicMaterial,
+    LineLoop,
+} from 'three';
 import { parse_shape_data } from '../common.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
 import { initNav } from '../nav.js';
@@ -48,16 +57,16 @@ function getCanvasSize() {
 function initRenderer() {
     const { width, height } = getCanvasSize();
 
-    renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer = new WebGLRenderer({ antialias: false });
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setClearColor(0x121212, 1);
 
-    scene = new THREE.Scene();
+    scene = new Scene();
 
     // Orthographic camera centered at (0,0) — points from center_and_fit are around (0,0)
     const hw = width / 2, hh = height / 2;
-    camera = new THREE.OrthographicCamera(-hw, hw, -hh, hh, -1, 1);
+    camera = new OrthographicCamera(-hw, hw, -hh, hh, -1, 1);
     camera.position.z = 1;
 
     const main = document.getElementById('main');
@@ -107,9 +116,9 @@ function buildGrid(width, height) {
         vertices.push(-hw, y, 0, hw, y, 0);
     }
 
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    gridLines = new THREE.LineSegments(geom, new THREE.LineBasicMaterial({ color: 0x323232 }));
+    const geom = new BufferGeometry();
+    geom.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+    gridLines = new LineSegments(geom, new LineBasicMaterial({ color: 0x323232 }));
     scene.add(gridLines);
 }
 
@@ -197,9 +206,9 @@ function buildShape(scaledPts) {
     // Shape outline (closed loop)
     const lineVerts = [];
     scaledPts.forEach(([x, y]) => lineVerts.push(x, y, 0));
-    const lineGeom = new THREE.BufferGeometry();
-    lineGeom.setAttribute('position', new THREE.Float32BufferAttribute(lineVerts, 3));
-    shapeOutline = new THREE.LineLoop(lineGeom, new THREE.LineBasicMaterial({ color: 0x2196F3 }));
+    const lineGeom = new BufferGeometry();
+    lineGeom.setAttribute('position', new Float32BufferAttribute(lineVerts, 3));
+    shapeOutline = new LineLoop(lineGeom, new LineBasicMaterial({ color: 0x2196F3 }));
     scene.add(shapeOutline);
 
     // LED points — green for first, red for rest

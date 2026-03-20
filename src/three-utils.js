@@ -1,4 +1,14 @@
-import * as THREE from 'three';
+import {
+    CanvasTexture,
+    WebGLRenderer,
+    Scene,
+    OrthographicCamera,
+    BufferGeometry,
+    Float32BufferAttribute,
+    DynamicDrawUsage,
+    PointsMaterial,
+    Points,
+} from 'three';
 
 /**
  * Create a canvas-based circle texture for round points.
@@ -14,7 +24,7 @@ export function createCircleTexture(size) {
     ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
     ctx.fillStyle = 'white';
     ctx.fill();
-    return new THREE.CanvasTexture(canvas);
+    return new CanvasTexture(canvas);
 }
 
 /**
@@ -28,16 +38,16 @@ export function createCircleTexture(size) {
  * @returns {{ renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.OrthographicCamera, wrapper: HTMLDivElement, overlayCanvas?: HTMLCanvasElement, overlayCtx?: CanvasRenderingContext2D }}
  */
 export function createRendererAndScene({ width, height, parent, clearColor = 0x000000, enableOverlay = false }) {
-    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    const renderer = new WebGLRenderer({ antialias: false });
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setClearColor(clearColor, 1);
 
-    const scene = new THREE.Scene();
+    const scene = new Scene();
 
     // Orthographic camera: left=0, right=width, top=0, bottom=height
     // gives y-down coordinate convention matching canvas 2D
-    const camera = new THREE.OrthographicCamera(0, width, 0, height, -1, 1);
+    const camera = new OrthographicCamera(0, width, 0, height, -1, 1);
     camera.position.z = 1;
 
     // Wrapper div for canvas stacking
@@ -89,13 +99,13 @@ export function buildPointsMesh({ points, circleTexture, diameter, defaultColor 
         colors[i3 + 2] = defaultColor[2];
     }
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    const colorAttribute = new THREE.Float32BufferAttribute(colors, 3);
-    colorAttribute.setUsage(THREE.DynamicDrawUsage);
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+    const colorAttribute = new Float32BufferAttribute(colors, 3);
+    colorAttribute.setUsage(DynamicDrawUsage);
     geometry.setAttribute('color', colorAttribute);
 
-    const material = new THREE.PointsMaterial({
+    const material = new PointsMaterial({
         size: diameter,
         sizeAttenuation: false,
         vertexColors: true,
@@ -105,7 +115,7 @@ export function buildPointsMesh({ points, circleTexture, diameter, defaultColor 
         depthWrite: false,
     });
 
-    const mesh = new THREE.Points(geometry, material);
+    const mesh = new Points(geometry, material);
 
     return { mesh, geometry, material, colorAttribute };
 }

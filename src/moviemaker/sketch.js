@@ -1,5 +1,16 @@
-import * as THREE from 'three';
-import Swal from 'sweetalert2';
+import {
+    Scene,
+    OrthographicCamera,
+    WebGLRenderer,
+    PlaneGeometry,
+    ShaderMaterial,
+    Vector2,
+    Mesh,
+    WebGLRenderTarget,
+    LinearFilter,
+    VideoTexture,
+} from 'three';
+const Swal = import('sweetalert2').then(m => m.default);
 import { parse_shape_data, download_binary_as_file } from '../common.js';
 import { initNav } from '../nav.js';
 import { transformToCenter, getFrameIndex, flattenColorFrames, parseResolution, computePreviewFactor, samplePixels, computeFps, estimateLedSize } from './logic.js';
@@ -64,11 +75,11 @@ let frame_rate = 30;
 let videoWidth = 640, videoHeight = 480;
 
 // ── Three.js ────────────────────────────────────────────────────────────────
-const scene    = new THREE.Scene();
-const camera   = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-const renderer = new THREE.WebGLRenderer({ canvas: renderCanvas, antialias: false, preserveDrawingBuffer: true });
+const scene    = new Scene();
+const camera   = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const renderer = new WebGLRenderer({ canvas: renderCanvas, antialias: false, preserveDrawingBuffer: true });
 
-const geometry = new THREE.PlaneGeometry(2, 2);
+const geometry = new PlaneGeometry(2, 2);
 
 // Separable two-pass Gaussian blur: horizontal then vertical.
 // Cost: 2×(2r+1) texture lookups instead of (2r+1)² for a 2D kernel.
@@ -122,21 +133,21 @@ const BLUR_FRAG = `
     }
 `;
 
-const shaderMaterial = new THREE.ShaderMaterial({
+const shaderMaterial = new ShaderMaterial({
     uniforms: {
         tDiffuse:   { value: null },
-        resolution: { value: new THREE.Vector2(640, 480) },
+        resolution: { value: new Vector2(640, 480) },
         blurRadius: { value: parseFloat(dom_rng_blur.value) },
         sigma:      { value: parseFloat(dom_rng_blur_sigma.value) },
         brightness: { value: 1.0 },
         gamma:      { value: 1.0 },
-        direction:  { value: new THREE.Vector2(1, 0) },
+        direction:  { value: new Vector2(1, 0) },
     },
     vertexShader: BLUR_VERT,
     fragmentShader: BLUR_FRAG,
 });
 
-const mesh = new THREE.Mesh(geometry, shaderMaterial);
+const mesh = new Mesh(geometry, shaderMaterial);
 scene.add(mesh);
 
 let blurTarget = null;  // intermediate render target for horizontal blur pass
@@ -160,15 +171,15 @@ function setupForNewSource(w, h) {
     readbackBuffer = new Uint8Array(w * h * 4);
 
     if (blurTarget) blurTarget.dispose();
-    blurTarget = new THREE.WebGLRenderTarget(w, h, {
-        minFilter: THREE.LinearFilter,
-        magFilter: THREE.LinearFilter,
+    blurTarget = new WebGLRenderTarget(w, h, {
+        minFilter: LinearFilter,
+        magFilter: LinearFilter,
     });
 
     if (videoTexture) videoTexture.dispose();
-    videoTexture = new THREE.VideoTexture(videoPlayer);
-    videoTexture.minFilter = THREE.LinearFilter;
-    videoTexture.magFilter = THREE.LinearFilter;
+    videoTexture = new VideoTexture(videoPlayer);
+    videoTexture.minFilter = LinearFilter;
+    videoTexture.magFilter = LinearFilter;
     shaderMaterial.uniforms.tDiffuse.value = videoTexture;
     shaderMaterial.uniforms.resolution.value.set(w, h);
 
@@ -393,10 +404,10 @@ function readbackAndSample(transformedPts) {
 
 // ── Recording ───────────────────────────────────────────────────────────────
 
-function endRecording() {
+async function endRecording() {
     const flat = flattenColorFrames(gColorFrames);
     if (flat === null) {
-        Swal.fire('No Frames', 'No frames were captured during recording.', 'warning');
+        (await Swal).fire('No Frames', 'No frames were captured during recording.', 'warning');
     } else {
         download_binary_as_file(flat, `video${video_download_index}.rgb`);
         video_download_index++;
@@ -466,8 +477,8 @@ function drawOverlay(transformedPts, lastSample, fps) {
 
 // ── Event handlers ──────────────────────────────────────────────────────────
 
-dom_btn_how_to.onclick = () => {
-    Swal.fire({
+dom_btn_how_to.onclick = async () => {
+    (await Swal).fire({
         title: 'How to get the best video',
         html: `
             <div style="text-align: left; margin-bottom: 15px;">
@@ -545,9 +556,9 @@ function startWebcam() {
         dom_webcam_options.style.display = '';
         dom_video_playback.style.display = 'none';
         isPlaying = true;
-    }).catch(err => {
+    }).catch(async err => {
         console.error('Webcam error:', err);
-        Swal.fire('Webcam Error', err.message, 'error');
+        (await Swal).fire('Webcam Error', err.message, 'error');
     });
 }
 
