@@ -19,7 +19,9 @@
     --lm-accent: #3b82f6;
     --lm-accent-hover: #2563eb;
     --lm-accent-subtle: rgba(59, 130, 246, 0.1);
+    --lm-accent-glow: rgba(59, 130, 246, 0.25);
     --lm-radius: 6px;
+    --lm-radius-lg: 10px;
     --lm-ease: cubic-bezier(0.4, 0, 0.2, 1);
     --lm-dur: 200ms;
 }
@@ -50,6 +52,12 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    animation: lm-page-enter 300ms var(--lm-ease) both;
+}
+
+@keyframes lm-page-enter {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Typography ─────────────────────────────────────────────── */
@@ -90,11 +98,13 @@ input[type="button"] {
     color: #fff;
     background: var(--lm-accent);
     line-height: 1.4;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 button:hover,
 input[type="button"]:hover {
     background: var(--lm-accent-hover);
+    box-shadow: 0 2px 8px var(--lm-accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 button:disabled,
@@ -102,6 +112,7 @@ input[type="button"]:disabled {
     background: var(--lm-surface-3);
     color: var(--lm-text-muted);
     cursor: not-allowed;
+    box-shadow: none;
 }
 
 /* ── File Inputs ────────────────────────────────────────────── */
@@ -263,12 +274,37 @@ canvas {
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
+/* ── Focus Visible ──────────────────────────────────────────── */
+
+:focus-visible {
+    outline: 2px solid var(--lm-accent);
+    outline-offset: 2px;
+}
+
+button:focus-visible,
+input[type="button"]:focus-visible {
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px var(--lm-accent-glow);
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--lm-surface-3);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--lm-border-hover); }
+
 /* ── Shared Controls Bar ────────────────────────────────────── */
 
 .controls {
     background: var(--lm-surface-1);
     border-bottom: 1px solid var(--lm-border);
     padding: 16px 24px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 }
 
 .slider-container {

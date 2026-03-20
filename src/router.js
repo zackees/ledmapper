@@ -17,33 +17,28 @@ const routes = [
 
 const toolConfig = {
     hub: {
-        css: null,
         module: () => import('./hub/hub.js'),
     },
     demo: {
-        css: '/demo/demo.css',
         module: () => import('./demo/demo.js'),
     },
     screenmap: {
-        css: '/screenmap/screenmap.css',
         module: () => import('./screenmap/screenmap.js'),
     },
     moviemaker: {
-        css: '/moviemaker/moviemaker.css',
         module: () => import('./moviemaker/moviemaker.js'),
     },
     movieplayer: {
-        css: '/movieplayer/movieplayer.css',
         module: () => import('./movieplayer/movieplayer.js'),
     },
     shapeviewer: {
-        css: '/shapeviewer/shapeviewer.css',
         module: () => import('./shapeviewer/shapeviewer.js'),
     },
 };
 
 export function createRouter(appEl) {
     let currentDestroy = null;
+    let loadId = 0; // guard against concurrent loads
     const toolCssLink = document.getElementById('tool-css');
 
     function matchRoute(path) {
@@ -58,6 +53,7 @@ export function createRouter(appEl) {
 
     async function loadRoute(path) {
         const tool = matchRoute(path);
+        const thisLoad = ++loadId; // capture current load id
 
         // Tear down current tool
         if (currentDestroy) {
@@ -69,13 +65,10 @@ export function createRouter(appEl) {
         appEl.innerHTML = '';
         appEl.dataset.tool = tool;
 
-        // Swap tool CSS
-        const config = toolConfig[tool];
-        if (config.css) {
-            toolCssLink.href = config.css;
-        } else {
-            toolCssLink.removeAttribute('href');
-        }
+        // Re-trigger page enter animation
+        appEl.style.animation = 'none';
+        appEl.offsetHeight; // force reflow
+        appEl.style.animation = '';
 
         // Update nav active state
         updateActiveLink(path);
@@ -92,8 +85,20 @@ export function createRouter(appEl) {
         document.title = titles[tool] || 'FastLED Video Mapper';
 
         // Load and initialize tool module
+        const config = toolConfig[tool];
         try {
             const mod = await config.module();
+
+            // Abort if a newer navigation started while we were loading
+            if (thisLoad !== loadId) return;
+
+            // Swap tool CSS (URL exported from module via ?url import)
+            if (mod.css) {
+                toolCssLink.href = mod.css;
+            } else {
+                toolCssLink.removeAttribute('href');
+            }
+
             if (mod.init) {
                 const destroy = mod.init(appEl);
                 if (typeof destroy === 'function') {
@@ -101,6 +106,7 @@ export function createRouter(appEl) {
                 }
             }
         } catch (e) {
+            if (thisLoad !== loadId) return;
             console.error(`Failed to load tool "${tool}":`, e);
             appEl.innerHTML = `<div style="color:red;padding:20px;">Failed to load tool: ${e.message}</div>`;
         }

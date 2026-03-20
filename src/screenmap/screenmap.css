@@ -3,24 +3,22 @@
    Full-screen canvas tool with floating controls overlay
    ═══════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap');
-
 /* ── Base ───────────────────────────────────────────────────── */
 
 [data-tool="screenmap"] {
     overflow: hidden;
-    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
     color: #a1a1aa;
     -webkit-font-smoothing: antialiased;
     line-height: 1.4;
 }
 
 [data-tool="screenmap"] main {
-    width: 100vw;
-    height: 100vh;
+    flex: 1;
+    width: 100%;
     display: flex;
     justify-content: center;
     align-items: center;
+    padding: 0;
 }
 
 /* ── Floating Controls Panel ────────────────────────────────── */

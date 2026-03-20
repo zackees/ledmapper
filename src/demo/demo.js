@@ -1,6 +1,7 @@
 import { parse_shape_data_json, centerAndFitPoints, download_blob_as_file } from '../common.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
+export { default as css } from './demo.css?url';
 
 export function init(container) {
     container.innerHTML = templateHtml;

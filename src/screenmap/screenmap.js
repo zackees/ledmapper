@@ -1,5 +1,6 @@
 import { download_text_as_file } from '../common.js';
 import templateHtml from './template.html?raw';
+export { default as css } from './screenmap.css?url';
 
 export function init(container) {
     container.innerHTML = templateHtml;

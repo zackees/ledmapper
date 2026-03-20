@@ -9,16 +9,16 @@
     position: relative;
 }
 
-/* Subtle ambient glow behind hero */
+/* Ambient glow behind hero */
 .hub-container::before {
     content: '';
     position: absolute;
-    top: -60px;
+    top: -80px;
     left: 50%;
     transform: translateX(-50%);
-    width: 500px;
-    height: 400px;
-    background: radial-gradient(ellipse, rgba(59, 130, 246, 0.05) 0%, transparent 70%);
+    width: 600px;
+    height: 500px;
+    background: radial-gradient(ellipse, rgba(59, 130, 246, 0.06) 0%, rgba(59, 130, 246, 0.02) 40%, transparent 70%);
     pointer-events: none;
     z-index: 0;
 }
@@ -34,10 +34,10 @@
 
 .hub-header h1 {
     font-weight: 300;
-    font-size: 2.2rem;
-    letter-spacing: -0.02em;
+    font-size: 2.4rem;
+    letter-spacing: -0.03em;
     margin-bottom: 12px;
-    background: linear-gradient(135deg, #e4e4e7 0%, #71717a 100%);
+    background: linear-gradient(135deg, #f0f0f2 0%, #a1a1aa 50%, #71717a 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -72,14 +72,33 @@
     text-decoration: none;
     transition: all 280ms var(--lm-ease);
     display: block;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Subtle inner glow on hover */
+.tool-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    opacity: 0;
+    transition: opacity 280ms var(--lm-ease);
+    background: radial-gradient(ellipse at 20% 50%, color-mix(in srgb, var(--card-accent, var(--lm-accent)) 6%, transparent) 0%, transparent 70%);
+    pointer-events: none;
 }
 
 .tool-card:hover {
     background: var(--lm-surface-2);
-    border-color: var(--card-accent, var(--lm-accent));
+    border-color: color-mix(in srgb, var(--card-accent, var(--lm-accent)) 40%, var(--lm-border));
     border-left-width: 3px;
     transform: translateY(-2px);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
+                0 0 24px color-mix(in srgb, var(--card-accent, var(--lm-accent)) 8%, transparent);
+}
+
+.tool-card:hover::after {
+    opacity: 1;
 }
 
 .tool-card h2 {
@@ -87,6 +106,7 @@
     font-size: 0.95rem;
     font-weight: 600;
     margin: 0 0 6px 0;
+    position: relative;
 }
 
 .tool-card p {
@@ -94,6 +114,7 @@
     font-size: 0.82rem;
     margin: 0;
     line-height: 1.5;
+    position: relative;
 }
 
 /* ── Staggered entrance ─────────────────────────────────────── */
@@ -132,5 +153,9 @@
 
     .tool-grid {
         grid-template-columns: 1fr;
+    }
+
+    .hub-container::before {
+        display: none;
     }
 }

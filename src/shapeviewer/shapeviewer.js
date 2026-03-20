@@ -11,6 +11,7 @@ import {
 import { parse_shape_data, centerAndFitPoints, readFileAsText } from '../common.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
 import templateHtml from './template.html?raw';
+export { default as css } from './shapeviewer.css?url';
 
 export function init(container) {
     container.innerHTML = templateHtml;

@@ -7,6 +7,7 @@ import { createVideoSource } from './video-source.js';
 import { createRecording } from './recording.js';
 import { drawMoviemakerOverlay } from './overlay.js';
 import templateHtml from './template.html?raw';
+export { default as css } from './moviemaker.css?url';
 
 export function init(container) {
     container.innerHTML = templateHtml;
