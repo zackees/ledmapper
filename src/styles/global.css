@@ -1,0 +1,279 @@
+/* ═══════════════════════════════════════════════════════════════
+   FastLED Video Mapper — Design System
+   ═══════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+/* ── Design Tokens ──────────────────────────────────────────── */
+
+:root {
+    --lm-bg: #0a0a0a;
+    --lm-surface-1: #111111;
+    --lm-surface-2: #1a1a1a;
+    --lm-surface-3: #242424;
+    --lm-border: #2a2a2a;
+    --lm-border-hover: #3a3a3a;
+    --lm-text: #e4e4e7;
+    --lm-text-secondary: #a1a1aa;
+    --lm-text-muted: #63636e;
+    --lm-accent: #3b82f6;
+    --lm-accent-hover: #2563eb;
+    --lm-accent-subtle: rgba(59, 130, 246, 0.1);
+    --lm-radius: 6px;
+    --lm-ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --lm-dur: 200ms;
+}
+
+/* ── Reset ──────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+/* ── Base ───────────────────────────────────────────────────── */
+
+body {
+    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+    line-height: 1.5;
+    color: var(--lm-text);
+    margin: 0;
+    padding: 0;
+    background-color: var(--lm-bg);
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ── Typography ─────────────────────────────────────────────── */
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--lm-text);
+    margin: 0 0 0.5em 0;
+    font-weight: 600;
+}
+
+h1 {
+    font-size: 1.5rem;
+    font-weight: 500;
+}
+
+a {
+    color: var(--lm-accent);
+    text-decoration: none;
+    transition: color var(--lm-dur) var(--lm-ease);
+}
+
+a:hover {
+    color: #60a5fa;
+}
+
+/* ── Buttons ────────────────────────────────────────────────── */
+
+button,
+input[type="button"] {
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 7px 14px;
+    border-radius: var(--lm-radius);
+    border: none;
+    cursor: pointer;
+    transition: all var(--lm-dur) var(--lm-ease);
+    color: #fff;
+    background: var(--lm-accent);
+    line-height: 1.4;
+}
+
+button:hover,
+input[type="button"]:hover {
+    background: var(--lm-accent-hover);
+}
+
+button:disabled,
+input[type="button"]:disabled {
+    background: var(--lm-surface-3);
+    color: var(--lm-text-muted);
+    cursor: not-allowed;
+}
+
+/* ── File Inputs ────────────────────────────────────────────── */
+
+input[type="file"] {
+    font-family: inherit;
+    font-size: 0.78rem;
+    background: var(--lm-surface-2);
+    color: var(--lm-text-secondary);
+    border: 1px dashed var(--lm-border);
+    padding: 8px 10px;
+    border-radius: var(--lm-radius);
+    width: 100%;
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: border-color var(--lm-dur) var(--lm-ease);
+}
+
+input[type="file"]:hover {
+    border-color: var(--lm-accent);
+}
+
+input[type="file"]::-webkit-file-upload-button {
+    font-family: inherit;
+    background: var(--lm-accent);
+    color: #fff;
+    border: none;
+    padding: 4px 10px;
+    margin-right: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    transition: background var(--lm-dur) var(--lm-ease);
+}
+
+input[type="file"]::-webkit-file-upload-button:hover {
+    background: var(--lm-accent-hover);
+}
+
+/* ── Text / Number Inputs ───────────────────────────────────── */
+
+input[type="text"],
+input[type="number"] {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    background: var(--lm-surface-2);
+    color: var(--lm-text);
+    border: 1px solid var(--lm-border);
+    padding: 5px 8px;
+    border-radius: var(--lm-radius);
+    transition: border-color var(--lm-dur) var(--lm-ease);
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus {
+    outline: none;
+    border-color: var(--lm-accent);
+}
+
+/* ── Selects ────────────────────────────────────────────────── */
+
+select {
+    font-family: inherit;
+    font-size: 0.78rem;
+    background: var(--lm-surface-2);
+    color: var(--lm-text);
+    border: 1px solid var(--lm-border);
+    padding: 6px 8px;
+    border-radius: var(--lm-radius);
+    cursor: pointer;
+    transition: border-color var(--lm-dur) var(--lm-ease);
+}
+
+select:hover { border-color: var(--lm-border-hover); }
+select:focus { outline: none; border-color: var(--lm-accent); }
+
+/* ── Range Sliders ──────────────────────────────────────────── */
+
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--lm-surface-3);
+    outline: none;
+    opacity: 0.85;
+    transition: opacity var(--lm-dur) var(--lm-ease);
+    border: none;
+    box-shadow: none;
+}
+
+input[type="range"]:hover { opacity: 1; }
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--lm-accent);
+    cursor: pointer;
+    border: none;
+    transition: transform var(--lm-dur) var(--lm-ease),
+                box-shadow var(--lm-dur) var(--lm-ease);
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 4px var(--lm-accent-subtle);
+}
+
+input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--lm-accent);
+    cursor: pointer;
+    border: none;
+}
+
+input[type="range"]::-moz-range-track {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--lm-surface-3);
+}
+
+/* ── Checkboxes ─────────────────────────────────────────────── */
+
+input[type="checkbox"] {
+    accent-color: var(--lm-accent);
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+/* ── Labels ─────────────────────────────────────────────────── */
+
+label {
+    color: var(--lm-text-secondary);
+    font-size: 0.8rem;
+    font-weight: 400;
+}
+
+/* ── Layout ─────────────────────────────────────────────────── */
+
+main {
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+/* ── Canvas ─────────────────────────────────────────────────── */
+
+canvas {
+    border: 1px solid var(--lm-border);
+    border-radius: 2px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Shared Controls Bar ────────────────────────────────────── */
+
+.controls {
+    background: var(--lm-surface-1);
+    border-bottom: 1px solid var(--lm-border);
+    padding: 16px 24px;
+}
+
+.slider-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.slider-container span {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--lm-text-muted);
+    min-width: 24px;
+    text-align: right;
+}

@@ -1,0 +1,36 @@
+/* ═══════════════════════════════════════════════════════════════
+   Movie Player — Layout Overrides
+   Base element styles inherited from global.css
+   ═══════════════════════════════════════════════════════════════ */
+
+.controls {
+    max-width: 600px;
+}
+
+.controls h1 {
+    font-size: 1.2rem;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.controls p {
+    font-size: 0.8rem;
+    color: var(--lm-text-muted);
+    margin: 0 0 12px 0;
+}
+
+.controls > div {
+    margin-bottom: 10px;
+}
+
+.slider-container {
+    margin-top: 4px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+    .controls {
+        max-width: 100%;
+    }
+}

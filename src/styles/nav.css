@@ -1,0 +1,58 @@
+/* ═══════════════════════════════════════════════════════════════
+   Navigation Bar
+   Self-contained — no dependency on global.css variables
+   ═══════════════════════════════════════════════════════════════ */
+
+.nav-bar {
+    background: #0f0f0f;
+    border-bottom: 1px solid #1e1e1e;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.nav-bar .nav-brand {
+    color: #a1a1aa;
+    font-weight: 300;
+    font-size: 0.92rem;
+    margin-right: 24px;
+    white-space: nowrap;
+    text-decoration: none;
+    letter-spacing: -0.01em;
+    transition: color 200ms ease;
+}
+
+.nav-bar .nav-brand:hover {
+    color: #e4e4e7;
+}
+
+.nav-bar .nav-links {
+    display: flex;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    flex-wrap: wrap;
+}
+
+.nav-bar .nav-links li a {
+    display: block;
+    color: #63636e;
+    text-decoration: none;
+    padding: 10px 14px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    transition: all 180ms ease;
+    border-bottom: 2px solid transparent;
+}
+
+.nav-bar .nav-links li a:hover {
+    color: #e4e4e7;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.nav-bar .nav-links li a.active {
+    color: #e4e4e7;
+    border-bottom-color: #3b82f6;
+}

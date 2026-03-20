@@ -1,5 +1,14 @@
-#! /bin/bash
-
+#!/usr/bin/env bash
 set -e
-# npm install -g http-server
-http-server -p 8080 -o
+
+# Install dependencies if needed
+if [ ! -d node_modules ]; then
+    npm install
+fi
+
+if [ "$1" = "--dry-run" ]; then
+    npm run build
+    exit 0
+fi
+
+npm run dev

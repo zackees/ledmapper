@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screenmap Maker</title>
+    <link rel="stylesheet" href="screenmap.css">
+    <link rel="stylesheet" href="../styles/nav.css">
+</head>
+
+<body>
+    <div id="popup">Click the picture to start drawing your LEDs</div>
+    <div id="controls">
+        <p>Click: add point. Shift+click: remove. Done: Download</p>
+        <p id="print"></p>
+        <div>
+            <label for="txt_rotate">Rotate:</label>
+            <input id="txt_rotate" type="number" value="0" min="-180" max="180" step="0.1">
+            <input id="slider_rotate" type="range" min="-180" max="180" value="0" step="0.1">
+        </div>
+        <div>
+            <label for="txt_zoom">Zoom:</label>
+            <input id="txt_zoom" type="number" value="1" min="1" max="5" step="0.01">
+            <input id="slider_zoom" type="range" min="1" max="5" value="1" step="0.01">
+        </div>
+        <div class="action-buttons">
+            <input type="button" id="btn_snapshot" value="Take Snapshot">
+            <input type="button" id="btn_delete_last" value="Undo">
+            <input type="button" id="btn_clear" value="Clear">
+            <input type="button" id="btn_download" value="Download">
+        </div>
+    </div>
+
+    <!-- Target of the p5.js drawing-->
+    <main></main>
+
+    <div id="captureContainer"></div>
+
+    <script type="module" src="sketch.js"></script>
+</body>
+</html>

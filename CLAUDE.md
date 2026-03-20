@@ -4,39 +4,71 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FastLED Video Mapper (www.ledmapper.com) — a web-based tool suite for mapping video content to physical LED arrays (WS2812/APA102). Static site hosted on GitHub Pages, no build system or package manager.
+FastLED Video Mapper (www.ledmapper.com) — a web-based tool suite for mapping video content to physical LED arrays (WS2812/APA102). Built with Vite (MPA), ES modules, and hosted on GitHub Pages.
 
 ## Running Locally
 
 ```bash
 # One-time setup
-npm install -g http-server
+npm install
 
-# Start dev server
-./run
-# Or directly: http-server -p 8080 -o
+# Start dev server (port 8080, opens hub page)
+npm run dev
+
+# Production build
+npm run build
+
+# Preview production build
+npm run preview
+
+# Lint
+npm run lint
+
+# Run E2E tests (starts dev server automatically)
+npm test
 ```
 
 ## Architecture
 
-**Static web app** using vanilla JavaScript, p5.js (v1.4.0), and Three.js (r128). No framework, no bundler, no npm packages.
+**Vite MPA (Multi-Page App)** using vanilla JavaScript, p5.js (instance mode), Three.js, and SweetAlert2. All dependencies managed via npm. ES modules throughout.
 
-**Hub + iframe pattern:** `index.html` is the main shell with sidebar navigation. Each tool loads in an iframe from its own subdirectory. Tools are independent and can also run standalone.
+**Shared nav bar:** Each tool page includes a shared navigation header (`src/nav.js`). Regular `<a>` links navigate between tools. No iframes.
 
-### Tools (each in its own directory)
+### File Structure
+
+```
+src/              # Source code (Vite root)
+  common.js       # Shared utility functions (ES module)
+  nav.js          # Shared navigation bar component
+  styles/         # Shared CSS (global.css, nav.css)
+  hub/            # Landing page with tool cards
+  demo/           # Demo tool
+  screenmap/      # Screenmap Maker tool
+  moviemaker/     # Mapped Video Maker tool (Three.js + GLSL)
+  movieplayer/    # Movie Player tool
+  shapeviewer/    # Shape Viewer tool
+public/           # Static assets (served as-is by Vite)
+  demo/           # Sample data files (.rgb, .json)
+  examples/       # Example projects
+tests/
+  e2e/            # Playwright E2E tests
+  fixtures/       # Test data files
+  helpers/        # Test utilities (webcam mock, etc.)
+```
+
+### Tools (each in `src/<tool>/`)
 
 | Directory | Tool | Core Tech | Purpose |
 |-----------|------|-----------|---------|
 | `demo/` | Demo | p5.js | Visualize mapped video playback with sample data |
 | `screenmap/` | Screenmap Maker | p5.js | Interactively map physical LED positions, export JSON |
-| `moviemaker/` | Mapped Video Maker | p5.js + Web Worker | Capture video and map to LED array with blur processing |
-| `moviemaker2/` | Movie Player 2 | Three.js + GLSL | WebGL-based video player with Gaussian blur shader |
-| `movieplayer/` | Mapped Video Player | p5.js | Play back pre-recorded .rgb LED video files |
+| `moviemaker/` | Mapped Video Maker | Three.js + GLSL | Load video files or webcam, GPU blur, record mapped LED output |
+| `movieplayer/` | Movie Player | p5.js | Play back pre-recorded .rgb LED video files |
 | `shapeviewer/` | Shape Viewer | p5.js | Visualize screenmap.json as a shape |
 
 ### Shared Code
 
-`common.js` — utility functions used across tools via `<script>` tag:
+`src/common.js` — ES module with utility functions imported by each tool:
 - `parse_shape_data_json()` / `parse_shape_data_csv()` — parse screenmap formats
 - `transform_to_center_of_canvas()` — center and scale points to canvas
 - `download_blob_as_file()` / `download_binary_as_file()` / `download_text_as_file()` — file downloads
@@ -61,7 +93,8 @@ npm install -g http-server
 
 ### Key Patterns
 
-- Each tool's `sketch.js` defines p5.js `setup()` and `draw()` functions
-- Heavy computation (blur) runs in a Web Worker (`moviemaker/blurWorker.js`)
-- `moviemaker2/` uses Three.js with GLSL fragment shaders for GPU-accelerated blur
-- UI uses dark theme (background: #1a1a1a, accent: #2980b9) with SweetAlert2 for dialogs
+- p5.js tools use **instance mode**: `new p5((p) => { p.setup = () => {...}; p.draw = () => {...}; })`
+- All JS uses ES module `import`/`export` — no CDN `<script>` tags
+- `moviemaker/` uses Three.js with GLSL fragment shaders for GPU-accelerated blur and readback for recording
+- UI uses dark theme (background: #121212, accent: #2980b9) with SweetAlert2 for dialogs
+- Each tool's `index.html` imports `../styles/global.css`, `../styles/nav.css`, and its own CSS

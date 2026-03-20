@@ -1,0 +1,68 @@
+/* ═══════════════════════════════════════════════════════════════
+   Demo Tool — Layout Overrides
+   Base element styles inherited from global.css
+   ═══════════════════════════════════════════════════════════════ */
+
+.controls {
+    text-align: center;
+}
+
+.controls h1 {
+    font-size: 1.2rem;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.controls p {
+    font-size: 0.8rem;
+    color: var(--lm-text-muted);
+    margin: 2px 0;
+}
+
+.controls p a {
+    font-size: 0.78rem;
+}
+
+/* ── Three-section Layout ───────────────────────────────────── */
+
+.controls-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 24px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+.control-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.button-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+}
+
+/* ── Element Overrides ──────────────────────────────────────── */
+
+#btn_play {
+    min-width: 80px;
+}
+
+select {
+    max-width: 160px;
+    width: 100%;
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+    .controls-container {
+        flex-direction: column;
+    }
+}

@@ -1,0 +1,136 @@
+/* ═══════════════════════════════════════════════════════════════
+   Hub — Landing Page
+   ═══════════════════════════════════════════════════════════════ */
+
+.hub-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 60px 24px 40px;
+    position: relative;
+}
+
+/* Subtle ambient glow behind hero */
+.hub-container::before {
+    content: '';
+    position: absolute;
+    top: -60px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 500px;
+    height: 400px;
+    background: radial-gradient(ellipse, rgba(59, 130, 246, 0.05) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* ── Hero Header ────────────────────────────────────────────── */
+
+.hub-header {
+    text-align: center;
+    margin-bottom: 48px;
+    position: relative;
+    z-index: 1;
+}
+
+.hub-header h1 {
+    font-weight: 300;
+    font-size: 2.2rem;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+    background: linear-gradient(135deg, #e4e4e7 0%, #71717a 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.hub-header p {
+    color: var(--lm-text-muted);
+    font-size: 0.92rem;
+    max-width: 480px;
+    margin: 0 auto;
+    line-height: 1.6;
+}
+
+/* ── Tool Grid ──────────────────────────────────────────────── */
+
+.tool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+    position: relative;
+    z-index: 1;
+}
+
+/* ── Tool Cards ─────────────────────────────────────────────── */
+
+.tool-card {
+    background: var(--lm-surface-1);
+    border: 1px solid var(--lm-border);
+    border-left: 3px solid var(--card-accent, var(--lm-accent));
+    border-radius: 8px;
+    padding: 20px 22px;
+    text-decoration: none;
+    transition: all 280ms var(--lm-ease);
+    display: block;
+}
+
+.tool-card:hover {
+    background: var(--lm-surface-2);
+    border-color: var(--card-accent, var(--lm-accent));
+    border-left-width: 3px;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.tool-card h2 {
+    color: var(--lm-text);
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0 0 6px 0;
+}
+
+.tool-card p {
+    color: var(--lm-text-muted);
+    font-size: 0.82rem;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* ── Staggered entrance ─────────────────────────────────────── */
+
+@keyframes hub-card-in {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.tool-card {
+    animation: hub-card-in 400ms var(--lm-ease) both;
+}
+
+.tool-card:nth-child(1) { animation-delay: 60ms; }
+.tool-card:nth-child(2) { animation-delay: 120ms; }
+.tool-card:nth-child(3) { animation-delay: 180ms; }
+.tool-card:nth-child(4) { animation-delay: 240ms; }
+.tool-card:nth-child(5) { animation-delay: 300ms; }
+
+/* ── Responsive ─────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+    .hub-container {
+        padding: 32px 16px 24px;
+    }
+
+    .hub-header h1 {
+        font-size: 1.6rem;
+    }
+
+    .tool-grid {
+        grid-template-columns: 1fr;
+    }
+}

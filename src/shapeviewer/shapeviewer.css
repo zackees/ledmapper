@@ -1,0 +1,48 @@
+/* ═══════════════════════════════════════════════════════════════
+   Shape Viewer — Layout Overrides
+   Base element styles inherited from global.css
+   ═══════════════════════════════════════════════════════════════ */
+
+.sticky {
+    position: sticky;
+    top: 0;
+    background: var(--lm-surface-1);
+    border-bottom: 1px solid var(--lm-border);
+    padding: 10px 16px;
+    z-index: 1000;
+}
+
+.sticky h1 {
+    font-size: 1.2rem;
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+
+#controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+#controls > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#txt_zoom {
+    width: 56px;
+}
+
+#slider_zoom {
+    width: 120px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+    .sticky {
+        position: static;
+    }
+}

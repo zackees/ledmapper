@@ -1,0 +1,37 @@
+{
+  "name": "ledmapper",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "FastLED Video Mapper - map video content to physical LED arrays",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src/",
+    "test": "playwright test",
+    "test:unit": "node --test tests/unit/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zackees/ledmapper.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/zackees/ledmapper/issues"
+  },
+  "homepage": "https://github.com/zackees/ledmapper#readme",
+  "dependencies": {
+    "p5": "^2.2.2",
+    "sweetalert2": "^11.26.21",
+    "three": "^0.183.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.58.2",
+    "eslint": "^10.0.2",
+    "globals": "^17.4.0",
+    "vite": "^7.3.1"
+  }
+}
