@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>FastLED Video Mapper</title>
-    <link rel="stylesheet" href="../styles/global.css">
-    <link rel="stylesheet" href="../styles/nav.css">
-    <link rel="stylesheet" href="hub.css">
+    <link rel="stylesheet" href="styles/global.css">
+    <link rel="stylesheet" href="styles/nav.css">
+    <link rel="stylesheet" href="hub/hub.css">
 </head>
 <body>
     <div class="hub-container">
@@ -15,30 +15,30 @@
             <p>A web-based tool suite for mapping video content to physical LED arrays (WS2812/APA102)</p>
         </header>
         <div class="tool-grid">
-            <a href="../demo/index.html" class="tool-card" style="--card-accent: #06b6d4">
+            <a href="demo/index.html" class="tool-card" style="--card-accent: #06b6d4">
                 <h2>Demo</h2>
                 <p>Visualize mapped video playback with sample data</p>
             </a>
-            <a href="../screenmap/index.html" class="tool-card" style="--card-accent: #22c55e">
+            <a href="screenmap/index.html" class="tool-card" style="--card-accent: #22c55e">
                 <h2>Screenmap Maker</h2>
                 <p>Interactively map physical LED positions using your webcam</p>
             </a>
-            <a href="../moviemaker/index.html" class="tool-card" style="--card-accent: #3b82f6">
+            <a href="moviemaker/index.html" class="tool-card" style="--card-accent: #3b82f6">
                 <h2>Mapped Video Maker</h2>
                 <p>Load video files or use webcam, apply GPU blur, and record mapped LED output</p>
             </a>
-            <a href="../movieplayer/index.html" class="tool-card" style="--card-accent: #f59e0b">
+            <a href="movieplayer/index.html" class="tool-card" style="--card-accent: #f59e0b">
                 <h2>Mapped Video Player</h2>
                 <p>Play back pre-recorded .rgb LED video files</p>
             </a>
-            <a href="../shapeviewer/index.html" class="tool-card" style="--card-accent: #a855f7">
+            <a href="shapeviewer/index.html" class="tool-card" style="--card-accent: #a855f7">
                 <h2>Shape Viewer</h2>
                 <p>Visualize screenmap.json as a shape</p>
             </a>
         </div>
     </div>
     <script type="module">
-        import { initNav } from '../nav.js';
+        import { initNav } from './nav.js';
         initNav();
     </script>
 </body>

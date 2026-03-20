@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mockWebcam } from '../helpers/webcam-mock.js';
 
 const allPages = [
-    { name: 'hub', url: '/hub/index.html', needsWebcam: false },
+    { name: 'hub', url: '/index.html', needsWebcam: false },
     { name: 'demo', url: '/demo/index.html', needsWebcam: false },
     { name: 'screenmap', url: '/screenmap/index.html', needsWebcam: true },
     { name: 'moviemaker', url: '/moviemaker/index.html', needsWebcam: false },

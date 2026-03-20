@@ -12,7 +12,7 @@ export function initNav() {
 
     const brand = document.createElement('a');
     brand.className = 'nav-brand';
-    brand.href = '/hub/index.html';
+    brand.href = '/index.html';
     brand.textContent = 'FastLED Video Mapper';
     nav.appendChild(brand);
 
