@@ -10,7 +10,7 @@ import {
     samplePixels,
     computeFps,
     estimateLedSize,
-} from '../../src/moviemaker/logic.js';
+} from '../../src/moviemaker/transforms.js';
 
 describe('transformToCenter', () => {
     it('returns empty array for empty input', () => {

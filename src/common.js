@@ -1,3 +1,8 @@
+/**
+ * Parse shape data from CSV text (one point per line: x,y).
+ * @param {string} text - CSV content
+ * @returns {Array<[number,number]>}
+ */
 export function parse_shape_data_csv(text) {
     const out = [];
     text.split("\n").forEach((line) => {
@@ -13,6 +18,11 @@ export function parse_shape_data_csv(text) {
     return out;
 }
 
+/**
+ * Parse shape data from screenmap JSON format.
+ * @param {string|Object} jsonBlob - JSON string or parsed object with {map:{strip1:{x:[],y:[]}}}
+ * @returns {Array<[number,number]>}
+ */
 export function parse_shape_data_json(jsonBlob) {
     if (typeof jsonBlob === "string")
         jsonBlob = JSON.parse(jsonBlob);
@@ -48,6 +58,11 @@ export function parse_shape_data_json(jsonBlob) {
     }
 }
 
+/**
+ * Check if a string is valid JSON.
+ * @param {string} text
+ * @returns {boolean}
+ */
 export function is_json_str(text) {
     try {
         JSON.parse(text);
@@ -57,6 +72,11 @@ export function is_json_str(text) {
     }
 }
 
+/**
+ * Parse shape data from either JSON or CSV format (auto-detected).
+ * @param {string} text - Shape data content
+ * @returns {Array<[number,number]>}
+ */
 export function parse_shape_data(text) {
     if (is_json_str(text)) {
         return parse_shape_data_json(text);
@@ -64,39 +84,78 @@ export function parse_shape_data(text) {
     return parse_shape_data_csv(text);
 }
 
-export function transform_to_center_of_canvas(shape_pts, canvas_width, canvas_height) {
-    const out = [];
-    const first_pt = shape_pts[0];
-    let xmin = first_pt[0];
-    let ymin = first_pt[1];
-    let xmax = xmin;
-    let ymax = ymin;
-    shape_pts.forEach(([x,y]) => {
-        xmin = Math.min(x, xmin);
-        ymin = Math.min(y, ymin);
-        xmax = Math.max(x, xmax);
-        ymax = Math.max(y, ymax);
-    });
-    const width  = xmax - xmin;
-    const height = ymax - ymin;
-    const xcenter = (xmax + xmin) / 2;
-    const ycenter = (ymax + ymin) / 2;
+/**
+ * Center and scale points to fit within given dimensions.
+ *
+ * @param {Array<[number,number]>} pts - input points
+ * @param {number} width - target width
+ * @param {number} height - target height
+ * @param {Object} [options]
+ * @param {number} [options.margin=0.95] - fraction of dimension to use (0-1), or pixel count if > 1
+ * @param {'canvas'|'origin'} [options.center='canvas'] - 'canvas' offsets to (width/2, height/2), 'origin' centers at (0,0)
+ * @returns {Array<[number,number]>}
+ */
+export function centerAndFitPoints(pts, width, height, { margin = 0.95, center = 'canvas' } = {}) {
+    if (pts.length === 0) return [];
 
-    const xscale = .95 * canvas_width / width;
-    const yscale = .95 * canvas_height / height;
-    const min_scale = yscale < xscale ? yscale : xscale;
-    shape_pts.forEach(([x,y]) => {
-        x -= xcenter;
-        y -= ycenter;
-        x *= min_scale;
-        y *= min_scale;
-        x += canvas_width / 2;
-        y += canvas_height / 2;
-        out.push([x,y]);
+    let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+    pts.forEach(([x, y]) => {
+        xmin = Math.min(xmin, x); xmax = Math.max(xmax, x);
+        ymin = Math.min(ymin, y); ymax = Math.max(ymax, y);
     });
-    return out;
+
+    const xcenter = (xmin + xmax) / 2;
+    const ycenter = (ymin + ymax) / 2;
+    const w = xmax - xmin;
+    const h = ymax - ymin;
+
+    let availW, availH;
+    if (margin <= 1) {
+        availW = margin * width;
+        availH = margin * height;
+    } else {
+        // margin is pixel inset
+        availW = width - 2 * margin;
+        availH = height - 2 * margin;
+    }
+
+    const scaleX = w > 0 ? availW / w : availW;
+    const scaleY = h > 0 ? availH / h : availH;
+    const scale = Math.min(scaleX, scaleY);
+
+    const offsetX = center === 'canvas' ? width / 2 : 0;
+    const offsetY = center === 'canvas' ? height / 2 : 0;
+
+    return pts.map(([x, y]) => [
+        (x - xcenter) * scale + offsetX,
+        (y - ycenter) * scale + offsetY,
+    ]);
 }
 
+/** @deprecated Use centerAndFitPoints instead */
+export function transform_to_center_of_canvas(shape_pts, canvas_width, canvas_height) {
+    return centerAndFitPoints(shape_pts, canvas_width, canvas_height, { margin: 0.95, center: 'canvas' });
+}
+
+/**
+ * Read a file input's selected file as text.
+ *
+ * @param {HTMLInputElement} fileInput - The file input element
+ * @param {function(string): void} onText - Callback receiving file text content
+ */
+export function readFileAsText(fileInput, onText) {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => { onText(evt.target.result); };
+    reader.readAsText(file);
+}
+
+/**
+ * Download a Blob as a file via a temporary link.
+ * @param {Blob} blob
+ * @param {string} filename
+ */
 export function download_blob_as_file(blob, filename) {
     const link = document.createElement('a');
     link.style.display = 'none';
@@ -110,17 +169,35 @@ export function download_blob_as_file(blob, filename) {
     setTimeout(() => {URL.revokeObjectURL(link.href)}, 60 * 1000);
 }
 
+/**
+ * Download a Uint8Array as a binary file.
+ * @param {Uint8Array} uint8_array
+ * @param {string} filename
+ */
 export function download_binary_as_file(uint8_array, filename) {
     const blob = new Blob([uint8_array.buffer], { type: 'application/octet-stream' });
     download_blob_as_file(blob, filename);
 }
 
+/**
+ * Download text content as a file.
+ * @param {string} text
+ * @param {string} filename
+ * @param {Object} [options]
+ * @param {string} [options.type='text/plain'] - MIME type
+ */
 export function download_text_as_file(text, filename, options = {}) {
     const type = options.type || 'text/plain';
     const blob = new Blob([text], { type: type });
     download_blob_as_file(blob, filename);
 }
 
+/**
+ * Estimate LED diameter from the distance between the first two points.
+ * @deprecated Use estimateLedSize from moviemaker/transforms.js instead
+ * @param {Array<[number,number]>} pts
+ * @returns {number} Minimum 1.0
+ */
 export function estimate_led_size(pts) {
     if (pts.length < 2) {
         return 1.0;

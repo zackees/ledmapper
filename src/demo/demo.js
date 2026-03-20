@@ -1,5 +1,5 @@
-import { parse_shape_data_json, transform_to_center_of_canvas, download_blob_as_file } from '../common.js';
-import { createCircleTexture, createRendererAndScene, buildPointsMesh, createAnimationLoop } from '../three-utils.js';
+import { parse_shape_data_json, centerAndFitPoints, download_blob_as_file } from '../common.js';
+import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
 
 export function init(container) {
@@ -21,8 +21,6 @@ export function init(container) {
     dom_btn_play.disabled = true;
 
     const CANVAS_SIZE = 800;
-    let ledDiameter = 6;
-
     let shape_pts = [];
     const movie_frames = [];
     let playing = false;
@@ -83,7 +81,7 @@ export function init(container) {
 
     function hitTestLED(canvasX, canvasY) {
         if (shape_pts.length === 0) return -1;
-        const threshold = Math.max(ledDiameter, 10);
+        const threshold = Math.max(getDiameter(), 10);
         const threshSq = threshold * threshold;
         let bestIdx = -1, bestDist = threshSq;
         for (let i = 0; i < shape_pts.length; i++) {
@@ -134,24 +132,18 @@ export function init(container) {
 
     // --- Build Three.js Points from shape data ---
     function buildPoints() {
-        if (pointsMesh) {
-            scene.remove(pointsMesh);
-            pointsGeometry.dispose();
-            pointsMaterial.dispose();
-        }
-
-        const result = buildPointsMesh({
+        const previous = pointsMesh ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial } : null;
+        const result = rebuildPointsMesh({
+            scene, previous,
             points: shape_pts,
             circleTexture,
-            diameter: ledDiameter,
+            diameter: getDiameter(),
         });
 
         pointsGeometry = result.geometry;
         pointsMaterial = result.material;
         pointsMesh = result.mesh;
         colorAttribute = result.colorAttribute;
-
-        scene.add(pointsMesh);
     }
 
     // --- Shape data loading ---
@@ -161,7 +153,7 @@ export function init(container) {
             console.error("Failed to load shape data");
             return;
         }
-        shape_pts = transform_to_center_of_canvas(shape_pts, CANVAS_SIZE, CANVAS_SIZE);
+        shape_pts = centerAndFitPoints(shape_pts, CANVAS_SIZE, CANVAS_SIZE);
         buildPoints();
         drawOverlay();
         dom_btn_play.disabled = false;
@@ -243,14 +235,12 @@ export function init(container) {
     dom_btn_play.addEventListener('click', () => set_dom_btn_play(!playing), { signal });
 
     // --- Diameter slider ---
-    function updateDiameter() {
-        ledDiameter = parseInt(dom_rng_diameter.value);
-        dom_txt_curr_diameter.innerText = ledDiameter;
-        if (pointsMaterial) {
-            pointsMaterial.size = ledDiameter;
-        }
-    }
-    dom_rng_diameter.addEventListener('input', updateDiameter, { signal });
+    const getDiameter = wireDiameterSlider({
+        slider: dom_rng_diameter,
+        label: dom_txt_curr_diameter,
+        getMaterial: () => pointsMaterial,
+        signal,
+    });
 
     // --- Frame rate ---
     let targetFPS = parseInt(dom_sel_framerate.value);

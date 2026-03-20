@@ -121,6 +121,50 @@ export function buildPointsMesh({ points, circleTexture, diameter, defaultColor 
 }
 
 /**
+ * Dispose an existing Points mesh and rebuild from new point data.
+ *
+ * @param {Object} opts
+ * @param {THREE.Scene} opts.scene
+ * @param {{ mesh: THREE.Points, geometry: THREE.BufferGeometry, material: THREE.PointsMaterial }|null} opts.previous - Previous mesh to dispose, or null.
+ * @param {number[][]} opts.points - Array of [x, y] coordinates.
+ * @param {THREE.Texture} opts.circleTexture
+ * @param {number} opts.diameter
+ * @param {number[]} [opts.defaultColor=[0,0,0]]
+ * @returns {{ mesh: THREE.Points, geometry: THREE.BufferGeometry, material: THREE.PointsMaterial, colorAttribute: THREE.Float32BufferAttribute }}
+ */
+export function rebuildPointsMesh({ scene, previous, points, circleTexture, diameter, defaultColor = [0, 0, 0] }) {
+    if (previous) {
+        scene.remove(previous.mesh);
+        previous.geometry.dispose();
+        previous.material.dispose();
+    }
+    const result = buildPointsMesh({ points, circleTexture, diameter, defaultColor });
+    scene.add(result.mesh);
+    return result;
+}
+
+/**
+ * Wire a diameter slider to update a PointsMaterial's size.
+ *
+ * @param {Object} opts
+ * @param {HTMLInputElement} opts.slider - The range input element.
+ * @param {HTMLElement} opts.label - Element to display current value.
+ * @param {function(): THREE.PointsMaterial|null} opts.getMaterial - Returns current material.
+ * @param {AbortSignal} [opts.signal] - AbortSignal for cleanup.
+ * @returns {function(): number} getDiameter — returns current diameter value.
+ */
+export function wireDiameterSlider({ slider, label, getMaterial, signal }) {
+    function update() {
+        const d = parseInt(slider.value);
+        label.innerText = d;
+        const mat = getMaterial();
+        if (mat) mat.size = d;
+    }
+    slider.addEventListener('input', update, { signal });
+    return () => parseInt(slider.value);
+}
+
+/**
  * Start a frame-rate-limited requestAnimationFrame loop.
  * @param {Object} opts
  * @param {number} opts.targetFPS - Initial target frames per second.

@@ -1,5 +1,5 @@
-import { parse_shape_data, transform_to_center_of_canvas } from '../common.js';
-import { createCircleTexture, createRendererAndScene, buildPointsMesh, createAnimationLoop } from '../three-utils.js';
+import { parse_shape_data, centerAndFitPoints, readFileAsText } from '../common.js';
+import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
 
 export function init(container) {
@@ -15,7 +15,6 @@ export function init(container) {
     dom_btn_play.disabled = true;
 
     const CANVAS_SIZE = 1000;
-    let ledDiameter = 6;
 
     let shape_pts = [];
     let movie_frames = [];
@@ -40,51 +39,39 @@ export function init(container) {
     const ac = new AbortController();
     const { signal } = ac;
 
-    function updateDiameter() {
-        ledDiameter = parseInt(dom_rng_diameter.value);
-        dom_txt_curr_diameter.innerText = ledDiameter;
-        if (pointsMaterial) {
-            pointsMaterial.size = ledDiameter;
-        }
-    }
-
-    dom_rng_diameter.addEventListener('input', updateDiameter, { signal });
+    const getDiameter = wireDiameterSlider({
+        slider: dom_rng_diameter,
+        label: dom_txt_curr_diameter,
+        getMaterial: () => pointsMaterial,
+        signal,
+    });
 
     function buildPoints() {
-        if (pointsMesh) {
-            scene.remove(pointsMesh);
-            pointsGeometry.dispose();
-            pointsMaterial.dispose();
-        }
-
-        const result = buildPointsMesh({
+        const previous = pointsMesh ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial } : null;
+        const result = rebuildPointsMesh({
+            scene, previous,
             points: shape_pts,
             circleTexture,
-            diameter: ledDiameter,
+            diameter: getDiameter(),
         });
 
         pointsGeometry = result.geometry;
         pointsMaterial = result.material;
         pointsMesh = result.mesh;
         colorAttribute = result.colorAttribute;
-
-        scene.add(pointsMesh);
     }
 
     function load_shape_data(text) {
         shape_pts = parse_shape_data(text);
         dom_btn_load_movie.disabled = (shape_pts.length === 0);
         if (shape_pts.length === 0) return;
-        shape_pts = transform_to_center_of_canvas(shape_pts, CANVAS_SIZE, CANVAS_SIZE);
+        shape_pts = centerAndFitPoints(shape_pts, CANVAS_SIZE, CANVAS_SIZE);
         buildPoints();
     }
 
     dom_btn_upload_shape.addEventListener('change', () => {
         set_dom_btn_play(false);
-        const file = dom_btn_upload_shape.files[0];
-        const reader = new FileReader();
-        reader.onload = (evt) => { load_shape_data(evt.target.result); };
-        reader.readAsText(file);
+        readFileAsText(dom_btn_upload_shape, load_shape_data);
     }, { signal });
 
     function set_dom_btn_play(on) {

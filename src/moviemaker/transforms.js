@@ -2,6 +2,8 @@
  * Pure logic functions for the Mapped Video Maker, extracted for testability.
  */
 
+import { centerAndFitPoints } from '../common.js';
+
 /**
  * Centers and scales points to fit within the given video dimensions.
  * Points are centered around origin (0,0) so that rotation works correctly.
@@ -12,33 +14,7 @@
  * @returns {Array<[number,number]>} transformed points centered around (0,0)
  */
 export function transformToCenter(pts, videoWidth, videoHeight) {
-    if (pts.length === 0) return [];
-    const out = pts.map(([x, y]) => [x, y]);
-
-    let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-    out.forEach(([x, y]) => {
-        xmin = Math.min(xmin, x); xmax = Math.max(xmax, x);
-        ymin = Math.min(ymin, y); ymax = Math.max(ymax, y);
-    });
-
-    const xcenter = (xmin + xmax) / 2;
-    const ycenter = (ymin + ymax) / 2;
-    const w = xmax - xmin;
-    const h = ymax - ymin;
-    const margin = 20;
-
-    // Guard against zero-span dimensions (single point or collinear points)
-    const availW = videoWidth - 2 * margin;
-    const availH = videoHeight - 2 * margin;
-    const scaleX = w > 0 ? availW / w : availW;
-    const scaleY = h > 0 ? availH / h : availH;
-    const scale = Math.min(scaleX, scaleY);
-
-    out.forEach(pt => {
-        pt[0] = (pt[0] - xcenter) * scale;
-        pt[1] = (pt[1] - ycenter) * scale;
-    });
-    return out;
+    return centerAndFitPoints(pts, videoWidth, videoHeight, { margin: 20, center: 'origin' });
 }
 
 /**

@@ -22,23 +22,23 @@ const toolConfig = {
     },
     demo: {
         css: '/demo/demo.css',
-        module: () => import('./demo/sketch.js'),
+        module: () => import('./demo/demo.js'),
     },
     screenmap: {
         css: '/screenmap/screenmap.css',
-        module: () => import('./screenmap/sketch.js'),
+        module: () => import('./screenmap/screenmap.js'),
     },
     moviemaker: {
         css: '/moviemaker/moviemaker.css',
-        module: () => import('./moviemaker/sketch.js'),
+        module: () => import('./moviemaker/moviemaker.js'),
     },
     movieplayer: {
         css: '/movieplayer/movieplayer.css',
-        module: () => import('./movieplayer/sketch.js'),
+        module: () => import('./movieplayer/movieplayer.js'),
     },
     shapeviewer: {
         css: '/shapeviewer/shapeviewer.css',
-        module: () => import('./shapeviewer/sketch.js'),
+        module: () => import('./shapeviewer/shapeviewer.js'),
     },
 };
 

@@ -8,7 +8,7 @@ import {
     LineBasicMaterial,
     LineLoop,
 } from 'three';
-import { parse_shape_data } from '../common.js';
+import { parse_shape_data, centerAndFitPoints, readFileAsText } from '../common.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
 import templateHtml from './template.html?raw';
 
@@ -127,33 +127,7 @@ export function init(container) {
     }
 
     function center_and_fit(pts, canvasW, canvasH) {
-        const n = pts.length;
-        let cx = 0, cy = 0;
-        pts.forEach(([x, y]) => { cx += x; cy += y; });
-        cx /= n;
-        cy /= n;
-
-        const centered = pts.map(([x, y]) => [x - cx, y - cy]);
-
-        let maxAbsX = 0, maxAbsY = 0;
-        centered.forEach(([x, y]) => {
-            maxAbsX = Math.max(maxAbsX, Math.abs(x));
-            maxAbsY = Math.max(maxAbsY, Math.abs(y));
-        });
-
-        const halfW = canvasW / 2;
-        const halfH = canvasH / 2;
-        const margin = 0.95;
-        let scale = 1;
-        if (maxAbsX > 0 && maxAbsY > 0) {
-            scale = Math.min(halfW * margin / maxAbsX, halfH * margin / maxAbsY);
-        } else if (maxAbsX > 0) {
-            scale = halfW * margin / maxAbsX;
-        } else if (maxAbsY > 0) {
-            scale = halfH * margin / maxAbsY;
-        }
-
-        return centered.map(([x, y]) => [x * scale, y * scale]);
+        return centerAndFitPoints(pts, canvasW, canvasH, { margin: 0.95, center: 'origin' });
     }
 
     function calculateBounds() {
@@ -178,10 +152,7 @@ export function init(container) {
     }
 
     dom_btn_upload_shape.addEventListener('change', () => {
-        const file = dom_btn_upload_shape.files[0];
-        const reader = new FileReader();
-        reader.onload = (evt) => { load_shape_data(evt.target.result); };
-        reader.readAsText(file);
+        readFileAsText(dom_btn_upload_shape, load_shape_data);
     }, { signal });
 
     async function fetchScreenMap() {
