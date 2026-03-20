@@ -13,7 +13,6 @@ export function init(container) {
     const btnWebcam = container.querySelector('#btn_webcam');
     const btnUpload = container.querySelector('#btn_upload');
     const fileInput = container.querySelector('#fileInput');
-    const dropZone = container.querySelector('#dropZone');
 
     // --- Source selection ---
     btnWebcam.addEventListener('click', () => {
@@ -31,19 +30,19 @@ export function init(container) {
         if (file) loadImageFile(file);
     }, { signal });
 
-    // Drag and drop
-    dropZone.addEventListener('dragover', (e) => {
+    // Drag and drop on the upload card
+    btnUpload.addEventListener('dragover', (e) => {
         e.preventDefault();
-        dropZone.classList.add('drag-over');
+        btnUpload.classList.add('drag-over');
     }, { signal });
 
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('drag-over');
+    btnUpload.addEventListener('dragleave', () => {
+        btnUpload.classList.remove('drag-over');
     }, { signal });
 
-    dropZone.addEventListener('drop', (e) => {
+    btnUpload.addEventListener('drop', (e) => {
         e.preventDefault();
-        dropZone.classList.remove('drag-over');
+        btnUpload.classList.remove('drag-over');
         const file = e.dataTransfer.files[0];
         if (file && file.type.startsWith('image/')) {
             loadImageFile(file);
@@ -161,15 +160,42 @@ export function init(container) {
 
     function initCanvas() {
         canvas = document.createElement('canvas');
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        const main = container.querySelector('main');
+        canvas.width = main.clientWidth;
+        canvas.height = main.clientHeight;
         ctx = canvas.getContext('2d');
-        container.querySelector('main').appendChild(canvas);
+        main.appendChild(canvas);
     }
 
     function handleResize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        const main = container.querySelector('main');
+        canvas.width = main.clientWidth;
+        canvas.height = main.clientHeight;
+    }
+
+    function showWebcamError(message) {
+        const main = container.querySelector('main');
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#a1a1aa;font-size:0.9rem;max-width:360px;';
+
+        const icon = document.createElement('div');
+        icon.style.cssText = 'font-size:2rem;margin-bottom:12px';
+        icon.textContent = '\u26A0';
+
+        const title = document.createElement('div');
+        title.style.cssText = 'color:#e4e4e7;font-weight:500;margin-bottom:8px';
+        title.textContent = 'Camera Unavailable';
+
+        const msg = document.createElement('div');
+        msg.textContent = message;
+
+        const hint = document.createElement('div');
+        hint.style.cssText = 'margin-top:12px;font-size:0.78rem;color:#63636e';
+        hint.textContent = 'Go back and use "Upload Image" instead.';
+
+        errorDiv.append(icon, title, msg, hint);
+        main.style.position = 'relative';
+        main.appendChild(errorDiv);
     }
 
     function handleClick(event) {
@@ -252,34 +278,6 @@ export function init(container) {
         initCanvas();
         window.addEventListener('resize', handleResize, { signal });
 
-        // Webcam
-        const constraints = {
-            video: {
-                width: { ideal: capture_width },
-                height: { ideal: capture_height }
-            }
-        };
-        navigator.mediaDevices.getUserMedia(constraints).then(stream => {
-            videoElement = document.createElement('video');
-            videoElement.srcObject = stream;
-            videoElement.setAttribute('autoplay', '');
-            videoElement.setAttribute('playsinline', '');
-            videoElement.muted = true;
-            videoElement.play().catch(() => {});
-
-            const captureContainer = container.querySelector('#captureContainer');
-            captureContainer.appendChild(videoElement);
-
-            captureContainer.addEventListener('mouseenter', () => {
-                captureContainer.style.opacity = '0';
-            }, { signal });
-            captureContainer.addEventListener('mouseleave', () => {
-                captureContainer.style.opacity = '1';
-            }, { signal });
-        }).catch(err => {
-            console.error('Webcam error:', err);
-        });
-
         // Snapshot button
         dom.btn_snapshot.addEventListener('click', () => {
             if (!videoElement) return;
@@ -305,6 +303,40 @@ export function init(container) {
 
         canvas.addEventListener('click', handleClick, { signal });
         rafId = requestAnimationFrame(() => draw(dom));
+
+        // Webcam init LAST — failures cannot break the controls or draw loop above
+        try {
+            const constraints = {
+                video: {
+                    width: { ideal: capture_width },
+                    height: { ideal: capture_height }
+                }
+            };
+            navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+                videoElement = document.createElement('video');
+                videoElement.srcObject = stream;
+                videoElement.setAttribute('autoplay', '');
+                videoElement.setAttribute('playsinline', '');
+                videoElement.muted = true;
+                videoElement.play().catch(() => {});
+
+                const captureContainer = container.querySelector('#captureContainer');
+                captureContainer.appendChild(videoElement);
+
+                captureContainer.addEventListener('mouseenter', () => {
+                    captureContainer.style.opacity = '0';
+                }, { signal });
+                captureContainer.addEventListener('mouseleave', () => {
+                    captureContainer.style.opacity = '1';
+                }, { signal });
+            }).catch(err => {
+                console.error('Webcam error:', err);
+                showWebcamError(err.message || 'Could not access camera.');
+            });
+        } catch (err) {
+            console.error('Webcam error:', err);
+            showWebcamError('Camera not available (requires HTTPS or localhost).');
+        }
     }
 
     // --- Start mapping with uploaded image ---

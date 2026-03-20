@@ -12,6 +12,13 @@
     line-height: 1.4;
 }
 
+#mappingUI {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
 [data-tool="screenmap"] main {
     flex: 1;
     width: 100%;
@@ -213,10 +220,10 @@
 /* ── Source Selection Screen ───────────────────────────────── */
 
 #sourceSelect {
+    flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
     padding: 24px;
 }
 
@@ -249,15 +256,17 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding: 24px 28px;
+    justify-content: center;
+    gap: 12px;
+    padding: 48px 40px;
     background: rgba(26, 26, 26, 0.8);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
+    border-radius: 14px;
     cursor: pointer;
     transition: all 200ms ease;
     color: #a1a1aa;
-    min-width: 180px;
+    min-width: 260px;
+    min-height: 220px;
     font-family: inherit;
 }
 
@@ -266,39 +275,24 @@
     background: rgba(59, 130, 246, 0.08);
 }
 
+.source-card.drag-over {
+    border-color: #3b82f6;
+    border-style: dashed;
+    background: rgba(59, 130, 246, 0.1);
+}
+
 .source-icon {
-    font-size: 2rem;
+    font-size: 3rem;
     line-height: 1;
 }
 
 .source-title {
-    font-size: 0.9rem;
+    font-size: 1.1rem;
     font-weight: 500;
     color: #e4e4e7;
 }
 
 .source-desc {
-    font-size: 0.7rem;
-    color: #63636e;
-}
-
-/* ── Drop Zone ─────────────────────────────────────────────── */
-
-.drop-zone {
-    border: 2px dashed rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    padding: 32px 24px;
-    transition: all 200ms ease;
-    color: #52525b;
     font-size: 0.8rem;
-}
-
-.drop-zone p {
-    margin: 0;
-}
-
-.drop-zone.drag-over {
-    border-color: #3b82f6;
-    background: rgba(59, 130, 246, 0.06);
-    color: #93c5fd;
+    color: #63636e;
 }
