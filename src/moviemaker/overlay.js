@@ -1,5 +1,5 @@
 /**
- * Overlay drawing for the Mapped Video Maker's 2D canvas layer.
+ * Overlay drawing for the Video Maker's 2D canvas layer.
  */
 
 import { computePreviewFactor, estimateLedSize } from './transforms.js';

@@ -1,37 +1,19 @@
 <div class="app-layout">
     <aside id="sidebar">
         <div class="sidebar-scroll">
-            <details class="panel" open>
-                <summary>Video Source</summary>
-                <div class="panel-body">
-                    <div class="control-group">
-                        <div class="source-buttons">
-                            <button id="btn_load_video" type="button">Load Video</button>
-                            <button id="btn_start_webcam" type="button">Webcam</button>
-                        </div>
-                        <div id="webcam-options" style="display:none">
-                            <div class="slider-container">
-                                <label for="sel_resolution">Res</label>
-                                <select id="sel_resolution">
-                                    <option value="640x480">640x480</option>
-                                    <option value="1280x720">1280x720</option>
-                                    <option value="1080x1920">1080x1920 (Portrait)</option>
-                                </select>
-                            </div>
-                            <div class="slider-container">
-                                <label for="sel_framerate">FPS</label>
-                                <select id="sel_framerate">
-                                    <option value="30">30 FPS</option>
-                                    <option value="60">60 FPS</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div id="video-playback" style="display:none">
-                            <button id="btn_play_pause" type="button" disabled>Play</button>
-                        </div>
-                    </div>
-                </div>
-            </details>
+            <div id="hidden-video-controls" style="display:none">
+                <button id="btn_load_video" type="button"></button>
+                <button id="btn_start_webcam" type="button"></button>
+                <select id="sel_resolution">
+                    <option value="640x480">640x480</option>
+                    <option value="1280x720">1280x720</option>
+                    <option value="1080x1920">1080x1920 (Portrait)</option>
+                </select>
+                <select id="sel_framerate">
+                    <option value="30">30 FPS</option>
+                    <option value="60">60 FPS</option>
+                </select>
+            </div>
 
             <details class="panel" open>
                 <summary>Screenmap</summary>
@@ -50,17 +32,6 @@
                 </div>
             </details>
 
-            <details class="panel" open>
-                <summary>Recording</summary>
-                <div class="panel-body">
-                    <div class="control-group">
-                        <label class="checkbox-row">
-                            <input type="checkbox" id="chk_show_status">
-                            <span>Show output when recording</span>
-                        </label>
-                    </div>
-                </div>
-            </details>
         </div>
     </aside>
 
@@ -124,7 +95,7 @@
         <main class="canvas-area">
             <div id="welcome-overlay">
                 <div class="welcome-content">
-                    <h2 class="welcome-title">Mapped Video Maker</h2>
+                    <h2 class="welcome-title">Video Maker</h2>
                     <p class="welcome-sub">Load a video source to start mapping LEDs</p>
                     <div class="welcome-actions">
                         <button type="button" class="welcome-btn" data-trigger="btn_load_video">
@@ -144,10 +115,20 @@
                 </div>
             </div>
             <div id="canvas-container">
+                <div id="video-progress" class="video-progress-bar">
+                    <button id="btn_play_pause" type="button" class="btn-play-pause" title="Play">&#9654;</button>
+                    <span id="video-time-current" class="video-time">0:00</span>
+                    <div id="video-progress-track" class="progress-track">
+                        <div id="video-progress-fill" class="progress-fill"></div>
+                        <div id="video-progress-thumb" class="progress-thumb"></div>
+                    </div>
+                    <span id="video-time-duration" class="video-time">0:00</span>
+                </div>
                 <canvas id="renderCanvas"></canvas>
                 <canvas id="overlayCanvas"></canvas>
                 <div class="canvas-toolbar">
                     <input type="button" id="btn_toggle_record" value="Start Recording" disabled>
+                    <button id="btn_unload_source" type="button" class="btn-unload" title="Unload source">&#10005;</button>
                 </div>
             </div>
         </main>

@@ -75,9 +75,9 @@ export function createRouter(appEl) {
             hub: 'FastLED Video Mapper',
             demo: 'Demo',
             screenmap: 'Screenmap Maker',
-            moviemaker: 'Mapped Video Maker',
-            movieplayer: 'Movie Player',
-            shapeviewer: 'Screenmap Viewer',
+            moviemaker: 'Video Maker',
+            movieplayer: 'Video Player',
+            shapeviewer: 'Shape Viewer',
         };
         document.title = titles[tool] || 'FastLED Video Mapper';
 

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
 
-test.describe('Mapped Video Maker', () => {
+test.describe('Video Maker', () => {
     test('loads page with upload prompt', async ({ page }) => {
         await page.goto('/moviemaker/');
         await expect(page.locator('#btn_upload_shape')).toBeVisible();

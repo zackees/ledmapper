@@ -17,12 +17,17 @@ export function init(container) {
     const dom_btn_preset_8x8   = container.querySelector('#btn_preset_8x8');
     const dom_btn_preset_strip = container.querySelector('#btn_preset_strip');
     const dom_btn_preset_ring  = container.querySelector('#btn_preset_ring');
-    const dom_btn_load_video   = container.querySelector('#btn_load_video');
-    const dom_btn_start_webcam = container.querySelector('#btn_start_webcam');
-    const dom_webcam_options   = container.querySelector('#webcam-options');
-    const dom_video_playback   = container.querySelector('#video-playback');
-    const dom_btn_play_pause   = container.querySelector('#btn_play_pause');
-    const dom_btn_upload_shape = container.querySelector('#btn_upload_shape');
+    const dom_btn_load_video    = container.querySelector('#btn_load_video');
+    const dom_btn_start_webcam  = container.querySelector('#btn_start_webcam');
+    const dom_btn_upload_shape  = container.querySelector('#btn_upload_shape');
+    const dom_btn_unload_source = container.querySelector('#btn_unload_source');
+    const dom_btn_play_pause    = container.querySelector('#btn_play_pause');
+    const dom_video_progress    = container.querySelector('#video-progress');
+    const dom_progress_track    = container.querySelector('#video-progress-track');
+    const dom_progress_fill     = container.querySelector('#video-progress-fill');
+    const dom_progress_thumb    = container.querySelector('#video-progress-thumb');
+    const dom_time_current      = container.querySelector('#video-time-current');
+    const dom_time_duration     = container.querySelector('#video-time-duration');
     const dom_btn_how_to       = container.querySelector('#btn_how_to');
     const dom_btn_toggle_record = container.querySelector('#btn_toggle_record');
     const dom_rng_rotation     = container.querySelector('#rng_rotation');
@@ -34,7 +39,6 @@ export function init(container) {
     const dom_txt_curr_gamma   = container.querySelector('#txt_curr_gamma');
     const dom_rng_blur         = container.querySelector('#rng_blur');
     const dom_rng_blur_sigma   = container.querySelector('#rng_blur_sigma');
-    const dom_chk_show_status  = container.querySelector('#chk_show_status');
     const dom_sel_resolution   = container.querySelector('#sel_resolution');
     const dom_sel_framerate    = container.querySelector('#sel_framerate');
 
@@ -61,6 +65,7 @@ export function init(container) {
     let frame_rate = 30;
     let videoWidth = 640, videoHeight = 480;
     let rafId = null;
+    let isScrubbing = false;
 
     // ── Extracted modules ────────────────────────────────────────────────────────
     const blurPipeline = createBlurPipeline({
@@ -79,17 +84,6 @@ export function init(container) {
             setupForNewSource(w, h);
             if (type === 'video') {
                 frame_rate = 30;
-                dom_btn_load_video.classList.add('active-source');
-                dom_btn_start_webcam.classList.remove('active-source');
-                dom_webcam_options.style.display = 'none';
-                dom_video_playback.style.display = '';
-                dom_btn_play_pause.disabled = false;
-                dom_btn_play_pause.textContent = 'Play';
-            } else {
-                dom_btn_start_webcam.classList.add('active-source');
-                dom_btn_load_video.classList.remove('active-source');
-                dom_webcam_options.style.display = '';
-                dom_video_playback.style.display = 'none';
             }
         },
         async onError(message) {
@@ -102,6 +96,13 @@ export function init(container) {
     });
 
     // ── Helpers ─────────────────────────────────────────────────────────────────
+
+    function formatTime(seconds) {
+        if (!isFinite(seconds) || seconds < 0) return '0:00';
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    }
 
     function setupForNewSource(w, h) {
         videoWidth = w;
@@ -128,12 +129,24 @@ export function init(container) {
 
         const toolbar = container.querySelector('.canvas-toolbar');
         if (toolbar) toolbar.classList.add('visible');
+
+        // Show/hide video-only controls (play button is inside progress bar)
+        const isVideo = videoSource.sourceType === 'video';
+        dom_video_progress.classList.toggle('visible', isVideo);
+        if (isVideo) {
+            dom_time_duration.textContent = formatTime(videoPlayer.duration);
+            dom_time_current.textContent = '0:00';
+            dom_progress_fill.style.width = '0%';
+            dom_progress_thumb.style.left = '0%';
+            dom_btn_play_pause.innerHTML = '&#9654;';
+            dom_btn_play_pause.title = 'Play';
+        }
     }
 
     function updateElementStates() {
         const sliders = [
             dom_rng_rotation, dom_rng_brightness, dom_rng_gamma,
-            dom_rng_blur, dom_rng_blur_sigma, dom_chk_show_status, dom_rng_zoom
+            dom_rng_blur, dom_rng_blur_sigma, dom_rng_zoom
         ];
         sliders.forEach(el => {
             el.disabled = !shapeValid;
@@ -292,10 +305,60 @@ export function init(container) {
         }
     }, { signal });
 
-    // Play/Pause for video files
+    // Play/Pause
     dom_btn_play_pause.addEventListener('click', () => {
-        const playing = videoSource.playPause();
-        dom_btn_play_pause.textContent = playing ? 'Pause' : 'Play';
+        const nowPlaying = videoSource.playPause();
+        dom_btn_play_pause.innerHTML = nowPlaying ? '&#9646;&#9646;' : '&#9654;';
+        dom_btn_play_pause.title = nowPlaying ? 'Pause' : 'Play';
+    }, { signal });
+
+    // Progress bar scrubbing
+    function seekToPosition(clientX) {
+        const rect = dom_progress_track.getBoundingClientRect();
+        const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        const seekTime = fraction * videoPlayer.duration;
+        videoPlayer.currentTime = seekTime;
+        const pct = fraction * 100;
+        dom_progress_fill.style.width = `${pct}%`;
+        dom_progress_thumb.style.left = `${pct}%`;
+        dom_time_current.textContent = formatTime(seekTime);
+    }
+
+    dom_progress_track.addEventListener('mousedown', (e) => {
+        if (videoSource.sourceType !== 'video') return;
+        isScrubbing = true;
+        dom_progress_thumb.classList.add('dragging');
+        seekToPosition(e.clientX);
+    }, { signal });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isScrubbing) return;
+        seekToPosition(e.clientX);
+    }, { signal });
+
+    document.addEventListener('mouseup', () => {
+        if (!isScrubbing) return;
+        isScrubbing = false;
+        dom_progress_thumb.classList.remove('dragging');
+    }, { signal });
+
+    // Unload source — return to welcome screen
+    dom_btn_unload_source.addEventListener('click', () => {
+        videoSource.dispose();
+        sourceActive = false;
+        isScrubbing = false;
+        updateElementStates();
+
+        dom_video_progress.classList.remove('visible');
+
+        const welcomeEl = container.querySelector('#welcome-overlay');
+        if (welcomeEl) welcomeEl.classList.remove('hidden');
+
+        const toolbar = container.querySelector('.canvas-toolbar');
+        if (toolbar) toolbar.classList.remove('visible');
+
+        const canvasRow = container.querySelector('.canvas-row');
+        if (canvasRow) delete canvasRow.dataset.layout;
     }, { signal });
 
     // Screenmap upload
@@ -334,9 +397,6 @@ export function init(container) {
         target_zoom = parseFloat(v);
     }, { signal });
 
-    dom_chk_show_status.addEventListener('change', () => {
-        // show_render_status toggled via checkbox, used by overlay
-    }, { signal });
 
     // Recording toggle
     dom_btn_toggle_record.addEventListener('click', async () => {
@@ -413,6 +473,18 @@ export function init(container) {
         }
 
         drawMoviemakerOverlay(overlayCtx, transformedPts, lastSample, videoWidth, videoHeight, fps);
+
+        // Update progress bar for video sources
+        if (videoSource.sourceType === 'video' && !isScrubbing) {
+            const t = videoPlayer.currentTime;
+            const d = videoPlayer.duration;
+            if (isFinite(d) && d > 0) {
+                const pct = (t / d) * 100;
+                dom_progress_fill.style.width = `${pct}%`;
+                dom_progress_thumb.style.left = `${pct}%`;
+                dom_time_current.textContent = formatTime(t);
+            }
+        }
     }
 
     rafId = requestAnimationFrame(animationLoop);

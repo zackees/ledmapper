@@ -1,5 +1,5 @@
 /**
- * Pure logic functions for the Mapped Video Maker, extracted for testability.
+ * Pure logic functions for the Video Maker, extracted for testability.
  */
 
 import { centerAndFitPoints } from '../common.js';

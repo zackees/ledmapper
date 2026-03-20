@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
 
-test.describe('Movie Player', () => {
+test.describe('Video Player', () => {
     test('loads and shows title', async ({ page }) => {
         await page.goto('/movieplayer/');
-        await expect(page.locator('h1')).toContainText('Movie Player');
+        await expect(page.locator('h1')).toContainText('Video Player');
     });
 
     test('has screenmap upload input', async ({ page }) => {

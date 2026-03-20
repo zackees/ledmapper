@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
 
-test.describe('Screenmap Viewer', () => {
+test.describe('Shape Viewer', () => {
     test('loads and shows title', async ({ page }) => {
         await page.goto('/shapeviewer/');
-        await expect(page.locator('h1')).toContainText('Screenmap Viewer');
+        await expect(page.locator('h1')).toContainText('Shape Viewer');
     });
 
     test('has screenmap upload input', async ({ page }) => {
