@@ -4,6 +4,7 @@
 !.aider.conf.yml
 !.aiderignore
 
+.certs/
 node_modules/
 dist/
 test-results/

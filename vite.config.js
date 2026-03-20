@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
+import fs from 'fs';
 
 export default defineConfig({
   root: 'src',
@@ -20,6 +21,10 @@ export default defineConfig({
   server: {
     port: 8080,
     open: '/',
+    https: {
+      key: fs.readFileSync(resolve(__dirname, '.certs/key.pem')),
+      cert: fs.readFileSync(resolve(__dirname, '.certs/cert.pem')),
+    },
   },
   build: {
     outDir: '../dist',
