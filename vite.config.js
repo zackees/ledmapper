@@ -2,6 +2,12 @@ import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import fs from 'fs';
 
+const certPath = resolve(__dirname, '.certs/cert.pem');
+const keyPath = resolve(__dirname, '.certs/key.pem');
+const httpsConfig = fs.existsSync(certPath) && fs.existsSync(keyPath)
+  ? { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) }
+  : undefined;
+
 export default defineConfig({
   root: 'src',
   publicDir: '../public',
@@ -21,10 +27,7 @@ export default defineConfig({
   server: {
     port: 8080,
     open: '/',
-    https: {
-      key: fs.readFileSync(resolve(__dirname, '.certs/key.pem')),
-      cert: fs.readFileSync(resolve(__dirname, '.certs/cert.pem')),
-    },
+    https: httpsConfig,
   },
   build: {
     outDir: '../dist',
