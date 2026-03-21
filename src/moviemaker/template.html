@@ -107,15 +107,17 @@
             <div id="welcome-overlay">
                 <div class="welcome-content">
                     <h2 class="welcome-title">Video Maker</h2>
-                    <p class="welcome-sub">Load a video source to start mapping LEDs</p>
-                    <div class="welcome-actions">
-                        <button type="button" class="welcome-btn" data-trigger="btn_load_video">
-                            <span class="welcome-btn-icon">&#9654;</span>
-                            Load Video File
+                    <p class="welcome-sub">Choose a video source to start mapping LEDs</p>
+                    <div class="source-options">
+                        <button type="button" class="source-card" data-trigger="btn_load_video">
+                            <div class="source-icon">&#9654;</div>
+                            <span class="source-title">Load Video</span>
+                            <span class="source-desc">Upload a video file from your device</span>
                         </button>
-                        <button type="button" class="welcome-btn welcome-btn-secondary" data-trigger="btn_start_webcam">
-                            <span class="welcome-btn-icon">&#9673;</span>
-                            Use Webcam
+                        <button type="button" class="source-card" data-trigger="btn_start_webcam">
+                            <div class="source-icon">&#127909;</div>
+                            <span class="source-title">Use Webcam</span>
+                            <span class="source-desc">Capture live from your camera</span>
                         </button>
                     </div>
                     <div class="welcome-status">

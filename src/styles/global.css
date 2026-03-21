@@ -273,6 +273,62 @@ canvas {
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
+/* ── Source Selection Cards ─────────────────────────────────── */
+
+.source-options {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.source-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 48px 40px;
+    background: var(--lm-surface-2);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all var(--lm-dur) var(--lm-ease);
+    color: var(--lm-text-secondary);
+    min-width: 260px;
+    min-height: 220px;
+    font-family: inherit;
+    box-shadow: none;
+}
+
+.source-card:hover {
+    border-color: rgba(59, 130, 246, 0.4);
+    background: rgba(59, 130, 246, 0.08);
+    box-shadow: none;
+}
+
+.source-card.drag-over {
+    border-color: var(--lm-accent);
+    border-style: dashed;
+    background: var(--lm-accent-subtle);
+}
+
+.source-icon {
+    font-size: 3rem;
+    line-height: 1;
+}
+
+.source-title {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--lm-text);
+}
+
+.source-desc {
+    font-size: 0.8rem;
+    color: var(--lm-text-muted);
+}
+
 /* ── Focus Visible ──────────────────────────────────────────── */
 
 :focus-visible {

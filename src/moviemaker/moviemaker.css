@@ -416,7 +416,7 @@
 
 /* ── Buttons ────────────────────────────────────────────────── */
 
-.app-layout button,
+.app-layout button:not(.source-card),
 .app-layout input[type="button"] {
     font-family: inherit;
     font-size: 0.8rem;
@@ -431,12 +431,12 @@
     line-height: 1.4;
 }
 
-.app-layout button:hover,
+.app-layout button:not(.source-card):hover,
 .app-layout input[type="button"]:hover {
     background: var(--mm-accent-hover);
 }
 
-.app-layout button:disabled,
+.app-layout button:not(.source-card):disabled,
 .app-layout input[type="button"]:disabled {
     background: var(--mm-surface-3);
     color: var(--mm-text-muted);
@@ -775,52 +775,6 @@
     color: var(--mm-text-muted);
     margin: 0 0 28px 0;
     line-height: 1.5;
-}
-
-.welcome-actions {
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-    margin-bottom: 24px;
-}
-
-.welcome-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 22px;
-    font-size: 0.88rem;
-    font-weight: 500;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    background: var(--mm-accent);
-    color: #fff;
-    cursor: pointer;
-    transition: all 220ms var(--mm-ease);
-}
-
-.welcome-btn:hover {
-    background: var(--mm-accent-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.25);
-}
-
-.welcome-btn-secondary {
-    background: transparent;
-    border-color: var(--mm-border-hover);
-    color: var(--mm-text-secondary);
-}
-
-.welcome-btn-secondary:hover {
-    background: var(--mm-surface-2);
-    border-color: var(--mm-accent);
-    color: var(--mm-text);
-    box-shadow: none;
-}
-
-.welcome-btn-icon {
-    font-size: 0.8rem;
-    opacity: 0.7;
 }
 
 .welcome-status {
