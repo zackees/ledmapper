@@ -158,7 +158,7 @@ export function init(container) {
 
     async function fetchScreenMap() {
         try {
-            const response = await fetch('/demo/screenmap.json');
+            const response = await fetch('/screenmaps/32x32_quad_serpentine.json');
             const text = await response.text();
             load_shape_data(text);
         } catch (e) {

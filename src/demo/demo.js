@@ -161,7 +161,7 @@ export function init(container) {
     }
 
     function fetchAndLoadJSON() {
-        fetch('/demo/screenmap.json')
+        fetch('/screenmaps/32x32_quad_serpentine.json')
             .then(response => {
                 if (!response.ok) throw new Error('Network response was not ok');
                 return response.json();
@@ -286,7 +286,7 @@ export function init(container) {
     }, { signal });
 
     dom_btn_download_screenmap_16x16_serpentine.addEventListener('click', () => {
-        fetch('/demo/16x16_serpentine.json')
+        fetch('/screenmaps/16x16_serpentine.json')
             .then(response => {
                 if (!response.ok) throw new Error('Network response was not ok');
                 return response.json();
