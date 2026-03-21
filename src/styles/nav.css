@@ -5,7 +5,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 .nav-bar {
-    @apply flex items-center shrink-0 relative z-100;
+    @apply flex items-center shrink-0 sticky top-0 z-100;
     background: rgba(15, 15, 15, 0.85);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);

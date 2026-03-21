@@ -171,8 +171,8 @@ export function init(container) {
 
     function getCanvasSize() {
         return {
-            width: Math.floor(window.innerWidth * 0.9),
-            height: Math.floor(window.innerHeight * 0.8),
+            width: Math.floor(window.innerWidth * 0.45),
+            height: Math.floor(window.innerHeight * 0.4),
         };
     }
 
