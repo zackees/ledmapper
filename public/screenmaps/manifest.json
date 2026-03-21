@@ -31,6 +31,10 @@
     {
       "file": "piano_grand.json",
       "name": "Piano Grand"
+    },
+    {
+      "file": "keytar.json",
+      "name": "Keytar"
     }
   ]
 }
