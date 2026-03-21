@@ -68,6 +68,40 @@
     opacity: 0.7;
 }
 
+.checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-left: 68px;
+}
+
+.checkbox-row label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+
+.btn-save {
+    margin-left: auto;
+    padding: 4px 14px;
+    background: var(--lm-accent);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.btn-save:hover {
+    filter: brightness(1.15);
+}
+
+.btn-save:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 
 @media (max-width: 600px) {

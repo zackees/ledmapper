@@ -8,7 +8,7 @@ import {
     LineBasicMaterial,
     Line,
 } from 'three';
-import { parse_shape_data, centerAndFitPoints, readFileAsText } from '../common.js';
+import { parse_shape_data, centerAndFitPoints, readFileAsText, download_text_as_file } from '../common.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './shapeeditor.css?url';
@@ -26,9 +26,53 @@ export function init(container) {
     const dom_txt_scale_y = container.querySelector("#txt_scale_y");
     const dom_rng_rotate = container.querySelector("#rng_rotate");
     const dom_txt_rotate = container.querySelector("#txt_rotate");
+    const dom_chk_flip_h = container.querySelector("#chk_flip_h");
+    const dom_chk_flip_v = container.querySelector("#chk_flip_v");
+    const dom_btn_save = container.querySelector("#btn_save_as");
 
     const ac = new AbortController();
     const { signal } = ac;
+
+    // ── Save As ────────────────────────────────────────────────────────────
+
+    function saveAs() {
+        if (rawPts.length === 0) return;
+
+        const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
+        const flipH = dom_chk_flip_h.checked ? -1 : 1;
+        const flipV = dom_chk_flip_v.checked ? -1 : 1;
+        const sX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal * flipH;
+        const sY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal * flipV;
+        const rotateDeg = parseInt(dom_txt_rotate.value) || 0;
+        const rotateRad = rotateDeg * Math.PI / 180;
+        const cosR = Math.cos(rotateRad);
+        const sinR = Math.sin(rotateRad);
+
+        const xArr = [];
+        const yArr = [];
+        rawPts.forEach(([x, y]) => {
+            const rx = x * sX;
+            const ry = y * sY;
+            xArr.push(+(rx * cosR - ry * sinR).toFixed(4));
+            yArr.push(+(rx * sinR + ry * cosR).toFixed(4));
+        });
+
+        // Estimate diameter from first two transformed points
+        let diameter = 0.25;
+        if (xArr.length >= 2) {
+            const dx = xArr[1] - xArr[0];
+            const dy = yArr[1] - yArr[0];
+            diameter = +Math.max(Math.sqrt(dx * dx + dy * dy), 0.01).toFixed(4);
+        }
+
+        const json = JSON.stringify({
+            map: { strip1: { x: xArr, y: yArr, diameter } }
+        }, null, 2);
+
+        download_text_as_file(json, 'screenmap.json', { type: 'application/json' });
+    }
+
+    dom_btn_save.addEventListener('click', saveAs, { signal });
 
     // ── Quadratic slider mapping ─────────────────────────────────────────
 
@@ -91,6 +135,7 @@ export function init(container) {
     // ── Shape state ──────────────────────────────────────────────────────────
 
     let shape_pts = [];
+    let rawPts = [];
     let origWidth = 0, origHeight = 0;
 
     // Three.js objects
@@ -189,6 +234,8 @@ export function init(container) {
     function load_shape_data(text) {
         shape_pts = parse_shape_data(text);
         if (shape_pts.length === 0) return;
+
+        rawPts = shape_pts.map(([x, y]) => [x, y]);
 
         let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
         shape_pts.forEach(([x, y]) => {
@@ -329,8 +376,10 @@ export function init(container) {
         rafId = requestAnimationFrame(animate);
 
         const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
-        const scaleX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal;
-        const scaleY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal;
+        const flipH = dom_chk_flip_h.checked ? -1 : 1;
+        const flipV = dom_chk_flip_v.checked ? -1 : 1;
+        const scaleX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal * flipH;
+        const scaleY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal * flipV;
         const rotateDeg = parseInt(dom_txt_rotate.value) || 0;
         const rotateRad = rotateDeg * Math.PI / 180;
         const cosR = Math.cos(rotateRad);
