@@ -35,6 +35,9 @@ export function init(container) {
     const dom_txt_curr_zoom    = container.querySelector('#txt_curr_zoom');
     const dom_rng_brightness   = container.querySelector('#rng_brightness');
     const dom_txt_curr_bri     = container.querySelector('#txt_curr_bri');
+    const dom_chk_limit_bri    = container.querySelector('#chk_limit_brightness');
+    const dom_rng_max_bri      = container.querySelector('#rng_max_brightness');
+    const dom_txt_curr_max_bri = container.querySelector('#txt_curr_max_bri');
     const dom_rng_gamma        = container.querySelector('#rng_gamma');
     const dom_txt_curr_gamma   = container.querySelector('#txt_curr_gamma');
     const dom_rng_blur         = container.querySelector('#rng_blur');
@@ -402,14 +405,31 @@ export function init(container) {
     }, { signal });
 
     // Slider handlers
+    const SNAP_STEP = 45;
+    const SNAP_THRESHOLD = 5;
+    function snap_rotation(val) {
+        const nearest = Math.round(val / SNAP_STEP) * SNAP_STEP;
+        return Math.abs(val - nearest) <= SNAP_THRESHOLD ? nearest : val;
+    }
     function set_target_rotate(val) {
-        target_rotate = parseInt(val);
-        container.querySelector('#txt_curr_rotation').innerText = val;
+        const snapped = snap_rotation(parseInt(val));
+        target_rotate = snapped;
+        dom_rng_rotation.value = snapped;
+        container.querySelector('#txt_curr_rotation').innerText = snapped;
     }
     dom_rng_rotation.addEventListener('input', () => set_target_rotate(dom_rng_rotation.value), { signal });
 
     dom_rng_brightness.addEventListener('input', () => {
         dom_txt_curr_bri.innerText = `${dom_rng_brightness.value}%`;
+    }, { signal });
+    const dom_max_bri_slider = container.querySelector('#max_bri_slider');
+    dom_chk_limit_bri.addEventListener('change', () => {
+        const enabled = dom_chk_limit_bri.checked;
+        dom_rng_max_bri.disabled = !enabled;
+        dom_max_bri_slider.classList.toggle('disabled', !enabled);
+    }, { signal });
+    dom_rng_max_bri.addEventListener('input', () => {
+        dom_txt_curr_max_bri.innerText = `${dom_rng_max_bri.value}%`;
     }, { signal });
     dom_rng_gamma.addEventListener('input', () => {
         dom_txt_curr_gamma.innerText = `${(dom_rng_gamma.value / 10).toFixed(1)}`;
@@ -497,7 +517,9 @@ export function init(container) {
         blurPipeline.updateUniforms({
             blurRadius: parseFloat(dom_rng_blur.value),
             sigma: parseFloat(dom_rng_blur_sigma.value),
-            brightness: parseInt(dom_rng_brightness.value) / 100,
+            brightness: dom_chk_limit_bri.checked
+                ? Math.min(parseInt(dom_rng_brightness.value), parseInt(dom_rng_max_bri.value)) / 100
+                : parseInt(dom_rng_brightness.value) / 100,
             gamma: parseInt(dom_rng_gamma.value) / 10,
         });
 

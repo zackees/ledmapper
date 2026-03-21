@@ -38,6 +38,25 @@
     <div class="canvas-row">
         <aside id="canvas-controls">
             <details class="panel" open>
+                <summary>Blur</summary>
+                <div class="panel-body">
+                    <div class="control-group">
+                        <div class="slider-container">
+                            <label for="rng_blur">Radius</label>
+                            <input type="range" min="0" max="100" value="3" class="slider" id="rng_blur">
+                            <span id="txt_curr_blur">3</span>
+                        </div>
+                        <div class="slider-container">
+                            <label for="rng_blur_sigma">Sigma</label>
+                            <input type="range" min="0" max="100" value="3" class="slider" id="rng_blur_sigma">
+                            <span id="txt_curr_blur_sigma">3</span>
+                            <label class="checkbox-inline"><input type="checkbox" id="chk_sigma_lock" checked> Lock Sigma to Radius</label>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="panel" open>
                 <summary>Camera Position</summary>
                 <div class="panel-body">
                     <div class="control-group">
@@ -60,7 +79,7 @@
                 <div class="panel-body">
                     <div class="control-group">
                         <div class="slider-container">
-                            <label for="rng_brightness">Bright</label>
+                            <label for="rng_brightness">Brightness Scale</label>
                             <input type="range" min="0" max="100" value="100" class="slider" id="rng_brightness">
                             <span id="txt_curr_bri">100%</span>
                         </div>
@@ -69,24 +88,11 @@
                             <input type="range" min="1" max="100" value="10" class="slider" id="rng_gamma">
                             <span id="txt_curr_gamma">1.0</span>
                         </div>
-                    </div>
-                </div>
-            </details>
-
-            <details class="panel" open>
-                <summary>Blur</summary>
-                <div class="panel-body">
-                    <div class="control-group">
-                        <div class="slider-container">
-                            <label for="rng_blur">Radius</label>
-                            <input type="range" min="0" max="100" value="3" class="slider" id="rng_blur">
-                            <span id="txt_curr_blur">3</span>
-                        </div>
-                        <div class="slider-container">
-                            <label for="rng_blur_sigma">Sigma</label>
-                            <input type="range" min="0" max="100" value="3" class="slider" id="rng_blur_sigma">
-                            <span id="txt_curr_blur_sigma">3</span>
-                            <label class="checkbox-inline"><input type="checkbox" id="chk_sigma_lock" checked> Lock Sigma to Radius</label>
+                        <label class="checkbox-inline"><input type="checkbox" id="chk_limit_brightness"> Limit Max Brightness</label>
+                        <div class="slider-container disabled" id="max_bri_slider">
+                            <label for="rng_max_brightness">Max Brightness</label>
+                            <input type="range" min="1" max="100" value="50" class="slider" id="rng_max_brightness" disabled>
+                            <span id="txt_curr_max_bri">50%</span>
                         </div>
                     </div>
                 </div>

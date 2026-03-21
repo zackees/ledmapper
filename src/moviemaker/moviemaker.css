@@ -480,7 +480,7 @@
 
 .slider-container {
     display: grid;
-    grid-template-columns: 56px 1fr 38px;
+    grid-template-columns: auto 1fr 38px;
     align-items: center;
     gap: 8px;
 }
@@ -506,7 +506,8 @@
     white-space: nowrap;
 }
 
-.slider-container .checkbox-inline {
+.slider-container .checkbox-inline,
+.control-group > .checkbox-inline {
     grid-column: 1 / -1;
     display: flex;
     align-items: center;
@@ -516,9 +517,15 @@
     cursor: pointer;
 }
 
-.slider-container .checkbox-inline input[type="checkbox"] {
+.slider-container .checkbox-inline input[type="checkbox"],
+.control-group > .checkbox-inline input[type="checkbox"] {
     margin: 0;
     cursor: pointer;
+}
+
+.slider-container.disabled {
+    opacity: 0.4;
+    pointer-events: none;
 }
 
 .slider {
