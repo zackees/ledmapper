@@ -1,18 +1,8 @@
+@reference "../styles/global.css";
+
 /* ═══════════════════════════════════════════════════════════════
    Shape Editor — Layout Overrides
-   Base element styles inherited from global.css
    ═══════════════════════════════════════════════════════════════ */
-
-.sticky {
-    position: sticky;
-    top: 0;
-    background: rgba(17, 17, 17, 0.9);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--lm-border);
-    padding: 10px 16px;
-    z-index: 1000;
-}
 
 .sticky h1 {
     font-size: 1.2rem;
@@ -21,80 +11,30 @@
     letter-spacing: -0.01em;
 }
 
-#controls {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.controls-top {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 12px;
-}
-
-.controls-top > div {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.slider-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
 .slider-row > label {
-    flex-shrink: 0;
+    @apply shrink-0 text-right;
     width: 60px;
-    text-align: right;
 }
 
 .slider-row > input[type="range"] {
-    flex: 1;
-    min-width: 0;
+    @apply flex-1 min-w-0;
 }
 
 .slider-row > input[type="number"] {
-    flex-shrink: 0;
+    @apply shrink-0;
     width: 64px;
 }
 
 .slider-row .unit {
-    flex-shrink: 0;
-    font-size: 0.85rem;
-    opacity: 0.7;
-}
-
-.checkbox-row {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding-left: 68px;
+    @apply shrink-0 text-sm opacity-70;
 }
 
 .checkbox-row label {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    cursor: pointer;
+    @apply flex items-center gap-1 cursor-pointer;
 }
 
 .checkbox-row input[type="number"] {
     width: 64px;
-}
-
-.btn-save {
-    margin-left: auto;
-    padding: 4px 14px;
-    background: var(--lm-accent);
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.85rem;
 }
 
 .btn-save:hover {

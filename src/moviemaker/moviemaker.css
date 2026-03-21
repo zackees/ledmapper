@@ -1,49 +1,30 @@
+@reference "../styles/global.css";
+
 /* ═══════════════════════════════════════════════════════════════
    Video Maker — Sidebar Layout
    ═══════════════════════════════════════════════════════════════ */
 
-/* ── Custom Properties ──────────────────────────────────────── */
-
+/* Moviemaker-specific vars not in @theme */
 :root {
-    --mm-bg: #0a0a0a;
-    --mm-surface-1: #131313;
-    --mm-surface-2: #1a1a1a;
-    --mm-surface-3: #242424;
-    --mm-border: #2a2a2a;
-    --mm-border-hover: #3a3a3a;
-    --mm-text: #e4e4e7;
-    --mm-text-secondary: #a1a1aa;
-    --mm-text-muted: #63636e;
-    --mm-accent: #3b82f6;
-    --mm-accent-hover: #2563eb;
-    --mm-accent-subtle: rgba(59, 130, 246, 0.1);
-    --mm-success: #22c55e;
-    --mm-success-hover: #16a34a;
-    --mm-danger: #ef4444;
-    --mm-danger-glow: rgba(239, 68, 68, 0.45);
     --mm-sidebar-w: 280px;
-    --mm-radius: 6px;
-    --mm-radius-pill: 12px;
-    --mm-ease: cubic-bezier(0.4, 0, 0.2, 1);
-    --mm-dur: 200ms;
 }
 
 /* ── Base ───────────────────────────────────────────────────── */
 
 [data-tool="moviemaker"] {
-    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
-    color: var(--mm-text);
+    font-family: var(--font-family-body);
+    color: var(--color-lm-text);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
 }
 
 [data-tool="moviemaker"] h1, [data-tool="moviemaker"] h2, [data-tool="moviemaker"] h3, [data-tool="moviemaker"] h4, [data-tool="moviemaker"] h5, [data-tool="moviemaker"] h6 {
-    color: var(--mm-text);
+    color: var(--color-lm-text);
     margin: 0;
 }
 
 [data-tool="moviemaker"] a {
-    color: var(--mm-accent);
+    color: var(--color-lm-accent);
     text-decoration: none;
 }
 
@@ -51,94 +32,54 @@
     color: #60a5fa;
 }
 
-/* ── App Layout ─────────────────────────────────────────────── */
-
-.app-layout {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-}
-
-/* ── Canvas Area ────────────────────────────────────────────── */
-
-.canvas-area {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 24px;
-    position: relative;
-    min-width: 0;
-    background: var(--mm-bg);
-}
-
-#canvas-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-}
-
 /* ── Video Progress Bar ─────────────────────────────────────── */
 
 .video-progress-bar {
-    display: none;
-    align-items: center;
-    gap: 8px;
+    @apply hidden items-center gap-2 self-stretch;
     padding: 6px 12px;
     background: rgba(10, 10, 10, 0.75);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    border: 1px solid var(--mm-border);
-    border-radius: var(--mm-radius-pill);
-    align-self: stretch;
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm-pill);
 }
 
 .video-progress-bar.visible {
-    display: flex;
+    @apply flex;
 }
 
 .video-time {
-    font-family: 'IBM Plex Mono', monospace;
+    @apply font-mono whitespace-nowrap select-none;
     font-size: 0.68rem;
-    color: var(--mm-text-muted);
-    white-space: nowrap;
+    color: var(--color-lm-text-muted);
     min-width: 36px;
-    user-select: none;
 }
 
 .progress-track {
-    flex: 1;
+    @apply flex-1 relative cursor-pointer;
     height: 4px;
-    background: var(--mm-surface-3);
+    background: var(--color-lm-surface-3);
     border-radius: 2px;
-    position: relative;
-    cursor: pointer;
 }
 
 .progress-fill {
-    height: 100%;
-    background: var(--mm-accent);
+    @apply h-full pointer-events-none;
+    background: var(--color-lm-accent);
     border-radius: 2px;
     width: 0%;
-    pointer-events: none;
 }
 
 .progress-thumb {
-    position: absolute;
+    @apply absolute rounded-full opacity-0;
     top: 50%;
     left: 0%;
     width: 12px;
     height: 12px;
-    background: var(--mm-accent);
-    border-radius: 50%;
+    background: var(--color-lm-accent);
     transform: translate(-50%, -50%);
     cursor: grab;
-    opacity: 0;
-    transition: opacity var(--mm-dur) var(--mm-ease),
-                transform var(--mm-dur) var(--mm-ease);
+    transition: opacity var(--lm-dur) var(--lm-ease),
+                transform var(--lm-dur) var(--lm-ease);
 }
 
 .progress-track:hover .progress-thumb,
@@ -148,7 +89,7 @@
 
 .progress-thumb:hover {
     transform: translate(-50%, -50%) scale(1.3);
-    box-shadow: 0 0 0 4px var(--mm-accent-subtle);
+    box-shadow: 0 0 0 4px var(--color-lm-accent-subtle);
 }
 
 .progress-thumb.dragging {
@@ -159,190 +100,148 @@
 /* ── Play/Pause Button ─────────────────────────────────────── */
 
 .btn-play-pause {
-    padding: 0;
+    @apply flex items-center justify-center shrink-0 rounded-full p-0;
     font-size: 0.75rem;
     line-height: 1;
     background: transparent;
-    border: 1px solid var(--mm-border);
-    color: var(--mm-text-secondary);
-    border-radius: 50%;
+    border: 1px solid var(--color-lm-border);
+    color: var(--color-lm-text-secondary);
     width: 28px;
     height: 28px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
 .btn-play-pause:hover {
-    background: var(--mm-surface-3);
-    border-color: var(--mm-accent);
-    color: var(--mm-accent);
+    background: var(--color-lm-surface-3);
+    border-color: var(--color-lm-accent);
+    color: var(--color-lm-accent);
 }
 
 /* ── Canvas Toolbar (inline record button) ─────────────────── */
 
 .canvas-toolbar {
-    display: none;
-    align-items: center;
-    gap: 8px;
+    @apply hidden items-center gap-2 justify-center self-stretch;
     padding: 6px 10px;
     background: rgba(10, 10, 10, 0.75);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    border: 1px solid var(--mm-border);
-    border-radius: var(--mm-radius-pill);
-    align-self: stretch;
-    justify-content: center;
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm-pill);
 }
 
 .canvas-toolbar.visible {
-    display: flex;
+    @apply flex;
 }
 
 .toolbar-separator {
+    @apply shrink-0;
     width: 1px;
     height: 18px;
-    background: var(--mm-border);
-    flex-shrink: 0;
+    background: var(--color-lm-border);
 }
 
 .toolbar-select {
-    font-family: 'IBM Plex Mono', monospace;
+    @apply cursor-pointer font-mono;
     font-size: 0.68rem;
-    background: var(--mm-surface-2);
-    color: var(--mm-text-secondary);
-    border: 1px solid var(--mm-border);
+    background: var(--color-lm-surface-2);
+    color: var(--color-lm-text-secondary);
+    border: 1px solid var(--color-lm-border);
     padding: 3px 6px;
     border-radius: 4px;
-    cursor: pointer;
 }
 
 .toolbar-select:hover {
-    border-color: var(--mm-accent);
-    color: var(--mm-text);
+    border-color: var(--color-lm-accent);
+    color: var(--color-lm-text);
 }
 
 .toolbar-select:focus {
     outline: none;
-    border-color: var(--mm-accent);
+    border-color: var(--color-lm-accent);
 }
 
 .toolbar-resolution-label {
-    font-family: 'IBM Plex Mono', monospace;
+    @apply font-mono whitespace-nowrap select-none;
     font-size: 0.62rem;
-    color: var(--mm-text-muted);
-    white-space: nowrap;
-    user-select: none;
+    color: var(--color-lm-text-muted);
 }
 
 #renderCanvas {
-    border: 1px solid var(--mm-border);
+    border: 1px solid var(--color-lm-border);
     border-radius: 2px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
     transition: border-color 400ms ease, box-shadow 400ms ease;
 }
 
 #overlayCanvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    pointer-events: auto;
-}
-
-.canvas-with-preview {
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-}
-
-.canvas-wrapper {
-    position: relative;
-    line-height: 0;
+    @apply absolute top-0 left-0 pointer-events-auto;
 }
 
 #previewCanvas {
-    border: 1px solid var(--mm-border);
+    @apply hidden shrink-0;
+    border: 1px solid var(--color-lm-border);
     border-radius: 2px;
     background: #000;
-    display: none;
-    flex-shrink: 0;
 }
 
 #previewCanvas.visible {
-    display: block;
+    @apply block;
 }
 
 /* ── Sidebar ────────────────────────────────────────────────── */
 
 #sidebar {
-    width: 100%;
-    flex-shrink: 0;
-    background: var(--mm-surface-1);
-    border-bottom: 1px solid var(--mm-border);
-    display: flex;
-    flex-direction: column;
-    position: relative;
+    @apply w-full shrink-0 flex flex-col relative;
+    background: var(--color-mm-surface-1);
+    border-bottom: 1px solid var(--color-lm-border);
 }
 
 #sidebar::before {
     content: '';
     display: block;
     height: 2px;
-    background: var(--mm-accent);
+    background: var(--color-lm-accent);
     flex-shrink: 0;
     transition: background 400ms ease;
 }
 
 .sidebar-scroll {
-    display: flex;
-    flex-wrap: wrap;
-    overflow-y: auto;
-    overflow-x: hidden;
+    @apply flex flex-wrap overflow-y-auto overflow-x-hidden;
     scrollbar-width: thin;
-    scrollbar-color: var(--mm-border) transparent;
+    scrollbar-color: var(--color-lm-border) transparent;
 }
 
 .sidebar-scroll::-webkit-scrollbar { width: 4px; }
 .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
 .sidebar-scroll::-webkit-scrollbar-thumb {
-    background: var(--mm-border);
+    background: var(--color-lm-border);
     border-radius: 2px;
 }
 .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-    background: var(--mm-border-hover);
+    background: var(--color-lm-border-hover);
 }
-
 
 /* ── Help FAB ───────────────────────────────────────────────── */
 
 .help-fab {
-    position: fixed;
+    @apply fixed flex items-center justify-center cursor-pointer z-100 p-0 font-mono;
     bottom: 16px;
     left: 16px;
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: var(--mm-surface-2);
-    border: 1px solid var(--mm-border);
-    color: var(--mm-text-secondary);
-    font-family: 'IBM Plex Mono', monospace;
+    background: var(--color-lm-surface-2);
+    border: 1px solid var(--color-lm-border);
+    color: var(--color-lm-text-secondary);
     font-size: 0.95rem;
     font-weight: 500;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    z-index: 100;
-    padding: 0;
-    transition: all var(--mm-dur) var(--mm-ease);
     line-height: 1;
+    transition: all var(--lm-dur) var(--lm-ease);
 }
 
 .help-fab:hover {
-    background: var(--mm-surface-3);
-    border-color: var(--mm-accent);
-    color: var(--mm-accent);
+    background: var(--color-lm-surface-3);
+    border-color: var(--color-lm-accent);
+    color: var(--color-lm-accent);
     transform: scale(1.08);
 }
 
@@ -352,30 +251,24 @@
     flex: 1 1 200px;
     min-width: 180px;
     border-bottom: none;
-    border-right: 1px solid var(--mm-border);
+    border-right: 1px solid var(--color-lm-border);
 }
 
 .panel > summary {
+    @apply flex items-center justify-between select-none cursor-pointer list-none uppercase;
     padding: 10px 16px;
     font-size: 0.65rem;
     font-weight: 600;
-    text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: var(--mm-text-muted);
-    cursor: pointer;
-    list-style: none;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    user-select: none;
-    background: var(--mm-surface-2);
-    transition: background var(--mm-dur) var(--mm-ease),
-                color var(--mm-dur) var(--mm-ease);
+    color: var(--color-lm-text-muted);
+    background: var(--color-lm-surface-2);
+    transition: background var(--lm-dur) var(--lm-ease),
+                color var(--lm-dur) var(--lm-ease);
 }
 
 .panel > summary:hover {
-    background: var(--mm-surface-3);
-    color: var(--mm-text-secondary);
+    background: var(--color-lm-surface-3);
+    color: var(--color-lm-text-secondary);
 }
 
 .panel > summary::after {
@@ -386,7 +279,7 @@
     border-right: 1.5px solid currentColor;
     border-bottom: 1.5px solid currentColor;
     transform: rotate(45deg);
-    transition: transform var(--mm-dur) var(--mm-ease);
+    transition: transform var(--lm-dur) var(--lm-ease);
     flex-shrink: 0;
     margin-left: 8px;
 }
@@ -404,14 +297,11 @@
 /* ── Control Groups ─────────────────────────────────────────── */
 
 .control-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    @apply flex flex-col gap-2;
 }
 
 .control-group.disabled {
-    opacity: 0.3;
-    pointer-events: none;
+    @apply opacity-30 pointer-events-none;
 }
 
 /* ── Buttons ────────────────────────────────────────────────── */
@@ -422,54 +312,52 @@
     font-size: 0.8rem;
     font-weight: 500;
     padding: 7px 14px;
-    border-radius: var(--mm-radius);
+    border-radius: var(--radius-lm);
     border: none;
     cursor: pointer;
-    transition: all var(--mm-dur) var(--mm-ease);
+    transition: all var(--lm-dur) var(--lm-ease);
     color: #fff;
-    background: var(--mm-accent);
+    background: var(--color-lm-accent);
     line-height: 1.4;
 }
 
 .app-layout button:not(.source-card):hover,
 .app-layout input[type="button"]:hover {
-    background: var(--mm-accent-hover);
+    background: var(--color-lm-accent-hover);
 }
 
 .app-layout button:not(.source-card):disabled,
 .app-layout input[type="button"]:disabled {
-    background: var(--mm-surface-3);
-    color: var(--mm-text-muted);
+    background: var(--color-lm-surface-3);
+    color: var(--color-lm-text-muted);
     cursor: not-allowed;
 }
 
 /* ── Preset Pills ───────────────────────────────────────────── */
 
 .preset-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    @apply flex flex-wrap gap-1.5;
 }
 
 .preset-btn {
     font-size: 0.72rem;
     padding: 4px 12px;
     background: transparent;
-    border: 1px solid var(--mm-border);
-    border-radius: var(--mm-radius-pill);
-    color: var(--mm-text-secondary);
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm-pill);
+    color: var(--color-lm-text-secondary);
 }
 
 .preset-btn:hover {
-    background: var(--mm-accent-subtle);
-    border-color: var(--mm-accent);
-    color: var(--mm-accent);
+    background: var(--color-lm-accent-subtle);
+    border-color: var(--color-lm-accent);
+    color: var(--color-lm-accent);
 }
 
 .preset-btn.active-preset {
-    background: var(--mm-accent-subtle);
-    border-color: var(--mm-accent);
-    color: var(--mm-accent);
+    background: var(--color-lm-accent-subtle);
+    border-color: var(--color-lm-accent);
+    color: var(--color-lm-accent);
 }
 
 .preset-btn.active-preset:hover {
@@ -486,46 +374,36 @@
 }
 
 .app-layout label {
-    color: var(--mm-text-secondary);
+    color: var(--color-lm-text-secondary);
     font-size: 0.75rem;
     font-weight: 400;
 }
 
 .slider-container label {
-    text-align: right;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    @apply text-right whitespace-nowrap overflow-hidden text-ellipsis;
 }
 
 .slider-container span {
-    font-family: 'IBM Plex Mono', monospace;
+    @apply font-mono whitespace-nowrap text-left;
     font-size: 0.7rem;
-    color: var(--mm-text-muted);
-    text-align: left;
-    white-space: nowrap;
+    color: var(--color-lm-text-muted);
 }
 
 .slider-container .checkbox-inline,
 .control-group > .checkbox-inline {
+    @apply flex items-center gap-1 cursor-pointer;
     grid-column: 1 / -1;
-    display: flex;
-    align-items: center;
-    gap: 4px;
     font-size: 0.7rem;
-    color: var(--mm-text-secondary);
-    cursor: pointer;
+    color: var(--color-lm-text-secondary);
 }
 
 .slider-container .checkbox-inline input[type="checkbox"],
 .control-group > .checkbox-inline input[type="checkbox"] {
-    margin: 0;
-    cursor: pointer;
+    @apply m-0 cursor-pointer;
 }
 
 .slider-container.disabled {
-    opacity: 0.4;
-    pointer-events: none;
+    @apply opacity-40 pointer-events-none;
 }
 
 .slider {
@@ -534,10 +412,10 @@
     width: 100%;
     height: 4px;
     border-radius: 2px;
-    background: var(--mm-surface-3);
+    background: var(--color-lm-surface-3);
     outline: none;
     opacity: 0.85;
-    transition: opacity var(--mm-dur) var(--mm-ease);
+    transition: opacity var(--lm-dur) var(--lm-ease);
 }
 
 .slider:hover {
@@ -550,23 +428,23 @@
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: var(--mm-accent);
+    background: var(--color-lm-accent);
     cursor: pointer;
     border: none;
-    transition: transform var(--mm-dur) var(--mm-ease),
-                box-shadow var(--mm-dur) var(--mm-ease);
+    transition: transform var(--lm-dur) var(--lm-ease),
+                box-shadow var(--lm-dur) var(--lm-ease);
 }
 
 .slider::-webkit-slider-thumb:hover {
     transform: scale(1.25);
-    box-shadow: 0 0 0 4px var(--mm-accent-subtle);
+    box-shadow: 0 0 0 4px var(--color-lm-accent-subtle);
 }
 
 .slider::-moz-range-thumb {
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: var(--mm-accent);
+    background: var(--color-lm-accent);
     cursor: pointer;
     border: none;
 }
@@ -574,15 +452,13 @@
 .slider::-moz-range-track {
     height: 4px;
     border-radius: 2px;
-    background: var(--mm-surface-3);
+    background: var(--color-lm-surface-3);
 }
 
 /* ── Webcam Selects ─────────────────────────────────────────── */
 
 #webcam-options {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    @apply flex flex-col gap-2;
 }
 
 #webcam-options .slider-container {
@@ -591,23 +467,23 @@
 
 .app-layout select {
     font-family: inherit;
-    background: var(--mm-surface-2);
-    color: var(--mm-text);
-    border: 1px solid var(--mm-border);
+    background: var(--color-lm-surface-2);
+    color: var(--color-lm-text);
+    border: 1px solid var(--color-lm-border);
     padding: 6px 8px;
-    border-radius: var(--mm-radius);
+    border-radius: var(--radius-lm);
     font-size: 0.75rem;
     cursor: pointer;
-    transition: border-color var(--mm-dur) var(--mm-ease);
+    transition: border-color var(--lm-dur) var(--lm-ease);
 }
 
 .app-layout select:hover {
-    border-color: var(--mm-border-hover);
+    border-color: var(--color-lm-border-hover);
 }
 
 .app-layout select:focus {
     outline: none;
-    border-color: var(--mm-accent);
+    border-color: var(--color-lm-accent);
 }
 
 /* ── File Input ─────────────────────────────────────────────── */
@@ -615,24 +491,24 @@
 .app-layout input[type="file"] {
     font-family: inherit;
     font-size: 0.72rem;
-    background: var(--mm-surface-2);
-    color: var(--mm-text-secondary);
-    border: 1px dashed var(--mm-border);
+    background: var(--color-lm-surface-2);
+    color: var(--color-lm-text-secondary);
+    border: 1px dashed var(--color-lm-border);
     padding: 8px 10px;
-    border-radius: var(--mm-radius);
+    border-radius: var(--radius-lm);
     width: 100%;
     box-sizing: border-box;
     cursor: pointer;
-    transition: border-color var(--mm-dur) var(--mm-ease);
+    transition: border-color var(--lm-dur) var(--lm-ease);
 }
 
 .app-layout input[type="file"]:hover {
-    border-color: var(--mm-accent);
+    border-color: var(--color-lm-accent);
 }
 
 .app-layout input[type="file"]::-webkit-file-upload-button {
     font-family: inherit;
-    background: var(--mm-accent);
+    background: var(--color-lm-accent);
     color: #fff;
     border: none;
     padding: 4px 10px;
@@ -640,26 +516,23 @@
     border-radius: 4px;
     cursor: pointer;
     font-size: 0.72rem;
-    transition: background var(--mm-dur) var(--mm-ease);
+    transition: background var(--lm-dur) var(--lm-ease);
 }
 
 .app-layout input[type="file"]::-webkit-file-upload-button:hover {
-    background: var(--mm-accent-hover);
+    background: var(--color-lm-accent-hover);
 }
 
 /* ── Checkbox ───────────────────────────────────────────────── */
 
 .checkbox-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
+    @apply flex items-center gap-2 cursor-pointer;
     font-size: 0.75rem;
-    color: var(--mm-text-secondary);
+    color: var(--color-lm-text-secondary);
 }
 
 .checkbox-row input[type="checkbox"] {
-    accent-color: var(--mm-accent);
+    accent-color: var(--color-lm-accent);
     width: 14px;
     height: 14px;
     flex-shrink: 0;
@@ -669,48 +542,42 @@
 /* ── Field Labels ───────────────────────────────────────────── */
 
 .field-label {
+    @apply uppercase font-medium;
     font-size: 0.7rem;
-    color: var(--mm-text-muted);
-    text-transform: uppercase;
+    color: var(--color-lm-text-muted);
     letter-spacing: 0.06em;
-    font-weight: 500;
 }
 
 /* ── Record Button (canvas toolbar) ────────────────────────── */
 
 .btn-unload {
+    @apply flex items-center justify-center rounded-full;
     padding: 4px 10px;
     font-size: 0.8rem;
     line-height: 1;
     background: transparent;
-    border: 1px solid var(--mm-border);
-    color: var(--mm-text-muted);
-    border-radius: 50%;
+    border: 1px solid var(--color-lm-border);
+    color: var(--color-lm-text-muted);
     width: 28px;
     height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
 .btn-unload:hover {
-    background: var(--mm-surface-3);
-    border-color: var(--mm-danger);
-    color: var(--mm-danger);
+    background: var(--color-lm-surface-3);
+    border-color: var(--color-mm-danger);
+    color: var(--color-mm-danger);
 }
 
 #btn_toggle_record {
+    @apply uppercase font-semibold whitespace-nowrap;
     padding: 6px 18px;
-    text-transform: uppercase;
-    font-weight: 600;
     letter-spacing: 0.06em;
     font-size: 0.72rem;
-    border-radius: var(--mm-radius-pill);
-    white-space: nowrap;
+    border-radius: var(--radius-lm-pill);
 }
 
 #btn_toggle_record.recording {
-    background: var(--mm-danger);
+    background: var(--color-mm-danger);
     animation: mm-record-pulse 1.5s ease-in-out infinite;
 }
 
@@ -720,44 +587,36 @@
 
 @keyframes mm-record-pulse {
     0%, 100% { box-shadow: 0 0 0 0 transparent; }
-    50% { box-shadow: 0 0 20px 4px var(--mm-danger-glow); }
+    50% { box-shadow: 0 0 20px 4px var(--color-mm-danger-glow); }
 }
 
 /* ── Recording State — Progressive Enhancement ──────────────── */
 
 .app-layout:has(#btn_toggle_record.recording) #renderCanvas {
-    border-color: var(--mm-danger);
+    border-color: var(--color-mm-danger);
     box-shadow: 0 0 24px rgba(239, 68, 68, 0.12);
 }
 
 .app-layout:has(#btn_toggle_record.recording) #sidebar::before {
-    background: var(--mm-danger);
+    background: var(--color-mm-danger);
 }
 
 /* ── Welcome Overlay ─────────────────────────────────────────── */
 
 #welcome-overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    z-index: 20;
+    @apply absolute inset-0 flex flex-col items-center justify-center z-20;
     background:
         radial-gradient(circle, rgba(59, 130, 246, 0.03) 1px, transparent 1px) 0 0 / 18px 18px,
-        var(--mm-bg);
+        var(--color-lm-bg);
     transition: opacity 500ms ease, visibility 500ms ease;
 }
 
 #welcome-overlay.hidden {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
+    @apply opacity-0 invisible pointer-events-none;
 }
 
 .welcome-content {
-    text-align: center;
+    @apply text-center;
     max-width: 400px;
     padding: 0 24px;
 }
@@ -767,34 +626,29 @@
     font-weight: 400;
     letter-spacing: -0.01em;
     margin-bottom: 8px;
-    color: var(--mm-text);
+    color: var(--color-lm-text);
 }
 
 .welcome-sub {
     font-size: 0.85rem;
-    color: var(--mm-text-muted);
+    color: var(--color-lm-text-muted);
     margin: 0 0 28px 0;
     line-height: 1.5;
 }
 
 .welcome-status {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+    @apply flex items-center justify-center gap-2;
     font-size: 0.78rem;
-    color: var(--mm-text-secondary);
+    color: var(--color-lm-text-secondary);
     margin-bottom: 12px;
 }
 
 .status-dot {
-    display: inline-block;
+    @apply inline-block shrink-0 rounded-full;
     width: 6px;
     height: 6px;
-    border-radius: 50%;
-    background: var(--mm-accent);
+    background: var(--color-lm-accent);
     animation: status-pulse 2s ease-in-out infinite;
-    flex-shrink: 0;
 }
 
 @keyframes status-pulse {
@@ -804,26 +658,26 @@
 
 .welcome-hint {
     font-size: 0.72rem;
-    color: var(--mm-text-muted);
+    color: var(--color-lm-text-muted);
     margin: 0;
 }
 
 /* ── SweetAlert Overrides ───────────────────────────────────── */
 
 .custom-popup-class {
-    font-family: 'Outfit', system-ui, sans-serif;
-    background-color: var(--mm-surface-2);
-    color: var(--mm-text);
-    border: 1px solid var(--mm-border);
-    border-radius: var(--mm-radius);
+    font-family: var(--font-family-body);
+    background-color: var(--color-lm-surface-2);
+    color: var(--color-lm-text);
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm);
 }
 
 .custom-content-class {
-    color: var(--mm-text-secondary);
+    color: var(--color-lm-text-secondary);
 }
 
 .custom-popup-class h3 {
-    color: var(--mm-text);
+    color: var(--color-lm-text);
 }
 
 .custom-popup-class ul {
@@ -832,7 +686,7 @@
 
 .custom-popup-class li {
     margin-bottom: 8px;
-    color: var(--mm-text-secondary);
+    color: var(--color-lm-text-secondary);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -842,35 +696,31 @@
    ═══════════════════════════════════════════════════════════════ */
 
 .canvas-row {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    justify-content: center;
+    @apply flex flex-1 min-h-0 justify-center;
 }
 
 /* ── Canvas Controls (Camera, Pixel Effects, Blur) ────────────── */
 
 #canvas-controls {
+    @apply shrink-0 overflow-y-auto;
     width: var(--mm-sidebar-w);
-    flex-shrink: 0;
-    background: var(--mm-surface-1);
-    border-right: 1px solid var(--mm-border);
-    overflow-y: auto;
+    background: var(--color-mm-surface-1);
+    border-right: 1px solid var(--color-lm-border);
     scrollbar-width: thin;
-    scrollbar-color: var(--mm-border) transparent;
+    scrollbar-color: var(--color-lm-border) transparent;
 }
 
 #canvas-controls .panel {
+    @apply min-w-0;
     flex: none;
-    min-width: 0;
     border-right: none;
-    border-bottom: 1px solid var(--mm-border);
+    border-bottom: 1px solid var(--color-lm-border);
 }
 
 /* ── Portrait / Square: controls to LEFT ─────────────────────── */
 
 .canvas-row[data-layout="portrait"] {
-    flex-direction: row;
+    @apply flex-row;
 }
 
 .canvas-row[data-layout="portrait"] .canvas-area {
@@ -880,30 +730,25 @@
 /* ── Landscape: controls BELOW ───────────────────────────────── */
 
 .canvas-row[data-layout="landscape"] {
-    flex-direction: column;
-    align-items: center;
+    @apply flex-col items-center;
 }
 
 .canvas-row[data-layout="landscape"] .canvas-area {
-    flex: 1;
-    min-height: 0;
+    @apply flex-1 min-h-0;
 }
 
 .canvas-row[data-layout="landscape"] #canvas-controls {
-    width: 100%;
+    @apply w-full flex flex-wrap overflow-y-auto;
     max-height: 40vh;
     border-right: none;
-    border-top: 1px solid var(--mm-border);
-    display: flex;
-    flex-wrap: wrap;
-    overflow-y: auto;
+    border-top: 1px solid var(--color-lm-border);
 }
 
 .canvas-row[data-layout="landscape"] #canvas-controls .panel {
     flex: 1 1 220px;
     min-width: 200px;
     border-bottom: none;
-    border-right: 1px solid var(--mm-border);
+    border-right: 1px solid var(--color-lm-border);
 }
 
 /* ── Responsive (small screens) ────────────────────────────────── */
@@ -914,29 +759,28 @@
     }
 
     .sidebar-scroll {
-        flex-direction: column;
-        flex-wrap: nowrap;
+        @apply flex-col flex-nowrap;
     }
 
     #sidebar .panel {
+        @apply min-w-0;
         flex: none;
-        min-width: 0;
         border-right: none;
-        border-bottom: 1px solid var(--mm-border);
+        border-bottom: 1px solid var(--color-lm-border);
     }
 
     .canvas-row,
     .canvas-row[data-layout="portrait"],
     .canvas-row[data-layout="landscape"] {
-        flex-direction: column;
+        @apply flex-col;
     }
 
     #canvas-controls,
     .canvas-row[data-layout="portrait"] #canvas-controls,
     .canvas-row[data-layout="landscape"] #canvas-controls {
-        width: 100%;
+        @apply w-full;
         border-right: none;
-        border-bottom: 1px solid var(--mm-border);
+        border-bottom: 1px solid var(--color-lm-border);
     }
 
     .help-fab {

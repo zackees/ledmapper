@@ -1,12 +1,13 @@
+@reference "../styles/global.css";
+
 /* ═══════════════════════════════════════════════════════════════
    Hub — Landing Page
    ═══════════════════════════════════════════════════════════════ */
 
 .hub-container {
+    @apply relative mx-auto;
     max-width: 900px;
-    margin: 0 auto;
     padding: 60px 24px 40px;
-    position: relative;
 }
 
 /* Ambient glow behind hero */
@@ -26,10 +27,8 @@
 /* ── Hero Header ────────────────────────────────────────────── */
 
 .hub-header {
-    text-align: center;
+    @apply text-center relative z-1;
     margin-bottom: 48px;
-    position: relative;
-    z-index: 1;
 }
 
 .hub-header h1 {
@@ -44,7 +43,7 @@
 }
 
 .hub-header p {
-    color: var(--lm-text-muted);
+    color: var(--color-lm-text-muted);
     font-size: 0.92rem;
     max-width: 480px;
     margin: 0 auto;
@@ -54,26 +53,22 @@
 /* ── Tool Grid ──────────────────────────────────────────────── */
 
 .tool-grid {
+    @apply relative z-1;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     gap: 14px;
-    position: relative;
-    z-index: 1;
 }
 
 /* ── Tool Cards ─────────────────────────────────────────────── */
 
 .tool-card {
-    background: var(--lm-surface-1);
-    border: 1px solid var(--lm-border);
-    border-left: 3px solid var(--card-accent, var(--lm-accent));
+    @apply block relative overflow-hidden no-underline;
+    background: var(--color-lm-surface-1);
+    border: 1px solid var(--color-lm-border);
+    border-left: 3px solid var(--card-accent, var(--color-lm-accent));
     border-radius: 8px;
     padding: 20px 22px;
-    text-decoration: none;
     transition: all 280ms var(--lm-ease);
-    display: block;
-    position: relative;
-    overflow: hidden;
 }
 
 /* Subtle inner glow on hover */
@@ -84,17 +79,17 @@
     border-radius: 8px;
     opacity: 0;
     transition: opacity 280ms var(--lm-ease);
-    background: radial-gradient(ellipse at 20% 50%, color-mix(in srgb, var(--card-accent, var(--lm-accent)) 6%, transparent) 0%, transparent 70%);
+    background: radial-gradient(ellipse at 20% 50%, color-mix(in srgb, var(--card-accent, var(--color-lm-accent)) 6%, transparent) 0%, transparent 70%);
     pointer-events: none;
 }
 
 .tool-card:hover {
-    background: var(--lm-surface-2);
-    border-color: color-mix(in srgb, var(--card-accent, var(--lm-accent)) 40%, var(--lm-border));
+    background: var(--color-lm-surface-2);
+    border-color: color-mix(in srgb, var(--card-accent, var(--color-lm-accent)) 40%, var(--color-lm-border));
     border-left-width: 3px;
     transform: translateY(-2px);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
-                0 0 24px color-mix(in srgb, var(--card-accent, var(--lm-accent)) 8%, transparent);
+                0 0 24px color-mix(in srgb, var(--card-accent, var(--color-lm-accent)) 8%, transparent);
 }
 
 .tool-card:hover::after {
@@ -102,7 +97,7 @@
 }
 
 .tool-card h2 {
-    color: var(--lm-text);
+    color: var(--color-lm-text);
     font-size: 0.95rem;
     font-weight: 600;
     margin: 0 0 6px 0;
@@ -110,7 +105,7 @@
 }
 
 .tool-card p {
-    color: var(--lm-text-muted);
+    color: var(--color-lm-text-muted);
     font-size: 0.82rem;
     margin: 0;
     line-height: 1.5;

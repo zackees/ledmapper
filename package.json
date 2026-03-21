@@ -24,7 +24,9 @@
   },
   "homepage": "https://github.com/zackees/ledmapper#readme",
   "dependencies": {
+    "@tailwindcss/vite": "^4.2.2",
     "sweetalert2": "^11.26.21",
+    "tailwindcss": "^4.2.2",
     "three": "^0.183.2"
   },
   "devDependencies": {

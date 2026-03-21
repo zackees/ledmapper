@@ -1,40 +1,31 @@
+@reference "../styles/global.css";
+
 /* ═══════════════════════════════════════════════════════════════
-   Screenmap Maker — Self-contained (no global.css dependency)
-   Full-screen canvas tool with floating controls overlay
+   Screenmap Maker — Full-screen canvas tool with floating controls
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── Base ───────────────────────────────────────────────────── */
 
 [data-tool="screenmap"] {
-    overflow: hidden;
+    @apply overflow-hidden antialiased;
     color: #a1a1aa;
-    -webkit-font-smoothing: antialiased;
     line-height: 1.4;
 }
 
 #mappingUI {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
+    @apply flex-1 flex flex-col min-h-0;
 }
 
 [data-tool="screenmap"] main {
-    flex: 1;
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 0;
+    @apply flex-1 w-full flex justify-center items-center p-0;
 }
 
 /* ── Floating Controls Panel ────────────────────────────────── */
 
 #controls {
-    position: fixed;
+    @apply fixed z-[1000];
     top: 8px;
     left: 8px;
-    z-index: 1000;
     background: rgba(10, 10, 10, 0.82);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
@@ -52,27 +43,24 @@
 }
 
 #controls > div {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    @apply flex items-center gap-1.5;
     margin: 4px 0;
 }
 
 /* ── Labels ─────────────────────────────────────────────────── */
 
 #controls label {
+    @apply shrink-0 inline-block;
     color: #a1a1aa;
     width: 44px;
-    flex-shrink: 0;
     font-size: 0.72rem;
     font-weight: 400;
-    display: inline-block;
 }
 
 /* ── Number Inputs ──────────────────────────────────────────── */
 
 #controls input[type="number"] {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.72rem;
     padding: 3px 5px;
     background: rgba(26, 26, 26, 0.8);
@@ -137,12 +125,6 @@
 
 /* ── Buttons ────────────────────────────────────────────────── */
 
-.action-buttons {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-}
-
 #controls button,
 #controls input[type="button"] {
     font-family: inherit;
@@ -175,35 +157,29 @@
 /* ── Webcam Preview ─────────────────────────────────────────── */
 
 #captureContainer {
-    position: fixed;
+    @apply fixed z-[1000] overflow-hidden;
     top: 10px;
     right: 10px;
-    z-index: 1000;
     width: 320px;
     height: 240px;
-    overflow: hidden;
     border-radius: 6px;
     border: 1px solid rgba(255, 255, 255, 0.06);
     transition: opacity 0.3s ease;
 }
 
 #captureContainer video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+    @apply w-full h-full object-cover;
 }
 
 /* ── Popup ──────────────────────────────────────────────────── */
 
 #popup {
-    position: fixed;
+    @apply fixed hidden opacity-0;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     padding: 16px 24px;
     border-radius: 8px;
-    display: none;
-    opacity: 0;
     transition: opacity 0.4s ease-in-out;
     background: rgba(10, 10, 10, 0.9);
     backdrop-filter: blur(8px);
@@ -219,28 +195,15 @@
 
 /* ── Source Selection Screen ───────────────────────────────── */
 
-#sourceSelect {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 24px;
-}
-
-.source-select-inner {
-    text-align: center;
-    max-width: 480px;
-}
-
 .source-select-inner h2 {
     font-size: 1.4rem;
     font-weight: 600;
-    color: var(--lm-text);
+    color: var(--color-lm-text);
     margin: 0 0 6px;
 }
 
 .source-select-inner > p {
     font-size: 0.82rem;
-    color: var(--lm-text-muted);
+    color: var(--color-lm-text-muted);
     margin: 0 0 24px;
 }

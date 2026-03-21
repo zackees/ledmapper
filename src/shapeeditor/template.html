@@ -1,45 +1,45 @@
-<div class="sticky">
+<div class="sticky top-0 bg-[rgba(17,17,17,0.9)] backdrop-blur-[12px] border-b border-lm-border px-4 py-2.5 z-[1000]">
     <h1>Shape Editor</h1>
-    <div id="controls">
-        <div class="controls-top">
-            <div>
+    <div id="controls" class="flex flex-col gap-2">
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-2">
                 <label for="sel_preset">Preset:</label>
                 <select id="sel_preset">
                     <option value="">Loading presets...</option>
                 </select>
             </div>
-            <div>
+            <div class="flex items-center gap-2">
                 <label for="btn_upload_shape">Upload Screenmap (*.json):</label>
                 <input type="file" id="btn_upload_shape" accept=".json">
             </div>
         </div>
-        <div class="slider-row">
+        <div class="slider-row flex items-center gap-2">
             <label for="rng_scale">Scale</label>
             <input id="rng_scale" type="range" min="0" max="1000" value="302" step="1">
             <input id="txt_scale" type="number" value="1.00" min="0.10" max="10.00" step="0.01">
         </div>
-        <div class="slider-row">
+        <div class="slider-row flex items-center gap-2">
             <label for="rng_scale_x">Scale X</label>
             <input id="rng_scale_x" type="range" min="0" max="1000" value="302" step="1">
             <input id="txt_scale_x" type="number" value="1.00" min="0.10" max="10.00" step="0.01">
         </div>
-        <div class="slider-row">
+        <div class="slider-row flex items-center gap-2">
             <label for="rng_scale_y">Scale Y</label>
             <input id="rng_scale_y" type="range" min="0" max="1000" value="302" step="1">
             <input id="txt_scale_y" type="number" value="1.00" min="0.10" max="10.00" step="0.01">
         </div>
-        <div class="slider-row">
+        <div class="slider-row flex items-center gap-2">
             <label for="rng_rotate">Rotate</label>
             <input id="rng_rotate" type="range" min="-180" max="180" value="0" step="1">
             <input id="txt_rotate" type="number" value="0" min="-180" max="180" step="1">
             <span class="unit">°</span>
         </div>
-        <div class="checkbox-row">
+        <div class="checkbox-row flex items-center gap-4 pl-17">
             <label><input id="chk_flip_h" type="checkbox"> Flip H</label>
             <label><input id="chk_flip_v" type="checkbox"> Flip V</label>
             <label for="txt_diameter">Diameter (cm)</label>
             <input id="txt_diameter" type="number" value="0.50" min="0.01" max="100" step="0.01">
-            <button id="btn_save_as" class="btn-save">Save As…</button>
+            <button id="btn_save_as" class="btn-save ml-auto py-1 px-3.5 bg-lm-accent text-white border-none rounded cursor-pointer text-sm">Save As…</button>
         </div>
     </div>
 </div>

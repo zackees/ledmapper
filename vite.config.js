@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'path';
 import fs from 'fs';
 
@@ -11,7 +12,7 @@ const httpsConfig = fs.existsSync(certPath) && fs.existsSync(keyPath)
 export default defineConfig({
   root: 'src',
   publicDir: '../public',
-  plugins: [{
+  plugins: [tailwindcss(), {
     name: 'spa-fallback',
     configureServer(server) {
       return () => {

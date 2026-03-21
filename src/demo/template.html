@@ -9,16 +9,16 @@
         <input type="file" id="btn_load_movie" accept=".rgb">
     </div>
 
-    <!-- New flex container for the three sections -->
-    <div class="controls-container">
+    <!-- Three-section Layout -->
+    <div class="controls-container flex justify-center items-center gap-6 mt-3 flex-wrap">
         <!-- Left section - Play/Pause -->
-        <div class="control-section">
+        <div class="flex flex-col items-center gap-2">
             <input type="button" id="btn_play" value="Play">
         </div>
 
         <!-- Middle section - Sliders -->
-        <div class="control-section">
-            <div class="slider-container">
+        <div class="flex flex-col items-center gap-2">
+            <div class="flex items-center gap-2.5">
                 <label for="sel_framerate">Frame Rate:</label>
                 <select id="sel_framerate">
                     <option value="60">60 FPS</option>
@@ -30,16 +30,16 @@
                     <option value="1">1 FPS</option>
                 </select>
             </div>
-            <div class="slider-container">
+            <div class="flex items-center gap-2.5">
                 <label for="rng_diameter">LED Diameter:</label>
                 <input type="range" min="1" max="20" value="6" step="1" class="slider" id="rng_diameter">
-                <span id="txt_curr_diameter">6</span>
+                <span class="font-mono text-xs text-lm-text-muted min-w-6 text-right" id="txt_curr_diameter">6</span>
             </div>
         </div>
 
         <!-- Right section - Download buttons -->
-        <div class="control-section">
-            <div class="button-container">
+        <div class="flex flex-col items-center gap-2">
+            <div class="flex flex-wrap gap-1.5 justify-center">
                 <button id="btn_download_screenmap">Download Screenmap</button>
                 <button id="btn_download_screenmap_16x16_serpentine">Download 16x16 Serpentine Screenmap</button>
                 <button id="btn_download_video">Download Mapped Video</button>

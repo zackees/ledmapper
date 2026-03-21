@@ -1,46 +1,52 @@
+@import "tailwindcss";
+
 /* ═══════════════════════════════════════════════════════════════
    FastLED Video Mapper — Design System
    ═══════════════════════════════════════════════════════════════ */
 
-/* Google Fonts loaded via <link> in index.html to avoid render-blocking @import */
+/* ── Tailwind Theme Tokens ─────────────────────────────────── */
 
-/* ── Design Tokens ──────────────────────────────────────────── */
-
-:root {
-    --lm-bg: #0a0a0a;
-    --lm-surface-1: #111111;
-    --lm-surface-2: #1a1a1a;
-    --lm-surface-3: #242424;
-    --lm-border: #2a2a2a;
-    --lm-border-hover: #3a3a3a;
-    --lm-text: #e4e4e7;
-    --lm-text-secondary: #a1a1aa;
-    --lm-text-muted: #63636e;
-    --lm-accent: #3b82f6;
-    --lm-accent-hover: #2563eb;
-    --lm-accent-subtle: rgba(59, 130, 246, 0.1);
-    --lm-accent-glow: rgba(59, 130, 246, 0.25);
-    --lm-radius: 6px;
-    --lm-radius-lg: 10px;
-    --lm-ease: cubic-bezier(0.4, 0, 0.2, 1);
-    --lm-dur: 200ms;
+@theme {
+    --color-lm-bg: #0a0a0a;
+    --color-lm-surface-1: #111111;
+    --color-lm-surface-2: #1a1a1a;
+    --color-lm-surface-3: #242424;
+    --color-lm-border: #2a2a2a;
+    --color-lm-border-hover: #3a3a3a;
+    --color-lm-text: #e4e4e7;
+    --color-lm-text-secondary: #a1a1aa;
+    --color-lm-text-muted: #63636e;
+    --color-lm-accent: #3b82f6;
+    --color-lm-accent-hover: #2563eb;
+    --color-lm-accent-subtle: rgba(59, 130, 246, 0.1);
+    --color-lm-accent-glow: rgba(59, 130, 246, 0.25);
+    --color-mm-surface-1: #131313;
+    --color-mm-success: #22c55e;
+    --color-mm-success-hover: #16a34a;
+    --color-mm-danger: #ef4444;
+    --color-mm-danger-glow: rgba(239, 68, 68, 0.45);
+    --radius-lm: 6px;
+    --radius-lm-lg: 10px;
+    --radius-lm-pill: 12px;
+    --font-family-body: 'Outfit', system-ui, -apple-system, sans-serif;
+    --font-family-mono: 'IBM Plex Mono', monospace;
 }
 
-/* ── Reset ──────────────────────────────────────────────────── */
-
-*, *::before, *::after {
-    box-sizing: border-box;
+/* Transition tokens (not supported in @theme) */
+:root {
+    --lm-dur: 200ms;
+    --lm-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ── Base ───────────────────────────────────────────────────── */
 
 body {
-    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+    font-family: var(--font-family-body);
     line-height: 1.5;
-    color: var(--lm-text);
+    color: var(--color-lm-text);
     margin: 0;
     padding: 0;
-    background-color: var(--lm-bg);
+    background-color: var(--color-lm-bg);
     display: flex;
     flex-direction: column;
     min-height: 100vh;
@@ -62,7 +68,7 @@ body {
 /* ── Typography ─────────────────────────────────────────────── */
 
 h1, h2, h3, h4, h5, h6 {
-    color: var(--lm-text);
+    color: var(--color-lm-text);
     margin: 0 0 0.5em 0;
     font-weight: 600;
 }
@@ -73,7 +79,7 @@ h1 {
 }
 
 a {
-    color: var(--lm-accent);
+    color: var(--color-lm-accent);
     text-decoration: none;
     transition: color var(--lm-dur) var(--lm-ease);
 }
@@ -90,26 +96,26 @@ input[type="button"] {
     font-size: 0.8rem;
     font-weight: 500;
     padding: 7px 14px;
-    border-radius: var(--lm-radius);
+    border-radius: var(--radius-lm);
     border: none;
     cursor: pointer;
     transition: all var(--lm-dur) var(--lm-ease);
     color: #fff;
-    background: var(--lm-accent);
+    background: var(--color-lm-accent);
     line-height: 1.4;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 button:hover,
 input[type="button"]:hover {
-    background: var(--lm-accent-hover);
-    box-shadow: 0 2px 8px var(--lm-accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    background: var(--color-lm-accent-hover);
+    box-shadow: 0 2px 8px var(--color-lm-accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 button:disabled,
 input[type="button"]:disabled {
-    background: var(--lm-surface-3);
-    color: var(--lm-text-muted);
+    background: var(--color-lm-surface-3);
+    color: var(--color-lm-text-muted);
     cursor: not-allowed;
     box-shadow: none;
 }
@@ -119,11 +125,11 @@ input[type="button"]:disabled {
 input[type="file"] {
     font-family: inherit;
     font-size: 0.78rem;
-    background: var(--lm-surface-2);
-    color: var(--lm-text-secondary);
-    border: 1px dashed var(--lm-border);
+    background: var(--color-lm-surface-2);
+    color: var(--color-lm-text-secondary);
+    border: 1px dashed var(--color-lm-border);
     padding: 8px 10px;
-    border-radius: var(--lm-radius);
+    border-radius: var(--radius-lm);
     width: 100%;
     box-sizing: border-box;
     cursor: pointer;
@@ -131,12 +137,12 @@ input[type="file"] {
 }
 
 input[type="file"]:hover {
-    border-color: var(--lm-accent);
+    border-color: var(--color-lm-accent);
 }
 
 input[type="file"]::-webkit-file-upload-button {
     font-family: inherit;
-    background: var(--lm-accent);
+    background: var(--color-lm-accent);
     color: #fff;
     border: none;
     padding: 4px 10px;
@@ -148,27 +154,27 @@ input[type="file"]::-webkit-file-upload-button {
 }
 
 input[type="file"]::-webkit-file-upload-button:hover {
-    background: var(--lm-accent-hover);
+    background: var(--color-lm-accent-hover);
 }
 
 /* ── Text / Number Inputs ───────────────────────────────────── */
 
 input[type="text"],
 input[type="number"] {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.78rem;
-    background: var(--lm-surface-2);
-    color: var(--lm-text);
-    border: 1px solid var(--lm-border);
+    background: var(--color-lm-surface-2);
+    color: var(--color-lm-text);
+    border: 1px solid var(--color-lm-border);
     padding: 5px 8px;
-    border-radius: var(--lm-radius);
+    border-radius: var(--radius-lm);
     transition: border-color var(--lm-dur) var(--lm-ease);
 }
 
 input[type="text"]:focus,
 input[type="number"]:focus {
     outline: none;
-    border-color: var(--lm-accent);
+    border-color: var(--color-lm-accent);
 }
 
 /* ── Selects ────────────────────────────────────────────────── */
@@ -176,17 +182,17 @@ input[type="number"]:focus {
 select {
     font-family: inherit;
     font-size: 0.78rem;
-    background: var(--lm-surface-2);
-    color: var(--lm-text);
-    border: 1px solid var(--lm-border);
+    background: var(--color-lm-surface-2);
+    color: var(--color-lm-text);
+    border: 1px solid var(--color-lm-border);
     padding: 6px 8px;
-    border-radius: var(--lm-radius);
+    border-radius: var(--radius-lm);
     cursor: pointer;
     transition: border-color var(--lm-dur) var(--lm-ease);
 }
 
-select:hover { border-color: var(--lm-border-hover); }
-select:focus { outline: none; border-color: var(--lm-accent); }
+select:hover { border-color: var(--color-lm-border-hover); }
+select:focus { outline: none; border-color: var(--color-lm-accent); }
 
 /* ── Range Sliders ──────────────────────────────────────────── */
 
@@ -195,7 +201,7 @@ input[type="range"] {
     appearance: none;
     height: 4px;
     border-radius: 2px;
-    background: var(--lm-surface-3);
+    background: var(--color-lm-surface-3);
     outline: none;
     opacity: 0.85;
     transition: opacity var(--lm-dur) var(--lm-ease);
@@ -211,7 +217,7 @@ input[type="range"]::-webkit-slider-thumb {
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: var(--lm-accent);
+    background: var(--color-lm-accent);
     cursor: pointer;
     border: none;
     transition: transform var(--lm-dur) var(--lm-ease),
@@ -220,14 +226,14 @@ input[type="range"]::-webkit-slider-thumb {
 
 input[type="range"]::-webkit-slider-thumb:hover {
     transform: scale(1.2);
-    box-shadow: 0 0 0 4px var(--lm-accent-subtle);
+    box-shadow: 0 0 0 4px var(--color-lm-accent-subtle);
 }
 
 input[type="range"]::-moz-range-thumb {
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: var(--lm-accent);
+    background: var(--color-lm-accent);
     cursor: pointer;
     border: none;
 }
@@ -235,13 +241,13 @@ input[type="range"]::-moz-range-thumb {
 input[type="range"]::-moz-range-track {
     height: 4px;
     border-radius: 2px;
-    background: var(--lm-surface-3);
+    background: var(--color-lm-surface-3);
 }
 
 /* ── Checkboxes ─────────────────────────────────────────────── */
 
 input[type="checkbox"] {
-    accent-color: var(--lm-accent);
+    accent-color: var(--color-lm-accent);
     width: 14px;
     height: 14px;
     cursor: pointer;
@@ -250,7 +256,7 @@ input[type="checkbox"] {
 /* ── Labels ─────────────────────────────────────────────────── */
 
 label {
-    color: var(--lm-text-secondary);
+    color: var(--color-lm-text-secondary);
     font-size: 0.8rem;
     font-weight: 400;
 }
@@ -268,36 +274,24 @@ main {
 /* ── Canvas ─────────────────────────────────────────────────── */
 
 canvas {
-    border: 1px solid var(--lm-border);
+    border: 1px solid var(--color-lm-border);
     border-radius: 2px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
 /* ── Source Selection Cards ─────────────────────────────────── */
 
-.source-options {
-    display: flex;
-    gap: 16px;
-    justify-content: center;
-    margin-bottom: 20px;
-}
-
 .source-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
+    @apply flex flex-col items-center justify-center gap-3 cursor-pointer;
+    font-family: inherit;
     padding: 48px 40px;
-    background: var(--lm-surface-2);
+    background: var(--color-lm-surface-2);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 14px;
-    cursor: pointer;
     transition: all var(--lm-dur) var(--lm-ease);
-    color: var(--lm-text-secondary);
+    color: var(--color-lm-text-secondary);
     min-width: 260px;
     min-height: 220px;
-    font-family: inherit;
     box-shadow: none;
 }
 
@@ -308,38 +302,22 @@ canvas {
 }
 
 .source-card.drag-over {
-    border-color: var(--lm-accent);
+    border-color: var(--color-lm-accent);
     border-style: dashed;
-    background: var(--lm-accent-subtle);
-}
-
-.source-icon {
-    font-size: 3rem;
-    line-height: 1;
-}
-
-.source-title {
-    font-size: 1.1rem;
-    font-weight: 500;
-    color: var(--lm-text);
-}
-
-.source-desc {
-    font-size: 0.8rem;
-    color: var(--lm-text-muted);
+    background: var(--color-lm-accent-subtle);
 }
 
 /* ── Focus Visible ──────────────────────────────────────────── */
 
 :focus-visible {
-    outline: 2px solid var(--lm-accent);
+    outline: 2px solid var(--color-lm-accent);
     outline-offset: 2px;
 }
 
 button:focus-visible,
 input[type="button"]:focus-visible {
     outline-offset: 2px;
-    box-shadow: 0 0 0 3px var(--lm-accent-glow);
+    box-shadow: 0 0 0 3px var(--color-lm-accent-glow);
 }
 
 /* ── Scrollbar ─────────────────────────────────────────────── */
@@ -347,31 +325,7 @@ input[type="button"]:focus-visible {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-    background: var(--lm-surface-3);
+    background: var(--color-lm-surface-3);
     border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--lm-border-hover); }
-
-/* ── Shared Controls Bar ────────────────────────────────────── */
-
-.controls {
-    background: var(--lm-surface-1);
-    border-bottom: 1px solid var(--lm-border);
-    padding: 16px 24px;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-}
-
-.slider-container {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.slider-container span {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.75rem;
-    color: var(--lm-text-muted);
-    min-width: 24px;
-    text-align: right;
-}
+::-webkit-scrollbar-thumb:hover { background: var(--color-lm-border-hover); }

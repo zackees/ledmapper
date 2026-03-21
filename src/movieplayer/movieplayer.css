@@ -1,11 +1,16 @@
+@reference "../styles/global.css";
+
 /* ═══════════════════════════════════════════════════════════════
    Video Player — Layout Overrides
-   Base element styles inherited from global.css
    ═══════════════════════════════════════════════════════════════ */
 
 .controls {
     max-width: 600px;
-    background: linear-gradient(to bottom, var(--lm-surface-1), var(--lm-bg));
+    background: linear-gradient(to bottom, var(--color-lm-surface-1), var(--color-lm-bg));
+    border-bottom: 1px solid var(--color-lm-border);
+    padding: 16px 24px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 }
 
 .controls h1 {
@@ -17,19 +22,13 @@
 
 .controls p {
     font-size: 0.8rem;
-    color: var(--lm-text-muted);
+    color: var(--color-lm-text-muted);
     margin: 0 0 12px 0;
 }
 
 .controls > div {
     margin-bottom: 10px;
 }
-
-.slider-container {
-    margin-top: 4px;
-}
-
-/* ── Responsive ─────────────────────────────────────────────── */
 
 @media (max-width: 600px) {
     .controls {

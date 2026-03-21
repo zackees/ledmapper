@@ -1,4 +1,4 @@
-<div class="app-layout">
+<div class="app-layout flex flex-col flex-1 min-h-0 overflow-hidden">
     <aside id="sidebar">
         <div class="sidebar-scroll">
             <div id="hidden-video-controls" style="display:none">
@@ -103,21 +103,21 @@
             </details>
         </aside>
 
-        <main class="canvas-area">
+        <main class="canvas-area flex-1 flex justify-center items-center p-6 relative min-w-0 bg-lm-bg">
             <div id="welcome-overlay">
                 <div class="welcome-content">
                     <h2 class="welcome-title">Video Maker</h2>
                     <p class="welcome-sub">Choose a video source to start mapping LEDs</p>
-                    <div class="source-options">
+                    <div class="flex gap-4 justify-center mb-5">
                         <button type="button" class="source-card" data-trigger="btn_load_video">
-                            <div class="source-icon">&#9654;</div>
-                            <span class="source-title">Load Video</span>
-                            <span class="source-desc">Upload a video file from your device</span>
+                            <div class="text-5xl leading-none">&#9654;</div>
+                            <span class="text-lg font-medium text-lm-text">Load Video</span>
+                            <span class="text-sm text-lm-text-muted">Upload a video file from your device</span>
                         </button>
                         <button type="button" class="source-card" data-trigger="btn_start_webcam">
-                            <div class="source-icon">&#127909;</div>
-                            <span class="source-title">Use Webcam</span>
-                            <span class="source-desc">Capture live from your camera</span>
+                            <div class="text-5xl leading-none">&#127909;</div>
+                            <span class="text-lg font-medium text-lm-text">Use Webcam</span>
+                            <span class="text-sm text-lm-text-muted">Capture live from your camera</span>
                         </button>
                     </div>
                     <div class="welcome-status">
@@ -127,7 +127,7 @@
                     <p class="welcome-hint">Change LED layout or adjust effects in the toolbar</p>
                 </div>
             </div>
-            <div id="canvas-container">
+            <div id="canvas-container" class="flex flex-col items-center gap-1.5">
                 <div class="canvas-toolbar">
                     <input type="button" id="btn_toggle_record" value="Start Recording" disabled>
                     <div class="toolbar-separator"></div>
@@ -152,8 +152,8 @@
                     </div>
                     <span id="video-time-duration" class="video-time">0:00</span>
                 </div>
-                <div class="canvas-with-preview">
-                    <div class="canvas-wrapper">
+                <div class="canvas-with-preview flex gap-3 items-start">
+                    <div class="canvas-wrapper relative leading-none">
                         <canvas id="renderCanvas"></canvas>
                         <canvas id="overlayCanvas"></canvas>
                     </div>

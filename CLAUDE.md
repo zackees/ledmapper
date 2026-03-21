@@ -30,7 +30,7 @@ npm test
 
 ## Architecture
 
-**Vite MPA (Multi-Page App)** using vanilla JavaScript, p5.js (instance mode), Three.js, and SweetAlert2. All dependencies managed via npm. ES modules throughout.
+**Vite MPA (Multi-Page App)** using vanilla JavaScript, p5.js (instance mode), Three.js, Tailwind CSS v4, and SweetAlert2. All dependencies managed via npm. ES modules throughout.
 
 **Shared nav bar:** Each tool page includes a shared navigation header (`src/nav.js`). Regular `<a>` links navigate between tools. No iframes.
 
@@ -91,10 +91,32 @@ tests/
 
 **Video files** (`.rgb`): Raw binary — sequential RGB triplets (3 bytes per LED per frame). Frame count = `total_bytes / (led_count * 3)`.
 
+### Styling — Tailwind CSS v4
+
+**Setup:** `@tailwindcss/vite` plugin in `vite.config.js`, `@import "tailwindcss"` in `global.css`.
+
+**Theme tokens** defined via `@theme` in `src/styles/global.css`. These generate utility classes:
+- Colors: `bg-lm-bg`, `text-lm-text`, `border-lm-accent`, `bg-lm-surface-1`, `text-lm-text-muted`, etc.
+- Radii: `rounded-lm`, `rounded-lm-lg`, `rounded-lm-pill`
+- Fonts: `font-body` (Outfit), `font-mono` (IBM Plex Mono)
+- Moviemaker extras: `bg-mm-surface-1`, `text-mm-danger`, `bg-mm-success`
+
+**Approach:** Hybrid — Tailwind utility classes inline in `template.html` files for layout/spacing/typography, with residual CSS for things Tailwind can't handle (keyframe animations, pseudo-elements, vendor-prefixed selectors, `details/summary` styling, dynamic state classes).
+
+**Per-tool CSS files** still exist (loaded dynamically via `?url` imports + router). They use `@reference "../styles/global.css"` to access Tailwind utilities in `@apply` directives. These files contain:
+- State toggle classes (`.hidden`, `.visible`, `.recording`, `.active-preset`, `.disabled`)
+- Keyframe animations
+- Pseudo-element styles (`::before`, `::after`)
+- Vendor-prefixed selectors (`::-webkit-slider-thumb`, scrollbar)
+- Responsive `@media` breakpoints
+- Data-attribute layout selectors (`[data-layout="portrait"]`)
+
+**When adding new UI:** Use Tailwind utility classes directly in template HTML. Only add CSS rules for states, animations, or pseudo-elements that utilities can't express.
+
 ### Key Patterns
 
 - p5.js tools use **instance mode**: `new p5((p) => { p.setup = () => {...}; p.draw = () => {...}; })`
 - All JS uses ES module `import`/`export` — no CDN `<script>` tags
 - `moviemaker/` uses Three.js with GLSL fragment shaders for GPU-accelerated blur and readback for recording
-- UI uses dark theme (background: #121212, accent: #2980b9) with SweetAlert2 for dialogs
-- Each tool's `index.html` imports `../styles/global.css`, `../styles/nav.css`, and its own CSS
+- UI uses dark theme (bg: `--color-lm-bg` #0a0a0a, accent: `--color-lm-accent` #3b82f6) with SweetAlert2 for dialogs
+- Single `src/index.html` loads `global.css` + `nav.css`; tool CSS loaded dynamically by router
