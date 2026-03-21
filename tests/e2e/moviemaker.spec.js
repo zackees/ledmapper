@@ -14,13 +14,14 @@ test.describe('Video Maker', () => {
 
     test('has video source buttons', async ({ page }) => {
         await page.goto('/moviemaker/');
-        await expect(page.locator('#btn_load_video')).toBeVisible();
-        await expect(page.locator('#btn_start_webcam')).toBeVisible();
+        await expect(page.locator('[data-trigger="btn_load_video"]')).toBeVisible();
+        await expect(page.locator('[data-trigger="btn_start_webcam"]')).toBeVisible();
     });
 
-    test('play button starts disabled', async ({ page }) => {
+    test('play button starts hidden (no video loaded)', async ({ page }) => {
         await page.goto('/moviemaker/');
-        await expect(page.locator('#btn_play_pause')).toBeDisabled();
+        // Video progress bar (containing play button) is hidden until a video is loaded
+        await expect(page.locator('#video-progress')).not.toHaveClass(/visible/);
     });
 
     test('has blur slider controls', async ({ page }) => {

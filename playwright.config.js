@@ -1,4 +1,10 @@
 import { defineConfig } from '@playwright/test';
+import { resolve } from 'path';
+import fs from 'fs';
+
+const certPath = resolve(import.meta.dirname, '.certs/cert.pem');
+const hasHttps = fs.existsSync(certPath);
+const protocol = hasHttps ? 'https' : 'http';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -10,7 +16,8 @@ export default defineConfig({
     },
   },
   use: {
-    baseURL: 'http://localhost:8080',
+    baseURL: `${protocol}://localhost:8080`,
+    ignoreHTTPSErrors: true,
     trace: 'on-first-retry',
   },
   projects: [
@@ -21,7 +28,8 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run dev',
-    port: 8080,
+    url: `${protocol}://localhost:8080`,
     reuseExistingServer: !process.env.CI,
+    ignoreHTTPSErrors: true,
   },
 });

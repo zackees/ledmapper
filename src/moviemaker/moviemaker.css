@@ -211,6 +211,42 @@
     pointer-events: auto;
 }
 
+.toolbar-separator {
+    width: 1px;
+    height: 18px;
+    background: var(--mm-border);
+    flex-shrink: 0;
+}
+
+.toolbar-select {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    background: var(--mm-surface-2);
+    color: var(--mm-text-secondary);
+    border: 1px solid var(--mm-border);
+    padding: 3px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.toolbar-select:hover {
+    border-color: var(--mm-accent);
+    color: var(--mm-text);
+}
+
+.toolbar-select:focus {
+    outline: none;
+    border-color: var(--mm-accent);
+}
+
+.toolbar-resolution-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--mm-text-muted);
+    white-space: nowrap;
+    user-select: none;
+}
+
 #renderCanvas {
     border: 1px solid var(--mm-border);
     border-radius: 2px;

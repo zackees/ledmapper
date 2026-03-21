@@ -10,6 +10,7 @@ import {
     samplePixels,
     computeFps,
     estimateLedSize,
+    scaleToMaxDimension,
 } from '../../src/moviemaker/transforms.js';
 
 describe('transformToCenter', () => {
@@ -309,5 +310,46 @@ describe('estimateLedSize', () => {
     it('returns positive size for very close but distinct points', () => {
         const size = estimateLedSize([[0, 0], [0.001, 0]]);
         assert.ok(size > 0, `LED size should be > 0, got ${size}`);
+    });
+});
+
+describe('scaleToMaxDimension', () => {
+    it('returns native dimensions when maxDim is 0', () => {
+        assert.deepStrictEqual(scaleToMaxDimension(1920, 1080, 0), { width: 1920, height: 1080 });
+    });
+
+    it('returns native dimensions when already within maxDim', () => {
+        assert.deepStrictEqual(scaleToMaxDimension(320, 240, 480), { width: 320, height: 240 });
+    });
+
+    it('scales landscape video by larger dimension', () => {
+        const result = scaleToMaxDimension(1920, 1080, 480);
+        // scale = 480/1920 = 0.25 → 480x270
+        assert.strictEqual(result.width, 480);
+        assert.strictEqual(result.height, 270);
+    });
+
+    it('scales portrait video by larger dimension', () => {
+        const result = scaleToMaxDimension(1080, 1920, 480);
+        // scale = 480/1920 = 0.25 → 270x480
+        assert.strictEqual(result.width, 270);
+        assert.strictEqual(result.height, 480);
+    });
+
+    it('scales square video correctly', () => {
+        const result = scaleToMaxDimension(1000, 1000, 500);
+        assert.strictEqual(result.width, 500);
+        assert.strictEqual(result.height, 500);
+    });
+
+    it('never returns dimensions smaller than 1', () => {
+        const result = scaleToMaxDimension(10000, 1, 100);
+        // scale = 100/10000 = 0.01 → width=100, height=round(0.01)=0 → clamped to 1
+        assert.strictEqual(result.width, 100);
+        assert.ok(result.height >= 1, `height should be >= 1, got ${result.height}`);
+    });
+
+    it('handles negative maxDim as native', () => {
+        assert.deepStrictEqual(scaleToMaxDimension(640, 480, -1), { width: 640, height: 480 });
     });
 });

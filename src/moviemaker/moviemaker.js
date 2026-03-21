@@ -1,6 +1,6 @@
 const Swal = import('sweetalert2').then(m => m.default);
 import { parse_shape_data, readFileAsText } from '../common.js';
-import { transformToCenter, parseResolution, samplePixels, computeFps } from './transforms.js';
+import { transformToCenter, parseResolution, samplePixels, computeFps, scaleToMaxDimension } from './transforms.js';
 import { generateGrid, generateStrip, generateRing } from '../shape-presets.js';
 import { createBlurPipeline } from './blur-pipeline.js';
 import { createVideoSource } from './video-source.js';
@@ -41,6 +41,8 @@ export function init(container) {
     const dom_rng_blur_sigma   = container.querySelector('#rng_blur_sigma');
     const dom_sel_resolution   = container.querySelector('#sel_resolution');
     const dom_sel_framerate    = container.querySelector('#sel_framerate');
+    const dom_sel_max_resolution = container.querySelector('#sel_max_resolution');
+    const dom_txt_curr_resolution = container.querySelector('#txt_curr_resolution');
 
     const videoPlayer    = container.querySelector('#videoPlayer');
     const renderCanvas   = container.querySelector('#renderCanvas');
@@ -63,6 +65,7 @@ export function init(container) {
     let lastMouseY = 0;
 
     let frame_rate = 30;
+    let nativeVideoWidth = 640, nativeVideoHeight = 480;
     let videoWidth = 640, videoHeight = 480;
     let rafId = null;
     let isScrubbing = false;
@@ -104,7 +107,13 @@ export function init(container) {
         return `${m}:${s.toString().padStart(2, '0')}`;
     }
 
-    function setupForNewSource(w, h) {
+    function getMaxResolution() {
+        return parseInt(dom_sel_max_resolution.value);
+    }
+
+    function applyResolution(nativeW, nativeH) {
+        const { width: w, height: h } = scaleToMaxDimension(nativeW, nativeH, getMaxResolution());
+
         videoWidth = w;
         videoHeight = h;
 
@@ -120,6 +129,15 @@ export function init(container) {
 
         const canvasRow = container.querySelector('.canvas-row');
         if (canvasRow) canvasRow.dataset.layout = (w > h) ? 'landscape' : 'portrait';
+
+        dom_txt_curr_resolution.textContent = `${w}×${h}`;
+    }
+
+    function setupForNewSource(nativeW, nativeH) {
+        nativeVideoWidth = nativeW;
+        nativeVideoHeight = nativeH;
+
+        applyResolution(nativeW, nativeH);
 
         sourceActive = true;
         updateElementStates();
@@ -302,6 +320,12 @@ export function init(container) {
         if (videoSource.sourceType === 'webcam') {
             frame_rate = parseInt(dom_sel_framerate.value);
             videoSource.startWebcam(dom_sel_resolution.value, frame_rate);
+        }
+    }, { signal });
+
+    dom_sel_max_resolution.addEventListener('change', () => {
+        if (sourceActive) {
+            applyResolution(nativeVideoWidth, nativeVideoHeight);
         }
     }, { signal });
 

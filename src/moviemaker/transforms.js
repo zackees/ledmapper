@@ -153,6 +153,27 @@ export function computeFps(nowMs, lastTimeMs) {
 }
 
 /**
+ * Scale native dimensions so the larger side fits within maxDim.
+ * Never upscales — if both sides are already within maxDim, returns native.
+ * A maxDim of 0 means "native" (no scaling).
+ *
+ * @param {number} nativeW
+ * @param {number} nativeH
+ * @param {number} maxDim - maximum pixels for the larger dimension (0 = native)
+ * @returns {{width: number, height: number}}
+ */
+export function scaleToMaxDimension(nativeW, nativeH, maxDim) {
+    if (maxDim <= 0) return { width: nativeW, height: nativeH };
+    const maxNative = Math.max(nativeW, nativeH);
+    if (maxNative <= maxDim) return { width: nativeW, height: nativeH };
+    const scale = maxDim / maxNative;
+    return {
+        width: Math.max(1, Math.round(nativeW * scale)),
+        height: Math.max(1, Math.round(nativeH * scale)),
+    };
+}
+
+/**
  * Estimate LED diameter from the first two points.
  * Returns the distance between them, with a minimum of 1.0.
  *

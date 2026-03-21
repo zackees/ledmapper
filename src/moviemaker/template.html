@@ -128,6 +128,17 @@
                 <canvas id="overlayCanvas"></canvas>
                 <div class="canvas-toolbar">
                     <input type="button" id="btn_toggle_record" value="Start Recording" disabled>
+                    <div class="toolbar-separator"></div>
+                    <select id="sel_max_resolution" class="toolbar-select" title="Max canvas resolution">
+                        <option value="0">Native</option>
+                        <option value="960">960p</option>
+                        <option value="720">720p</option>
+                        <option value="480" selected>480p</option>
+                        <option value="360">360p</option>
+                        <option value="240">240p</option>
+                    </select>
+                    <span id="txt_curr_resolution" class="toolbar-resolution-label"></span>
+                    <div class="toolbar-separator"></div>
                     <button id="btn_unload_source" type="button" class="btn-unload" title="Unload source">&#10005;</button>
                 </div>
             </div>

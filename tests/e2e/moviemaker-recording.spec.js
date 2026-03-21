@@ -68,7 +68,7 @@ test.describe('Moviemaker Recording Workflow', () => {
 
             // Load video via file chooser (button creates dynamic <input type="file">)
             const fileChooserPromise = page.waitForEvent('filechooser');
-            await page.locator('#btn_load_video').click();
+            await page.locator('[data-trigger="btn_load_video"]').click();
             const fileChooser = await fileChooserPromise;
             await fileChooser.setFiles(VIDEO_PATH);
 
@@ -77,7 +77,7 @@ test.describe('Moviemaker Recording Workflow', () => {
 
             // Play the video
             await page.locator('#btn_play_pause').click();
-            await expect(page.locator('#btn_play_pause')).toContainText('Pause');
+            await expect(page.locator('#btn_play_pause')).toHaveAttribute('title', 'Pause');
 
             // 16x16 preset is selected by default (256 LEDs)
             await expect(page.locator('#btn_preset_16x16')).toHaveClass(/active-preset/);
@@ -113,7 +113,7 @@ test.describe('Moviemaker Recording Workflow', () => {
             await page.goto('/moviemaker/');
 
             // Start webcam
-            await page.locator('#btn_start_webcam').click();
+            await page.locator('[data-trigger="btn_start_webcam"]').click();
             await waitForSourceActive(page);
 
             // 16x16 preset is active by default
@@ -132,7 +132,7 @@ test.describe('Moviemaker Recording Workflow', () => {
             test.setTimeout(60000);
 
             await page.goto('/moviemaker/');
-            await page.locator('#btn_start_webcam').click();
+            await page.locator('[data-trigger="btn_start_webcam"]').click();
             await waitForSourceActive(page);
 
             // Switch to 8x8 preset
@@ -150,7 +150,7 @@ test.describe('Moviemaker Recording Workflow', () => {
             test.setTimeout(60000);
 
             await page.goto('/moviemaker/');
-            await page.locator('#btn_start_webcam').click();
+            await page.locator('[data-trigger="btn_start_webcam"]').click();
             await waitForSourceActive(page);
 
             // Upload custom screenmap (4 LEDs)
@@ -177,7 +177,7 @@ test.describe('Moviemaker Recording Workflow', () => {
             // Helper to set up a recording session from scratch
             async function setupAndRecord(pg, blurVal, sigmaVal, recordMs) {
                 await pg.goto('/moviemaker/');
-                await pg.locator('#btn_start_webcam').click();
+                await pg.locator('[data-trigger="btn_start_webcam"]').click();
                 await waitForSourceActive(pg);
 
                 await pg.locator('#btn_preset_8x8').click();
