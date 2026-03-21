@@ -35,6 +35,28 @@ export function init(container) {
     const ac = new AbortController();
     const { signal } = ac;
 
+    // ── Dirty tracking (enable Save As only when something changed) ─────
+
+    function markDirty() {
+        dom_btn_save.disabled = false;
+        dom_btn_reset.disabled = false;
+    }
+
+    function clearDirty() {
+        dom_btn_save.disabled = true;
+        dom_btn_reset.disabled = true;
+    }
+
+    // Wire all transform controls to mark dirty
+    for (const el of [dom_rng_scale, dom_txt_scale, dom_rng_scale_x, dom_txt_scale_x,
+        dom_rng_scale_y, dom_txt_scale_y, dom_rng_rotate, dom_txt_rotate]) {
+        el.addEventListener('input', markDirty, { signal });
+    }
+    for (const el of [dom_chk_flip_h, dom_chk_flip_v]) {
+        el.addEventListener('change', markDirty, { signal });
+    }
+    dom_txt_diameter.addEventListener('input', markDirty, { signal });
+
     // ── Reset ───────────────────────────────────────────────────────────────
 
     function resetTransforms() {
@@ -44,6 +66,8 @@ export function init(container) {
         setRotate(0);
         dom_chk_flip_h.checked = false;
         dom_chk_flip_v.checked = false;
+        dom_txt_diameter.value = origDiameter;
+        clearDirty();
     }
 
     dom_btn_reset.addEventListener('click', resetTransforms, { signal });
@@ -79,6 +103,7 @@ export function init(container) {
         }, null, 2);
 
         download_text_as_file(json, 'screenmap.json', { type: 'application/json' });
+        clearDirty();
     }
 
     dom_btn_save.addEventListener('click', saveAs, { signal });
@@ -146,6 +171,8 @@ export function init(container) {
     let screenmap_pts = [];
     let rawPts = [];
     let origWidth = 0, origHeight = 0;
+    let fitScale = 1; // cm-to-pixel scale from centerAndFitPoints
+    let origDiameter = 0.5;
 
     // Three.js objects
     let renderer, scene, camera;
@@ -166,6 +193,8 @@ export function init(container) {
     let tooltipLedIdx = -1;
     let tooltip;
     let lastTransformedPts = [];
+    let isHovering = false;
+    let overlayAlpha = 0; // 0..1 for fade transition
 
     let rafId = null;
 
@@ -275,8 +304,11 @@ export function init(container) {
 
         // Populate diameter from file if available
         if (typeof screenmap_pts.diameter === "number" && screenmap_pts.diameter > 0) {
-            dom_txt_diameter.value = screenmap_pts.diameter;
+            origDiameter = screenmap_pts.diameter;
+        } else {
+            origDiameter = 0.5;
         }
+        dom_txt_diameter.value = origDiameter;
 
         rawPts = screenmap_pts.map(([x, y]) => [x, y]);
 
@@ -289,6 +321,12 @@ export function init(container) {
         origHeight = ymax - ymin;
 
         const { width, height } = getCanvasSize();
+        const availW = 0.95 * width;
+        const availH = 0.95 * height;
+        fitScale = Math.min(
+            origWidth > 0 ? availW / origWidth : availW,
+            origHeight > 0 ? availH / origHeight : availH,
+        );
         screenmap_pts = center_and_fit(screenmap_pts, width, height);
     }
 
@@ -341,48 +379,60 @@ export function init(container) {
         if (!overlayCtx) return;
         const { width, height } = getCanvasSize();
         overlayCtx.clearRect(0, 0, width, height);
+
+        // Lerp overlayAlpha toward target (0.2s fade at ~60fps)
+        const target = isHovering ? 1 : 0;
+        const speed = 1 / (0.2 * 60); // step per frame for 0.2s
+        if (overlayAlpha < target) overlayAlpha = Math.min(target, overlayAlpha + speed);
+        else if (overlayAlpha > target) overlayAlpha = Math.max(target, overlayAlpha - speed);
+
         if (lastTransformedPts.length === 0) return;
 
         const pts = lastTransformedPts.map(([x, y]) => toCanvasCoords(x, y));
 
-        // Connecting lines with rainbow colors
-        overlayCtx.lineWidth = 2;
-        for (let i = 0; i < pts.length - 1; i++) {
-            const [x1, y1] = pts[i];
-            const [x2, y2] = pts[i + 1];
-            const hue = (120 + i * 2) % 360;
-            overlayCtx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
-            overlayCtx.beginPath();
-            overlayCtx.moveTo(x1, y1);
-            overlayCtx.lineTo(x2, y2);
-            overlayCtx.stroke();
+        // Rainbow lines and arrows fade with hover
+        if (overlayAlpha > 0) {
+            overlayCtx.globalAlpha = overlayAlpha;
+            overlayCtx.lineWidth = 2;
+            for (let i = 0; i < pts.length - 1; i++) {
+                const [x1, y1] = pts[i];
+                const [x2, y2] = pts[i + 1];
+                const hue = (120 + i * 2) % 360;
+                overlayCtx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+                overlayCtx.beginPath();
+                overlayCtx.moveTo(x1, y1);
+                overlayCtx.lineTo(x2, y2);
+                overlayCtx.stroke();
 
-            if (i % 5 === 1 || i === pts.length - 2) {
-                const dx = x2 - x1, dy = y2 - y1;
-                const len = Math.sqrt(dx * dx + dy * dy);
-                if (len > 2) {
-                    const angle = Math.atan2(dy, dx);
-                    const t = 0.5;
-                    const ax = x1 + dx * t, ay = y1 + dy * t;
-                    const arrowLen = 12;
-                    const arrowHalf = 0.45;
-                    overlayCtx.fillStyle = overlayCtx.strokeStyle;
-                    overlayCtx.beginPath();
-                    overlayCtx.moveTo(ax, ay);
-                    overlayCtx.lineTo(ax - arrowLen * Math.cos(angle - arrowHalf), ay - arrowLen * Math.sin(angle - arrowHalf));
-                    overlayCtx.lineTo(ax - arrowLen * Math.cos(angle + arrowHalf), ay - arrowLen * Math.sin(angle + arrowHalf));
-                    overlayCtx.closePath();
-                    overlayCtx.fill();
+                if (i % 5 === 1 || i === pts.length - 2) {
+                    const dx = x2 - x1, dy = y2 - y1;
+                    const len = Math.sqrt(dx * dx + dy * dy);
+                    if (len > 2) {
+                        const angle = Math.atan2(dy, dx);
+                        const t = 0.5;
+                        const ax = x1 + dx * t, ay = y1 + dy * t;
+                        const arrowLen = 12;
+                        const arrowHalf = 0.45;
+                        overlayCtx.fillStyle = overlayCtx.strokeStyle;
+                        overlayCtx.beginPath();
+                        overlayCtx.moveTo(ax, ay);
+                        overlayCtx.lineTo(ax - arrowLen * Math.cos(angle - arrowHalf), ay - arrowLen * Math.sin(angle - arrowHalf));
+                        overlayCtx.lineTo(ax - arrowLen * Math.cos(angle + arrowHalf), ay - arrowLen * Math.sin(angle + arrowHalf));
+                        overlayCtx.closePath();
+                        overlayCtx.fill();
+                    }
                 }
+            }
+            for (let i = 2; i < pts.length - 1; i++) {
+                fillCircle(pts[i][0], pts[i][1], 4, 'rgba(255,255,255,0.5)');
             }
         }
 
+        // Start and end LEDs always visible
+        overlayCtx.globalAlpha = 1;
         fillCircle(pts[0][0], pts[0][1], 8, 'rgba(0,255,0,1)');
         if (pts.length > 1) fillCircle(pts[1][0], pts[1][1], 6, 'rgba(0,255,0,0.5)');
         fillCircle(pts[pts.length - 1][0], pts[pts.length - 1][1], 8, 'rgba(255,0,0,1)');
-        for (let i = 2; i < pts.length - 1; i++) {
-            fillCircle(pts[i][0], pts[i][1], 4, 'rgba(255,255,255,0.5)');
-        }
 
         drawOutlinedLabel("Start LED", pts[0][0] + 4, pts[0][1]);
         drawOutlinedLabel("End LED", pts[pts.length - 1][0] + 4, pts[pts.length - 1][1]);
@@ -422,6 +472,7 @@ export function init(container) {
     }
 
     function onPointerMove(e) {
+        isHovering = true;
         const rect = overlayCanvas.getBoundingClientRect();
         const { width, height } = getCanvasSize();
         const scaleX = width / rect.width;
@@ -447,6 +498,7 @@ export function init(container) {
     }
 
     function onPointerLeave() {
+        isHovering = false;
         tooltipLedIdx = -1;
         tooltip.style.opacity = '0';
     }
@@ -470,10 +522,14 @@ export function init(container) {
         screenmapOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3 }));
         scene.add(screenmapOutline);
 
+        const diameterCm = parseFloat(dom_txt_diameter.value) || 0.5;
+        const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
+        const pixelDiameter = Math.max(2, diameterCm * fitScale * scaleGlobal);
+
         const result = buildPointsMesh({
             points: transformedPts,
             circleTexture,
-            diameter: 6,
+            diameter: pixelDiameter,
             defaultColor: [244 / 255, 67 / 255, 54 / 255],
         });
 
