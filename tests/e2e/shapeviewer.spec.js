@@ -29,13 +29,13 @@ test.describe('Shape Editor', () => {
         const fileInput = page.locator('#btn_upload_shape');
         const fixturePath = path.resolve('tests/fixtures/test-screenmap.json');
         await fileInput.setInputFiles(fixturePath);
-        const canvas = page.locator('canvas');
+        const canvas = page.locator('canvas').first();
         await expect(canvas).toBeVisible({ timeout: 10000 });
     });
 
     test('canvas renders on page load', async ({ page }) => {
         await page.goto('/shapeeditor/');
-        const canvas = page.locator('canvas');
+        const canvas = page.locator('canvas').first();
         await expect(canvas).toBeVisible({ timeout: 10000 });
     });
 });

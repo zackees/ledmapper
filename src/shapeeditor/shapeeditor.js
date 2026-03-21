@@ -30,9 +30,23 @@ export function init(container) {
     const dom_chk_flip_v = container.querySelector("#chk_flip_v");
     const dom_txt_diameter = container.querySelector("#txt_diameter");
     const dom_btn_save = container.querySelector("#btn_save_as");
+    const dom_btn_reset = container.querySelector("#btn_reset");
 
     const ac = new AbortController();
     const { signal } = ac;
+
+    // ── Reset ───────────────────────────────────────────────────────────────
+
+    function resetTransforms() {
+        writeScale(dom_rng_scale, dom_txt_scale, 1);
+        writeScale(dom_rng_scale_x, dom_txt_scale_x, 1);
+        writeScale(dom_rng_scale_y, dom_txt_scale_y, 1);
+        setRotate(0);
+        dom_chk_flip_h.checked = false;
+        dom_chk_flip_v.checked = false;
+    }
+
+    dom_btn_reset.addEventListener('click', resetTransforms, { signal });
 
     // ── Save As ────────────────────────────────────────────────────────────
 
@@ -147,6 +161,12 @@ export function init(container) {
     // DOM-based labels
     let startLabel, infoDiv, placeholderDiv;
 
+    // Overlay state
+    let overlayCanvas, overlayCtx;
+    let tooltipLedIdx = -1;
+    let tooltip;
+    let lastTransformedPts = [];
+
     let rafId = null;
 
     function getCanvasSize() {
@@ -179,6 +199,31 @@ export function init(container) {
 
         renderer.domElement.style.display = 'block';
         wrapper.appendChild(renderer.domElement);
+
+        // Overlay canvas for rainbow lines, arrows, and labels (always visible)
+        overlayCanvas = document.createElement('canvas');
+        overlayCanvas.width = width;
+        overlayCanvas.height = height;
+        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;';
+        wrapper.appendChild(overlayCanvas);
+        overlayCtx = overlayCanvas.getContext('2d');
+
+        // LED index tooltip
+        tooltip = document.createElement('div');
+        tooltip.style.cssText =
+            'position:absolute;pointer-events:none;' +
+            'background:rgba(0,0,0,0.85);color:#fff;' +
+            'padding:4px 8px;border-radius:4px;font:12px monospace;white-space:nowrap;' +
+            'opacity:0;transition:opacity 0.15s;';
+        wrapper.appendChild(tooltip);
+
+        overlayCanvas.addEventListener('mousemove', onPointerMove, { signal });
+        overlayCanvas.addEventListener('mouseleave', onPointerLeave, { signal });
+        overlayCanvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length) onPointerMove(e.touches[0]);
+        }, { passive: true, signal });
+        overlayCanvas.addEventListener('touchend', onPointerLeave, { passive: true, signal });
+        overlayCanvas.addEventListener('touchcancel', onPointerLeave, { passive: true, signal });
 
         const labelStyle = 'position:absolute;pointer-events:none;color:#fff;font:14px sans-serif;';
 
@@ -288,6 +333,129 @@ export function init(container) {
         }
     }
 
+    // --- Overlay drawing for LED connection visualization ---
+    function toCanvasCoords(x, y) {
+        const { width, height } = getCanvasSize();
+        return [x + width / 2, y + height / 2];
+    }
+
+    function drawOverlay() {
+        if (!overlayCtx) return;
+        const { width, height } = getCanvasSize();
+        overlayCtx.clearRect(0, 0, width, height);
+        if (lastTransformedPts.length === 0) return;
+
+        const pts = lastTransformedPts.map(([x, y]) => toCanvasCoords(x, y));
+
+        // Connecting lines with rainbow colors
+        overlayCtx.lineWidth = 2;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const [x1, y1] = pts[i];
+            const [x2, y2] = pts[i + 1];
+            const hue = (120 + i * 2) % 360;
+            overlayCtx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(x1, y1);
+            overlayCtx.lineTo(x2, y2);
+            overlayCtx.stroke();
+
+            if (i % 5 === 1 || i === pts.length - 2) {
+                const dx = x2 - x1, dy = y2 - y1;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len > 2) {
+                    const angle = Math.atan2(dy, dx);
+                    const t = 0.5;
+                    const ax = x1 + dx * t, ay = y1 + dy * t;
+                    const arrowLen = 12;
+                    const arrowHalf = 0.45;
+                    overlayCtx.fillStyle = overlayCtx.strokeStyle;
+                    overlayCtx.beginPath();
+                    overlayCtx.moveTo(ax, ay);
+                    overlayCtx.lineTo(ax - arrowLen * Math.cos(angle - arrowHalf), ay - arrowLen * Math.sin(angle - arrowHalf));
+                    overlayCtx.lineTo(ax - arrowLen * Math.cos(angle + arrowHalf), ay - arrowLen * Math.sin(angle + arrowHalf));
+                    overlayCtx.closePath();
+                    overlayCtx.fill();
+                }
+            }
+        }
+
+        fillCircle(pts[0][0], pts[0][1], 8, 'rgba(0,255,0,1)');
+        if (pts.length > 1) fillCircle(pts[1][0], pts[1][1], 6, 'rgba(0,255,0,0.5)');
+        fillCircle(pts[pts.length - 1][0], pts[pts.length - 1][1], 8, 'rgba(255,0,0,1)');
+        for (let i = 2; i < pts.length - 1; i++) {
+            fillCircle(pts[i][0], pts[i][1], 4, 'rgba(255,255,255,0.5)');
+        }
+
+        drawOutlinedLabel("Start LED", pts[0][0] + 4, pts[0][1]);
+        drawOutlinedLabel("End LED", pts[pts.length - 1][0] + 4, pts[pts.length - 1][1]);
+    }
+
+    function fillCircle(x, y, diameter, color) {
+        overlayCtx.fillStyle = color;
+        overlayCtx.beginPath();
+        overlayCtx.arc(x, y, diameter / 2, 0, Math.PI * 2);
+        overlayCtx.fill();
+    }
+
+    function drawOutlinedLabel(text, x, y) {
+        overlayCtx.font = '12px sans-serif';
+        overlayCtx.textBaseline = 'middle';
+        overlayCtx.fillStyle = 'black';
+        for (let a = 0; a < 360; a += 45) {
+            const rad = a * Math.PI / 180;
+            for (const r of [2, 1.5, 1]) {
+                overlayCtx.fillText(text, x + Math.cos(rad) * r, y + Math.sin(rad) * r);
+            }
+        }
+        overlayCtx.fillStyle = 'white';
+        overlayCtx.fillText(text, x, y);
+    }
+
+    function hitTestLED(canvasX, canvasY) {
+        if (lastTransformedPts.length === 0) return -1;
+        const threshold = 10;
+        const threshSq = threshold * threshold;
+        let bestIdx = -1, bestDist = threshSq;
+        for (let i = 0; i < lastTransformedPts.length; i++) {
+            const [cx, cy] = toCanvasCoords(lastTransformedPts[i][0], lastTransformedPts[i][1]);
+            const dx = canvasX - cx;
+            const dy = canvasY - cy;
+            const d = dx * dx + dy * dy;
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        return bestIdx;
+    }
+
+    function onPointerMove(e) {
+        const rect = overlayCanvas.getBoundingClientRect();
+        const { width, height } = getCanvasSize();
+        const scaleX = width / rect.width;
+        const scaleY = height / rect.height;
+        const cx = (e.clientX - rect.left) * scaleX;
+        const cy = (e.clientY - rect.top) * scaleY;
+        const idx = hitTestLED(cx, cy);
+        if (idx >= 0) {
+            if (idx !== tooltipLedIdx) {
+                tooltipLedIdx = idx;
+                const [ox, oy] = rawPts[idx];
+                tooltip.textContent = `LED #${idx}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
+            }
+            const tx = Math.min(cx + 14, width - tooltip.offsetWidth - 4);
+            const ty = Math.max(cy - 28, 4);
+            tooltip.style.left = tx + 'px';
+            tooltip.style.top = ty + 'px';
+            tooltip.style.opacity = '1';
+        } else {
+            tooltipLedIdx = -1;
+            tooltip.style.opacity = '0';
+        }
+    }
+
+    function onPointerLeave() {
+        tooltipLedIdx = -1;
+        tooltip.style.opacity = '0';
+    }
+
     function buildShape(transformedPts) {
         if (shapeOutline) {
             scene.remove(shapeOutline);
@@ -366,8 +534,11 @@ export function init(container) {
         camera.updateProjectionMatrix();
 
         wrapper.style.width = width + 'px';
+        overlayCanvas.width = width;
+        overlayCanvas.height = height;
 
         buildGrid(width, height);
+        drawOverlay();
     }
 
     window.addEventListener('resize', handleResize, { signal });
@@ -394,8 +565,10 @@ export function init(container) {
                     sx * sinR + sy * cosR,
                 ];
             });
+            lastTransformedPts = transformedPts;
             buildShape(transformedPts);
             updateLabels(transformedPts);
+            drawOverlay();
         } else {
             if (shapeOutline) {
                 scene.remove(shapeOutline);
