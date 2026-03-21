@@ -39,6 +39,7 @@ export function init(container) {
     const dom_txt_curr_gamma   = container.querySelector('#txt_curr_gamma');
     const dom_rng_blur         = container.querySelector('#rng_blur');
     const dom_rng_blur_sigma   = container.querySelector('#rng_blur_sigma');
+    const dom_chk_sigma_lock   = container.querySelector('#chk_sigma_lock');
     const dom_sel_resolution   = container.querySelector('#sel_resolution');
     const dom_sel_framerate    = container.querySelector('#sel_framerate');
     const dom_sel_max_resolution = container.querySelector('#sel_max_resolution');
@@ -415,9 +416,23 @@ export function init(container) {
     }, { signal });
     dom_rng_blur.addEventListener('input', () => {
         container.querySelector('#txt_curr_blur').innerText = dom_rng_blur.value;
+        if (dom_chk_sigma_lock.checked) {
+            dom_rng_blur_sigma.value = dom_rng_blur.value;
+            container.querySelector('#txt_curr_blur_sigma').innerText = dom_rng_blur.value;
+        }
     }, { signal });
     dom_rng_blur_sigma.addEventListener('input', () => {
         container.querySelector('#txt_curr_blur_sigma').innerText = dom_rng_blur_sigma.value;
+        if (dom_chk_sigma_lock.checked) {
+            dom_rng_blur.value = dom_rng_blur_sigma.value;
+            container.querySelector('#txt_curr_blur').innerText = dom_rng_blur_sigma.value;
+        }
+    }, { signal });
+    dom_chk_sigma_lock.addEventListener('change', () => {
+        if (dom_chk_sigma_lock.checked) {
+            dom_rng_blur_sigma.value = dom_rng_blur.value;
+            container.querySelector('#txt_curr_blur_sigma').innerText = dom_rng_blur.value;
+        }
     }, { signal });
     dom_rng_zoom.addEventListener('input', () => {
         const v = parseFloat(dom_rng_zoom.value).toFixed(2);

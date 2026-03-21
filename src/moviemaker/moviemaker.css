@@ -506,6 +506,21 @@
     white-space: nowrap;
 }
 
+.slider-container .checkbox-inline {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    color: var(--mm-text-secondary);
+    cursor: pointer;
+}
+
+.slider-container .checkbox-inline input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
 .slider {
     -webkit-appearance: none;
     appearance: none;
