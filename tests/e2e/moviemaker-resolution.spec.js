@@ -21,7 +21,8 @@ test.describe('Moviemaker Resolution Control', () => {
     test('resolution select exists with expected options', async ({ page }) => {
         await page.goto('/moviemaker/');
         const sel = page.locator('#sel_max_resolution');
-        await expect(sel).toBeVisible();
+        // Toolbar is hidden until a source is loaded; check element is attached
+        await expect(sel).toBeAttached();
         // Default should be 480p
         await expect(sel).toHaveValue('480');
         // Check all options exist
@@ -33,15 +34,15 @@ test.describe('Moviemaker Resolution Control', () => {
         test.setTimeout(60000);
         await page.goto('/moviemaker/');
 
-        // Set resolution to native before loading video
-        await page.locator('#sel_max_resolution').selectOption('0');
-
         // Load video file via the welcome overlay button
         const fileChooserPromise = page.waitForEvent('filechooser');
         await page.locator('[data-trigger="btn_load_video"]').click();
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles(VIDEO_PATH);
         await waitForSourceActive(page);
+
+        // Set resolution to native after toolbar is visible
+        await page.locator('#sel_max_resolution').selectOption('0');
 
         // Read native dimensions
         const native = await getCanvasSize(page);
@@ -72,13 +73,13 @@ test.describe('Moviemaker Resolution Control', () => {
         test.setTimeout(60000);
         await page.goto('/moviemaker/');
 
-        // Load video at native
-        await page.locator('#sel_max_resolution').selectOption('0');
+        // Load video, then set to native
         const fileChooserPromise = page.waitForEvent('filechooser');
         await page.locator('[data-trigger="btn_load_video"]').click();
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles(VIDEO_PATH);
         await waitForSourceActive(page);
+        await page.locator('#sel_max_resolution').selectOption('0');
 
         // Label should show dimensions
         const label = page.locator('#txt_curr_resolution');
@@ -95,11 +96,12 @@ test.describe('Moviemaker Resolution Control', () => {
         await mockWebcam(page);
         await page.goto('/moviemaker/');
 
-        // Set to a small resolution before starting webcam
-        await page.locator('#sel_max_resolution').selectOption('240');
-
+        // Start webcam first so toolbar becomes visible
         await page.locator('[data-trigger="btn_start_webcam"]').click();
         await waitForSourceActive(page);
+
+        // Set to a small resolution after toolbar is visible
+        await page.locator('#sel_max_resolution').selectOption('240');
 
         // Webcam mock is 480x480 — with max 240, should scale to 240x240
         const size = await getCanvasSize(page);

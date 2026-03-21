@@ -46,7 +46,8 @@ test.describe('Video Maker', () => {
     test('has recording button', async ({ page }) => {
         await page.goto('/moviemaker/');
         const recordBtn = page.locator('#btn_toggle_record');
-        await expect(recordBtn).toBeVisible();
+        // Toolbar is hidden until a video source is loaded
+        await expect(recordBtn).toBeAttached();
         await expect(recordBtn).toHaveValue('Start Recording');
     });
 

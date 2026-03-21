@@ -75,29 +75,25 @@
 }
 
 #canvas-container {
-    position: relative;
-    display: inline-block;
-    line-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
 }
 
 /* ── Video Progress Bar ─────────────────────────────────────── */
 
 .video-progress-bar {
-    position: absolute;
-    bottom: 100%;
-    left: 0;
-    right: 0;
-    z-index: 15;
     display: none;
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
-    margin-bottom: 6px;
     background: rgba(10, 10, 10, 0.75);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     border: 1px solid var(--mm-border);
     border-radius: var(--mm-radius-pill);
+    align-self: stretch;
 }
 
 .video-progress-bar.visible {
@@ -187,12 +183,7 @@
 /* ── Canvas Toolbar (inline record button) ─────────────────── */
 
 .canvas-toolbar {
-    position: absolute;
-    bottom: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 15;
-    display: flex;
+    display: none;
     align-items: center;
     gap: 8px;
     padding: 6px 10px;
@@ -201,14 +192,12 @@
     -webkit-backdrop-filter: blur(8px);
     border: 1px solid var(--mm-border);
     border-radius: var(--mm-radius-pill);
-    opacity: 0;
-    transition: opacity 300ms var(--mm-ease);
-    pointer-events: none;
+    align-self: stretch;
+    justify-content: center;
 }
 
 .canvas-toolbar.visible {
-    opacity: 1;
-    pointer-events: auto;
+    display: flex;
 }
 
 .toolbar-separator {
@@ -259,6 +248,29 @@
     top: 0;
     left: 0;
     pointer-events: auto;
+}
+
+.canvas-with-preview {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.canvas-wrapper {
+    position: relative;
+    line-height: 0;
+}
+
+#previewCanvas {
+    border: 1px solid var(--mm-border);
+    border-radius: 2px;
+    background: #000;
+    display: none;
+    flex-shrink: 0;
+}
+
+#previewCanvas.visible {
+    display: block;
 }
 
 /* ── Sidebar ────────────────────────────────────────────────── */

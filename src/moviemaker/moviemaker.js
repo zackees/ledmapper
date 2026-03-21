@@ -5,7 +5,7 @@ import { generateGrid, generateStrip, generateRing } from '../shape-presets.js';
 import { createBlurPipeline } from './blur-pipeline.js';
 import { createVideoSource } from './video-source.js';
 import { createRecording } from './recording.js';
-import { drawMoviemakerOverlay } from './overlay.js';
+import { drawMoviemakerOverlay, drawPreview } from './overlay.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './moviemaker.css?url';
 
@@ -48,6 +48,8 @@ export function init(container) {
     const renderCanvas   = container.querySelector('#renderCanvas');
     const overlayCanvas  = container.querySelector('#overlayCanvas');
     const overlayCtx     = overlayCanvas.getContext('2d');
+    const previewCanvas  = container.querySelector('#previewCanvas');
+    const previewCtx     = previewCanvas.getContext('2d');
 
     const ac = new AbortController();
     const { signal } = ac;
@@ -147,6 +149,8 @@ export function init(container) {
 
         const toolbar = container.querySelector('.canvas-toolbar');
         if (toolbar) toolbar.classList.add('visible');
+
+        previewCanvas.classList.add('visible');
 
         // Show/hide video-only controls (play button is inside progress bar)
         const isVideo = videoSource.sourceType === 'video';
@@ -374,6 +378,7 @@ export function init(container) {
         updateElementStates();
 
         dom_video_progress.classList.remove('visible');
+        previewCanvas.classList.remove('visible');
 
         const welcomeEl = container.querySelector('#welcome-overlay');
         if (welcomeEl) welcomeEl.classList.remove('hidden');
@@ -497,6 +502,7 @@ export function init(container) {
         }
 
         drawMoviemakerOverlay(overlayCtx, transformedPts, lastSample, videoWidth, videoHeight, fps);
+        drawPreview(previewCtx, transformedPts, lastSample, 200);
 
         // Update progress bar for video sources
         if (videoSource.sourceType === 'video' && !isScrubbing) {

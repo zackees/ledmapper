@@ -115,17 +115,6 @@
                 </div>
             </div>
             <div id="canvas-container">
-                <div id="video-progress" class="video-progress-bar">
-                    <button id="btn_play_pause" type="button" class="btn-play-pause" title="Play">&#9654;</button>
-                    <span id="video-time-current" class="video-time">0:00</span>
-                    <div id="video-progress-track" class="progress-track">
-                        <div id="video-progress-fill" class="progress-fill"></div>
-                        <div id="video-progress-thumb" class="progress-thumb"></div>
-                    </div>
-                    <span id="video-time-duration" class="video-time">0:00</span>
-                </div>
-                <canvas id="renderCanvas"></canvas>
-                <canvas id="overlayCanvas"></canvas>
                 <div class="canvas-toolbar">
                     <input type="button" id="btn_toggle_record" value="Start Recording" disabled>
                     <div class="toolbar-separator"></div>
@@ -140,6 +129,22 @@
                     <span id="txt_curr_resolution" class="toolbar-resolution-label"></span>
                     <div class="toolbar-separator"></div>
                     <button id="btn_unload_source" type="button" class="btn-unload" title="Unload source">&#10005;</button>
+                </div>
+                <div id="video-progress" class="video-progress-bar">
+                    <button id="btn_play_pause" type="button" class="btn-play-pause" title="Play">&#9654;</button>
+                    <span id="video-time-current" class="video-time">0:00</span>
+                    <div id="video-progress-track" class="progress-track">
+                        <div id="video-progress-fill" class="progress-fill"></div>
+                        <div id="video-progress-thumb" class="progress-thumb"></div>
+                    </div>
+                    <span id="video-time-duration" class="video-time">0:00</span>
+                </div>
+                <div class="canvas-with-preview">
+                    <div class="canvas-wrapper">
+                        <canvas id="renderCanvas"></canvas>
+                        <canvas id="overlayCanvas"></canvas>
+                    </div>
+                    <canvas id="previewCanvas" width="200" height="200"></canvas>
                 </div>
             </div>
         </main>
