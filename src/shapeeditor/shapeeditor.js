@@ -31,6 +31,8 @@ export function init(container) {
     const dom_txt_diameter = container.querySelector("#txt_diameter");
     const dom_btn_save = container.querySelector("#btn_save_as");
     const dom_btn_reset = container.querySelector("#btn_reset");
+    const dom_btn_undo = container.querySelector("#btn_undo");
+    const dom_btn_redo = container.querySelector("#btn_redo");
 
     const ac = new AbortController();
     const { signal } = ac;
@@ -196,6 +198,108 @@ export function init(container) {
     let isHovering = false;
     let overlayAlpha = 0; // 0..1 for fade transition
 
+    // ── Editing state ─────────────────────────────────────────────────────
+    let selectedIdx = -1;
+    let isDragging = false;
+    let dragStartCanvasX = 0, dragStartCanvasY = 0;
+    let dragStartScreenmapPt = null, dragStartRawPt = null;
+    let ctxMenu, ctxMenuIdx = -1;
+
+    // ── Undo / Redo ───────────────────────────────────────────────────────
+    const undoStack = [];
+    const redoStack = [];
+
+    function pushUndo(action) {
+        undoStack.push(action);
+        redoStack.length = 0;
+        updateUndoRedoButtons();
+        markDirty();
+    }
+
+    function applyAction(action) {
+        if (action.type === 'move') {
+            screenmap_pts[action.idx] = [...action.newScreenmapPt];
+            rawPts[action.idx] = [...action.newRawPt];
+        } else if (action.type === 'delete') {
+            screenmap_pts.splice(action.idx, 1);
+            rawPts.splice(action.idx, 1);
+            if (selectedIdx === action.idx) selectedIdx = -1;
+            else if (selectedIdx > action.idx) selectedIdx--;
+        }
+    }
+
+    function applyInverse(action) {
+        if (action.type === 'move') {
+            screenmap_pts[action.idx] = [...action.oldScreenmapPt];
+            rawPts[action.idx] = [...action.oldRawPt];
+        } else if (action.type === 'delete') {
+            screenmap_pts.splice(action.idx, 0, action.screenmapPt);
+            rawPts.splice(action.idx, 0, action.rawPt);
+            selectedIdx = action.idx;
+        }
+    }
+
+    function performUndo() {
+        if (undoStack.length === 0) return;
+        const action = undoStack.pop();
+        applyInverse(action);
+        redoStack.push(action);
+        updateUndoRedoButtons();
+        markDirty();
+    }
+
+    function performRedo() {
+        if (redoStack.length === 0) return;
+        const action = redoStack.pop();
+        applyAction(action);
+        undoStack.push(action);
+        updateUndoRedoButtons();
+        markDirty();
+    }
+
+    function updateUndoRedoButtons() {
+        dom_btn_undo.disabled = undoStack.length === 0;
+        dom_btn_redo.disabled = redoStack.length === 0;
+    }
+
+    function deletePoint(idx) {
+        if (idx < 0 || idx >= screenmap_pts.length) return;
+        pushUndo({
+            type: 'delete',
+            idx,
+            screenmapPt: [...screenmap_pts[idx]],
+            rawPt: [...rawPts[idx]],
+        });
+        screenmap_pts.splice(idx, 1);
+        rawPts.splice(idx, 1);
+        if (selectedIdx === idx) selectedIdx = -1;
+        else if (selectedIdx > idx) selectedIdx--;
+    }
+
+    function clearEditingState() {
+        selectedIdx = -1;
+        isDragging = false;
+        undoStack.length = 0;
+        redoStack.length = 0;
+        updateUndoRedoButtons();
+        hideContextMenu();
+    }
+
+    function showContextMenu(clientX, clientY, idx) {
+        ctxMenuIdx = idx;
+        ctxMenu.style.left = clientX + 'px';
+        ctxMenu.style.top = clientY + 'px';
+        ctxMenu.style.display = '';
+    }
+
+    function hideContextMenu() {
+        if (ctxMenu) ctxMenu.style.display = 'none';
+        ctxMenuIdx = -1;
+    }
+
+    dom_btn_undo.addEventListener('click', performUndo, { signal });
+    dom_btn_redo.addEventListener('click', performRedo, { signal });
+
     let rafId = null;
 
     function getCanvasSize() {
@@ -203,6 +307,36 @@ export function init(container) {
             width: Math.floor(window.innerWidth * 0.45),
             height: Math.floor(window.innerHeight * 0.4),
         };
+    }
+
+    // ── Transform helpers for inverse mapping ─────────────────────────────
+
+    function getCurrentTransform() {
+        const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
+        const flipH = dom_chk_flip_h.checked ? -1 : 1;
+        const flipV = dom_chk_flip_v.checked ? -1 : 1;
+        const sX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal * flipH;
+        const sY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal * flipV;
+        const rotateDeg = parseInt(dom_txt_rotate.value) || 0;
+        const rotateRad = rotateDeg * Math.PI / 180;
+        return { sX, sY, cosR: Math.cos(rotateRad), sinR: Math.sin(rotateRad) };
+    }
+
+    function canvasDeltaToScreenmapDelta(dx, dy) {
+        const { sX, sY, cosR, sinR } = getCurrentTransform();
+        // Inverse rotation then inverse scale
+        const urx = dx * cosR + dy * sinR;
+        const ury = -dx * sinR + dy * cosR;
+        return [urx / sX, ury / sY];
+    }
+
+    function getCanvasCoords(e) {
+        const rect = overlayCanvas.getBoundingClientRect();
+        const { width, height } = getCanvasSize();
+        return [
+            (e.clientX - rect.left) * (width / rect.width),
+            (e.clientY - rect.top) * (height / rect.height),
+        ];
     }
 
     function initRenderer() {
@@ -248,13 +382,51 @@ export function init(container) {
             'opacity:0;transition:opacity 0.15s;';
         wrapper.appendChild(tooltip);
 
-        overlayCanvas.addEventListener('mousemove', onPointerMove, { signal });
-        overlayCanvas.addEventListener('mouseleave', onPointerLeave, { signal });
+        // Right-click context menu (inline styles — lives on document.body, outside tool CSS scope)
+        ctxMenu = document.createElement('div');
+        ctxMenu.style.cssText =
+            'position:fixed;display:none;z-index:9999;' +
+            'background:#1e1e1e;border:1px solid #444;border-radius:6px;' +
+            'padding:4px 0;box-shadow:0 4px 16px rgba(0,0,0,0.5);min-width:140px;';
+        const ctxBtn = document.createElement('button');
+        ctxBtn.dataset.action = 'delete';
+        ctxBtn.textContent = 'Delete Point';
+        ctxBtn.style.cssText =
+            'display:block;width:100%;padding:6px 14px;background:none;border:none;' +
+            'color:#eee;font:13px/1.4 "Outfit",system-ui,sans-serif;text-align:left;cursor:pointer;';
+        ctxBtn.addEventListener('mouseenter', () => { ctxBtn.style.background = '#3b82f6'; ctxBtn.style.color = '#fff'; });
+        ctxBtn.addEventListener('mouseleave', () => { ctxBtn.style.background = 'none'; ctxBtn.style.color = '#eee'; });
+        ctxMenu.appendChild(ctxBtn);
+        document.body.appendChild(ctxMenu);
+
+        ctxMenu.addEventListener('click', (e) => {
+            const action = e.target.dataset.action;
+            if (action === 'delete' && ctxMenuIdx >= 0) {
+                deletePoint(ctxMenuIdx);
+            }
+            hideContextMenu();
+        }, { signal });
+
+        // Dismiss on any click outside
+        window.addEventListener('mousedown', (e) => {
+            if (ctxMenu.style.display !== 'none' && !ctxMenu.contains(e.target)) {
+                hideContextMenu();
+            }
+        }, { signal });
+
+        // ── Mouse interaction ─────────────────────────────────────────────
+
+        overlayCanvas.addEventListener('mousedown', onMouseDown, { signal });
+        overlayCanvas.addEventListener('mousemove', onMouseMove, { signal });
+        overlayCanvas.addEventListener('mouseup', onMouseUp, { signal });
+        overlayCanvas.addEventListener('mouseleave', onMouseLeave, { signal });
+        overlayCanvas.addEventListener('contextmenu', onContextMenu, { signal });
+
         overlayCanvas.addEventListener('touchmove', (e) => {
-            if (e.touches.length) onPointerMove(e.touches[0]);
+            if (e.touches.length) onMouseMove(e.touches[0]);
         }, { passive: true, signal });
-        overlayCanvas.addEventListener('touchend', onPointerLeave, { passive: true, signal });
-        overlayCanvas.addEventListener('touchcancel', onPointerLeave, { passive: true, signal });
+        overlayCanvas.addEventListener('touchend', onMouseLeave, { passive: true, signal });
+        overlayCanvas.addEventListener('touchcancel', onMouseLeave, { passive: true, signal });
 
         const labelStyle = 'position:absolute;pointer-events:none;color:#fff;font:bold 13px/1 "Outfit",system-ui,sans-serif;text-shadow:0 0 3px #000,0 0 3px #000;';
 
@@ -299,6 +471,8 @@ export function init(container) {
     }
 
     function load_screenmap_data(text) {
+        clearEditingState();
+
         screenmap_pts = parse_screenmap_data(text);
         if (screenmap_pts.length === 0) return;
 
@@ -436,6 +610,23 @@ export function init(container) {
 
         drawOutlinedLabel("Start LED", pts[0][0] + 4, pts[0][1]);
         drawOutlinedLabel("End LED", pts[pts.length - 1][0] + 4, pts[pts.length - 1][1]);
+
+        // Selection indicator
+        if (selectedIdx >= 0 && selectedIdx < pts.length) {
+            const [sx, sy] = pts[selectedIdx];
+            overlayCtx.globalAlpha = 1;
+            overlayCtx.strokeStyle = '#00ffff';
+            overlayCtx.lineWidth = 2;
+            overlayCtx.beginPath();
+            overlayCtx.arc(sx, sy, 10, 0, Math.PI * 2);
+            overlayCtx.stroke();
+            // Pulsing inner glow
+            overlayCtx.strokeStyle = 'rgba(0,255,255,0.4)';
+            overlayCtx.lineWidth = 4;
+            overlayCtx.beginPath();
+            overlayCtx.arc(sx, sy, 14, 0, Math.PI * 2);
+            overlayCtx.stroke();
+        }
     }
 
     function fillCircle(x, y, diameter, color) {
@@ -471,37 +662,158 @@ export function init(container) {
         return bestIdx;
     }
 
-    function onPointerMove(e) {
-        isHovering = true;
-        const rect = overlayCanvas.getBoundingClientRect();
-        const { width, height } = getCanvasSize();
-        const scaleX = width / rect.width;
-        const scaleY = height / rect.height;
-        const cx = (e.clientX - rect.left) * scaleX;
-        const cy = (e.clientY - rect.top) * scaleY;
+    // ── Mouse / pointer handlers ──────────────────────────────────────────
+
+    function onContextMenu(e) {
+        e.preventDefault();
+        if (screenmap_pts.length === 0) return;
+        const [cx, cy] = getCanvasCoords(e);
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
+            selectedIdx = idx;
+            showContextMenu(e.clientX, e.clientY, idx);
+        }
+    }
+
+    function onMouseDown(e) {
+        if (screenmap_pts.length === 0) return;
+
+        // Dismiss context menu on any click
+        hideContextMenu();
+
+        if (e.button !== 0) return;
+        const [cx, cy] = getCanvasCoords(e);
+
+        {
+            // Left-click: select and start potential drag
+            const idx = hitTestLED(cx, cy);
+            selectedIdx = idx;
+            if (idx >= 0) {
+                isDragging = true;
+                dragStartCanvasX = cx;
+                dragStartCanvasY = cy;
+                dragStartScreenmapPt = [...screenmap_pts[idx]];
+                dragStartRawPt = [...rawPts[idx]];
+                overlayCanvas.style.cursor = 'grabbing';
+            }
+        }
+    }
+
+    function onMouseMove(e) {
+        if (screenmap_pts.length === 0) return;
+        const [cx, cy] = getCanvasCoords(e);
+
+        if (isDragging && selectedIdx >= 0) {
+            // Move the point
+            const dx = cx - dragStartCanvasX;
+            const dy = cy - dragStartCanvasY;
+            const [sdx, sdy] = canvasDeltaToScreenmapDelta(dx, dy);
+            screenmap_pts[selectedIdx] = [
+                dragStartScreenmapPt[0] + sdx,
+                dragStartScreenmapPt[1] + sdy,
+            ];
+            rawPts[selectedIdx] = [
+                dragStartRawPt[0] + sdx / fitScale,
+                dragStartRawPt[1] + sdy / fitScale,
+            ];
+            return;
+        }
+
+        // Hover detection for tooltip and cursor
+        isHovering = true;
+        const idx = hitTestLED(cx, cy);
+        if (idx >= 0) {
+            overlayCanvas.style.cursor = 'grab';
             if (idx !== tooltipLedIdx) {
                 tooltipLedIdx = idx;
                 const [ox, oy] = rawPts[idx];
                 tooltip.textContent = `LED #${idx}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
             }
+            const { width } = getCanvasSize();
             const tx = Math.min(cx + 14, width - tooltip.offsetWidth - 4);
             const ty = Math.max(cy - 28, 4);
             tooltip.style.left = tx + 'px';
             tooltip.style.top = ty + 'px';
             tooltip.style.opacity = '1';
         } else {
+            overlayCanvas.style.cursor = 'default';
             tooltipLedIdx = -1;
             tooltip.style.opacity = '0';
         }
     }
 
-    function onPointerLeave() {
+    function onMouseUp() {
+        if (isDragging && selectedIdx >= 0) {
+            const newScreenmapPt = [...screenmap_pts[selectedIdx]];
+            const newRawPt = [...rawPts[selectedIdx]];
+            // Only record undo if the point actually moved
+            if (newScreenmapPt[0] !== dragStartScreenmapPt[0] ||
+                newScreenmapPt[1] !== dragStartScreenmapPt[1]) {
+                pushUndo({
+                    type: 'move',
+                    idx: selectedIdx,
+                    oldScreenmapPt: dragStartScreenmapPt,
+                    newScreenmapPt,
+                    oldRawPt: dragStartRawPt,
+                    newRawPt,
+                });
+            }
+            isDragging = false;
+            overlayCanvas.style.cursor = 'grab';
+        }
+    }
+
+    function onMouseLeave() {
+        if (isDragging && selectedIdx >= 0) {
+            // Finalize drag on leave
+            const newScreenmapPt = [...screenmap_pts[selectedIdx]];
+            const newRawPt = [...rawPts[selectedIdx]];
+            if (newScreenmapPt[0] !== dragStartScreenmapPt[0] ||
+                newScreenmapPt[1] !== dragStartScreenmapPt[1]) {
+                pushUndo({
+                    type: 'move',
+                    idx: selectedIdx,
+                    oldScreenmapPt: dragStartScreenmapPt,
+                    newScreenmapPt,
+                    oldRawPt: dragStartRawPt,
+                    newRawPt,
+                });
+            }
+            isDragging = false;
+        }
         isHovering = false;
         tooltipLedIdx = -1;
         tooltip.style.opacity = '0';
+        overlayCanvas.style.cursor = 'default';
     }
+
+    // ── Keyboard shortcuts ────────────────────────────────────────────────
+
+    window.addEventListener('keydown', (e) => {
+        // Delete selected point
+        if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIdx >= 0 && !isDragging) {
+            deletePoint(selectedIdx);
+            e.preventDefault();
+            return;
+        }
+        // Undo: Ctrl+Z / Cmd+Z
+        if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+            performUndo();
+            e.preventDefault();
+            return;
+        }
+        // Redo: Ctrl+Shift+Z / Ctrl+Y
+        if ((e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey) ||
+            (e.key === 'y' && (e.ctrlKey || e.metaKey))) {
+            performRedo();
+            e.preventDefault();
+            return;
+        }
+        // Escape: deselect
+        if (e.key === 'Escape') {
+            selectedIdx = -1;
+        }
+    }, { signal });
 
     function buildScreenmap(transformedPts) {
         if (screenmapOutline) {
@@ -534,9 +846,17 @@ export function init(container) {
         });
 
         const colorArr = result.colorAttribute.array;
+        // First LED green
         colorArr[0] = 76 / 255;
         colorArr[1] = 175 / 255;
         colorArr[2] = 80 / 255;
+        // Selected LED cyan
+        if (selectedIdx > 0 && selectedIdx < transformedPts.length) {
+            const ci = selectedIdx * 3;
+            colorArr[ci] = 0;
+            colorArr[ci + 1] = 1;
+            colorArr[ci + 2] = 1;
+        }
         result.colorAttribute.needsUpdate = true;
 
         pointsGeometry = result.geometry;
@@ -658,5 +978,6 @@ export function init(container) {
         }
         circleTexture.dispose();
         renderer.dispose();
+        if (ctxMenu && ctxMenu.parentNode) ctxMenu.parentNode.removeChild(ctxMenu);
     };
 }
