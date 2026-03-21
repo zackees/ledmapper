@@ -1,44 +1,40 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
 
-test.describe('Shape Viewer', () => {
+test.describe('Shape Editor', () => {
     test('loads and shows title', async ({ page }) => {
-        await page.goto('/shapeviewer/');
-        await expect(page.locator('h1')).toContainText('Shape Viewer');
+        await page.goto('/shapeeditor/');
+        await expect(page.locator('h1')).toContainText('Shape Editor');
     });
 
     test('has screenmap upload input', async ({ page }) => {
-        await page.goto('/shapeviewer/');
+        await page.goto('/shapeeditor/');
         await expect(page.locator('#btn_upload_shape')).toBeVisible();
     });
 
-    test('has zoom controls', async ({ page }) => {
-        await page.goto('/shapeviewer/');
-        await expect(page.locator('#txt_zoom')).toBeVisible();
-        await expect(page.locator('#slider_zoom')).toBeVisible();
+    test('has scale and rotate controls', async ({ page }) => {
+        await page.goto('/shapeeditor/');
+        await expect(page.locator('#rng_scale')).toBeVisible();
+        await expect(page.locator('#txt_scale')).toBeVisible();
+        await expect(page.locator('#rng_scale_x')).toBeVisible();
+        await expect(page.locator('#txt_scale_x')).toBeVisible();
+        await expect(page.locator('#rng_scale_y')).toBeVisible();
+        await expect(page.locator('#txt_scale_y')).toBeVisible();
+        await expect(page.locator('#rng_rotate')).toBeVisible();
+        await expect(page.locator('#txt_rotate')).toBeVisible();
     });
 
     test('upload renders shape on canvas', async ({ page }) => {
-        await page.goto('/shapeviewer/');
+        await page.goto('/shapeeditor/');
         const fileInput = page.locator('#btn_upload_shape');
         const fixturePath = path.resolve('tests/fixtures/test-screenmap.json');
         await fileInput.setInputFiles(fixturePath);
-        // Canvas should render after shape upload
         const canvas = page.locator('canvas');
         await expect(canvas).toBeVisible({ timeout: 10000 });
     });
 
-    test('zoom slider syncs with text input', async ({ page }) => {
-        await page.goto('/shapeviewer/');
-        const slider = page.locator('#slider_zoom');
-        const input = page.locator('#txt_zoom');
-        await slider.fill('3');
-        await slider.dispatchEvent('input');
-        await expect(input).toHaveValue(/^3(\.0)?$/);
-    });
-
     test('canvas renders on page load', async ({ page }) => {
-        await page.goto('/shapeviewer/');
+        await page.goto('/shapeeditor/');
         const canvas = page.locator('canvas');
         await expect(canvas).toBeVisible({ timeout: 10000 });
     });

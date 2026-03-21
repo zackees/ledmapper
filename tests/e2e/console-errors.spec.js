@@ -7,7 +7,7 @@ const allPages = [
     { name: 'screenmap', url: '/screenmap/', needsWebcam: true },
     { name: 'moviemaker', url: '/moviemaker/', needsWebcam: false },
     { name: 'movieplayer', url: '/movieplayer/', needsWebcam: false },
-    { name: 'shapeviewer', url: '/shapeviewer/', needsWebcam: false },
+    { name: 'shapeeditor', url: '/shapeeditor/', needsWebcam: false },
 ];
 
 for (const { name, url, needsWebcam } of allPages) {

@@ -11,8 +11,8 @@ const routes = [
     { path: '/moviemaker/index.html',  tool: 'moviemaker' },
     { path: '/movieplayer/',            tool: 'movieplayer' },
     { path: '/movieplayer/index.html',  tool: 'movieplayer' },
-    { path: '/shapeviewer/',            tool: 'shapeviewer' },
-    { path: '/shapeviewer/index.html',  tool: 'shapeviewer' },
+    { path: '/shapeeditor/',            tool: 'shapeeditor' },
+    { path: '/shapeeditor/index.html',  tool: 'shapeeditor' },
 ];
 
 const toolConfig = {
@@ -31,8 +31,8 @@ const toolConfig = {
     movieplayer: {
         module: () => import('./movieplayer/movieplayer.js'),
     },
-    shapeviewer: {
-        module: () => import('./shapeviewer/shapeviewer.js'),
+    shapeeditor: {
+        module: () => import('./shapeeditor/shapeeditor.js'),
     },
 };
 
@@ -77,7 +77,7 @@ export function createRouter(appEl) {
             screenmap: 'Screenmap Maker',
             moviemaker: 'Video Maker',
             movieplayer: 'Video Player',
-            shapeviewer: 'Shape Viewer',
+            shapeeditor: 'Shape Editor',
         };
         document.title = titles[tool] || 'FastLED Video Mapper';
 

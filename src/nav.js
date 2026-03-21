@@ -3,7 +3,7 @@ const tools = [
     { name: 'Screenmap Maker', href: '/screenmap/' },
     { name: 'Video Maker', href: '/moviemaker/' },
     { name: 'Video Player', href: '/movieplayer/' },
-    { name: 'Shape Viewer', href: '/shapeviewer/' },
+    { name: 'Shape Editor', href: '/shapeeditor/' },
 ];
 
 let navEl = null;

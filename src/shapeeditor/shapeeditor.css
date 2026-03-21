@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   Shape Viewer — Layout Overrides
+   Shape Editor — Layout Overrides
    Base element styles inherited from global.css
    ═══════════════════════════════════════════════════════════════ */
 
@@ -23,23 +23,49 @@
 
 #controls {
     display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.controls-top {
+    display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 12px;
 }
 
-#controls > div {
+.controls-top > div {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-#txt_zoom {
-    width: 56px;
+.slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-#slider_zoom {
-    width: 120px;
+.slider-row > label {
+    flex-shrink: 0;
+    width: 60px;
+    text-align: right;
+}
+
+.slider-row > input[type="range"] {
+    flex: 1;
+    min-width: 0;
+}
+
+.slider-row > input[type="number"] {
+    flex-shrink: 0;
+    width: 64px;
+}
+
+.slider-row .unit {
+    flex-shrink: 0;
+    font-size: 0.85rem;
+    opacity: 0.7;
 }
 
 /* ── Responsive ─────────────────────────────────────────────── */
@@ -47,5 +73,10 @@
 @media (max-width: 600px) {
     .sticky {
         position: static;
+    }
+
+    .slider-row > label {
+        width: 50px;
+        font-size: 0.85rem;
     }
 }

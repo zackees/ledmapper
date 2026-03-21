@@ -1,7 +1,7 @@
 const Swal = import('sweetalert2').then(m => m.default);
 import { parse_shape_data, readFileAsText } from '../common.js';
 import { transformToCenter, parseResolution, samplePixels, computeFps, scaleToMaxDimension } from './transforms.js';
-import { generateGrid, generateStrip, generateRing } from '../shape-presets.js';
+import { loadPreset } from '../preset-loader.js';
 import { createBlurPipeline } from './blur-pipeline.js';
 import { createVideoSource } from './video-source.js';
 import { createRecording } from './recording.js';
@@ -213,39 +213,35 @@ export function init(container) {
         presetButtons.forEach(b => b.classList.remove('active-preset'));
     }
 
-    dom_btn_preset_16x16.addEventListener('click', () => {
+    dom_btn_preset_16x16.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_16x16.classList.add('active-preset');
-        loadShapeFromPoints(generateGrid(16, 16));
+        loadShapeFromPoints(await loadPreset('16x16_grid.json'));
     }, { signal });
-    dom_btn_preset_8x8.addEventListener('click', () => {
+    dom_btn_preset_8x8.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_8x8.classList.add('active-preset');
-        loadShapeFromPoints(generateGrid(8, 8));
+        loadShapeFromPoints(await loadPreset('8x8_grid.json'));
     }, { signal });
-    dom_btn_preset_strip.addEventListener('click', () => {
+    dom_btn_preset_strip.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_strip.classList.add('active-preset');
-        loadShapeFromPoints(generateStrip(60));
+        loadShapeFromPoints(await loadPreset('strip_60.json'));
     }, { signal });
-    dom_btn_preset_ring.addEventListener('click', () => {
+    dom_btn_preset_ring.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_ring.classList.add('active-preset');
-        loadShapeFromPoints(generateRing(24));
+        loadShapeFromPoints(await loadPreset('ring_24.json'));
     }, { signal });
     dom_btn_preset_32x32.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_32x32.classList.add('active-preset');
-        const resp = await fetch('/screenmaps/32x32_quad_serpentine.json');
-        const text = await resp.text();
-        loadShapeFromPoints(parse_shape_data(text));
+        loadShapeFromPoints(await loadPreset('32x32_quad_serpentine.json'));
     }, { signal });
     dom_btn_preset_spaceface.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_spaceface.classList.add('active-preset');
-        const resp = await fetch('/screenmaps/spaceface.json');
-        const text = await resp.text();
-        loadShapeFromPoints(parse_shape_data(text));
+        loadShapeFromPoints(await loadPreset('spaceface.json'));
     }, { signal });
 
     // Auto-select 16x16 preset on load

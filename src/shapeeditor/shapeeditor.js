@@ -6,34 +6,89 @@ import {
     Float32BufferAttribute,
     LineSegments,
     LineBasicMaterial,
-    LineLoop,
+    Line,
 } from 'three';
 import { parse_shape_data, centerAndFitPoints, readFileAsText } from '../common.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
 import templateHtml from './template.html?raw';
-export { default as css } from './shapeviewer.css?url';
+export { default as css } from './shapeeditor.css?url';
 
 export function init(container) {
     container.innerHTML = templateHtml;
 
     const dom_btn_upload_shape = container.querySelector("#btn_upload_shape");
-    const dom_txt_zoom = container.querySelector("#txt_zoom");
-    const dom_slider_zoom = container.querySelector("#slider_zoom");
+    const dom_sel_preset = container.querySelector("#sel_preset");
+    const dom_rng_scale = container.querySelector("#rng_scale");
+    const dom_txt_scale = container.querySelector("#txt_scale");
+    const dom_rng_scale_x = container.querySelector("#rng_scale_x");
+    const dom_txt_scale_x = container.querySelector("#txt_scale_x");
+    const dom_rng_scale_y = container.querySelector("#rng_scale_y");
+    const dom_txt_scale_y = container.querySelector("#txt_scale_y");
+    const dom_rng_rotate = container.querySelector("#rng_rotate");
+    const dom_txt_rotate = container.querySelector("#txt_rotate");
 
     const ac = new AbortController();
     const { signal } = ac;
 
-    // Synchronize zoom input and slider
-    function updateZoom(value) {
-        value = parseFloat(value);
-        value = isNaN(value) ? 1 : Math.max(0.1, Math.min(10, value));
-        dom_txt_zoom.value = value.toFixed(1);
-        dom_slider_zoom.value = value;
+    // ── Quadratic slider mapping ─────────────────────────────────────────
+
+    const SCALE_MIN = 0.1;
+    const SCALE_MAX = 10;
+    const SLIDER_MAX = 1000;
+
+    function sliderToScale(sliderVal) {
+        const t = sliderVal / SLIDER_MAX;
+        return SCALE_MIN + t * t * (SCALE_MAX - SCALE_MIN);
     }
 
-    dom_txt_zoom.addEventListener('input', () => { updateZoom(dom_txt_zoom.value); }, { signal });
-    dom_txt_zoom.addEventListener('change', () => { updateZoom(dom_txt_zoom.value); }, { signal });
-    dom_slider_zoom.addEventListener('input', () => { updateZoom(dom_slider_zoom.value); }, { signal });
+    function scaleToSlider(scale) {
+        const t = Math.sqrt((scale - SCALE_MIN) / (SCALE_MAX - SCALE_MIN));
+        return Math.round(t * SLIDER_MAX);
+    }
+
+    function clampScale(v) {
+        v = parseFloat(v);
+        return isNaN(v) ? 1 : Math.max(SCALE_MIN, Math.min(SCALE_MAX, v));
+    }
+
+    // ── Scale helpers ────────────────────────────────────────────────────
+
+    function writeScale(rng, txt, val) {
+        val = clampScale(val);
+        rng.value = scaleToSlider(val);
+        txt.value = val.toFixed(2);
+    }
+
+    function wireScale(rng, txt) {
+        rng.addEventListener('input', () => {
+            txt.value = sliderToScale(parseInt(rng.value)).toFixed(2);
+        }, { signal });
+        txt.addEventListener('input', () => writeScale(rng, txt, clampScale(txt.value)), { signal });
+        txt.addEventListener('change', () => writeScale(rng, txt, clampScale(txt.value)), { signal });
+    }
+
+    wireScale(dom_rng_scale, dom_txt_scale);
+    wireScale(dom_rng_scale_x, dom_txt_scale_x);
+    wireScale(dom_rng_scale_y, dom_txt_scale_y);
+
+    // ── Rotate ───────────────────────────────────────────────────────────────
+
+    function clampRotate(v) {
+        v = parseInt(v);
+        return isNaN(v) ? 0 : Math.max(-180, Math.min(180, v));
+    }
+
+    function setRotate(rawVal) {
+        const val = clampRotate(rawVal);
+        dom_rng_rotate.value = val;
+        dom_txt_rotate.value = val;
+    }
+
+    dom_rng_rotate.addEventListener('input', () => setRotate(dom_rng_rotate.value), { signal });
+    dom_txt_rotate.addEventListener('input', () => setRotate(dom_txt_rotate.value), { signal });
+    dom_txt_rotate.addEventListener('change', () => setRotate(dom_txt_rotate.value), { signal });
+
+    // ── Shape state ──────────────────────────────────────────────────────────
 
     let shape_pts = [];
     let minX, minY, maxX, maxY;
@@ -153,20 +208,45 @@ export function init(container) {
     }
 
     dom_btn_upload_shape.addEventListener('change', () => {
+        dom_sel_preset.value = '';
         readFileAsText(dom_btn_upload_shape, load_shape_data);
     }, { signal });
 
-    async function fetchScreenMap() {
+    dom_sel_preset.addEventListener('change', async () => {
+        const file = dom_sel_preset.value;
+        if (!file) return;
         try {
-            const response = await fetch('/screenmaps/32x32_quad_serpentine.json');
-            const text = await response.text();
+            const resp = await fetch(`/screenmaps/${file}`);
+            const text = await resp.text();
             load_shape_data(text);
         } catch (e) {
-            console.log("No default screenmap found:", e);
+            console.log("Failed to load preset:", e);
+        }
+    }, { signal });
+
+    async function loadPresetsFromManifest() {
+        try {
+            const resp = await fetch('/screenmaps/manifest.json');
+            const manifest = await resp.json();
+            dom_sel_preset.innerHTML = '<option value="">-- Select preset --</option>';
+            for (const preset of manifest.presets) {
+                const opt = document.createElement('option');
+                opt.value = preset.file;
+                opt.textContent = preset.name;
+                dom_sel_preset.appendChild(opt);
+            }
+            // Auto-select the first preset
+            if (manifest.presets.length > 0) {
+                dom_sel_preset.value = manifest.presets[0].file;
+                dom_sel_preset.dispatchEvent(new Event('change'));
+            }
+        } catch (e) {
+            console.log("Failed to load preset manifest:", e);
+            dom_sel_preset.innerHTML = '<option value="">No presets available</option>';
         }
     }
 
-    function buildShape(scaledPts) {
+    function buildShape(transformedPts) {
         if (shapeOutline) {
             scene.remove(shapeOutline);
             shapeOutline.geometry.dispose();
@@ -179,14 +259,14 @@ export function init(container) {
         }
 
         const lineVerts = [];
-        scaledPts.forEach(([x, y]) => lineVerts.push(x, y, 0));
+        transformedPts.forEach(([x, y]) => lineVerts.push(x, y, 0));
         const lineGeom = new BufferGeometry();
         lineGeom.setAttribute('position', new Float32BufferAttribute(lineVerts, 3));
-        shapeOutline = new LineLoop(lineGeom, new LineBasicMaterial({ color: 0x2196F3 }));
+        shapeOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3 }));
         scene.add(shapeOutline);
 
         const result = buildPointsMesh({
-            points: scaledPts,
+            points: transformedPts,
             circleTexture,
             diameter: 6,
             defaultColor: [244 / 255, 67 / 255, 54 / 255],
@@ -204,8 +284,8 @@ export function init(container) {
         scene.add(pointsMesh);
     }
 
-    function updateLabels(scaledPts) {
-        if (scaledPts.length === 0) {
+    function updateLabels(transformedPts) {
+        if (transformedPts.length === 0) {
             placeholderDiv.style.display = '';
             startLabel.style.display = 'none';
             infoDiv.textContent = '';
@@ -216,8 +296,8 @@ export function init(container) {
 
         const { width, height } = getCanvasSize();
         const hw = width / 2, hh = height / 2;
-        const sx = scaledPts[0][0] + hw + 15;
-        const sy = scaledPts[0][1] + hh;
+        const sx = transformedPts[0][0] + hw + 15;
+        const sy = transformedPts[0][1] + hh;
         startLabel.style.display = '';
         startLabel.style.left = sx + 'px';
         startLabel.style.top = sy + 'px';
@@ -247,12 +327,25 @@ export function init(container) {
     function animate() {
         rafId = requestAnimationFrame(animate);
 
-        const zoom = Number.parseFloat(dom_txt_zoom.value) || 1;
+        const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
+        const scaleX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal;
+        const scaleY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal;
+        const rotateDeg = parseInt(dom_txt_rotate.value) || 0;
+        const rotateRad = rotateDeg * Math.PI / 180;
+        const cosR = Math.cos(rotateRad);
+        const sinR = Math.sin(rotateRad);
 
         if (shape_pts.length > 0) {
-            const scaledPts = shape_pts.map(([x, y]) => [x * zoom, y * zoom]);
-            buildShape(scaledPts);
-            updateLabels(scaledPts);
+            const transformedPts = shape_pts.map(([x, y]) => {
+                const sx = x * scaleX;
+                const sy = y * scaleY;
+                return [
+                    sx * cosR - sy * sinR,
+                    sx * sinR + sy * cosR,
+                ];
+            });
+            buildShape(transformedPts);
+            updateLabels(transformedPts);
         } else {
             if (shapeOutline) {
                 scene.remove(shapeOutline);
@@ -274,7 +367,7 @@ export function init(container) {
 
     // --- Initialize ---
     initRenderer();
-    fetchScreenMap();
+    loadPresetsFromManifest();
     rafId = requestAnimationFrame(animate);
 
     return function destroy() {

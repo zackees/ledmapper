@@ -1,0 +1,41 @@
+<div class="sticky">
+    <h1>Shape Editor</h1>
+    <div id="controls">
+        <div class="controls-top">
+            <div>
+                <label for="sel_preset">Preset:</label>
+                <select id="sel_preset">
+                    <option value="">Loading presets...</option>
+                </select>
+            </div>
+            <div>
+                <label for="btn_upload_shape">Upload Screenmap (*.json):</label>
+                <input type="file" id="btn_upload_shape" accept=".json">
+            </div>
+        </div>
+        <div class="slider-row">
+            <label for="rng_scale">Scale</label>
+            <input id="rng_scale" type="range" min="0" max="1000" value="302" step="1">
+            <input id="txt_scale" type="number" value="1.00" min="0.10" max="10.00" step="0.01">
+        </div>
+        <div class="slider-row">
+            <label for="rng_scale_x">Scale X</label>
+            <input id="rng_scale_x" type="range" min="0" max="1000" value="302" step="1">
+            <input id="txt_scale_x" type="number" value="1.00" min="0.10" max="10.00" step="0.01">
+        </div>
+        <div class="slider-row">
+            <label for="rng_scale_y">Scale Y</label>
+            <input id="rng_scale_y" type="range" min="0" max="1000" value="302" step="1">
+            <input id="txt_scale_y" type="number" value="1.00" min="0.10" max="10.00" step="0.01">
+        </div>
+        <div class="slider-row">
+            <label for="rng_rotate">Rotate</label>
+            <input id="rng_rotate" type="range" min="-180" max="180" value="0" step="1">
+            <input id="txt_rotate" type="number" value="0" min="-180" max="180" step="1">
+            <span class="unit">°</span>
+        </div>
+    </div>
+</div>
+<main id="main">
+    <!-- Canvas target -->
+</main>
