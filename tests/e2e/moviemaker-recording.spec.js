@@ -197,10 +197,10 @@ test.describe('Moviemaker Recording Workflow', () => {
             }
 
             // Record without blur
-            const noBlurData = await setupAndRecord(page, 0, 0.1, 2000);
+            const noBlurData = await setupAndRecord(page, 0, 0, 2000);
 
-            // Record with moderate blur (radius=3 is enough for 5px-wide stripes)
-            const blurData = await setupAndRecord(page, 3, 2, 3000);
+            // Record with heavy blur (high values for range inputs with step=1)
+            const blurData = await setupAndRecord(page, 50, 50, 3000);
 
             // Both recordings should have valid data
             const bytesPerFrame = 64 * 3; // 8x8 = 64 LEDs

@@ -28,6 +28,7 @@ export function init(container) {
     const dom_txt_rotate = container.querySelector("#txt_rotate");
     const dom_chk_flip_h = container.querySelector("#chk_flip_h");
     const dom_chk_flip_v = container.querySelector("#chk_flip_v");
+    const dom_txt_diameter = container.querySelector("#txt_diameter");
     const dom_btn_save = container.querySelector("#btn_save_as");
 
     const ac = new AbortController();
@@ -57,13 +58,7 @@ export function init(container) {
             yArr.push(+(rx * sinR + ry * cosR).toFixed(4));
         });
 
-        // Estimate diameter from first two transformed points
-        let diameter = 0.25;
-        if (xArr.length >= 2) {
-            const dx = xArr[1] - xArr[0];
-            const dy = yArr[1] - yArr[0];
-            diameter = +Math.max(Math.sqrt(dx * dx + dy * dy), 0.01).toFixed(4);
-        }
+        const diameter = parseFloat(dom_txt_diameter.value) || 0.25;
 
         const json = JSON.stringify({
             map: { strip1: { x: xArr, y: yArr, diameter } }
@@ -234,6 +229,11 @@ export function init(container) {
     function load_shape_data(text) {
         shape_pts = parse_shape_data(text);
         if (shape_pts.length === 0) return;
+
+        // Populate diameter from file if available
+        if (typeof shape_pts.diameter === "number" && shape_pts.diameter > 0) {
+            dom_txt_diameter.value = shape_pts.diameter;
+        }
 
         rawPts = shape_pts.map(([x, y]) => [x, y]);
 

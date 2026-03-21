@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+
+echo "=== Running unit tests ==="
+npm run test:unit
+
+echo ""
+echo "=== Running e2e tests ==="
+npm test

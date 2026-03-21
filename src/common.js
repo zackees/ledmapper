@@ -20,8 +20,8 @@ export function parse_shape_data_csv(text) {
 
 /**
  * Parse shape data from screenmap JSON format.
- * @param {string|Object} jsonBlob - JSON string or parsed object with {map:{strip1:{x:[],y:[]}}}
- * @returns {Array<[number,number]>}
+ * @param {string|Object} jsonBlob - JSON string or parsed object with {map:{strip1:{x:[],y:[],diameter?}}}
+ * @returns {Array<[number,number]>} Array with optional `.diameter` property (number or undefined)
  */
 export function parse_shape_data_json(jsonBlob) {
     if (typeof jsonBlob === "string")
@@ -50,6 +50,9 @@ export function parse_shape_data_json(jsonBlob) {
         }
         for (let i = 0; i < x.length; ++i) {
             out.push([x[i], y[i]]);
+        }
+        if (typeof strip1["diameter"] === "number") {
+            out.diameter = strip1["diameter"];
         }
         return out;
     } catch (e) {
@@ -81,7 +84,9 @@ export function parse_shape_data(text) {
     if (is_json_str(text)) {
         return parse_shape_data_json(text);
     }
-    return parse_shape_data_csv(text);
+    const pts = parse_shape_data_csv(text);
+    // CSV has no diameter info; leave pts.diameter undefined
+    return pts;
 }
 
 /**
