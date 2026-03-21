@@ -4,7 +4,7 @@ import path from 'path';
 test.describe('Video Maker', () => {
     test('loads page with upload prompt', async ({ page }) => {
         await page.goto('/moviemaker/');
-        await expect(page.locator('#btn_upload_shape')).toBeVisible();
+        await expect(page.locator('#btn_upload_screenmap')).toBeVisible();
     });
 
     test('has readme button', async ({ page }) => {
@@ -53,7 +53,7 @@ test.describe('Video Maker', () => {
 
     test('screenmap upload activates controls', async ({ page }) => {
         await page.goto('/moviemaker/');
-        const fileInput = page.locator('#btn_upload_shape');
+        const fileInput = page.locator('#btn_upload_screenmap');
         const fixturePath = path.resolve('tests/fixtures/test-screenmap.json');
         await fileInput.setInputFiles(fixturePath);
         // After uploading, controls should be enabled

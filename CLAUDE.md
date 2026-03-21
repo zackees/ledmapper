@@ -46,7 +46,7 @@ src/              # Source code (Vite root)
   screenmap/      # Screenmap Maker tool
   moviemaker/     # Mapped Video Maker tool (Three.js + GLSL)
   movieplayer/    # Movie Player tool
-  shapeviewer/    # Shape Viewer tool
+  shapeeditor/    # Screenmap Editor tool
 public/           # Static assets (served as-is by Vite)
   demo/           # Sample data files (.rgb, .json)
   examples/       # Example projects
@@ -64,12 +64,12 @@ tests/
 | `screenmap/` | Screenmap Maker | p5.js | Interactively map physical LED positions, export JSON |
 | `moviemaker/` | Mapped Video Maker | Three.js + GLSL | Load video files or webcam, GPU blur, record mapped LED output |
 | `movieplayer/` | Movie Player | p5.js | Play back pre-recorded .rgb LED video files |
-| `shapeviewer/` | Shape Viewer | p5.js | Visualize screenmap.json as a shape |
+| `shapeeditor/` | Screenmap Editor | p5.js | View and transform screenmap.json files |
 
 ### Shared Code
 
 `src/common.js` — ES module with utility functions imported by each tool:
-- `parse_shape_data_json()` / `parse_shape_data_csv()` — parse screenmap formats
+- `parse_screenmap_data_json()` / `parse_screenmap_data_csv()` — parse screenmap formats
 - `transform_to_center_of_canvas()` — center and scale points to canvas
 - `download_blob_as_file()` / `download_binary_as_file()` / `download_text_as_file()` — file downloads
 - `estimate_led_size()` — calculate LED diameter from point spacing

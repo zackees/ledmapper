@@ -8,7 +8,7 @@ import {
     LineBasicMaterial,
     Line,
 } from 'three';
-import { parse_shape_data, centerAndFitPoints, readFileAsText, download_text_as_file } from '../common.js';
+import { parse_screenmap_data, centerAndFitPoints, readFileAsText, download_text_as_file } from '../common.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './shapeeditor.css?url';
@@ -16,7 +16,7 @@ export { default as css } from './shapeeditor.css?url';
 export function init(container) {
     container.innerHTML = templateHtml;
 
-    const dom_btn_upload_shape = container.querySelector("#btn_upload_shape");
+    const dom_btn_upload_screenmap = container.querySelector("#btn_upload_screenmap");
     const dom_sel_preset = container.querySelector("#sel_preset");
     const dom_rng_scale = container.querySelector("#rng_scale");
     const dom_txt_scale = container.querySelector("#txt_scale");
@@ -141,9 +141,9 @@ export function init(container) {
     dom_txt_rotate.addEventListener('input', () => setRotate(dom_txt_rotate.value), { signal });
     dom_txt_rotate.addEventListener('change', () => setRotate(dom_txt_rotate.value), { signal });
 
-    // ── Shape state ──────────────────────────────────────────────────────────
+    // ── Screenmap state ──────────────────────────────────────────────────────
 
-    let shape_pts = [];
+    let screenmap_pts = [];
     let rawPts = [];
     let origWidth = 0, origHeight = 0;
 
@@ -155,11 +155,11 @@ export function init(container) {
 
     // Grid line objects
     let gridLines;
-    // Shape outline
-    let shapeOutline;
+    // Screenmap outline
+    let screenmapOutline;
 
     // DOM-based labels
-    let startLabel, infoDiv, placeholderDiv;
+    let infoDiv, placeholderDiv;
 
     // Overlay state
     let overlayCanvas, overlayCtx;
@@ -202,11 +202,13 @@ export function init(container) {
 
         // Overlay canvas for rainbow lines, arrows, and labels (always visible)
         overlayCanvas = document.createElement('canvas');
-        overlayCanvas.width = width;
-        overlayCanvas.height = height;
-        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;';
+        const dpr = window.devicePixelRatio || 1;
+        overlayCanvas.width = width * dpr;
+        overlayCanvas.height = height * dpr;
+        overlayCanvas.style.cssText = `position:absolute;top:0;left:0;width:${width}px;height:${height}px;`;
         wrapper.appendChild(overlayCanvas);
         overlayCtx = overlayCanvas.getContext('2d');
+        overlayCtx.scale(dpr, dpr);
 
         // LED index tooltip
         tooltip = document.createElement('div');
@@ -225,11 +227,7 @@ export function init(container) {
         overlayCanvas.addEventListener('touchend', onPointerLeave, { passive: true, signal });
         overlayCanvas.addEventListener('touchcancel', onPointerLeave, { passive: true, signal });
 
-        const labelStyle = 'position:absolute;pointer-events:none;color:#fff;font:14px sans-serif;';
-
-        startLabel = document.createElement('div');
-        startLabel.style.cssText = labelStyle + 'display:none;';
-        wrapper.appendChild(startLabel);
+        const labelStyle = 'position:absolute;pointer-events:none;color:#fff;font:bold 13px/1 "Outfit",system-ui,sans-serif;text-shadow:0 0 3px #000,0 0 3px #000;';
 
         infoDiv = document.createElement('div');
         infoDiv.style.cssText = labelStyle + 'top:10px;left:10px;font-size:14px;line-height:1.6;';
@@ -237,7 +235,7 @@ export function init(container) {
 
         placeholderDiv = document.createElement('div');
         placeholderDiv.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;color:#fff;font:24px sans-serif;';
-        placeholderDiv.textContent = 'Upload a shape file to begin';
+        placeholderDiv.textContent = 'Upload a screenmap file to begin';
         wrapper.appendChild(placeholderDiv);
 
         buildGrid(width, height);
@@ -271,19 +269,19 @@ export function init(container) {
         return centerAndFitPoints(pts, canvasW, canvasH, { margin: 0.95, center: 'origin' });
     }
 
-    function load_shape_data(text) {
-        shape_pts = parse_shape_data(text);
-        if (shape_pts.length === 0) return;
+    function load_screenmap_data(text) {
+        screenmap_pts = parse_screenmap_data(text);
+        if (screenmap_pts.length === 0) return;
 
         // Populate diameter from file if available
-        if (typeof shape_pts.diameter === "number" && shape_pts.diameter > 0) {
-            dom_txt_diameter.value = shape_pts.diameter;
+        if (typeof screenmap_pts.diameter === "number" && screenmap_pts.diameter > 0) {
+            dom_txt_diameter.value = screenmap_pts.diameter;
         }
 
-        rawPts = shape_pts.map(([x, y]) => [x, y]);
+        rawPts = screenmap_pts.map(([x, y]) => [x, y]);
 
         let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-        shape_pts.forEach(([x, y]) => {
+        screenmap_pts.forEach(([x, y]) => {
             xmin = Math.min(xmin, x); xmax = Math.max(xmax, x);
             ymin = Math.min(ymin, y); ymax = Math.max(ymax, y);
         });
@@ -291,12 +289,12 @@ export function init(container) {
         origHeight = ymax - ymin;
 
         const { width, height } = getCanvasSize();
-        shape_pts = center_and_fit(shape_pts, width, height);
+        screenmap_pts = center_and_fit(screenmap_pts, width, height);
     }
 
-    dom_btn_upload_shape.addEventListener('change', () => {
+    dom_btn_upload_screenmap.addEventListener('change', () => {
         dom_sel_preset.value = '';
-        readFileAsText(dom_btn_upload_shape, load_shape_data);
+        readFileAsText(dom_btn_upload_screenmap, load_screenmap_data);
     }, { signal });
 
     dom_sel_preset.addEventListener('change', async () => {
@@ -305,7 +303,7 @@ export function init(container) {
         try {
             const resp = await fetch(`/screenmaps/${file}`);
             const text = await resp.text();
-            load_shape_data(text);
+            load_screenmap_data(text);
         } catch (e) {
             console.log("Failed to load preset:", e);
         }
@@ -398,16 +396,13 @@ export function init(container) {
     }
 
     function drawOutlinedLabel(text, x, y) {
-        overlayCtx.font = '12px sans-serif';
+        overlayCtx.font = 'bold 13px "Outfit", system-ui, sans-serif';
         overlayCtx.textBaseline = 'middle';
-        overlayCtx.fillStyle = 'black';
-        for (let a = 0; a < 360; a += 45) {
-            const rad = a * Math.PI / 180;
-            for (const r of [2, 1.5, 1]) {
-                overlayCtx.fillText(text, x + Math.cos(rad) * r, y + Math.sin(rad) * r);
-            }
-        }
-        overlayCtx.fillStyle = 'white';
+        overlayCtx.lineWidth = 3;
+        overlayCtx.strokeStyle = 'rgba(0,0,0,0.9)';
+        overlayCtx.lineJoin = 'round';
+        overlayCtx.strokeText(text, x, y);
+        overlayCtx.fillStyle = '#fff';
         overlayCtx.fillText(text, x, y);
     }
 
@@ -456,11 +451,11 @@ export function init(container) {
         tooltip.style.opacity = '0';
     }
 
-    function buildShape(transformedPts) {
-        if (shapeOutline) {
-            scene.remove(shapeOutline);
-            shapeOutline.geometry.dispose();
-            shapeOutline.material.dispose();
+    function buildScreenmap(transformedPts) {
+        if (screenmapOutline) {
+            scene.remove(screenmapOutline);
+            screenmapOutline.geometry.dispose();
+            screenmapOutline.material.dispose();
         }
         if (pointsMesh) {
             scene.remove(pointsMesh);
@@ -472,8 +467,8 @@ export function init(container) {
         transformedPts.forEach(([x, y]) => lineVerts.push(x, y, 0));
         const lineGeom = new BufferGeometry();
         lineGeom.setAttribute('position', new Float32BufferAttribute(lineVerts, 3));
-        shapeOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3 }));
-        scene.add(shapeOutline);
+        screenmapOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3 }));
+        scene.add(screenmapOutline);
 
         const result = buildPointsMesh({
             points: transformedPts,
@@ -497,21 +492,11 @@ export function init(container) {
     function updateLabels(transformedPts) {
         if (transformedPts.length === 0) {
             placeholderDiv.style.display = '';
-            startLabel.style.display = 'none';
             infoDiv.textContent = '';
             return;
         }
 
         placeholderDiv.style.display = 'none';
-
-        const { width, height } = getCanvasSize();
-        const hw = width / 2, hh = height / 2;
-        const sx = transformedPts[0][0] + hw + 15;
-        const sy = transformedPts[0][1] + hh;
-        startLabel.style.display = '';
-        startLabel.style.left = sx + 'px';
-        startLabel.style.top = sy + 'px';
-        startLabel.textContent = 'Start';
 
         const scaleG = parseFloat(dom_txt_scale.value) || 1;
         const sX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleG;
@@ -519,7 +504,7 @@ export function init(container) {
         const physW = (origWidth * sX).toFixed(2);
         const physH = (origHeight * sY).toFixed(2);
 
-        infoDiv.innerHTML = `Points: ${shape_pts.length}<br>Size: ${physW} &times; ${physH} cm`;
+        infoDiv.innerHTML = `Points: ${screenmap_pts.length}<br>Size: ${physW} &times; ${physH} cm`;
     }
 
     function handleResize() {
@@ -534,8 +519,12 @@ export function init(container) {
         camera.updateProjectionMatrix();
 
         wrapper.style.width = width + 'px';
-        overlayCanvas.width = width;
-        overlayCanvas.height = height;
+        const dpr = window.devicePixelRatio || 1;
+        overlayCanvas.width = width * dpr;
+        overlayCanvas.height = height * dpr;
+        overlayCanvas.style.width = width + 'px';
+        overlayCanvas.style.height = height + 'px';
+        overlayCtx.scale(dpr, dpr);
 
         buildGrid(width, height);
         drawOverlay();
@@ -556,8 +545,8 @@ export function init(container) {
         const cosR = Math.cos(rotateRad);
         const sinR = Math.sin(rotateRad);
 
-        if (shape_pts.length > 0) {
-            const transformedPts = shape_pts.map(([x, y]) => {
+        if (screenmap_pts.length > 0) {
+            const transformedPts = screenmap_pts.map(([x, y]) => {
                 const sx = x * scaleX;
                 const sy = y * scaleY;
                 return [
@@ -566,15 +555,15 @@ export function init(container) {
                 ];
             });
             lastTransformedPts = transformedPts;
-            buildShape(transformedPts);
+            buildScreenmap(transformedPts);
             updateLabels(transformedPts);
             drawOverlay();
         } else {
-            if (shapeOutline) {
-                scene.remove(shapeOutline);
-                shapeOutline.geometry.dispose();
-                shapeOutline.material.dispose();
-                shapeOutline = null;
+            if (screenmapOutline) {
+                scene.remove(screenmapOutline);
+                screenmapOutline.geometry.dispose();
+                screenmapOutline.material.dispose();
+                screenmapOutline = null;
             }
             if (pointsMesh) {
                 scene.remove(pointsMesh);
@@ -596,10 +585,10 @@ export function init(container) {
     return function destroy() {
         ac.abort();
         if (rafId) cancelAnimationFrame(rafId);
-        if (shapeOutline) {
-            scene.remove(shapeOutline);
-            shapeOutline.geometry.dispose();
-            shapeOutline.material.dispose();
+        if (screenmapOutline) {
+            scene.remove(screenmapOutline);
+            screenmapOutline.geometry.dispose();
+            screenmapOutline.material.dispose();
         }
         if (pointsMesh) {
             scene.remove(pointsMesh);

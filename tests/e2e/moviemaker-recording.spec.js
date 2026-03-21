@@ -82,7 +82,7 @@ test.describe('Moviemaker Recording Workflow', () => {
             // 16x16 preset is selected by default (256 LEDs)
             await expect(page.locator('#btn_preset_16x16')).toHaveClass(/active-preset/);
 
-            // Controls should be enabled (shape loaded by default)
+            // Controls should be enabled (screenmap loaded by default)
             await expect(page.locator('#rng_blur')).toBeEnabled();
             await expect(page.locator('#btn_toggle_record')).toBeEnabled();
 
@@ -154,7 +154,7 @@ test.describe('Moviemaker Recording Workflow', () => {
             await waitForSourceActive(page);
 
             // Upload custom screenmap (4 LEDs)
-            await page.locator('#btn_upload_shape').setInputFiles(SCREENMAP_PATH);
+            await page.locator('#btn_upload_screenmap').setInputFiles(SCREENMAP_PATH);
             await expect(page.locator('#rng_blur')).toBeEnabled({ timeout: 10000 });
 
             const data = await recordAndDownload(page, 1500);

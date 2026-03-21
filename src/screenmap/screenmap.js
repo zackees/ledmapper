@@ -109,7 +109,7 @@ export function init(container) {
 
         // Buttons
         dom.btn_delete_last.addEventListener('click', () => { points.pop(); }, { signal });
-        dom.btn_download.addEventListener('click', () => downloadShape(), { signal });
+        dom.btn_download.addEventListener('click', () => downloadScreenmap(), { signal });
 
         // Shift key tracking
         document.addEventListener('keydown', (evt) => {
@@ -120,9 +120,9 @@ export function init(container) {
         }, { signal });
     }
 
-    function downloadShape() {
+    function downloadScreenmap() {
         const options = { type: 'application/json' };
-        download_text_as_file(points_to_json_str(), 'shape.json', options);
+        download_text_as_file(points_to_json_str(), 'screenmap.json', options);
     }
 
     function indexOfIntersectMostRecent(x, y, radius) {

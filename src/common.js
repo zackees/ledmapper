@@ -1,9 +1,9 @@
 /**
- * Parse shape data from CSV text (one point per line: x,y).
+ * Parse screenmap data from CSV text (one point per line: x,y).
  * @param {string} text - CSV content
  * @returns {Array<[number,number]>}
  */
-export function parse_shape_data_csv(text) {
+export function parse_screenmap_data_csv(text) {
     const out = [];
     text.split("\n").forEach((line) => {
         const d = line.split(",");
@@ -19,11 +19,11 @@ export function parse_shape_data_csv(text) {
 }
 
 /**
- * Parse shape data from screenmap JSON format.
+ * Parse screenmap data from JSON format.
  * @param {string|Object} jsonBlob - JSON string or parsed object with {map:{strip1:{x:[],y:[],diameter?}}}
  * @returns {Array<[number,number]>} Array with optional `.diameter` property (number or undefined)
  */
-export function parse_shape_data_json(jsonBlob) {
+export function parse_screenmap_data_json(jsonBlob) {
     if (typeof jsonBlob === "string")
         jsonBlob = JSON.parse(jsonBlob);
     try {
@@ -76,15 +76,15 @@ export function is_json_str(text) {
 }
 
 /**
- * Parse shape data from either JSON or CSV format (auto-detected).
- * @param {string} text - Shape data content
+ * Parse screenmap data from either JSON or CSV format (auto-detected).
+ * @param {string} text - Screenmap data content
  * @returns {Array<[number,number]>}
  */
-export function parse_shape_data(text) {
+export function parse_screenmap_data(text) {
     if (is_json_str(text)) {
-        return parse_shape_data_json(text);
+        return parse_screenmap_data_json(text);
     }
-    const pts = parse_shape_data_csv(text);
+    const pts = parse_screenmap_data_csv(text);
     // CSV has no diameter info; leave pts.diameter undefined
     return pts;
 }
@@ -138,8 +138,8 @@ export function centerAndFitPoints(pts, width, height, { margin = 0.95, center =
 }
 
 /** @deprecated Use centerAndFitPoints instead */
-export function transform_to_center_of_canvas(shape_pts, canvas_width, canvas_height) {
-    return centerAndFitPoints(shape_pts, canvas_width, canvas_height, { margin: 0.95, center: 'canvas' });
+export function transform_to_center_of_canvas(screenmap_pts, canvas_width, canvas_height) {
+    return centerAndFitPoints(screenmap_pts, canvas_width, canvas_height, { margin: 0.95, center: 'canvas' });
 }
 
 /**

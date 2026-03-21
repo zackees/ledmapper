@@ -1,4 +1,4 @@
-import { parse_shape_data_json, centerAndFitPoints, download_blob_as_file } from '../common.js';
+import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file } from '../common.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './demo.css?url';
@@ -22,8 +22,8 @@ export function init(container) {
     dom_btn_play.disabled = true;
 
     const CANVAS_SIZE = 800;
-    let shape_pts = [];
-    let shape_pts_original = [];
+    let screenmap_pts = [];
+    let screenmap_pts_original = [];
     const movie_frames = [];
     let playing = false;
     let curr_frame_idx = 0;
@@ -82,13 +82,13 @@ export function init(container) {
     let tooltipLedIdx = -1;
 
     function hitTestLED(canvasX, canvasY) {
-        if (shape_pts.length === 0) return -1;
+        if (screenmap_pts.length === 0) return -1;
         const threshold = Math.max(getDiameter(), 10);
         const threshSq = threshold * threshold;
         let bestIdx = -1, bestDist = threshSq;
-        for (let i = 0; i < shape_pts.length; i++) {
-            const dx = canvasX - shape_pts[i][0];
-            const dy = canvasY - shape_pts[i][1];
+        for (let i = 0; i < screenmap_pts.length; i++) {
+            const dx = canvasX - screenmap_pts[i][0];
+            const dy = canvasY - screenmap_pts[i][1];
             const d = dx * dx + dy * dy;
             if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
@@ -105,7 +105,7 @@ export function init(container) {
         if (idx >= 0) {
             if (idx !== tooltipLedIdx) {
                 tooltipLedIdx = idx;
-                const [ox, oy] = shape_pts_original[idx];
+                const [ox, oy] = screenmap_pts_original[idx];
                 tooltip.textContent = `LED #${idx}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
             }
             const tx = Math.min(cx + 14, CANVAS_SIZE - tooltip.offsetWidth - 4);
@@ -132,12 +132,12 @@ export function init(container) {
     overlayCanvas.addEventListener('touchend', onPointerLeave, { passive: true, signal });
     overlayCanvas.addEventListener('touchcancel', onPointerLeave, { passive: true, signal });
 
-    // --- Build Three.js Points from shape data ---
+    // --- Build Three.js Points from screenmap data ---
     function buildPoints() {
         const previous = pointsMesh ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial } : null;
         const result = rebuildPointsMesh({
             scene, previous,
-            points: shape_pts,
+            points: screenmap_pts,
             circleTexture,
             diameter: getDiameter(),
         });
@@ -148,15 +148,15 @@ export function init(container) {
         colorAttribute = result.colorAttribute;
     }
 
-    // --- Shape data loading ---
-    function load_shape_data(jsonBlob) {
-        shape_pts = parse_shape_data_json(jsonBlob);
-        if (shape_pts.length === 0) {
-            console.error("Failed to load shape data");
+    // --- Screenmap data loading ---
+    function load_screenmap_data(jsonBlob) {
+        screenmap_pts = parse_screenmap_data_json(jsonBlob);
+        if (screenmap_pts.length === 0) {
+            console.error("Failed to load screenmap data");
             return;
         }
-        shape_pts_original = shape_pts.map(([x, y]) => [x, y]);
-        shape_pts = centerAndFitPoints(shape_pts, CANVAS_SIZE, CANVAS_SIZE);
+        screenmap_pts_original = screenmap_pts.map(([x, y]) => [x, y]);
+        screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
         buildPoints();
         drawOverlay();
         dom_btn_play.disabled = false;
@@ -169,8 +169,8 @@ export function init(container) {
                 return response.json();
             })
             .then(jsonBlob => {
-                console.log("Shape data loaded successfully");
-                load_shape_data(jsonBlob);
+                console.log("Screenmap data loaded successfully");
+                load_screenmap_data(jsonBlob);
                 fetchAndLoadVideo();
             })
             .catch(error => console.error("Error loading JSON:", error));
@@ -202,7 +202,7 @@ export function init(container) {
                 newBuffer.set(value, videoBuffer.length);
                 videoBuffer = newBuffer;
 
-                const frameSize = shape_pts.length * 3;
+                const frameSize = screenmap_pts.length * 3;
                 const completeFrames = Math.floor(videoBuffer.length / frameSize);
                 if (completeFrames > 0) {
                     const frameData = videoBuffer.slice(0, completeFrames * frameSize);
@@ -216,7 +216,7 @@ export function init(container) {
     }
 
     function processNewFrames(frameData) {
-        const frameSize = shape_pts.length * 3;
+        const frameSize = screenmap_pts.length * 3;
         const numNewFrames = frameData.length / frameSize;
         for (let i = 0; i < numNewFrames; i++) {
             const start = i * frameSize;
@@ -254,15 +254,15 @@ export function init(container) {
 
     // --- Download handlers ---
     dom_btn_download_screenmap.addEventListener('click', () => {
-        if (!shape_pts || shape_pts.length === 0) {
-            alert("No shape data available to download!");
+        if (!screenmap_pts || screenmap_pts.length === 0) {
+            alert("No screenmap data available to download!");
             return;
         }
         const screenmap = {
             map: {
                 strip1: {
-                    x: shape_pts.map(pt => pt[0]),
-                    y: shape_pts.map(pt => pt[1]),
+                    x: screenmap_pts.map(pt => pt[0]),
+                    y: screenmap_pts.map(pt => pt[1]),
                     diameter: 0.25
                 }
             }
@@ -308,9 +308,9 @@ export function init(container) {
     function drawOverlay() {
         if (!overlayCtx) return;
         overlayCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-        if (!showLines || shape_pts.length === 0) return;
+        if (!showLines || screenmap_pts.length === 0) return;
 
-        const pts = shape_pts;
+        const pts = screenmap_pts;
 
         // Connecting lines with rainbow colors
         overlayCtx.lineWidth = 2;
@@ -374,7 +374,7 @@ export function init(container) {
     const animLoop = createAnimationLoop({
         targetFPS,
         onFrame() {
-            if (shape_pts.length === 0) return;
+            if (screenmap_pts.length === 0) return;
 
             if (movie_frames.length && playing) {
                 if (curr_frame_idx >= movie_frames.length) curr_frame_idx = 0;
@@ -385,7 +385,7 @@ export function init(container) {
 
             if (curr_frame && colorAttribute) {
                 const arr = colorAttribute.array;
-                const count = shape_pts.length;
+                const count = screenmap_pts.length;
                 for (let i = 0; i < count; i++) {
                     const i3 = i * 3;
                     arr[i3    ] = curr_frame[i3    ] * INV_255;

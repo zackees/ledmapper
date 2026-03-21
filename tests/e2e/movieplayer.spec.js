@@ -9,7 +9,7 @@ test.describe('Video Player', () => {
 
     test('has screenmap upload input', async ({ page }) => {
         await page.goto('/movieplayer/');
-        await expect(page.locator('#btn_upload_shape')).toBeVisible();
+        await expect(page.locator('#btn_upload_screenmap')).toBeVisible();
     });
 
     test('has movie upload input', async ({ page }) => {
@@ -26,7 +26,7 @@ test.describe('Video Player', () => {
 
     test('screenmap upload enables movie upload flow', async ({ page }) => {
         await page.goto('/movieplayer/');
-        const fileInput = page.locator('#btn_upload_shape');
+        const fileInput = page.locator('#btn_upload_screenmap');
         const fixturePath = path.resolve('tests/fixtures/test-screenmap.json');
         await fileInput.setInputFiles(fixturePath);
         // Canvas should render after screenmap upload

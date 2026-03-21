@@ -1,5 +1,5 @@
 const Swal = import('sweetalert2').then(m => m.default);
-import { parse_shape_data, readFileAsText } from '../common.js';
+import { parse_screenmap_data, readFileAsText } from '../common.js';
 import { transformToCenter, parseResolution, samplePixels, computeFps, scaleToMaxDimension } from './transforms.js';
 import { loadPreset } from '../preset-loader.js';
 import { createBlurPipeline } from './blur-pipeline.js';
@@ -23,7 +23,7 @@ export function init(container) {
     const dom_btn_preset_keytar = container.querySelector('#btn_preset_keytar');
     const dom_btn_load_video    = container.querySelector('#btn_load_video');
     const dom_btn_start_webcam  = container.querySelector('#btn_start_webcam');
-    const dom_btn_upload_shape  = container.querySelector('#btn_upload_shape');
+    const dom_btn_upload_screenmap  = container.querySelector('#btn_upload_screenmap');
     const dom_btn_unload_source = container.querySelector('#btn_unload_source');
     const dom_btn_play_pause    = container.querySelector('#btn_play_pause');
     const dom_video_progress    = container.querySelector('#video-progress');
@@ -63,9 +63,9 @@ export function init(container) {
     const { signal } = ac;
 
     // ── State ───────────────────────────────────────────────────────────────────
-    let shape_pts = [];
-    let rawShapePts = [];
-    let shapeValid = false;
+    let screenmap_pts = [];
+    let rawScreenmapPts = [];
+    let screenmapValid = false;
     let sourceActive = false;
 
     let target_zoom = 1, curr_zoom = 1;
@@ -131,8 +131,8 @@ export function init(container) {
         overlayCanvas.width = w;
         overlayCanvas.height = h;
 
-        if (shapeValid) {
-            shape_pts = transformToCenter(rawShapePts, videoWidth, videoHeight);
+        if (screenmapValid) {
+            screenmap_pts = transformToCenter(rawScreenmapPts, videoWidth, videoHeight);
             target_translate = [w / 2, h / 2];
             curr_translate = [w / 2, h / 2];
         }
@@ -179,26 +179,26 @@ export function init(container) {
             dom_rng_blur, dom_rng_blur_sigma, dom_rng_zoom
         ];
         sliders.forEach(el => {
-            el.disabled = !shapeValid;
+            el.disabled = !screenmapValid;
             const cg = el.closest('.control-group');
-            if (cg) cg.classList.toggle('disabled', !shapeValid);
+            if (cg) cg.classList.toggle('disabled', !screenmapValid);
         });
-        dom_btn_toggle_record.disabled = !sourceActive || !shapeValid;
+        dom_btn_toggle_record.disabled = !sourceActive || !screenmapValid;
         const cg = dom_btn_toggle_record.closest('.control-group');
         if (cg) cg.classList.toggle('disabled', dom_btn_toggle_record.disabled);
     }
 
     updateElementStates();
 
-    // ── Shape presets ────────────────────────────────────────────────────────────
+    // ── Screenmap presets ────────────────────────────────────────────────────────
 
-    function loadShapeFromPoints(pts) {
-        rawShapePts = pts;
-        if (rawShapePts.length === 0) {
-            shapeValid = false;
+    function loadScreenmapFromPoints(pts) {
+        rawScreenmapPts = pts;
+        if (rawScreenmapPts.length === 0) {
+            screenmapValid = false;
         } else {
-            shape_pts = transformToCenter(rawShapePts, videoWidth, videoHeight);
-            shapeValid = true;
+            screenmap_pts = transformToCenter(rawScreenmapPts, videoWidth, videoHeight);
+            screenmapValid = true;
             target_zoom = 1; curr_zoom = 1;
             curr_rotate = 0; target_rotate = 0;
             container.querySelector('#txt_curr_rotation').innerText = '0';
@@ -218,42 +218,42 @@ export function init(container) {
     dom_btn_preset_16x16.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_16x16.classList.add('active-preset');
-        loadShapeFromPoints(await loadPreset('16x16_grid.json'));
+        loadScreenmapFromPoints(await loadPreset('16x16_grid.json'));
     }, { signal });
     dom_btn_preset_8x8.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_8x8.classList.add('active-preset');
-        loadShapeFromPoints(await loadPreset('8x8_grid.json'));
+        loadScreenmapFromPoints(await loadPreset('8x8_grid.json'));
     }, { signal });
     dom_btn_preset_strip.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_strip.classList.add('active-preset');
-        loadShapeFromPoints(await loadPreset('strip_60.json'));
+        loadScreenmapFromPoints(await loadPreset('strip_60.json'));
     }, { signal });
     dom_btn_preset_ring.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_ring.classList.add('active-preset');
-        loadShapeFromPoints(await loadPreset('ring_24.json'));
+        loadScreenmapFromPoints(await loadPreset('ring_24.json'));
     }, { signal });
     dom_btn_preset_32x32.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_32x32.classList.add('active-preset');
-        loadShapeFromPoints(await loadPreset('32x32_quad_serpentine.json'));
+        loadScreenmapFromPoints(await loadPreset('32x32_quad_serpentine.json'));
     }, { signal });
     dom_btn_preset_spaceface.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_spaceface.classList.add('active-preset');
-        loadShapeFromPoints(await loadPreset('spaceface.json'));
+        loadScreenmapFromPoints(await loadPreset('spaceface.json'));
     }, { signal });
     dom_btn_preset_piano.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_piano.classList.add('active-preset');
-        loadShapeFromPoints(await loadPreset('piano_grand.json'));
+        loadScreenmapFromPoints(await loadPreset('piano_grand.json'));
     }, { signal });
     dom_btn_preset_keytar.addEventListener('click', async () => {
         clearPresetActive();
         dom_btn_preset_keytar.classList.add('active-preset');
-        loadShapeFromPoints(await loadPreset('keytar.json'));
+        loadScreenmapFromPoints(await loadPreset('keytar.json'));
     }, { signal });
 
     // Auto-select 16x16 preset on load
@@ -266,7 +266,7 @@ export function init(container) {
 
     // ── Camera position (smooth interpolation) ──────────────────────────────────
 
-    function update_shape_parameters() {
+    function update_screenmap_parameters() {
         const dx = target_translate[0] - curr_translate[0];
         const dy = target_translate[1] - curr_translate[1];
         curr_translate[0] += Math.abs(dx) < 0.05 ? dx : dx * 0.05;
@@ -282,9 +282,9 @@ export function init(container) {
         }
     }
 
-    function create_transformed_shape() {
-        if (shape_pts.length === 0) return [];
-        let pts = shape_pts.map(([x, y]) => [x, y]);
+    function create_transformed_screenmap() {
+        if (screenmap_pts.length === 0) return [];
+        let pts = screenmap_pts.map(([x, y]) => [x, y]);
         if (curr_rotate !== 0) {
             const r = curr_rotate * Math.PI / 180;
             const cos_r = Math.cos(r), sin_r = Math.sin(r);
@@ -419,12 +419,12 @@ export function init(container) {
     }, { signal });
 
     // Screenmap upload
-    dom_btn_upload_shape.addEventListener('change', () => {
+    dom_btn_upload_screenmap.addEventListener('change', () => {
         clearPresetActive();
-        shapeValid = false;
+        screenmapValid = false;
         updateElementStates();
-        readFileAsText(dom_btn_upload_shape, (text) => {
-            loadShapeFromPoints(parse_shape_data(text));
+        readFileAsText(dom_btn_upload_screenmap, (text) => {
+            loadScreenmapFromPoints(parse_screenmap_data(text));
         });
     }, { signal });
 
@@ -488,8 +488,8 @@ export function init(container) {
 
     // Recording toggle
     dom_btn_toggle_record.addEventListener('click', async () => {
-        if (!recording.isActive && shape_pts.length < 2) {
-            alert('Please load a valid shape first of size >= 2');
+        if (!recording.isActive && screenmap_pts.length < 2) {
+            alert('Please load a valid screenmap first of size >= 2');
             return;
         }
         const active = await recording.toggle();
@@ -499,18 +499,18 @@ export function init(container) {
 
     // Mouse interaction on overlay canvas
     overlayCanvas.addEventListener('mousedown', (e) => {
-        if (e.button === 2 && shape_pts.length > 0) {
+        if (e.button === 2 && screenmap_pts.length > 0) {
             isDraggingRight = true;
             lastMouseY = e.offsetY;
             e.preventDefault();
         }
     }, { signal });
     overlayCanvas.addEventListener('mousemove', (e) => {
-        if (e.buttons & 1 && shape_pts.length > 0 && mouseInCanvas(e.offsetX, e.offsetY)) {
+        if (e.buttons & 1 && screenmap_pts.length > 0 && mouseInCanvas(e.offsetX, e.offsetY)) {
             target_translate[0] = e.offsetX;
             target_translate[1] = e.offsetY;
         }
-        if (isDraggingRight && shape_pts.length > 0) {
+        if (isDraggingRight && screenmap_pts.length > 0) {
             const dy = e.offsetY - lastMouseY;
             target_zoom -= dy * 0.01;
             target_zoom = Math.max(Math.min(target_zoom, 3), 0.15);
@@ -547,10 +547,10 @@ export function init(container) {
             gamma: parseInt(dom_rng_gamma.value) / 10,
         });
 
-        update_shape_parameters();
-        const transformedPts = create_transformed_shape();
+        update_screenmap_parameters();
+        const transformedPts = create_transformed_screenmap();
 
-        const needReadback = shapeValid && transformedPts.length > 0;
+        const needReadback = screenmapValid && transformedPts.length > 0;
 
         if (needReadback) {
             const readback = blurPipeline.readbackPixels(videoWidth, videoHeight);

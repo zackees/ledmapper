@@ -1,9 +1,9 @@
 const tools = [
     { name: 'Demo', href: '/demo/' },
     { name: 'Screenmap Maker', href: '/screenmap/' },
+    { name: 'Screenmap Editor', href: '/shapeeditor/' },
     { name: 'Video Maker', href: '/moviemaker/' },
     { name: 'Video Player', href: '/movieplayer/' },
-    { name: 'Shape Editor', href: '/shapeeditor/' },
 ];
 
 let navEl = null;

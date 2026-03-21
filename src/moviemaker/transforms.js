@@ -18,17 +18,17 @@ export function transformToCenter(pts, videoWidth, videoHeight) {
 }
 
 /**
- * Apply rotation, zoom, and translation to shape points.
+ * Apply rotation, zoom, and translation to screenmap points.
  *
- * @param {Array<[number,number]>} shapePts - points centered around (0,0)
+ * @param {Array<[number,number]>} screenmapPts - points centered around (0,0)
  * @param {number} rotate - rotation in degrees
  * @param {number} zoom - zoom factor
  * @param {[number,number]} translate - [x, y] translation (canvas center)
  * @returns {Array<[number,number]>}
  */
-export function createTransformedShape(shapePts, rotate, zoom, translate) {
-    if (shapePts.length === 0) return [];
-    let pts = shapePts.map(([x, y]) => [x, y]);
+export function createTransformedScreenmap(screenmapPts, rotate, zoom, translate) {
+    if (screenmapPts.length === 0) return [];
+    let pts = screenmapPts.map(([x, y]) => [x, y]);
     if (rotate !== 0) {
         const r = rotate * Math.PI / 180;
         const cos_r = Math.cos(r), sin_r = Math.sin(r);

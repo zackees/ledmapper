@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     transformToCenter,
-    createTransformedShape,
+    createTransformedScreenmap,
     getFrameIndex,
     flattenColorFrames,
     parseResolution,
@@ -80,14 +80,14 @@ describe('transformToCenter', () => {
     });
 });
 
-describe('createTransformedShape', () => {
+describe('createTransformedScreenmap', () => {
     it('returns empty array for empty input', () => {
-        assert.deepStrictEqual(createTransformedShape([], 0, 1, [320, 240]), []);
+        assert.deepStrictEqual(createTransformedScreenmap([], 0, 1, [320, 240]), []);
     });
 
     it('applies translation without rotation or zoom', () => {
         const pts = [[0, 0], [10, 0]];
-        const result = createTransformedShape(pts, 0, 1, [100, 200]);
+        const result = createTransformedScreenmap(pts, 0, 1, [100, 200]);
         assert.ok(Math.abs(result[0][0] - 100) < 0.001);
         assert.ok(Math.abs(result[0][1] - 200) < 0.001);
         assert.ok(Math.abs(result[1][0] - 110) < 0.001);
@@ -96,14 +96,14 @@ describe('createTransformedShape', () => {
 
     it('applies zoom correctly', () => {
         const pts = [[10, 0]];
-        const result = createTransformedShape(pts, 0, 2, [0, 0]);
+        const result = createTransformedScreenmap(pts, 0, 2, [0, 0]);
         assert.ok(Math.abs(result[0][0] - 20) < 0.001);
         assert.ok(Math.abs(result[0][1] - 0) < 0.001);
     });
 
     it('applies 90-degree rotation correctly', () => {
         const pts = [[10, 0]];
-        const result = createTransformedShape(pts, 90, 1, [0, 0]);
+        const result = createTransformedScreenmap(pts, 90, 1, [0, 0]);
         // (10,0) rotated 90° → (0, 10)
         assert.ok(Math.abs(result[0][0]) < 0.001, `x should be ~0, got ${result[0][0]}`);
         assert.ok(Math.abs(result[0][1] - 10) < 0.001, `y should be ~10, got ${result[0][1]}`);
@@ -112,7 +112,7 @@ describe('createTransformedShape', () => {
     it('does not mutate the input array', () => {
         const input = [[1, 2], [3, 4]];
         const copy = JSON.parse(JSON.stringify(input));
-        createTransformedShape(input, 45, 2, [100, 100]);
+        createTransformedScreenmap(input, 45, 2, [100, 100]);
         assert.deepStrictEqual(input, copy);
     });
 });
@@ -184,7 +184,7 @@ describe('parseResolution', () => {
 });
 
 describe('computePreviewFactor', () => {
-    it('scales square shape to fit box', () => {
+    it('scales square screenmap to fit box', () => {
         // 4 points forming a 100x100 square centered at (200,200)
         const pts = [[150, 150], [250, 150], [250, 250], [150, 250]];
         const factor = computePreviewFactor(pts, 200);
@@ -192,7 +192,7 @@ describe('computePreviewFactor', () => {
         assert.ok(Math.abs(factor - 1.6) < 0.001, `factor should be 1.6, got ${factor}`);
     });
 
-    it('scales wide shape to fit box', () => {
+    it('scales wide screenmap to fit box', () => {
         const pts = [[0, 100], [500, 100], [500, 200], [0, 200]];
         const factor = computePreviewFactor(pts, 200);
         // xspan=500, yspan=100, factor = (200/500)*0.8 = 0.32

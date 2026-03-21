@@ -1,4 +1,4 @@
-import { parse_shape_data, centerAndFitPoints, readFileAsText } from '../common.js';
+import { parse_screenmap_data, centerAndFitPoints, readFileAsText } from '../common.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './movieplayer.css?url';
@@ -6,7 +6,7 @@ export { default as css } from './movieplayer.css?url';
 export function init(container) {
     container.innerHTML = templateHtml;
 
-    const dom_btn_upload_shape = container.querySelector("#btn_upload_shape");
+    const dom_btn_upload_screenmap = container.querySelector("#btn_upload_screenmap");
     const dom_btn_load_movie = container.querySelector("#btn_load_movie");
     const dom_btn_play = container.querySelector("#btn_play");
     const dom_rng_diameter = container.querySelector("#rng_diameter");
@@ -17,7 +17,7 @@ export function init(container) {
 
     const CANVAS_SIZE = 1000;
 
-    let shape_pts = [];
+    let screenmap_pts = [];
     let movie_frames = [];
     let playing = false;
     let curr_frame_idx = 0;
@@ -51,7 +51,7 @@ export function init(container) {
         const previous = pointsMesh ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial } : null;
         const result = rebuildPointsMesh({
             scene, previous,
-            points: shape_pts,
+            points: screenmap_pts,
             circleTexture,
             diameter: getDiameter(),
         });
@@ -62,17 +62,17 @@ export function init(container) {
         colorAttribute = result.colorAttribute;
     }
 
-    function load_shape_data(text) {
-        shape_pts = parse_shape_data(text);
-        dom_btn_load_movie.disabled = (shape_pts.length === 0);
-        if (shape_pts.length === 0) return;
-        shape_pts = centerAndFitPoints(shape_pts, CANVAS_SIZE, CANVAS_SIZE);
+    function load_screenmap_data(text) {
+        screenmap_pts = parse_screenmap_data(text);
+        dom_btn_load_movie.disabled = (screenmap_pts.length === 0);
+        if (screenmap_pts.length === 0) return;
+        screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
         buildPoints();
     }
 
-    dom_btn_upload_shape.addEventListener('change', () => {
+    dom_btn_upload_screenmap.addEventListener('change', () => {
         set_dom_btn_play(false);
-        readFileAsText(dom_btn_upload_shape, load_shape_data);
+        readFileAsText(dom_btn_upload_screenmap, load_screenmap_data);
     }, { signal });
 
     function set_dom_btn_play(on) {
@@ -86,22 +86,22 @@ export function init(container) {
 
     function load_movie_data(array_buffer) {
         const uint8_array = new Uint8Array(array_buffer);
-        if (shape_pts.length === 0) {
-            alert("No shape is loaded!");
+        if (screenmap_pts.length === 0) {
+            alert("No screenmap is loaded!");
             return;
         }
         const num_pixels = uint8_array.length / 3;
-        if (num_pixels % shape_pts.length !== 0) {
-            alert("Frame size should be a multiple of the number of shape pts!");
+        if (num_pixels % screenmap_pts.length !== 0) {
+            alert("Frame size should be a multiple of the number of screenmap points!");
             return;
         }
         dom_btn_play.disabled = false;
         set_dom_btn_play(false);
         const frames = [];
-        const n_frames = num_pixels / shape_pts.length;
+        const n_frames = num_pixels / screenmap_pts.length;
         for (let i = 0; i < n_frames; ++i) {
-            const start = i * shape_pts.length * 3;
-            const end = (i + 1) * shape_pts.length * 3;
+            const start = i * screenmap_pts.length * 3;
+            const end = (i + 1) * screenmap_pts.length * 3;
             const frame = uint8_array.slice(start, end);
             frames.push(frame);
         }
@@ -118,7 +118,7 @@ export function init(container) {
     const animLoop = createAnimationLoop({
         targetFPS: 30,
         onFrame() {
-            if (shape_pts.length === 0) return;
+            if (screenmap_pts.length === 0) return;
 
             if (movie_frames.length && playing) {
                 if (curr_frame_idx >= movie_frames.length) curr_frame_idx = 0;
@@ -129,7 +129,7 @@ export function init(container) {
 
             if (curr_frame && colorAttribute) {
                 const arr = colorAttribute.array;
-                const count = shape_pts.length;
+                const count = screenmap_pts.length;
                 for (let i = 0; i < count; i++) {
                     const i3 = i * 3;
                     arr[i3    ] = curr_frame[i3    ] * INV_255;
