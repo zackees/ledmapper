@@ -19,6 +19,7 @@ export function init(container) {
     const dom_btn_preset_ring  = container.querySelector('#btn_preset_ring');
     const dom_btn_preset_32x32  = container.querySelector('#btn_preset_32x32');
     const dom_btn_preset_spaceface = container.querySelector('#btn_preset_spaceface');
+    const dom_btn_preset_piano = container.querySelector('#btn_preset_piano');
     const dom_btn_load_video    = container.querySelector('#btn_load_video');
     const dom_btn_start_webcam  = container.querySelector('#btn_start_webcam');
     const dom_btn_upload_shape  = container.querySelector('#btn_upload_shape');
@@ -207,7 +208,7 @@ export function init(container) {
         updateElementStates();
     }
 
-    const presetButtons = [dom_btn_preset_16x16, dom_btn_preset_8x8, dom_btn_preset_strip, dom_btn_preset_ring, dom_btn_preset_32x32, dom_btn_preset_spaceface];
+    const presetButtons = [dom_btn_preset_16x16, dom_btn_preset_8x8, dom_btn_preset_strip, dom_btn_preset_ring, dom_btn_preset_32x32, dom_btn_preset_spaceface, dom_btn_preset_piano];
 
     function clearPresetActive() {
         presetButtons.forEach(b => b.classList.remove('active-preset'));
@@ -242,6 +243,11 @@ export function init(container) {
         clearPresetActive();
         dom_btn_preset_spaceface.classList.add('active-preset');
         loadShapeFromPoints(await loadPreset('spaceface.json'));
+    }, { signal });
+    dom_btn_preset_piano.addEventListener('click', async () => {
+        clearPresetActive();
+        dom_btn_preset_piano.classList.add('active-preset');
+        loadShapeFromPoints(await loadPreset('piano_grand.json'));
     }, { signal });
 
     // Auto-select 16x16 preset on load

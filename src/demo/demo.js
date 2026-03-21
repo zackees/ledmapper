@@ -23,6 +23,7 @@ export function init(container) {
 
     const CANVAS_SIZE = 800;
     let shape_pts = [];
+    let shape_pts_original = [];
     const movie_frames = [];
     let playing = false;
     let curr_frame_idx = 0;
@@ -104,8 +105,8 @@ export function init(container) {
         if (idx >= 0) {
             if (idx !== tooltipLedIdx) {
                 tooltipLedIdx = idx;
-                const [lx, ly] = shape_pts[idx];
-                tooltip.textContent = `LED #${idx}  (${lx.toFixed(1)}, ${ly.toFixed(1)})`;
+                const [ox, oy] = shape_pts_original[idx];
+                tooltip.textContent = `LED #${idx}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
             }
             const tx = Math.min(cx + 14, CANVAS_SIZE - tooltip.offsetWidth - 4);
             const ty = Math.max(cy - 28, 4);
@@ -154,6 +155,7 @@ export function init(container) {
             console.error("Failed to load shape data");
             return;
         }
+        shape_pts_original = shape_pts.map(([x, y]) => [x, y]);
         shape_pts = centerAndFitPoints(shape_pts, CANVAS_SIZE, CANVAS_SIZE);
         buildPoints();
         drawOverlay();

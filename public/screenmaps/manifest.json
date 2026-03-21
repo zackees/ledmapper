@@ -27,6 +27,10 @@
     {
       "file": "spaceface.json",
       "name": "Space Face"
+    },
+    {
+      "file": "piano_grand.json",
+      "name": "Piano Grand"
     }
   ]
 }

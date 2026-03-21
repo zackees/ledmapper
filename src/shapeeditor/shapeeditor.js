@@ -91,7 +91,7 @@ export function init(container) {
     // ── Shape state ──────────────────────────────────────────────────────────
 
     let shape_pts = [];
-    let minX, minY, maxX, maxY;
+    let origWidth = 0, origHeight = 0;
 
     // Three.js objects
     let renderer, scene, camera;
@@ -186,24 +186,19 @@ export function init(container) {
         return centerAndFitPoints(pts, canvasW, canvasH, { margin: 0.95, center: 'origin' });
     }
 
-    function calculateBounds() {
-        minX = Infinity;
-        minY = Infinity;
-        maxX = -Infinity;
-        maxY = -Infinity;
-        shape_pts.forEach(([x, y]) => {
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-        });
-    }
-
     function load_shape_data(text) {
         shape_pts = parse_shape_data(text);
         if (shape_pts.length === 0) return;
+
+        let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+        shape_pts.forEach(([x, y]) => {
+            xmin = Math.min(xmin, x); xmax = Math.max(xmax, x);
+            ymin = Math.min(ymin, y); ymax = Math.max(ymax, y);
+        });
+        origWidth = xmax - xmin;
+        origHeight = ymax - ymin;
+
         const { width, height } = getCanvasSize();
-        calculateBounds();
         shape_pts = center_and_fit(shape_pts, width, height);
     }
 
@@ -303,7 +298,13 @@ export function init(container) {
         startLabel.style.top = sy + 'px';
         startLabel.textContent = 'Start';
 
-        infoDiv.innerHTML = `Points: ${shape_pts.length}<br>Bounds: (${minX.toFixed(2)}, ${minY.toFixed(2)}) to (${maxX.toFixed(2)}, ${maxY.toFixed(2)})`;
+        const scaleG = parseFloat(dom_txt_scale.value) || 1;
+        const sX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleG;
+        const sY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleG;
+        const physW = (origWidth * sX).toFixed(2);
+        const physH = (origHeight * sY).toFixed(2);
+
+        infoDiv.innerHTML = `Points: ${shape_pts.length}<br>Size: ${physW} &times; ${physH} cm`;
     }
 
     function handleResize() {
