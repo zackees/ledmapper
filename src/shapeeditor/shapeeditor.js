@@ -16,6 +16,18 @@ export { default as css } from './shapeeditor.css?url';
 export function init(container) {
     container.innerHTML = templateHtml;
 
+    // Make the container a flex column so #main fills the remaining viewport
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.height = '100vh';
+    container.style.overflow = 'hidden';
+
+    const mainEl = container.querySelector('#main');
+    mainEl.style.flex = '1';
+    mainEl.style.minHeight = '0';
+    mainEl.style.overflow = 'hidden';
+    mainEl.style.position = 'relative';
+
     const dom_btn_upload_screenmap = container.querySelector("#btn_upload_screenmap");
     const dom_sel_preset = container.querySelector("#sel_preset");
     const dom_rng_scale = container.querySelector("#rng_scale");
@@ -69,6 +81,10 @@ export function init(container) {
         dom_chk_flip_h.checked = false;
         dom_chk_flip_v.checked = false;
         dom_txt_diameter.value = origDiameter;
+        committedTransform.scale = 1;
+        committedTransform.scaleX = 1;
+        committedTransform.scaleY = 1;
+        committedTransform.rotate = 0;
         clearDirty();
     }
 
@@ -168,6 +184,25 @@ export function init(container) {
     dom_txt_rotate.addEventListener('input', () => setRotate(dom_txt_rotate.value), { signal });
     dom_txt_rotate.addEventListener('change', () => setRotate(dom_txt_rotate.value), { signal });
 
+    // ── Transform undo on slider/input release ───────────────────────────
+    function wireTransformUndo(controlName, ...elements) {
+        for (const el of elements) {
+            el.addEventListener('change', () => {
+                const newVal = getTransformValue(controlName);
+                const oldVal = committedTransform[controlName];
+                if (oldVal !== newVal) {
+                    pushUndo({ type: 'transform', control: controlName, oldValue: oldVal, newValue: newVal });
+                    committedTransform[controlName] = newVal;
+                }
+            }, { signal });
+        }
+    }
+
+    wireTransformUndo('scale', dom_rng_scale, dom_txt_scale);
+    wireTransformUndo('scaleX', dom_rng_scale_x, dom_txt_scale_x);
+    wireTransformUndo('scaleY', dom_rng_scale_y, dom_txt_scale_y);
+    wireTransformUndo('rotate', dom_rng_rotate, dom_txt_rotate);
+
     // ── Screenmap state ──────────────────────────────────────────────────────
 
     let screenmap_pts = [];
@@ -175,6 +210,10 @@ export function init(container) {
     let origWidth = 0, origHeight = 0;
     let fitScale = 1; // cm-to-pixel scale from centerAndFitPoints
     let origDiameter = 0.5;
+
+    // Cached canvas dimensions — kept in sync with renderer/camera/overlay.
+    // Always use these instead of reading mainEl dimensions directly.
+    let canvasW = 0, canvasH = 0;
 
     // Three.js objects
     let renderer, scene, camera;
@@ -196,7 +235,8 @@ export function init(container) {
     let tooltip;
     let lastTransformedPts = [];
     let isHovering = false;
-    let overlayAlpha = 0; // 0..1 for fade transition
+    let overlayAlpha = 1; // 0..1 for rainbow fade (1 = visible by default)
+    let ptsBBox = null;   // bounding box of points in canvas space {x1,y1,x2,y2}
 
     // ── Editing state ─────────────────────────────────────────────────────
     let selectedIdx = -1;
@@ -204,6 +244,38 @@ export function init(container) {
     let dragStartCanvasX = 0, dragStartCanvasY = 0;
     let dragStartScreenmapPt = null, dragStartRawPt = null;
     let ctxMenu, ctxMenuIdx = -1;
+
+    // ── Camera pan/zoom state (view-only, not an edit) ───────────────────
+    let camPanX = 0, camPanY = 0;
+    let camZoom = 1;
+    let isPanning = false;
+    let panStartX = 0, panStartY = 0;
+    let panStartCamX = 0, panStartCamY = 0;
+    let rightButtonDown = false;
+    let rightClickMoved = false;
+    let zoomStartY = 0;
+    let zoomStartLevel = 1;
+
+    // ── Transform committed values (for undo tracking) ─────────────────
+    const committedTransform = { scale: 1, scaleX: 1, scaleY: 1, rotate: 0 };
+
+    function getTransformValue(control) {
+        switch (control) {
+            case 'scale': return parseFloat(dom_txt_scale.value) || 1;
+            case 'scaleX': return parseFloat(dom_txt_scale_x.value) || 1;
+            case 'scaleY': return parseFloat(dom_txt_scale_y.value) || 1;
+            case 'rotate': return parseInt(dom_txt_rotate.value) || 0;
+        }
+    }
+
+    function setTransformValue(control, value) {
+        switch (control) {
+            case 'scale': writeScale(dom_rng_scale, dom_txt_scale, value); break;
+            case 'scaleX': writeScale(dom_rng_scale_x, dom_txt_scale_x, value); break;
+            case 'scaleY': writeScale(dom_rng_scale_y, dom_txt_scale_y, value); break;
+            case 'rotate': setRotate(value); break;
+        }
+    }
 
     // ── Undo / Redo ───────────────────────────────────────────────────────
     const undoStack = [];
@@ -225,6 +297,9 @@ export function init(container) {
             rawPts.splice(action.idx, 1);
             if (selectedIdx === action.idx) selectedIdx = -1;
             else if (selectedIdx > action.idx) selectedIdx--;
+        } else if (action.type === 'transform') {
+            setTransformValue(action.control, action.newValue);
+            committedTransform[action.control] = action.newValue;
         }
     }
 
@@ -236,6 +311,9 @@ export function init(container) {
             screenmap_pts.splice(action.idx, 0, action.screenmapPt);
             rawPts.splice(action.idx, 0, action.rawPt);
             selectedIdx = action.idx;
+        } else if (action.type === 'transform') {
+            setTransformValue(action.control, action.oldValue);
+            committedTransform[action.control] = action.oldValue;
         }
     }
 
@@ -279,6 +357,16 @@ export function init(container) {
     function clearEditingState() {
         selectedIdx = -1;
         isDragging = false;
+        isPanning = false;
+        rightButtonDown = false;
+        rightClickMoved = false;
+        camPanX = 0;
+        camPanY = 0;
+        camZoom = 1;
+        committedTransform.scale = 1;
+        committedTransform.scaleX = 1;
+        committedTransform.scaleY = 1;
+        committedTransform.rotate = 0;
         undoStack.length = 0;
         redoStack.length = 0;
         updateUndoRedoButtons();
@@ -304,6 +392,15 @@ export function init(container) {
 
     function getCanvasSize() {
         return {
+            width: mainEl.clientWidth || Math.floor(window.innerWidth),
+            height: mainEl.clientHeight || Math.floor(window.innerHeight * 0.6),
+        };
+    }
+
+    // Reference size for fitting screenmap points — keeps them at the same
+    // pixel size as before even though the canvas is now much larger.
+    function getFitSize() {
+        return {
             width: Math.floor(window.innerWidth * 0.45),
             height: Math.floor(window.innerHeight * 0.4),
         };
@@ -324,23 +421,26 @@ export function init(container) {
 
     function canvasDeltaToScreenmapDelta(dx, dy) {
         const { sX, sY, cosR, sinR } = getCurrentTransform();
-        // Inverse rotation then inverse scale
-        const urx = dx * cosR + dy * sinR;
-        const ury = -dx * sinR + dy * cosR;
+        // Account for camera zoom, then inverse rotation and inverse scale
+        const wdx = dx / camZoom;
+        const wdy = dy / camZoom;
+        const urx = wdx * cosR + wdy * sinR;
+        const ury = -wdx * sinR + wdy * cosR;
         return [urx / sX, ury / sY];
     }
 
     function getCanvasCoords(e) {
         const rect = overlayCanvas.getBoundingClientRect();
-        const { width, height } = getCanvasSize();
         return [
-            (e.clientX - rect.left) * (width / rect.width),
-            (e.clientY - rect.top) * (height / rect.height),
+            (e.clientX - rect.left) * (canvasW / rect.width),
+            (e.clientY - rect.top) * (canvasH / rect.height),
         ];
     }
 
     function initRenderer() {
         const { width, height } = getCanvasSize();
+        canvasW = width;
+        canvasH = height;
 
         renderer = new WebGLRenderer({ antialias: false });
         renderer.setSize(width, height);
@@ -353,14 +453,12 @@ export function init(container) {
         camera = new OrthographicCamera(-hw, hw, -hh, hh, -1, 1);
         camera.position.z = 1;
 
-        const main = container.querySelector('#main');
         wrapper = document.createElement('div');
-        wrapper.style.position = 'relative';
-        wrapper.style.width = width + 'px';
-        wrapper.style.margin = '0 auto';
-        main.appendChild(wrapper);
+        wrapper.style.position = 'absolute';
+        wrapper.style.inset = '0';
+        mainEl.appendChild(wrapper);
 
-        renderer.domElement.style.display = 'block';
+        renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;';
         wrapper.appendChild(renderer.domElement);
 
         // Overlay canvas for rainbow lines, arrows, and labels (always visible)
@@ -368,7 +466,7 @@ export function init(container) {
         const dpr = window.devicePixelRatio || 1;
         overlayCanvas.width = width * dpr;
         overlayCanvas.height = height * dpr;
-        overlayCanvas.style.cssText = `position:absolute;top:0;left:0;width:${width}px;height:${height}px;`;
+        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
         wrapper.appendChild(overlayCanvas);
         overlayCtx = overlayCanvas.getContext('2d');
         overlayCtx.scale(dpr, dpr);
@@ -449,15 +547,15 @@ export function init(container) {
             gridLines.material.dispose();
         }
 
-        const hw = width / 2, hh = height / 2;
+        const extent = Math.max(width, height) * 5; // Large enough for pan/zoom
         const gridSize = 50;
         const vertices = [];
 
-        for (let x = -Math.ceil(hw / gridSize) * gridSize; x <= hw; x += gridSize) {
-            vertices.push(x, -hh, 0, x, hh, 0);
+        for (let x = -extent; x <= extent; x += gridSize) {
+            vertices.push(x, -extent, 0, x, extent, 0);
         }
-        for (let y = -Math.ceil(hh / gridSize) * gridSize; y <= hh; y += gridSize) {
-            vertices.push(-hw, y, 0, hw, y, 0);
+        for (let y = -extent; y <= extent; y += gridSize) {
+            vertices.push(-extent, y, 0, extent, y, 0);
         }
 
         const geom = new BufferGeometry();
@@ -494,14 +592,16 @@ export function init(container) {
         origWidth = xmax - xmin;
         origHeight = ymax - ymin;
 
-        const { width, height } = getCanvasSize();
-        const availW = 0.95 * width;
-        const availH = 0.95 * height;
+        // Use the smaller reference size so the screenmap stays the same pixel
+        // size regardless of how large the canvas is (leaves room for pan/zoom).
+        const { width: fitW, height: fitH } = getFitSize();
+        const availW = 0.95 * fitW;
+        const availH = 0.95 * fitH;
         fitScale = Math.min(
             origWidth > 0 ? availW / origWidth : availW,
             origHeight > 0 ? availH / origHeight : availH,
         );
-        screenmap_pts = center_and_fit(screenmap_pts, width, height);
+        screenmap_pts = center_and_fit(screenmap_pts, fitW, fitH);
     }
 
     dom_btn_upload_screenmap.addEventListener('change', () => {
@@ -545,24 +645,44 @@ export function init(container) {
 
     // --- Overlay drawing for LED connection visualization ---
     function toCanvasCoords(x, y) {
-        const { width, height } = getCanvasSize();
-        return [x + width / 2, y + height / 2];
+        return [
+            (x + camPanX) * camZoom + canvasW / 2,
+            (y + camPanY) * camZoom + canvasH / 2,
+        ];
     }
 
     function drawOverlay() {
         if (!overlayCtx) return;
-        const { width, height } = getCanvasSize();
-        overlayCtx.clearRect(0, 0, width, height);
+        overlayCtx.clearRect(0, 0, canvasW, canvasH);
 
-        // Lerp overlayAlpha toward target (0.2s fade at ~60fps)
-        const target = isHovering ? 1 : 0;
+        // Lerp overlayAlpha: 1 = rainbow visible (default), 0 = faded out (hovering inside bbox)
+        const target = isHovering ? 0 : 1;
         const speed = 1 / (0.2 * 60); // step per frame for 0.2s
         if (overlayAlpha < target) overlayAlpha = Math.min(target, overlayAlpha + speed);
         else if (overlayAlpha > target) overlayAlpha = Math.max(target, overlayAlpha - speed);
 
-        if (lastTransformedPts.length === 0) return;
+        if (lastTransformedPts.length === 0) { ptsBBox = null; return; }
 
         const pts = lastTransformedPts.map(([x, y]) => toCanvasCoords(x, y));
+
+        // Compute bounding box of points in canvas space
+        let bx1 = Infinity, by1 = Infinity, bx2 = -Infinity, by2 = -Infinity;
+        for (const [px, py] of pts) {
+            if (px < bx1) bx1 = px;
+            if (py < by1) by1 = py;
+            if (px > bx2) bx2 = px;
+            if (py > by2) by2 = py;
+        }
+        const pad = 20;
+        ptsBBox = { x1: bx1 - pad, y1: by1 - pad, x2: bx2 + pad, y2: by2 + pad };
+
+        // Draw bounding box outline (subtle dashed)
+        overlayCtx.globalAlpha = 0.3;
+        overlayCtx.strokeStyle = '#888';
+        overlayCtx.lineWidth = 1;
+        overlayCtx.setLineDash([6, 4]);
+        overlayCtx.strokeRect(ptsBBox.x1, ptsBBox.y1, ptsBBox.x2 - ptsBBox.x1, ptsBBox.y2 - ptsBBox.y1);
+        overlayCtx.setLineDash([]);
 
         // Rainbow lines and arrows fade with hover
         if (overlayAlpha > 0) {
@@ -666,6 +786,10 @@ export function init(container) {
 
     function onContextMenu(e) {
         e.preventDefault();
+        // If right-click was used for zoom dragging, skip the context menu
+        const wasMoved = rightClickMoved;
+        rightClickMoved = false;
+        if (wasMoved) return;
         if (screenmap_pts.length === 0) return;
         const [cx, cy] = getCanvasCoords(e);
         const idx = hitTestLED(cx, cy);
@@ -681,27 +805,63 @@ export function init(container) {
         // Dismiss context menu on any click
         hideContextMenu();
 
+        if (e.button === 2) {
+            // Right-click: start potential zoom drag
+            rightButtonDown = true;
+            rightClickMoved = false;
+            const [, cy] = getCanvasCoords(e);
+            zoomStartY = cy;
+            zoomStartLevel = camZoom;
+            return;
+        }
+
         if (e.button !== 0) return;
         const [cx, cy] = getCanvasCoords(e);
 
-        {
-            // Left-click: select and start potential drag
-            const idx = hitTestLED(cx, cy);
+        // Left-click: select LED or start panning
+        const idx = hitTestLED(cx, cy);
+        if (idx >= 0) {
             selectedIdx = idx;
-            if (idx >= 0) {
-                isDragging = true;
-                dragStartCanvasX = cx;
-                dragStartCanvasY = cy;
-                dragStartScreenmapPt = [...screenmap_pts[idx]];
-                dragStartRawPt = [...rawPts[idx]];
-                overlayCanvas.style.cursor = 'grabbing';
-            }
+            isDragging = true;
+            dragStartCanvasX = cx;
+            dragStartCanvasY = cy;
+            dragStartScreenmapPt = [...screenmap_pts[idx]];
+            dragStartRawPt = [...rawPts[idx]];
+            overlayCanvas.style.cursor = 'grabbing';
+        } else {
+            // Left-click on empty space: start panning (view-only)
+            isPanning = true;
+            panStartX = cx;
+            panStartY = cy;
+            panStartCamX = camPanX;
+            panStartCamY = camPanY;
+            overlayCanvas.style.cursor = 'move';
         }
     }
 
     function onMouseMove(e) {
         if (screenmap_pts.length === 0) return;
         const [cx, cy] = getCanvasCoords(e);
+
+        // Right-click drag: zoom
+        if (rightButtonDown) {
+            const dy = cy - zoomStartY;
+            if (Math.abs(dy) > 3) rightClickMoved = true;
+            if (rightClickMoved) {
+                camZoom = Math.max(0.1, Math.min(10, zoomStartLevel * Math.pow(2, -dy / 200)));
+                overlayCanvas.style.cursor = 'ns-resize';
+            }
+            return;
+        }
+
+        // Left-click drag on empty space: pan
+        if (isPanning) {
+            const dx = cx - panStartX;
+            const dy = cy - panStartY;
+            camPanX = panStartCamX + dx / camZoom;
+            camPanY = panStartCamY + dy / camZoom;
+            return;
+        }
 
         if (isDragging && selectedIdx >= 0) {
             // Move the point
@@ -719,8 +879,13 @@ export function init(container) {
             return;
         }
 
-        // Hover detection for tooltip and cursor
-        isHovering = true;
+        // Check if mouse is inside the points bounding box (controls rainbow fade)
+        if (ptsBBox) {
+            isHovering = cx >= ptsBBox.x1 && cx <= ptsBBox.x2 &&
+                         cy >= ptsBBox.y1 && cy <= ptsBBox.y2;
+        } else {
+            isHovering = false;
+        }
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
             overlayCanvas.style.cursor = 'grab';
@@ -729,8 +894,7 @@ export function init(container) {
                 const [ox, oy] = rawPts[idx];
                 tooltip.textContent = `LED #${idx}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
             }
-            const { width } = getCanvasSize();
-            const tx = Math.min(cx + 14, width - tooltip.offsetWidth - 4);
+            const tx = Math.min(cx + 14, canvasW - tooltip.offsetWidth - 4);
             const ty = Math.max(cy - 28, 4);
             tooltip.style.left = tx + 'px';
             tooltip.style.top = ty + 'px';
@@ -742,7 +906,20 @@ export function init(container) {
         }
     }
 
-    function onMouseUp() {
+    function onMouseUp(e) {
+        if (e && e.button === 2) {
+            rightButtonDown = false;
+            // rightClickMoved is consumed by onContextMenu
+            overlayCanvas.style.cursor = 'default';
+            return;
+        }
+
+        if (isPanning) {
+            isPanning = false;
+            overlayCanvas.style.cursor = 'default';
+            return;
+        }
+
         if (isDragging && selectedIdx >= 0) {
             const newScreenmapPt = [...screenmap_pts[selectedIdx]];
             const newRawPt = [...rawPts[selectedIdx]];
@@ -764,6 +941,13 @@ export function init(container) {
     }
 
     function onMouseLeave() {
+        if (isPanning) {
+            isPanning = false;
+        }
+        if (rightButtonDown) {
+            rightButtonDown = false;
+            rightClickMoved = false;
+        }
         if (isDragging && selectedIdx >= 0) {
             // Finalize drag on leave
             const newScreenmapPt = [...screenmap_pts[selectedIdx]];
@@ -885,6 +1069,8 @@ export function init(container) {
 
     function handleResize() {
         const { width, height } = getCanvasSize();
+        canvasW = width;
+        canvasH = height;
         renderer.setSize(width, height);
 
         const hw = width / 2, hh = height / 2;
@@ -892,14 +1078,12 @@ export function init(container) {
         camera.right = hw;
         camera.top = -hh;
         camera.bottom = hh;
+        camera.zoom = camZoom;
         camera.updateProjectionMatrix();
 
-        wrapper.style.width = width + 'px';
         const dpr = window.devicePixelRatio || 1;
         overlayCanvas.width = width * dpr;
         overlayCanvas.height = height * dpr;
-        overlayCanvas.style.width = width + 'px';
-        overlayCanvas.style.height = height + 'px';
         overlayCtx.scale(dpr, dpr);
 
         buildGrid(width, height);
@@ -910,6 +1094,12 @@ export function init(container) {
 
     function animate() {
         rafId = requestAnimationFrame(animate);
+
+        // Auto-sync canvas/camera/overlay if mainEl dimensions changed
+        const { width: curW, height: curH } = getCanvasSize();
+        if (curW !== canvasW || curH !== canvasH) {
+            handleResize();
+        }
 
         const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
         const flipH = dom_chk_flip_h.checked ? -1 : 1;
@@ -950,6 +1140,12 @@ export function init(container) {
             updateLabels([]);
         }
 
+        // Apply camera pan/zoom (view-only, not an edit)
+        camera.position.x = -camPanX;
+        camera.position.y = -camPanY;
+        camera.zoom = camZoom;
+        camera.updateProjectionMatrix();
+
         renderer.render(scene, camera);
     }
 
@@ -979,5 +1175,10 @@ export function init(container) {
         circleTexture.dispose();
         renderer.dispose();
         if (ctxMenu && ctxMenu.parentNode) ctxMenu.parentNode.removeChild(ctxMenu);
+        // Clean up container layout styles
+        container.style.display = '';
+        container.style.flexDirection = '';
+        container.style.height = '';
+        container.style.overflow = '';
     };
 }
