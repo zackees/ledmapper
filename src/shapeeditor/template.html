@@ -18,31 +18,39 @@
                 <input type="file" id="btn_upload_screenmap" accept=".json">
             </div>
         </div>
-        <div class="slider-row flex items-center gap-2">
-            <label for="rng_scale">Scale</label>
-            <input id="rng_scale" type="range" min="0" max="1000" value="302" step="1">
-            <input id="txt_scale" type="number" value="1.00" min="0.10" max="10.00" step="0.01">
-        </div>
-        <div class="slider-row flex items-center gap-2">
-            <label for="rng_scale_x">Scale X</label>
-            <input id="rng_scale_x" type="range" min="0" max="1000" value="302" step="1">
-            <input id="txt_scale_x" type="number" value="1.00" min="0.10" max="10.00" step="0.01">
-        </div>
-        <div class="slider-row flex items-center gap-2">
-            <label for="rng_scale_y">Scale Y</label>
-            <input id="rng_scale_y" type="range" min="0" max="1000" value="302" step="1">
-            <input id="txt_scale_y" type="number" value="1.00" min="0.10" max="10.00" step="0.01">
-        </div>
-        <div class="slider-row flex items-center gap-2">
-            <label for="rng_rotate">Rotate</label>
-            <input id="rng_rotate" type="range" min="-180" max="180" value="0" step="1">
-            <input id="txt_rotate" type="number" value="0" min="-180" max="180" step="1">
-            <span class="unit">°</span>
-        </div>
-        <div class="checkbox-row flex items-center gap-4 pl-17">
-            <label><input id="chk_flip_h" type="checkbox"> Flip H</label>
-            <label><input id="chk_flip_v" type="checkbox"> Flip V</label>            <label for="txt_diameter">Diameter (cm)</label>
-            <input id="txt_diameter" type="number" value="0.50" min="0.01" max="100" step="0.01">
+        <details class="accordion" open>
+            <summary class="cursor-pointer select-none text-sm font-medium text-lm-text py-1">Transform</summary>
+            <div class="flex flex-col gap-2 pt-2">
+                <div class="slider-row flex items-center gap-2">
+                    <label for="rng_scale">Scale</label>
+                    <input id="rng_scale" type="range" min="0" max="1000" value="302" step="1">
+                    <input id="txt_scale" type="number" value="1.00" min="0.10" max="10.00" step="0.01">
+                </div>
+                <div class="slider-row flex items-center gap-2">
+                    <label for="rng_scale_x">Scale X</label>
+                    <input id="rng_scale_x" type="range" min="0" max="1000" value="302" step="1">
+                    <input id="txt_scale_x" type="number" value="1.00" min="0.10" max="10.00" step="0.01">
+                </div>
+                <div class="slider-row flex items-center gap-2">
+                    <label for="rng_scale_y">Scale Y</label>
+                    <input id="rng_scale_y" type="range" min="0" max="1000" value="302" step="1">
+                    <input id="txt_scale_y" type="number" value="1.00" min="0.10" max="10.00" step="0.01">
+                </div>
+                <div class="slider-row flex items-center gap-2">
+                    <label for="rng_rotate">Rotate</label>
+                    <input id="rng_rotate" type="range" min="-180" max="180" value="0" step="1">
+                    <input id="txt_rotate" type="number" value="0" min="-180" max="180" step="1">
+                    <span class="unit">°</span>
+                </div>
+                <div class="checkbox-row flex items-center gap-4 pl-17">
+                    <label><input id="chk_flip_h" type="checkbox"> Flip H</label>
+                    <label><input id="chk_flip_v" type="checkbox"> Flip V</label>
+                    <label for="txt_diameter">Diameter (cm)</label>
+                    <input id="txt_diameter" type="number" value="0.50" min="0.01" max="100" step="0.01">
+                </div>
+            </div>
+        </details>
+        <div class="flex items-center gap-2">
             <button id="btn_undo" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Undo (Ctrl+Z)">Undo</button>
             <button id="btn_redo" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Redo (Ctrl+Shift+Z)">Redo</button>
             <button id="btn_reset" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled>Reset</button>

@@ -37,6 +37,28 @@
     width: 64px;
 }
 
+/* ── Accordion ─────────────────────────────────────────────── */
+
+.accordion summary {
+    list-style: none;
+}
+
+.accordion summary::-webkit-details-marker {
+    display: none;
+}
+
+.accordion summary::before {
+    content: "▶";
+    display: inline-block;
+    margin-right: 6px;
+    font-size: 0.7em;
+    transition: transform 0.15s ease;
+}
+
+.accordion[open] summary::before {
+    transform: rotate(90deg);
+}
+
 .btn-save:hover {
     filter: brightness(1.15);
 }

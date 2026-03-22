@@ -323,7 +323,11 @@ export function init(container) {
         applyInverse(action);
         redoStack.push(action);
         updateUndoRedoButtons();
-        markDirty();
+        if (undoStack.length === 0) {
+            clearDirty();
+        } else {
+            markDirty();
+        }
     }
 
     function performRedo() {
@@ -338,6 +342,7 @@ export function init(container) {
     function updateUndoRedoButtons() {
         dom_btn_undo.disabled = undoStack.length === 0;
         dom_btn_redo.disabled = redoStack.length === 0;
+        dom_btn_reset.disabled = undoStack.length === 0 && redoStack.length === 0;
     }
 
     function deletePoint(idx) {
