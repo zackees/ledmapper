@@ -50,15 +50,10 @@ export function init(container) {
     const dom_btn_redo = container.querySelector("#btn_redo");
     const dom_bg_accordion = container.querySelector("#bg_image_accordion");
     const dom_btn_upload_image = container.querySelector("#btn_upload_image");
-    const dom_rng_image_opacity = container.querySelector("#rng_image_opacity");
     const dom_txt_image_opacity = container.querySelector("#txt_image_opacity");
-    const dom_rng_image_scale = container.querySelector("#rng_image_scale");
     const dom_txt_image_scale = container.querySelector("#txt_image_scale");
-    const dom_rng_image_rotate = container.querySelector("#rng_image_rotate");
     const dom_txt_image_rotate = container.querySelector("#txt_image_rotate");
-    const dom_rng_image_tx = container.querySelector("#rng_image_tx");
     const dom_txt_image_tx = container.querySelector("#txt_image_tx");
-    const dom_rng_image_ty = container.querySelector("#rng_image_ty");
     const dom_txt_image_ty = container.querySelector("#txt_image_ty");
     const dom_btn_remove_image = container.querySelector("#btn_remove_image");
 
@@ -286,6 +281,13 @@ export function init(container) {
     let gizmoHover = null;     // null | handle id string
     let gizmoDragStart = null; // snapshot of transform values at drag start
     let shiftHeld = false;     // for rotation snapping
+
+    // ── Image gizmo state ─────────────────────────────────────────────
+    let bgImageFitW = 0, bgImageFitH = 0;
+    let bgImageBBox = null;
+    let bgGizmoActive = null;
+    let bgGizmoHover = null;
+    let bgGizmoDragStart = null;
 
     // ── Transform committed values (for undo tracking) ─────────────────
     const committedTransform = { scale: 1, scaleX: 1, scaleY: 1, rotate: 0, translateX: 0, translateY: 0 };
@@ -701,9 +703,8 @@ export function init(container) {
     // ── Background image ───────────────────────────────────────────────
 
     let bgImageObjectURL = null;
-    const bgImageControls = [dom_rng_image_opacity, dom_rng_image_scale, dom_txt_image_scale,
-        dom_rng_image_rotate, dom_txt_image_rotate,
-        dom_rng_image_tx, dom_txt_image_tx, dom_rng_image_ty, dom_txt_image_ty,
+    const bgImageControls = [dom_txt_image_opacity, dom_txt_image_scale,
+        dom_txt_image_rotate, dom_txt_image_tx, dom_txt_image_ty,
         dom_btn_remove_image];
 
     function setBgControlsEnabled(enabled) {
@@ -711,15 +712,10 @@ export function init(container) {
     }
 
     function resetBgControls() {
-        dom_rng_image_opacity.value = 50;
-        dom_txt_image_opacity.textContent = '50%';
-        dom_rng_image_scale.value = 100;
+        dom_txt_image_opacity.value = 50;
         dom_txt_image_scale.value = '1.00';
-        dom_rng_image_rotate.value = 0;
         dom_txt_image_rotate.value = '0.00';
-        dom_rng_image_tx.value = 0;
         dom_txt_image_tx.value = '0';
-        dom_rng_image_ty.value = 0;
         dom_txt_image_ty.value = '0';
     }
 
@@ -751,6 +747,12 @@ export function init(container) {
             bgImageObjectURL = null;
         }
         setBgControlsEnabled(false);
+        bgImageFitW = 0;
+        bgImageFitH = 0;
+        bgImageBBox = null;
+        bgGizmoActive = null;
+        bgGizmoHover = null;
+        bgGizmoDragStart = null;
     }
 
     function removeBackgroundImage() {
@@ -784,11 +786,14 @@ export function init(container) {
                 fitW = canvasH * aspect;
             }
 
+            bgImageFitW = fitW;
+            bgImageFitH = fitH;
+
             const geometry = new PlaneGeometry(fitW, fitH);
             const material = new MeshBasicMaterial({
                 map: bgImageTexture,
                 transparent: true,
-                opacity: parseFloat(dom_rng_image_opacity.value) / 100,
+                opacity: (parseFloat(dom_txt_image_opacity.value) || 50) / 100,
                 depthWrite: false,
                 depthTest: false,
                 side: DoubleSide,
@@ -811,75 +816,46 @@ export function init(container) {
         if (file) loadBackgroundImage(file);
     }, { signal });
 
-    dom_rng_image_opacity.addEventListener('input', () => {
-        const val = parseFloat(dom_rng_image_opacity.value);
-        dom_txt_image_opacity.textContent = Math.round(val) + '%';
+    dom_txt_image_opacity.addEventListener('input', () => {
+        const val = Math.max(0, Math.min(100, parseFloat(dom_txt_image_opacity.value) || 50));
         if (bgImageMesh) { bgImageMesh.material.opacity = val / 100; setNeedsRender(); }
     }, { signal });
-
-    // Scale: slider (10–500) ↔ text (0.10–5.00)
-    dom_rng_image_scale.addEventListener('input', () => {
-        dom_txt_image_scale.value = (parseInt(dom_rng_image_scale.value) / 100).toFixed(2);
-        applyBgImageTransform();
+    dom_txt_image_opacity.addEventListener('change', () => {
+        dom_txt_image_opacity.value = Math.max(0, Math.min(100, Math.round(parseFloat(dom_txt_image_opacity.value) || 50)));
+        if (bgImageMesh) { bgImageMesh.material.opacity = parseFloat(dom_txt_image_opacity.value) / 100; setNeedsRender(); }
     }, { signal });
+
     dom_txt_image_scale.addEventListener('input', () => {
-        const v = Math.max(0.1, Math.min(5, parseFloat(dom_txt_image_scale.value) || 1));
-        dom_rng_image_scale.value = Math.round(v * 100);
         applyBgImageTransform();
     }, { signal });
     dom_txt_image_scale.addEventListener('change', () => {
         const v = Math.max(0.1, Math.min(5, parseFloat(dom_txt_image_scale.value) || 1));
         dom_txt_image_scale.value = v.toFixed(2);
-        dom_rng_image_scale.value = Math.round(v * 100);
         applyBgImageTransform();
     }, { signal });
 
-    // Rotate: slider (-18000–18000) ↔ text (-180.00–180.00°)
-    dom_rng_image_rotate.addEventListener('input', () => {
-        dom_txt_image_rotate.value = (parseInt(dom_rng_image_rotate.value) / 100).toFixed(2);
-        applyBgImageTransform();
-    }, { signal });
     dom_txt_image_rotate.addEventListener('input', () => {
-        const v = Math.max(-180, Math.min(180, parseFloat(dom_txt_image_rotate.value) || 0));
-        dom_rng_image_rotate.value = Math.round(v * 100);
         applyBgImageTransform();
     }, { signal });
     dom_txt_image_rotate.addEventListener('change', () => {
         const v = Math.max(-180, Math.min(180, parseFloat(dom_txt_image_rotate.value) || 0));
         dom_txt_image_rotate.value = v.toFixed(2);
-        dom_rng_image_rotate.value = Math.round(v * 100);
         applyBgImageTransform();
     }, { signal });
 
-    // Translate X: slider ↔ text
-    dom_rng_image_tx.addEventListener('input', () => {
-        dom_txt_image_tx.value = dom_rng_image_tx.value;
-        applyBgImageTransform();
-    }, { signal });
     dom_txt_image_tx.addEventListener('input', () => {
-        dom_rng_image_tx.value = Math.max(-1000, Math.min(1000, parseInt(dom_txt_image_tx.value) || 0));
         applyBgImageTransform();
     }, { signal });
     dom_txt_image_tx.addEventListener('change', () => {
-        const v = parseInt(dom_txt_image_tx.value) || 0;
-        dom_txt_image_tx.value = v;
-        dom_rng_image_tx.value = Math.max(-1000, Math.min(1000, v));
+        dom_txt_image_tx.value = parseInt(dom_txt_image_tx.value) || 0;
         applyBgImageTransform();
     }, { signal });
 
-    // Translate Y: slider ↔ text
-    dom_rng_image_ty.addEventListener('input', () => {
-        dom_txt_image_ty.value = dom_rng_image_ty.value;
-        applyBgImageTransform();
-    }, { signal });
     dom_txt_image_ty.addEventListener('input', () => {
-        dom_rng_image_ty.value = Math.max(-1000, Math.min(1000, parseInt(dom_txt_image_ty.value) || 0));
         applyBgImageTransform();
     }, { signal });
     dom_txt_image_ty.addEventListener('change', () => {
-        const v = parseInt(dom_txt_image_ty.value) || 0;
-        dom_txt_image_ty.value = v;
-        dom_rng_image_ty.value = Math.max(-1000, Math.min(1000, v));
+        dom_txt_image_ty.value = parseInt(dom_txt_image_ty.value) || 0;
         applyBgImageTransform();
     }, { signal });
 
@@ -903,7 +879,24 @@ export function init(container) {
         if (overlayAlpha < target) overlayAlpha = Math.min(target, overlayAlpha + speed);
         else if (overlayAlpha > target) overlayAlpha = Math.max(target, overlayAlpha - speed);
 
-        if (lastTransformedPts.length === 0) { ptsBBox = null; return; }
+        // Compute background image bounding box
+        if (bgImageMesh && bgImageFitW > 0) {
+            const s = parseFloat(dom_txt_image_scale.value) || 1;
+            const deg = parseFloat(dom_txt_image_rotate.value) || 0;
+            const rad = deg * Math.PI / 180;
+            const bgCos = Math.cos(rad);
+            const bgSin = Math.sin(rad);
+            const imgTx = parseFloat(dom_txt_image_tx.value) || 0;
+            const imgTy = parseFloat(dom_txt_image_ty.value) || 0;
+            const [bgCx, bgCy] = toCanvasCoords(imgTx, imgTy);
+            const bgHw = bgImageFitW / 2 * s * camZoom;
+            const bgHh = bgImageFitH / 2 * s * camZoom;
+            bgImageBBox = { cx: bgCx, cy: bgCy, hw: bgHw, hh: bgHh, cos: bgCos, sin: bgSin };
+        } else {
+            bgImageBBox = null;
+        }
+
+        if (lastTransformedPts.length === 0) { ptsBBox = null; drawBgGizmoHandles(); return; }
 
         const pts = lastTransformedPts.map(([x, y]) => toCanvasCoords(x, y));
 
@@ -1031,6 +1024,8 @@ export function init(container) {
             overlayCtx.arc(sx, sy, 14, 0, Math.PI * 2);
             overlayCtx.stroke();
         }
+
+        drawBgGizmoHandles();
     }
 
     function fillCircle(x, y, diameter, color) {
@@ -1054,14 +1049,14 @@ export function init(container) {
     // ── Gizmo: geometry, hit-testing, drawing ─────────────────────────
 
     // Rotate a local-space point (relative to bbox center) into canvas space
-    function obbToCanvas(lx, ly) {
-        const { cx, cy, cos, sin } = ptsBBox;
+    function obbToCanvas(bbox, lx, ly) {
+        const { cx, cy, cos, sin } = bbox;
         return { x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos };
     }
 
-    function computeGizmoHandles() {
-        if (!ptsBBox) return null;
-        let { hw, hh } = ptsBBox;
+    function computeGizmoHandles(bbox) {
+        if (!bbox) return null;
+        let { hw, hh } = bbox;
         // Enforce minimum 60px bbox so handles don't overlap on tiny screenmaps
         const minDim = 30; // half of 60
         if (hw < minDim) hw = minDim;
@@ -1071,34 +1066,34 @@ export function init(container) {
         return {
             hw, hh,
             corners: {
-                tl: obbToCanvas(-hw, -hh),
-                tr: obbToCanvas(hw, -hh),
-                bl: obbToCanvas(-hw, hh),
-                br: obbToCanvas(hw, hh),
+                tl: obbToCanvas(bbox, -hw, -hh),
+                tr: obbToCanvas(bbox, hw, -hh),
+                bl: obbToCanvas(bbox, -hw, hh),
+                br: obbToCanvas(bbox, hw, hh),
             },
             edges: {
-                top:    obbToCanvas(0, -hh),
-                bottom: obbToCanvas(0, hh),
-                left:   obbToCanvas(-hw, 0),
-                right:  obbToCanvas(hw, 0),
+                top:    obbToCanvas(bbox, 0, -hh),
+                bottom: obbToCanvas(bbox, 0, hh),
+                left:   obbToCanvas(bbox, -hw, 0),
+                right:  obbToCanvas(bbox, hw, 0),
             },
-            rotate: obbToCanvas(0, -hh - rotLineLen),
-            center: { x: ptsBBox.cx, y: ptsBBox.cy },
+            rotate: obbToCanvas(bbox, 0, -hh - rotLineLen),
+            center: { x: bbox.cx, y: bbox.cy },
         };
     }
 
     // Transform canvas coords into OBB local space (relative to bbox center, unrotated)
-    function canvasToObbLocal(canvasX, canvasY) {
-        if (!ptsBBox) return [0, 0];
-        const dx = canvasX - ptsBBox.cx;
-        const dy = canvasY - ptsBBox.cy;
+    function canvasToObbLocal(bbox, canvasX, canvasY) {
+        if (!bbox) return [0, 0];
+        const dx = canvasX - bbox.cx;
+        const dy = canvasY - bbox.cy;
         // Inverse rotation
-        return [dx * ptsBBox.cos + dy * ptsBBox.sin,
-               -dx * ptsBBox.sin + dy * ptsBBox.cos];
+        return [dx * bbox.cos + dy * bbox.sin,
+               -dx * bbox.sin + dy * bbox.cos];
     }
 
     function hitTestGizmo(canvasX, canvasY) {
-        const handles = computeGizmoHandles();
+        const handles = computeGizmoHandles(ptsBBox);
         if (!handles) return null;
         const threshold = 14;
 
@@ -1117,7 +1112,7 @@ export function init(container) {
         }
 
         // Inside oriented bounding box → translate (only if not on an LED)
-        const [lx, ly] = canvasToObbLocal(canvasX, canvasY);
+        const [lx, ly] = canvasToObbLocal(ptsBBox, canvasX, canvasY);
         if (Math.abs(lx) <= handles.hw && Math.abs(ly) <= handles.hh) {
             if (hitTestLED(canvasX, canvasY) < 0) return 'translate';
         }
@@ -1137,7 +1132,7 @@ export function init(container) {
     }
 
     function drawGizmoHandles() {
-        const handles = computeGizmoHandles();
+        const handles = computeGizmoHandles(ptsBBox);
         if (!handles) return;
 
         // Hide handles if bbox is too small on screen (very zoomed out)
@@ -1244,6 +1239,190 @@ export function init(container) {
         return bestIdx;
     }
 
+    // ── Background image gizmo ────────────────────────────────────────
+
+    function hitTestBgGizmo(canvasX, canvasY) {
+        if (!bgImageBBox) return null;
+        const handles = computeGizmoHandles(bgImageBBox);
+        if (!handles) return null;
+        const threshold = 14;
+
+        const rh = handles.rotate;
+        if (Math.abs(canvasX - rh.x) < threshold && Math.abs(canvasY - rh.y) < threshold) return 'rotate';
+
+        for (const [key, h] of Object.entries(handles.corners)) {
+            if (Math.abs(canvasX - h.x) < threshold && Math.abs(canvasY - h.y) < threshold) return 'corner-' + key;
+        }
+
+        for (const [key, h] of Object.entries(handles.edges)) {
+            if (Math.abs(canvasX - h.x) < threshold && Math.abs(canvasY - h.y) < threshold) return 'edge-' + key;
+        }
+
+        const [lx, ly] = canvasToObbLocal(bgImageBBox, canvasX, canvasY);
+        if (Math.abs(lx) <= handles.hw && Math.abs(ly) <= handles.hh) {
+            return 'translate';
+        }
+
+        return null;
+    }
+
+    function drawBgGizmoHandles() {
+        if (!bgImageBBox || !overlayCtx) return;
+        const handles = computeGizmoHandles(bgImageBBox);
+        if (!handles) return;
+        if (handles.hw < 8 || handles.hh < 8) return;
+
+        const rotRad = Math.atan2(bgImageBBox.sin, bgImageBBox.cos);
+
+        overlayCtx.save();
+
+        // Draw oriented bounding box outline
+        const isTranslating = bgGizmoHover === 'translate' || bgGizmoActive === 'translate';
+        if (isTranslating) {
+            overlayCtx.globalAlpha = bgGizmoActive === 'translate' ? 0.8 : 0.5;
+            overlayCtx.strokeStyle = '#f59e0b';
+        } else {
+            overlayCtx.globalAlpha = 0.3;
+            overlayCtx.strokeStyle = '#888';
+        }
+        overlayCtx.lineWidth = 1;
+        overlayCtx.setLineDash([6, 4]);
+        overlayCtx.save();
+        overlayCtx.translate(bgImageBBox.cx, bgImageBBox.cy);
+        overlayCtx.rotate(rotRad);
+        overlayCtx.strokeRect(-handles.hw, -handles.hh, handles.hw * 2, handles.hh * 2);
+        overlayCtx.restore();
+        overlayCtx.setLineDash([]);
+
+        overlayCtx.globalAlpha = 0.7;
+
+        // Rotation connecting line
+        const topCenter = handles.edges.top;
+        overlayCtx.strokeStyle = '#f59e0b';
+        overlayCtx.lineWidth = 1;
+        overlayCtx.setLineDash([4, 3]);
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(topCenter.x, topCenter.y);
+        overlayCtx.lineTo(handles.rotate.x, handles.rotate.y);
+        overlayCtx.stroke();
+        overlayCtx.setLineDash([]);
+
+        // Rotation handle
+        const isRotHover = bgGizmoHover === 'rotate' || bgGizmoActive === 'rotate';
+        const rotColor = isRotHover ? '#fbbf24' : '#f59e0b';
+        const rx = handles.rotate.x, ry = handles.rotate.y;
+        const arcR = isRotHover ? 9 : 7;
+        overlayCtx.strokeStyle = rotColor;
+        overlayCtx.lineWidth = 2;
+        overlayCtx.beginPath();
+        overlayCtx.arc(rx, ry, arcR, -Math.PI * 1.25, Math.PI * 0.05);
+        overlayCtx.stroke();
+
+        const ax = rx + arcR * Math.cos(Math.PI * 0.05);
+        const ay = ry + arcR * Math.sin(Math.PI * 0.05);
+        const tangent = Math.PI * 0.05 + Math.PI / 2;
+        overlayCtx.fillStyle = rotColor;
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(ax, ay);
+        overlayCtx.lineTo(ax - 5 * Math.cos(tangent - 0.55), ay - 5 * Math.sin(tangent - 0.55));
+        overlayCtx.lineTo(ax - 5 * Math.cos(tangent + 0.55), ay - 5 * Math.sin(tangent + 0.55));
+        overlayCtx.closePath();
+        overlayCtx.fill();
+
+        // Corner and edge handles
+        function drawHandle(h, w, ht, color) {
+            overlayCtx.save();
+            overlayCtx.translate(h.x, h.y);
+            overlayCtx.rotate(rotRad);
+            overlayCtx.fillStyle = color;
+            overlayCtx.fillRect(-w / 2, -ht / 2, w, ht);
+            overlayCtx.strokeStyle = '#fff';
+            overlayCtx.lineWidth = 1;
+            overlayCtx.strokeRect(-w / 2, -ht / 2, w, ht);
+            overlayCtx.restore();
+        }
+
+        for (const [key, h] of Object.entries(handles.corners)) {
+            const id = 'corner-' + key;
+            const active = bgGizmoHover === id || bgGizmoActive === id;
+            const size = active ? 12 : 10;
+            drawHandle(h, size, size, active ? '#fbbf24' : '#f59e0b');
+        }
+
+        for (const [key, h] of Object.entries(handles.edges)) {
+            const id = 'edge-' + key;
+            const active = bgGizmoHover === id || bgGizmoActive === id;
+            const isHoriz = (key === 'top' || key === 'bottom');
+            const w = isHoriz ? (active ? 18 : 16) : (active ? 10 : 8);
+            const ht = isHoriz ? (active ? 10 : 8) : (active ? 18 : 16);
+            drawHandle(h, w, ht, active ? '#fbbf24' : '#f59e0b');
+        }
+
+        overlayCtx.restore();
+    }
+
+    function handleBgGizmoDrag(cx, cy) {
+        const dx = cx - bgGizmoDragStart.canvasX;
+        const dy = cy - bgGizmoDragStart.canvasY;
+
+        if (bgGizmoActive === 'translate') {
+            const wdx = dx / camZoom;
+            const wdy = dy / camZoom;
+            const newTx = Math.round(bgGizmoDragStart.tx + wdx);
+            const newTy = Math.round(bgGizmoDragStart.ty + wdy);
+            dom_txt_image_tx.value = newTx;
+            dom_txt_image_ty.value = newTy;
+            applyBgImageTransform();
+            return;
+        }
+
+        if (bgGizmoActive === 'rotate') {
+            const center = bgGizmoDragStart.bboxCenter;
+            const startAngle = Math.atan2(
+                bgGizmoDragStart.canvasY - center.y,
+                bgGizmoDragStart.canvasX - center.x
+            );
+            const currentAngle = Math.atan2(cy - center.y, cx - center.x);
+            const deltaDeg = (currentAngle - startAngle) * 180 / Math.PI;
+            let newRotate = bgGizmoDragStart.rotate + deltaDeg;
+            if (shiftHeld) newRotate = Math.round(newRotate / 15) * 15;
+            newRotate = Math.max(-180, Math.min(180, newRotate));
+            dom_txt_image_rotate.value = newRotate.toFixed(2);
+            applyBgImageTransform();
+            return;
+        }
+
+        // Corner or edge: uniform scale (image has single scale)
+        if (bgGizmoActive.startsWith('corner-') || bgGizmoActive.startsWith('edge-')) {
+            const center = bgGizmoDragStart.bboxCenter;
+            const startDist = Math.hypot(
+                bgGizmoDragStart.canvasX - center.x,
+                bgGizmoDragStart.canvasY - center.y
+            );
+            const currentDist = Math.hypot(cx - center.x, cy - center.y);
+            if (startDist > 1) {
+                const ratio = currentDist / startDist;
+                const newScale = Math.max(0.1, Math.min(5, bgGizmoDragStart.scale * ratio));
+                dom_txt_image_scale.value = newScale.toFixed(2);
+                applyBgImageTransform();
+            }
+            return;
+        }
+    }
+
+    function startBgGizmoDrag(hit, cx, cy) {
+        bgGizmoActive = hit;
+        const handles = computeGizmoHandles(bgImageBBox);
+        bgGizmoDragStart = {
+            canvasX: cx, canvasY: cy,
+            scale: parseFloat(dom_txt_image_scale.value) || 1,
+            rotate: parseFloat(dom_txt_image_rotate.value) || 0,
+            tx: parseFloat(dom_txt_image_tx.value) || 0,
+            ty: parseFloat(dom_txt_image_ty.value) || 0,
+            bboxCenter: handles ? handles.center : { x: bgImageBBox.cx, y: bgImageBBox.cy },
+        };
+    }
+
     // ── Gizmo drag logic ─────────────────────────────────────────────────
 
     function handleGizmoDrag(cx, cy) {
@@ -1292,8 +1471,8 @@ export function init(container) {
         if (gizmoActive.startsWith('edge-')) {
             const edge = gizmoActive.split('-')[1];
             // Project mouse positions onto OBB local axes for signed distance
-            const [startLx, startLy] = canvasToObbLocal(gizmoDragStart.canvasX, gizmoDragStart.canvasY);
-            const [curLx, curLy] = canvasToObbLocal(cx, cy);
+            const [startLx, startLy] = canvasToObbLocal(ptsBBox, gizmoDragStart.canvasX, gizmoDragStart.canvasY);
+            const [curLx, curLy] = canvasToObbLocal(ptsBBox, cx, cy);
 
             if (edge === 'left' || edge === 'right') {
                 if (Math.abs(startLx) > 1) {
@@ -1349,10 +1528,10 @@ export function init(container) {
     }
 
     function onMouseDown(e) {
-        if (screenmap_pts.length === 0) return;
-
         // Dismiss context menu on any click
         hideContextMenu();
+
+        if (screenmap_pts.length === 0 && !bgImageMesh) return;
 
         if (e.button === 2) {
             // Right-click: start potential zoom drag
@@ -1371,7 +1550,7 @@ export function init(container) {
         const gizmoHit = hitTestGizmo(cx, cy);
         if (gizmoHit && gizmoHit !== 'translate') {
             gizmoActive = gizmoHit;
-            const handles = computeGizmoHandles();
+            const handles = computeGizmoHandles(ptsBBox);
             gizmoDragStart = {
                 canvasX: cx, canvasY: cy,
                 scale: parseFloat(dom_txt_scale.value) || 1,
@@ -1417,7 +1596,22 @@ export function init(container) {
             return;
         }
 
-        // Priority 4: Pan camera (outside bbox)
+        // Priority 4: Background image gizmo (mouse is outside screenmap bbox)
+        if (bgImageMesh) {
+            const bgHit = hitTestBgGizmo(cx, cy);
+            if (bgHit && bgHit !== 'translate') {
+                startBgGizmoDrag(bgHit, cx, cy);
+                overlayCanvas.style.cursor = bgHit === 'rotate' ? 'grabbing' : getCursorForGizmo(bgHit);
+                return;
+            }
+            if (bgHit === 'translate') {
+                startBgGizmoDrag('translate', cx, cy);
+                overlayCanvas.style.cursor = 'move';
+                return;
+            }
+        }
+
+        // Priority 5: Pan camera (outside bbox)
         if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
         isPanning = true;
         panStartX = cx;
@@ -1428,7 +1622,7 @@ export function init(container) {
     }
 
     function onMouseMove(e) {
-        if (screenmap_pts.length === 0) return;
+        if (screenmap_pts.length === 0 && !bgImageMesh) return;
         const [cx, cy] = getCanvasCoords(e);
 
         // Track shift key for rotation snapping
@@ -1449,6 +1643,12 @@ export function init(container) {
         // Gizmo drag in progress
         if (gizmoActive) {
             handleGizmoDrag(cx, cy);
+            return;
+        }
+
+        // Background image gizmo drag in progress
+        if (bgGizmoActive) {
+            handleBgGizmoDrag(cx, cy);
             return;
         }
 
@@ -1487,13 +1687,22 @@ export function init(container) {
         // Check if mouse is inside the points bounding box (controls rainbow fade)
         const wasHovering = isHovering;
         if (ptsBBox) {
-            const [lx, ly] = canvasToObbLocal(cx, cy);
+            const [lx, ly] = canvasToObbLocal(ptsBBox, cx, cy);
             const inObb = Math.abs(lx) <= ptsBBox.hw && Math.abs(ly) <= ptsBBox.hh;
             isHovering = inObb || !!gizmoHover;
         } else {
             isHovering = false;
         }
         if (isHovering !== wasHovering) setNeedsRender();
+
+        // Background image gizmo hover (only when not hovering screenmap gizmo)
+        const prevBgGizmoHover = bgGizmoHover;
+        if (!gizmoHover && bgImageMesh) {
+            bgGizmoHover = hitTestBgGizmo(cx, cy);
+        } else {
+            bgGizmoHover = null;
+        }
+        if (bgGizmoHover !== prevBgGizmoHover) setNeedsRender();
 
         // Gizmo handle hover takes cursor priority
         if (gizmoHover && gizmoHover !== 'translate') {
@@ -1520,6 +1729,14 @@ export function init(container) {
             overlayCanvas.style.cursor = 'move';
             tooltipLedIdx = -1;
             tooltip.style.opacity = '0';
+        } else if (bgGizmoHover && bgGizmoHover !== 'translate') {
+            overlayCanvas.style.cursor = getCursorForGizmo(bgGizmoHover);
+            tooltipLedIdx = -1;
+            tooltip.style.opacity = '0';
+        } else if (bgGizmoHover === 'translate') {
+            overlayCanvas.style.cursor = 'move';
+            tooltipLedIdx = -1;
+            tooltip.style.opacity = '0';
         } else {
             overlayCanvas.style.cursor = 'default';
             tooltipLedIdx = -1;
@@ -1539,6 +1756,13 @@ export function init(container) {
             commitGizmoDrag();
             gizmoActive = null;
             gizmoDragStart = null;
+            overlayCanvas.style.cursor = 'default';
+            return;
+        }
+
+        if (bgGizmoActive) {
+            bgGizmoActive = null;
+            bgGizmoDragStart = null;
             overlayCanvas.style.cursor = 'default';
             return;
         }
@@ -1576,6 +1800,11 @@ export function init(container) {
             gizmoDragStart = null;
         }
         gizmoHover = null;
+        if (bgGizmoActive) {
+            bgGizmoActive = null;
+            bgGizmoDragStart = null;
+        }
+        bgGizmoHover = null;
         if (isPanning) {
             isPanning = false;
         }
