@@ -4,6 +4,7 @@ import {
     OrthographicCamera,
     BufferGeometry,
     Float32BufferAttribute,
+    DynamicDrawUsage,
     LineSegments,
     LineBasicMaterial,
     Line,
@@ -80,15 +81,16 @@ export function init(container) {
         dom_btn_reset.disabled = true;
     }
 
-    // Wire all transform controls to mark dirty
+    // Wire all transform controls to mark dirty (save button + geometry rebuild)
+    function markDirtyAndGeometry() { markDirty(); setNeedsGeometryUpdate(); }
     for (const el of [dom_rng_scale, dom_txt_scale, dom_rng_scale_x, dom_txt_scale_x,
         dom_rng_scale_y, dom_txt_scale_y, dom_rng_rotate, dom_txt_rotate]) {
-        el.addEventListener('input', markDirty, { signal });
+        el.addEventListener('input', markDirtyAndGeometry, { signal });
     }
     for (const el of [dom_chk_flip_h, dom_chk_flip_v]) {
-        el.addEventListener('change', markDirty, { signal });
+        el.addEventListener('change', markDirtyAndGeometry, { signal });
     }
-    dom_txt_diameter.addEventListener('input', markDirty, { signal });
+    dom_txt_diameter.addEventListener('input', markDirtyAndGeometry, { signal });
 
     // ── Reset ───────────────────────────────────────────────────────────────
 
@@ -105,6 +107,7 @@ export function init(container) {
         committedTransform.scaleY = 1;
         committedTransform.rotate = 0;
         clearDirty();
+        setNeedsGeometryUpdate();
     }
 
     dom_btn_reset.addEventListener('click', resetTransforms, { signal });
@@ -260,6 +263,15 @@ export function init(container) {
     let overlayAlpha = 1; // 0..1 for rainbow fade (1 = visible by default)
     let ptsBBox = null;   // bounding box of points in canvas space {x1,y1,x2,y2}
 
+    // ── Dirty flags (skip work when nothing changed) ─────────────────────
+    let geometryDirty = true;  // transforms/points changed → rebuild buffers
+    let frameDirty = true;     // anything visual changed → redraw overlay + render
+    let lastBuiltPointCount = -1; // track point count for in-place vs full rebuild
+    let pointsColorAttr = null;   // cached ref to color attribute
+
+    function setNeedsGeometryUpdate() { geometryDirty = true; frameDirty = true; }
+    function setNeedsRender() { frameDirty = true; }
+
     // ── Editing state ─────────────────────────────────────────────────────
     let selectedIdx = -1;
     let isDragging = false;
@@ -345,6 +357,7 @@ export function init(container) {
         applyInverse(action);
         redoStack.push(action);
         updateUndoRedoButtons();
+        setNeedsGeometryUpdate();
         if (undoStack.length === 0) {
             clearDirty();
         } else {
@@ -358,6 +371,7 @@ export function init(container) {
         applyAction(action);
         undoStack.push(action);
         updateUndoRedoButtons();
+        setNeedsGeometryUpdate();
         markDirty();
     }
 
@@ -398,6 +412,8 @@ export function init(container) {
         redoStack.length = 0;
         updateUndoRedoButtons();
         hideContextMenu();
+        lastBuiltPointCount = -1; // force full rebuild on next load
+        setNeedsGeometryUpdate();
     }
 
     function showContextMenu(clientX, clientY, idx) {
@@ -550,6 +566,7 @@ export function init(container) {
             e.preventDefault();
             const zoomFactor = Math.pow(2, -e.deltaY / 3000);
             camZoom = Math.max(0.1, Math.min(10, camZoom * zoomFactor));
+            setNeedsRender();
         }, { passive: false, signal });
 
         overlayCanvas.addEventListener('touchmove', (e) => {
@@ -709,6 +726,7 @@ export function init(container) {
         bgImageMesh.scale.set(s, -s, 1); // negative y for y-down camera
         bgImageMesh.rotation.z = deg * Math.PI / 180;
         bgImageMesh.position.set(tx, ty, 0);
+        setNeedsRender();
     }
 
     function clearBackgroundImage() {
@@ -734,6 +752,7 @@ export function init(container) {
         resetBgControls();
         dom_btn_upload_image.value = '';
         dom_bg_accordion.removeAttribute('open');
+        setNeedsRender();
     }
 
     function loadBackgroundImage(file) {
@@ -789,7 +808,7 @@ export function init(container) {
     dom_rng_image_opacity.addEventListener('input', () => {
         const val = parseFloat(dom_rng_image_opacity.value);
         dom_txt_image_opacity.textContent = Math.round(val) + '%';
-        if (bgImageMesh) bgImageMesh.material.opacity = val / 100;
+        if (bgImageMesh) { bgImageMesh.material.opacity = val / 100; setNeedsRender(); }
     }, { signal });
 
     // Scale: slider (10–500) ↔ text (0.10–5.00)
@@ -1012,6 +1031,7 @@ export function init(container) {
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
             selectedIdx = idx;
+            setNeedsGeometryUpdate();
             showContextMenu(e.clientX, e.clientY, idx);
         }
     }
@@ -1039,6 +1059,7 @@ export function init(container) {
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
             selectedIdx = idx;
+            setNeedsGeometryUpdate(); // color update for selection
             isDragging = true;
             dragStartCanvasX = cx;
             dragStartCanvasY = cy;
@@ -1047,7 +1068,7 @@ export function init(container) {
             overlayCanvas.style.cursor = 'grabbing';
         } else {
             // Left-click on empty space: deselect and start panning (view-only)
-            selectedIdx = -1;
+            if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
             isPanning = true;
             panStartX = cx;
             panStartY = cy;
@@ -1068,6 +1089,7 @@ export function init(container) {
             if (rightClickMoved) {
                 camZoom = Math.max(0.1, Math.min(10, zoomStartLevel * Math.pow(2, -dy / 200)));
                 overlayCanvas.style.cursor = 'ns-resize';
+                setNeedsRender();
             }
             return;
         }
@@ -1078,6 +1100,7 @@ export function init(container) {
             const dy = cy - panStartY;
             camPanX = panStartCamX + dx / camZoom;
             camPanY = panStartCamY + dy / camZoom;
+            setNeedsRender();
             return;
         }
 
@@ -1094,16 +1117,19 @@ export function init(container) {
                 dragStartRawPt[0] + sdx / fitScale,
                 dragStartRawPt[1] + sdy / fitScale,
             ];
+            setNeedsGeometryUpdate();
             return;
         }
 
         // Check if mouse is inside the points bounding box (controls rainbow fade)
+        const wasHovering = isHovering;
         if (ptsBBox) {
             isHovering = cx >= ptsBBox.x1 && cx <= ptsBBox.x2 &&
                          cy >= ptsBBox.y1 && cy <= ptsBBox.y2;
         } else {
             isHovering = false;
         }
+        if (isHovering !== wasHovering) setNeedsRender();
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
             overlayCanvas.style.cursor = 'grab';
@@ -1213,60 +1239,96 @@ export function init(container) {
         }
         // Escape: deselect
         if (e.key === 'Escape') {
-            selectedIdx = -1;
+            if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
         }
     }, { signal });
 
     function buildScreenmap(transformedPts) {
-        if (screenmapOutline) {
-            scene.remove(screenmapOutline);
-            screenmapOutline.geometry.dispose();
-            screenmapOutline.material.dispose();
+        const count = transformedPts.length;
+
+        if (count !== lastBuiltPointCount) {
+            // Point count changed — full rebuild required
+            if (screenmapOutline) {
+                scene.remove(screenmapOutline);
+                screenmapOutline.geometry.dispose();
+                screenmapOutline.material.dispose();
+            }
+            if (pointsMesh) {
+                scene.remove(pointsMesh);
+                pointsGeometry.dispose();
+                pointsMaterial.dispose();
+            }
+
+            const lineVerts = new Float32Array(count * 3);
+            for (let i = 0; i < count; i++) {
+                lineVerts[i * 3] = transformedPts[i][0];
+                lineVerts[i * 3 + 1] = transformedPts[i][1];
+                lineVerts[i * 3 + 2] = 0;
+            }
+            const lineGeom = new BufferGeometry();
+            const linePosAttr = new Float32BufferAttribute(lineVerts, 3);
+            linePosAttr.setUsage(DynamicDrawUsage);
+            lineGeom.setAttribute('position', linePosAttr);
+            screenmapOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3, transparent: true }));
+            screenmapOutline.renderOrder = 2;
+            scene.add(screenmapOutline);
+
+            const diameterCm = parseFloat(dom_txt_diameter.value) || 0.5;
+            const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
+            const pixelDiameter = Math.max(2, diameterCm * fitScale * scaleGlobal);
+
+            const result = buildPointsMesh({
+                points: transformedPts,
+                circleTexture,
+                diameter: pixelDiameter,
+                defaultColor: [244 / 255, 67 / 255, 54 / 255],
+            });
+            result.geometry.getAttribute('position').setUsage(DynamicDrawUsage);
+
+            pointsGeometry = result.geometry;
+            pointsMaterial = result.material;
+            pointsMesh = result.mesh;
+            pointsColorAttr = result.colorAttribute;
+            pointsMesh.renderOrder = 3;
+            scene.add(pointsMesh);
+
+            lastBuiltPointCount = count;
+        } else {
+            // Same point count — update buffers in place (no allocation)
+            const outlinePos = screenmapOutline.geometry.getAttribute('position');
+            const pointsPos = pointsGeometry.getAttribute('position');
+            for (let i = 0; i < count; i++) {
+                const x = transformedPts[i][0];
+                const y = transformedPts[i][1];
+                outlinePos.setXY(i, x, y);
+                pointsPos.setXY(i, x, y);
+            }
+            outlinePos.needsUpdate = true;
+            pointsPos.needsUpdate = true;
+
+            // Update point size
+            const diameterCm = parseFloat(dom_txt_diameter.value) || 0.5;
+            const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
+            pointsMaterial.size = Math.max(2, diameterCm * fitScale * scaleGlobal);
         }
-        if (pointsMesh) {
-            scene.remove(pointsMesh);
-            pointsGeometry.dispose();
-            pointsMaterial.dispose();
+
+        // Update colors (selection highlight, first/last LED markers)
+        if (pointsColorAttr) {
+            const colors = pointsColorAttr.array;
+            const r = 244 / 255, g = 67 / 255, b = 54 / 255;
+            for (let i = 0; i < count; i++) {
+                const ci = i * 3;
+                colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b;
+            }
+            // First LED green
+            colors[0] = 76 / 255; colors[1] = 175 / 255; colors[2] = 80 / 255;
+            // Selected LED cyan
+            if (selectedIdx > 0 && selectedIdx < count) {
+                const ci = selectedIdx * 3;
+                colors[ci] = 0; colors[ci + 1] = 1; colors[ci + 2] = 1;
+            }
+            pointsColorAttr.needsUpdate = true;
         }
-
-        const lineVerts = [];
-        transformedPts.forEach(([x, y]) => lineVerts.push(x, y, 0));
-        const lineGeom = new BufferGeometry();
-        lineGeom.setAttribute('position', new Float32BufferAttribute(lineVerts, 3));
-        screenmapOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3, transparent: true }));
-        screenmapOutline.renderOrder = 2;
-        scene.add(screenmapOutline);
-
-        const diameterCm = parseFloat(dom_txt_diameter.value) || 0.5;
-        const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
-        const pixelDiameter = Math.max(2, diameterCm * fitScale * scaleGlobal);
-
-        const result = buildPointsMesh({
-            points: transformedPts,
-            circleTexture,
-            diameter: pixelDiameter,
-            defaultColor: [244 / 255, 67 / 255, 54 / 255],
-        });
-
-        const colorArr = result.colorAttribute.array;
-        // First LED green
-        colorArr[0] = 76 / 255;
-        colorArr[1] = 175 / 255;
-        colorArr[2] = 80 / 255;
-        // Selected LED cyan
-        if (selectedIdx > 0 && selectedIdx < transformedPts.length) {
-            const ci = selectedIdx * 3;
-            colorArr[ci] = 0;
-            colorArr[ci + 1] = 1;
-            colorArr[ci + 2] = 1;
-        }
-        result.colorAttribute.needsUpdate = true;
-
-        pointsGeometry = result.geometry;
-        pointsMaterial = result.material;
-        pointsMesh = result.mesh;
-        pointsMesh.renderOrder = 3;
-        scene.add(pointsMesh);
     }
 
     function updateLabels(transformedPts) {
@@ -1319,30 +1381,41 @@ export function init(container) {
         const { width: curW, height: curH } = getCanvasSize();
         if (curW !== canvasW || curH !== canvasH) {
             handleResize();
+            geometryDirty = true;
+            frameDirty = true;
         }
 
-        const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
-        const flipH = dom_chk_flip_h.checked ? -1 : 1;
-        const flipV = dom_chk_flip_v.checked ? -1 : 1;
-        const scaleX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal * flipH;
-        const scaleY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal * flipV;
-        const rotateDeg = parseInt(dom_txt_rotate.value) || 0;
-        const rotateRad = rotateDeg * Math.PI / 180;
-        const cosR = Math.cos(rotateRad);
-        const sinR = Math.sin(rotateRad);
+        // Keep animating while overlayAlpha is mid-transition
+        const targetAlpha = isHovering ? 0 : 1;
+        if (Math.abs(overlayAlpha - targetAlpha) > 0.001) frameDirty = true;
+
+        // Nothing to do — skip all work this frame
+        if (!geometryDirty && !frameDirty) return;
 
         if (screenmap_pts.length > 0) {
-            const transformedPts = screenmap_pts.map(([x, y]) => {
-                const sx = x * scaleX;
-                const sy = y * scaleY;
-                return [
-                    sx * cosR - sy * sinR,
-                    sx * sinR + sy * cosR,
-                ];
-            });
-            lastTransformedPts = transformedPts;
-            buildScreenmap(transformedPts);
-            updateLabels(transformedPts);
+            if (geometryDirty) {
+                const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
+                const flipH = dom_chk_flip_h.checked ? -1 : 1;
+                const flipV = dom_chk_flip_v.checked ? -1 : 1;
+                const scaleX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal * flipH;
+                const scaleY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal * flipV;
+                const rotateDeg = parseInt(dom_txt_rotate.value) || 0;
+                const rotateRad = rotateDeg * Math.PI / 180;
+                const cosR = Math.cos(rotateRad);
+                const sinR = Math.sin(rotateRad);
+
+                const transformedPts = screenmap_pts.map(([x, y]) => {
+                    const sx = x * scaleX;
+                    const sy = y * scaleY;
+                    return [
+                        sx * cosR - sy * sinR,
+                        sx * sinR + sy * cosR,
+                    ];
+                });
+                lastTransformedPts = transformedPts;
+                buildScreenmap(transformedPts);
+                updateLabels(transformedPts);
+            }
             drawOverlay();
         } else {
             if (screenmapOutline) {
@@ -1356,6 +1429,7 @@ export function init(container) {
                 pointsGeometry.dispose();
                 pointsMaterial.dispose();
                 pointsMesh = null;
+                lastBuiltPointCount = -1;
             }
             updateLabels([]);
         }
@@ -1367,6 +1441,9 @@ export function init(container) {
         camera.updateProjectionMatrix();
 
         renderer.render(scene, camera);
+
+        geometryDirty = false;
+        frameDirty = false;
     }
 
     // --- Initialize ---
