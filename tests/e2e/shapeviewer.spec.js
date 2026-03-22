@@ -14,13 +14,9 @@ test.describe('Screenmap Editor', () => {
 
     test('has scale and rotate controls', async ({ page }) => {
         await page.goto('/shapeeditor/');
-        await expect(page.locator('#rng_scale')).toBeVisible();
         await expect(page.locator('#txt_scale')).toBeVisible();
-        await expect(page.locator('#rng_scale_x')).toBeVisible();
         await expect(page.locator('#txt_scale_x')).toBeVisible();
-        await expect(page.locator('#rng_scale_y')).toBeVisible();
         await expect(page.locator('#txt_scale_y')).toBeVisible();
-        await expect(page.locator('#rng_rotate')).toBeVisible();
         await expect(page.locator('#txt_rotate')).toBeVisible();
     });
 

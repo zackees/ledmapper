@@ -37,16 +37,12 @@ export function init(container) {
 
     const dom_btn_upload_screenmap = container.querySelector("#btn_upload_screenmap");
     const dom_sel_preset = container.querySelector("#sel_preset");
-    const dom_rng_scale = container.querySelector("#rng_scale");
     const dom_txt_scale = container.querySelector("#txt_scale");
-    const dom_rng_scale_x = container.querySelector("#rng_scale_x");
     const dom_txt_scale_x = container.querySelector("#txt_scale_x");
-    const dom_rng_scale_y = container.querySelector("#rng_scale_y");
     const dom_txt_scale_y = container.querySelector("#txt_scale_y");
-    const dom_rng_rotate = container.querySelector("#rng_rotate");
     const dom_txt_rotate = container.querySelector("#txt_rotate");
-    const dom_chk_flip_h = container.querySelector("#chk_flip_h");
-    const dom_chk_flip_v = container.querySelector("#chk_flip_v");
+    const dom_txt_translate_x = container.querySelector("#txt_translate_x");
+    const dom_txt_translate_y = container.querySelector("#txt_translate_y");
     const dom_txt_diameter = container.querySelector("#txt_diameter");
     const dom_btn_save = container.querySelector("#btn_save_as");
     const dom_btn_reset = container.querySelector("#btn_reset");
@@ -83,29 +79,26 @@ export function init(container) {
 
     // Wire all transform controls to mark dirty (save button + geometry rebuild)
     function markDirtyAndGeometry() { markDirty(); setNeedsGeometryUpdate(); }
-    for (const el of [dom_rng_scale, dom_txt_scale, dom_rng_scale_x, dom_txt_scale_x,
-        dom_rng_scale_y, dom_txt_scale_y, dom_rng_rotate, dom_txt_rotate]) {
+    for (const el of [dom_txt_scale, dom_txt_scale_x, dom_txt_scale_y,
+        dom_txt_rotate, dom_txt_translate_x, dom_txt_translate_y, dom_txt_diameter]) {
         el.addEventListener('input', markDirtyAndGeometry, { signal });
     }
-    for (const el of [dom_chk_flip_h, dom_chk_flip_v]) {
-        el.addEventListener('change', markDirtyAndGeometry, { signal });
-    }
-    dom_txt_diameter.addEventListener('input', markDirtyAndGeometry, { signal });
 
     // ── Reset ───────────────────────────────────────────────────────────────
 
     function resetTransforms() {
-        writeScale(dom_rng_scale, dom_txt_scale, 1);
-        writeScale(dom_rng_scale_x, dom_txt_scale_x, 1);
-        writeScale(dom_rng_scale_y, dom_txt_scale_y, 1);
+        writeScale(dom_txt_scale, 1);
+        writeScale(dom_txt_scale_x, 1);
+        writeScale(dom_txt_scale_y, 1);
         setRotate(0);
-        dom_chk_flip_h.checked = false;
-        dom_chk_flip_v.checked = false;
+        setTranslate(0, 0);
         dom_txt_diameter.value = origDiameter;
         committedTransform.scale = 1;
         committedTransform.scaleX = 1;
         committedTransform.scaleY = 1;
         committedTransform.rotate = 0;
+        committedTransform.translateX = 0;
+        committedTransform.translateY = 0;
         clearDirty();
         setNeedsGeometryUpdate();
     }
@@ -118,22 +111,23 @@ export function init(container) {
         if (rawPts.length === 0) return;
 
         const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
-        const flipH = dom_chk_flip_h.checked ? -1 : 1;
-        const flipV = dom_chk_flip_v.checked ? -1 : 1;
-        const sX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal * flipH;
-        const sY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal * flipV;
+        const sX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal;
+        const sY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal;
         const rotateDeg = parseInt(dom_txt_rotate.value) || 0;
         const rotateRad = rotateDeg * Math.PI / 180;
         const cosR = Math.cos(rotateRad);
         const sinR = Math.sin(rotateRad);
+        // Translation is in world-pixel space; convert to cm for export
+        const txCm = (parseFloat(dom_txt_translate_x.value) || 0) / fitScale;
+        const tyCm = (parseFloat(dom_txt_translate_y.value) || 0) / fitScale;
 
         const xArr = [];
         const yArr = [];
         rawPts.forEach(([x, y]) => {
             const rx = x * sX;
             const ry = y * sY;
-            xArr.push(+(rx * cosR - ry * sinR).toFixed(4));
-            yArr.push(+(rx * sinR + ry * cosR).toFixed(4));
+            xArr.push(+(rx * cosR - ry * sinR + txCm).toFixed(4));
+            yArr.push(+(rx * sinR + ry * cosR + tyCm).toFixed(4));
         });
 
         const diameter = parseFloat(dom_txt_diameter.value) || 0.25;
@@ -152,42 +146,22 @@ export function init(container) {
 
     const SCALE_MIN = 0.1;
     const SCALE_MAX = 10;
-    const SLIDER_MAX = 1000;
-
-    function sliderToScale(sliderVal) {
-        const t = sliderVal / SLIDER_MAX;
-        return SCALE_MIN + t * t * (SCALE_MAX - SCALE_MIN);
-    }
-
-    function scaleToSlider(scale) {
-        const t = Math.sqrt((scale - SCALE_MIN) / (SCALE_MAX - SCALE_MIN));
-        return Math.round(t * SLIDER_MAX);
-    }
 
     function clampScale(v) {
         v = parseFloat(v);
-        return isNaN(v) ? 1 : Math.max(SCALE_MIN, Math.min(SCALE_MAX, v));
+        if (isNaN(v)) return 1;
+        const abs = Math.abs(v);
+        const sign = v < 0 ? -1 : 1;
+        return sign * Math.max(SCALE_MIN, Math.min(SCALE_MAX, abs));
     }
 
-    // ── Scale helpers ────────────────────────────────────────────────────
-
-    function writeScale(rng, txt, val) {
-        val = clampScale(val);
-        rng.value = scaleToSlider(val);
-        txt.value = val.toFixed(2);
+    function writeScale(txt, val) {
+        txt.value = clampScale(val).toFixed(2);
     }
 
-    function wireScale(rng, txt) {
-        rng.addEventListener('input', () => {
-            txt.value = sliderToScale(parseInt(rng.value)).toFixed(2);
-        }, { signal });
-        txt.addEventListener('input', () => writeScale(rng, txt, clampScale(txt.value)), { signal });
-        txt.addEventListener('change', () => writeScale(rng, txt, clampScale(txt.value)), { signal });
-    }
-
-    wireScale(dom_rng_scale, dom_txt_scale);
-    wireScale(dom_rng_scale_x, dom_txt_scale_x);
-    wireScale(dom_rng_scale_y, dom_txt_scale_y);
+    dom_txt_scale.addEventListener('change', () => writeScale(dom_txt_scale, dom_txt_scale.value), { signal });
+    dom_txt_scale_x.addEventListener('change', () => writeScale(dom_txt_scale_x, dom_txt_scale_x.value), { signal });
+    dom_txt_scale_y.addEventListener('change', () => writeScale(dom_txt_scale_y, dom_txt_scale_y.value), { signal });
 
     // ── Rotate ───────────────────────────────────────────────────────────────
 
@@ -197,16 +171,31 @@ export function init(container) {
     }
 
     function setRotate(rawVal) {
-        const val = clampRotate(rawVal);
-        dom_rng_rotate.value = val;
-        dom_txt_rotate.value = val;
+        dom_txt_rotate.value = clampRotate(rawVal);
     }
 
-    dom_rng_rotate.addEventListener('input', () => setRotate(dom_rng_rotate.value), { signal });
-    dom_txt_rotate.addEventListener('input', () => setRotate(dom_txt_rotate.value), { signal });
     dom_txt_rotate.addEventListener('change', () => setRotate(dom_txt_rotate.value), { signal });
 
-    // ── Transform undo on slider/input release ───────────────────────────
+    // ── Translate ─────────────────────────────────────────────────────────────
+
+    function clampTranslate(v) {
+        v = parseFloat(v);
+        return isNaN(v) ? 0 : Math.max(-500, Math.min(500, Math.round(v)));
+    }
+
+    function setTranslate(x, y) {
+        dom_txt_translate_x.value = clampTranslate(x);
+        dom_txt_translate_y.value = clampTranslate(y);
+    }
+
+    dom_txt_translate_x.addEventListener('change', () => {
+        dom_txt_translate_x.value = clampTranslate(dom_txt_translate_x.value);
+    }, { signal });
+    dom_txt_translate_y.addEventListener('change', () => {
+        dom_txt_translate_y.value = clampTranslate(dom_txt_translate_y.value);
+    }, { signal });
+
+    // ── Transform undo on input release ──────────────────────────────────
     function wireTransformUndo(controlName, ...elements) {
         for (const el of elements) {
             el.addEventListener('change', () => {
@@ -220,10 +209,12 @@ export function init(container) {
         }
     }
 
-    wireTransformUndo('scale', dom_rng_scale, dom_txt_scale);
-    wireTransformUndo('scaleX', dom_rng_scale_x, dom_txt_scale_x);
-    wireTransformUndo('scaleY', dom_rng_scale_y, dom_txt_scale_y);
-    wireTransformUndo('rotate', dom_rng_rotate, dom_txt_rotate);
+    wireTransformUndo('scale', dom_txt_scale);
+    wireTransformUndo('scaleX', dom_txt_scale_x);
+    wireTransformUndo('scaleY', dom_txt_scale_y);
+    wireTransformUndo('rotate', dom_txt_rotate);
+    wireTransformUndo('translateX', dom_txt_translate_x);
+    wireTransformUndo('translateY', dom_txt_translate_y);
 
     // ── Screenmap state ──────────────────────────────────────────────────────
 
@@ -261,7 +252,7 @@ export function init(container) {
     let lastTransformedPts = [];
     let isHovering = false;
     let overlayAlpha = 1; // 0..1 for rainbow fade (1 = visible by default)
-    let ptsBBox = null;   // bounding box of points in canvas space {x1,y1,x2,y2}
+    let ptsBBox = null;   // oriented bounding box { cx, cy, hw, hh, cos, sin } in canvas space
 
     // ── Dirty flags (skip work when nothing changed) ─────────────────────
     let geometryDirty = true;  // transforms/points changed → rebuild buffers
@@ -290,8 +281,14 @@ export function init(container) {
     let zoomStartY = 0;
     let zoomStartLevel = 1;
 
+    // ── Gizmo interaction state ────────────────────────────────────────
+    let gizmoActive = null;    // null | handle id string
+    let gizmoHover = null;     // null | handle id string
+    let gizmoDragStart = null; // snapshot of transform values at drag start
+    let shiftHeld = false;     // for rotation snapping
+
     // ── Transform committed values (for undo tracking) ─────────────────
-    const committedTransform = { scale: 1, scaleX: 1, scaleY: 1, rotate: 0 };
+    const committedTransform = { scale: 1, scaleX: 1, scaleY: 1, rotate: 0, translateX: 0, translateY: 0 };
 
     function getTransformValue(control) {
         switch (control) {
@@ -299,15 +296,19 @@ export function init(container) {
             case 'scaleX': return parseFloat(dom_txt_scale_x.value) || 1;
             case 'scaleY': return parseFloat(dom_txt_scale_y.value) || 1;
             case 'rotate': return parseInt(dom_txt_rotate.value) || 0;
+            case 'translateX': return parseInt(dom_txt_translate_x.value) || 0;
+            case 'translateY': return parseInt(dom_txt_translate_y.value) || 0;
         }
     }
 
     function setTransformValue(control, value) {
         switch (control) {
-            case 'scale': writeScale(dom_rng_scale, dom_txt_scale, value); break;
-            case 'scaleX': writeScale(dom_rng_scale_x, dom_txt_scale_x, value); break;
-            case 'scaleY': writeScale(dom_rng_scale_y, dom_txt_scale_y, value); break;
+            case 'scale': writeScale(dom_txt_scale, value); break;
+            case 'scaleX': writeScale(dom_txt_scale_x, value); break;
+            case 'scaleY': writeScale(dom_txt_scale_y, value); break;
             case 'rotate': setRotate(value); break;
+            case 'translateX': setTranslate(value, parseInt(dom_txt_translate_y.value) || 0); break;
+            case 'translateY': setTranslate(parseInt(dom_txt_translate_x.value) || 0, value); break;
         }
     }
 
@@ -401,6 +402,9 @@ export function init(container) {
         isPanning = false;
         rightButtonDown = false;
         rightClickMoved = false;
+        gizmoActive = null;
+        gizmoHover = null;
+        gizmoDragStart = null;
         camPanX = 0;
         camPanY = 0;
         camZoom = 1;
@@ -408,6 +412,8 @@ export function init(container) {
         committedTransform.scaleX = 1;
         committedTransform.scaleY = 1;
         committedTransform.rotate = 0;
+        committedTransform.translateX = 0;
+        committedTransform.translateY = 0;
         undoStack.length = 0;
         redoStack.length = 0;
         updateUndoRedoButtons();
@@ -453,13 +459,13 @@ export function init(container) {
 
     function getCurrentTransform() {
         const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
-        const flipH = dom_chk_flip_h.checked ? -1 : 1;
-        const flipV = dom_chk_flip_v.checked ? -1 : 1;
-        const sX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal * flipH;
-        const sY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal * flipV;
+        const sX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal;
+        const sY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal;
         const rotateDeg = parseInt(dom_txt_rotate.value) || 0;
         const rotateRad = rotateDeg * Math.PI / 180;
-        return { sX, sY, cosR: Math.cos(rotateRad), sinR: Math.sin(rotateRad) };
+        const tx = parseFloat(dom_txt_translate_x.value) || 0;
+        const ty = parseFloat(dom_txt_translate_y.value) || 0;
+        return { sX, sY, cosR: Math.cos(rotateRad), sinR: Math.sin(rotateRad), tx, ty };
     }
 
     function canvasDeltaToScreenmapDelta(dx, dy) {
@@ -901,24 +907,66 @@ export function init(container) {
 
         const pts = lastTransformedPts.map(([x, y]) => toCanvasCoords(x, y));
 
-        // Compute bounding box of points in canvas space
-        let bx1 = Infinity, by1 = Infinity, bx2 = -Infinity, by2 = -Infinity;
-        for (const [px, py] of pts) {
-            if (px < bx1) bx1 = px;
-            if (py < by1) by1 = py;
-            if (px > bx2) bx2 = px;
-            if (py > by2) by2 = py;
-        }
-        const pad = 20;
-        ptsBBox = { x1: bx1 - pad, y1: by1 - pad, x2: bx2 + pad, y2: by2 + pad };
+        // Compute an oriented bounding box (OBB) that stays fixed as rotation changes.
+        // We find the bbox of the *scaled-only* points (before rotation), then rotate
+        // that rectangle so it tracks the content without growing/shrinking.
+        const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
+        const scaleX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal;
+        const scaleY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal;
+        const rotateDeg = parseInt(dom_txt_rotate.value) || 0;
+        const rotateRad = rotateDeg * Math.PI / 180;
+        const bboxCos = Math.cos(rotateRad);
+        const bboxSin = Math.sin(rotateRad);
+        const tx = parseFloat(dom_txt_translate_x.value) || 0;
+        const ty = parseFloat(dom_txt_translate_y.value) || 0;
 
-        // Draw bounding box outline (subtle dashed)
-        overlayCtx.globalAlpha = 0.3;
-        overlayCtx.strokeStyle = '#888';
+        // Bbox of scaled-only points (no rotation, no translation)
+        let bx1 = Infinity, by1 = Infinity, bx2 = -Infinity, by2 = -Infinity;
+        for (const [x, y] of screenmap_pts) {
+            const sx = x * scaleX;
+            const sy = y * scaleY;
+            if (sx < bx1) bx1 = sx;
+            if (sy < by1) by1 = sy;
+            if (sx > bx2) bx2 = sx;
+            if (sy > by2) by2 = sy;
+        }
+        const pad = 20 / camZoom; // pad in world space
+        bx1 -= pad; by1 -= pad; bx2 += pad; by2 += pad;
+
+        // Center of the unrotated bbox in world space, then rotate + translate
+        const wcx = (bx1 + bx2) / 2;
+        const wcy = (by1 + by2) / 2;
+        const rwcx = wcx * bboxCos - wcy * bboxSin + tx;
+        const rwcy = wcx * bboxSin + wcy * bboxCos + ty;
+
+        // Half-extents in world space, scaled to canvas pixels
+        const hw = (bx2 - bx1) / 2 * camZoom;
+        const hh = (by2 - by1) / 2 * camZoom;
+
+        // Center in canvas coords
+        const [ccx, ccy] = toCanvasCoords(rwcx, rwcy);
+
+        ptsBBox = { cx: ccx, cy: ccy, hw, hh, cos: bboxCos, sin: bboxSin };
+
+        // Draw oriented bounding box outline
+        if (gizmoHover === 'translate' || gizmoActive === 'translate') {
+            overlayCtx.globalAlpha = gizmoActive === 'translate' ? 0.8 : 0.5;
+            overlayCtx.strokeStyle = '#3b82f6';
+        } else {
+            overlayCtx.globalAlpha = 0.3;
+            overlayCtx.strokeStyle = '#888';
+        }
         overlayCtx.lineWidth = 1;
         overlayCtx.setLineDash([6, 4]);
-        overlayCtx.strokeRect(ptsBBox.x1, ptsBBox.y1, ptsBBox.x2 - ptsBBox.x1, ptsBBox.y2 - ptsBBox.y1);
+        overlayCtx.save();
+        overlayCtx.translate(ccx, ccy);
+        overlayCtx.rotate(rotateRad);
+        overlayCtx.strokeRect(-hw, -hh, hw * 2, hh * 2);
+        overlayCtx.restore();
         overlayCtx.setLineDash([]);
+
+        // Draw gizmo handles (scale, rotate, translate affordances)
+        drawGizmoHandles();
 
         // Rainbow lines and arrows fade with hover
         if (overlayAlpha > 0) {
@@ -1003,6 +1051,184 @@ export function init(container) {
         overlayCtx.fillText(text, x, y);
     }
 
+    // ── Gizmo: geometry, hit-testing, drawing ─────────────────────────
+
+    // Rotate a local-space point (relative to bbox center) into canvas space
+    function obbToCanvas(lx, ly) {
+        const { cx, cy, cos, sin } = ptsBBox;
+        return { x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos };
+    }
+
+    function computeGizmoHandles() {
+        if (!ptsBBox) return null;
+        let { hw, hh } = ptsBBox;
+        // Enforce minimum 60px bbox so handles don't overlap on tiny screenmaps
+        const minDim = 30; // half of 60
+        if (hw < minDim) hw = minDim;
+        if (hh < minDim) hh = minDim;
+        const rotLineLen = 30;
+
+        return {
+            hw, hh,
+            corners: {
+                tl: obbToCanvas(-hw, -hh),
+                tr: obbToCanvas(hw, -hh),
+                bl: obbToCanvas(-hw, hh),
+                br: obbToCanvas(hw, hh),
+            },
+            edges: {
+                top:    obbToCanvas(0, -hh),
+                bottom: obbToCanvas(0, hh),
+                left:   obbToCanvas(-hw, 0),
+                right:  obbToCanvas(hw, 0),
+            },
+            rotate: obbToCanvas(0, -hh - rotLineLen),
+            center: { x: ptsBBox.cx, y: ptsBBox.cy },
+        };
+    }
+
+    // Transform canvas coords into OBB local space (relative to bbox center, unrotated)
+    function canvasToObbLocal(canvasX, canvasY) {
+        if (!ptsBBox) return [0, 0];
+        const dx = canvasX - ptsBBox.cx;
+        const dy = canvasY - ptsBBox.cy;
+        // Inverse rotation
+        return [dx * ptsBBox.cos + dy * ptsBBox.sin,
+               -dx * ptsBBox.sin + dy * ptsBBox.cos];
+    }
+
+    function hitTestGizmo(canvasX, canvasY) {
+        const handles = computeGizmoHandles();
+        if (!handles) return null;
+        const threshold = 14;
+
+        // Rotation handle (above bbox)
+        const rh = handles.rotate;
+        if (Math.abs(canvasX - rh.x) < threshold && Math.abs(canvasY - rh.y) < threshold) return 'rotate';
+
+        // Corner handles
+        for (const [key, h] of Object.entries(handles.corners)) {
+            if (Math.abs(canvasX - h.x) < threshold && Math.abs(canvasY - h.y) < threshold) return 'corner-' + key;
+        }
+
+        // Edge midpoint handles
+        for (const [key, h] of Object.entries(handles.edges)) {
+            if (Math.abs(canvasX - h.x) < threshold && Math.abs(canvasY - h.y) < threshold) return 'edge-' + key;
+        }
+
+        // Inside oriented bounding box → translate (only if not on an LED)
+        const [lx, ly] = canvasToObbLocal(canvasX, canvasY);
+        if (Math.abs(lx) <= handles.hw && Math.abs(ly) <= handles.hh) {
+            if (hitTestLED(canvasX, canvasY) < 0) return 'translate';
+        }
+
+        return null;
+    }
+
+    function getCursorForGizmo(handleId) {
+        if (!handleId) return 'default';
+        if (handleId === 'rotate') return 'grab';
+        if (handleId === 'translate') return 'move';
+        if (handleId === 'edge-top' || handleId === 'edge-bottom') return 'ns-resize';
+        if (handleId === 'edge-left' || handleId === 'edge-right') return 'ew-resize';
+        if (handleId === 'corner-tl' || handleId === 'corner-br') return 'nwse-resize';
+        if (handleId === 'corner-tr' || handleId === 'corner-bl') return 'nesw-resize';
+        return 'default';
+    }
+
+    function drawGizmoHandles() {
+        const handles = computeGizmoHandles();
+        if (!handles) return;
+
+        // Hide handles if bbox is too small on screen (very zoomed out)
+        if (handles.hw < 8 || handles.hh < 8) return;
+
+        // Fade in as rainbow fades out (inverse of overlayAlpha)
+        const gizmoAlpha = 1 - overlayAlpha;
+        if (gizmoAlpha < 0.01) return;
+
+        const rotRad = Math.atan2(ptsBBox.sin, ptsBBox.cos);
+
+        overlayCtx.save();
+        overlayCtx.globalAlpha = gizmoAlpha;
+
+        // Draw rotation connecting line (dashed)
+        const topCenter = handles.edges.top;
+        overlayCtx.strokeStyle = '#3b82f6';
+        overlayCtx.lineWidth = 1;
+        overlayCtx.setLineDash([4, 3]);
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(topCenter.x, topCenter.y);
+        overlayCtx.lineTo(handles.rotate.x, handles.rotate.y);
+        overlayCtx.stroke();
+        overlayCtx.setLineDash([]);
+
+        // Draw rotation handle (arc with arrowhead)
+        const isRotHover = gizmoHover === 'rotate' || gizmoActive === 'rotate';
+        const rotColor = isRotHover ? '#60a5fa' : '#3b82f6';
+        const rx = handles.rotate.x;
+        const ry = handles.rotate.y;
+        const arcR = isRotHover ? 9 : 7;
+        const arcStart = -Math.PI * 1.25;
+        const arcEnd = Math.PI * 0.05;
+
+        // Arc stroke
+        overlayCtx.strokeStyle = rotColor;
+        overlayCtx.lineWidth = 2;
+        overlayCtx.beginPath();
+        overlayCtx.arc(rx, ry, arcR, arcStart, arcEnd);
+        overlayCtx.stroke();
+
+        // Arrowhead at arc end
+        const ax = rx + arcR * Math.cos(arcEnd);
+        const ay = ry + arcR * Math.sin(arcEnd);
+        const tangent = arcEnd + Math.PI / 2; // tangent direction (perpendicular to radius)
+        const arrowLen = 5;
+        const arrowHalf = 0.55;
+        overlayCtx.fillStyle = rotColor;
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(ax, ay);
+        overlayCtx.lineTo(ax - arrowLen * Math.cos(tangent - arrowHalf), ay - arrowLen * Math.sin(tangent - arrowHalf));
+        overlayCtx.lineTo(ax - arrowLen * Math.cos(tangent + arrowHalf), ay - arrowLen * Math.sin(tangent + arrowHalf));
+        overlayCtx.closePath();
+        overlayCtx.fill();
+
+        // Helper: draw a rotated rect centered at (h.x, h.y)
+        function drawHandle(h, w, ht, color) {
+            overlayCtx.save();
+            overlayCtx.translate(h.x, h.y);
+            overlayCtx.rotate(rotRad);
+            overlayCtx.fillStyle = color;
+            overlayCtx.fillRect(-w / 2, -ht / 2, w, ht);
+            overlayCtx.strokeStyle = '#fff';
+            overlayCtx.lineWidth = 1;
+            overlayCtx.strokeRect(-w / 2, -ht / 2, w, ht);
+            overlayCtx.restore();
+        }
+
+        // Draw corner handles (squares)
+        for (const [key, h] of Object.entries(handles.corners)) {
+            const id = 'corner-' + key;
+            const active = gizmoHover === id || gizmoActive === id;
+            const size = active ? 12 : 10;
+            const color = active ? '#60a5fa' : '#3b82f6';
+            drawHandle(h, size, size, color);
+        }
+
+        // Draw edge handles (oriented rectangles)
+        for (const [key, h] of Object.entries(handles.edges)) {
+            const id = 'edge-' + key;
+            const active = gizmoHover === id || gizmoActive === id;
+            const isHoriz = (key === 'top' || key === 'bottom');
+            const w = isHoriz ? (active ? 18 : 16) : (active ? 10 : 8);
+            const ht = isHoriz ? (active ? 10 : 8) : (active ? 18 : 16);
+            const color = active ? '#60a5fa' : '#3b82f6';
+            drawHandle(h, w, ht, color);
+        }
+
+        overlayCtx.restore();
+    }
+
     function hitTestLED(canvasX, canvasY) {
         if (lastTransformedPts.length === 0) return -1;
         const threshold = 10;
@@ -1016,6 +1242,92 @@ export function init(container) {
             if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
         return bestIdx;
+    }
+
+    // ── Gizmo drag logic ─────────────────────────────────────────────────
+
+    function handleGizmoDrag(cx, cy) {
+        const dx = cx - gizmoDragStart.canvasX;
+        const dy = cy - gizmoDragStart.canvasY;
+
+        if (gizmoActive === 'translate') {
+            const wdx = dx / camZoom;
+            const wdy = dy / camZoom;
+            setTranslate(gizmoDragStart.translateX + wdx, gizmoDragStart.translateY + wdy);
+            markDirtyAndGeometry();
+            return;
+        }
+
+        if (gizmoActive === 'rotate') {
+            const center = gizmoDragStart.bboxCenter;
+            const startAngle = Math.atan2(
+                gizmoDragStart.canvasY - center.y,
+                gizmoDragStart.canvasX - center.x
+            );
+            const currentAngle = Math.atan2(cy - center.y, cx - center.x);
+            const deltaDeg = (currentAngle - startAngle) * 180 / Math.PI;
+            let newRotate = gizmoDragStart.rotate + Math.round(deltaDeg);
+            // Snap to 15-degree increments when shift held
+            if (shiftHeld) newRotate = Math.round(newRotate / 15) * 15;
+            setRotate(clampRotate(newRotate));
+            markDirtyAndGeometry();
+            return;
+        }
+
+        if (gizmoActive.startsWith('corner-')) {
+            const center = gizmoDragStart.bboxCenter;
+            const startDist = Math.hypot(
+                gizmoDragStart.canvasX - center.x,
+                gizmoDragStart.canvasY - center.y
+            );
+            const currentDist = Math.hypot(cx - center.x, cy - center.y);
+            if (startDist > 1) {
+                const ratio = currentDist / startDist;
+                writeScale(dom_txt_scale, clampScale(gizmoDragStart.scale * ratio));
+                markDirtyAndGeometry();
+            }
+            return;
+        }
+
+        if (gizmoActive.startsWith('edge-')) {
+            const edge = gizmoActive.split('-')[1];
+            // Project mouse positions onto OBB local axes for signed distance
+            const [startLx, startLy] = canvasToObbLocal(gizmoDragStart.canvasX, gizmoDragStart.canvasY);
+            const [curLx, curLy] = canvasToObbLocal(cx, cy);
+
+            if (edge === 'left' || edge === 'right') {
+                if (Math.abs(startLx) > 1) {
+                    const ratio = curLx / startLx; // signed: crossing center negates
+                    writeScale(dom_txt_scale_x, clampScale(gizmoDragStart.scaleX * ratio));
+                    markDirtyAndGeometry();
+                }
+            } else {
+                if (Math.abs(startLy) > 1) {
+                    const ratio = curLy / startLy; // signed: crossing center negates
+                    writeScale(dom_txt_scale_y, clampScale(gizmoDragStart.scaleY * ratio));
+                    markDirtyAndGeometry();
+                }
+            }
+            return;
+        }
+    }
+
+    function commitGizmoDrag() {
+        if (!gizmoDragStart) return;
+        const checks = [
+            ['scale', gizmoDragStart.scale, getTransformValue('scale')],
+            ['scaleX', gizmoDragStart.scaleX, getTransformValue('scaleX')],
+            ['scaleY', gizmoDragStart.scaleY, getTransformValue('scaleY')],
+            ['rotate', gizmoDragStart.rotate, getTransformValue('rotate')],
+            ['translateX', gizmoDragStart.translateX, getTransformValue('translateX')],
+            ['translateY', gizmoDragStart.translateY, getTransformValue('translateY')],
+        ];
+        for (const [control, oldVal, newVal] of checks) {
+            if (oldVal !== newVal) {
+                pushUndo({ type: 'transform', control, oldValue: oldVal, newValue: newVal });
+                committedTransform[control] = newVal;
+            }
+        }
     }
 
     // ── Mouse / pointer handlers ──────────────────────────────────────────
@@ -1055,7 +1367,26 @@ export function init(container) {
         if (e.button !== 0) return;
         const [cx, cy] = getCanvasCoords(e);
 
-        // Left-click: select LED or start panning
+        // Priority 1: Gizmo handle (corner/edge/rotation)
+        const gizmoHit = hitTestGizmo(cx, cy);
+        if (gizmoHit && gizmoHit !== 'translate') {
+            gizmoActive = gizmoHit;
+            const handles = computeGizmoHandles();
+            gizmoDragStart = {
+                canvasX: cx, canvasY: cy,
+                scale: parseFloat(dom_txt_scale.value) || 1,
+                scaleX: parseFloat(dom_txt_scale_x.value) || 1,
+                scaleY: parseFloat(dom_txt_scale_y.value) || 1,
+                rotate: parseInt(dom_txt_rotate.value) || 0,
+                translateX: parseInt(dom_txt_translate_x.value) || 0,
+                translateY: parseInt(dom_txt_translate_y.value) || 0,
+                bboxCenter: handles.center,
+            };
+            overlayCanvas.style.cursor = gizmoHit === 'rotate' ? 'grabbing' : getCursorForGizmo(gizmoHit);
+            return;
+        }
+
+        // Priority 2: LED point hit test
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
             selectedIdx = idx;
@@ -1066,21 +1397,42 @@ export function init(container) {
             dragStartScreenmapPt = [...screenmap_pts[idx]];
             dragStartRawPt = [...rawPts[idx]];
             overlayCanvas.style.cursor = 'grabbing';
-        } else {
-            // Left-click on empty space: deselect and start panning (view-only)
-            if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
-            isPanning = true;
-            panStartX = cx;
-            panStartY = cy;
-            panStartCamX = camPanX;
-            panStartCamY = camPanY;
-            overlayCanvas.style.cursor = 'move';
+            return;
         }
+
+        // Priority 3: Translate (inside bbox, no LED hit)
+        if (gizmoHit === 'translate') {
+            gizmoActive = 'translate';
+            gizmoDragStart = {
+                canvasX: cx, canvasY: cy,
+                scale: parseFloat(dom_txt_scale.value) || 1,
+                scaleX: parseFloat(dom_txt_scale_x.value) || 1,
+                scaleY: parseFloat(dom_txt_scale_y.value) || 1,
+                rotate: parseInt(dom_txt_rotate.value) || 0,
+                translateX: parseInt(dom_txt_translate_x.value) || 0,
+                translateY: parseInt(dom_txt_translate_y.value) || 0,
+                bboxCenter: null,
+            };
+            overlayCanvas.style.cursor = 'move';
+            return;
+        }
+
+        // Priority 4: Pan camera (outside bbox)
+        if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
+        isPanning = true;
+        panStartX = cx;
+        panStartY = cy;
+        panStartCamX = camPanX;
+        panStartCamY = camPanY;
+        overlayCanvas.style.cursor = 'move';
     }
 
     function onMouseMove(e) {
         if (screenmap_pts.length === 0) return;
         const [cx, cy] = getCanvasCoords(e);
+
+        // Track shift key for rotation snapping
+        shiftHeld = e.shiftKey;
 
         // Right-click drag: zoom
         if (rightButtonDown) {
@@ -1091,6 +1443,12 @@ export function init(container) {
                 overlayCanvas.style.cursor = 'ns-resize';
                 setNeedsRender();
             }
+            return;
+        }
+
+        // Gizmo drag in progress
+        if (gizmoActive) {
+            handleGizmoDrag(cx, cy);
             return;
         }
 
@@ -1121,15 +1479,30 @@ export function init(container) {
             return;
         }
 
+        // Gizmo hover detection
+        const prevGizmoHover = gizmoHover;
+        gizmoHover = hitTestGizmo(cx, cy);
+        if (gizmoHover !== prevGizmoHover) setNeedsRender();
+
         // Check if mouse is inside the points bounding box (controls rainbow fade)
         const wasHovering = isHovering;
         if (ptsBBox) {
-            isHovering = cx >= ptsBBox.x1 && cx <= ptsBBox.x2 &&
-                         cy >= ptsBBox.y1 && cy <= ptsBBox.y2;
+            const [lx, ly] = canvasToObbLocal(cx, cy);
+            const inObb = Math.abs(lx) <= ptsBBox.hw && Math.abs(ly) <= ptsBBox.hh;
+            isHovering = inObb || !!gizmoHover;
         } else {
             isHovering = false;
         }
         if (isHovering !== wasHovering) setNeedsRender();
+
+        // Gizmo handle hover takes cursor priority
+        if (gizmoHover && gizmoHover !== 'translate') {
+            overlayCanvas.style.cursor = getCursorForGizmo(gizmoHover);
+            tooltipLedIdx = -1;
+            tooltip.style.opacity = '0';
+            return;
+        }
+
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
             overlayCanvas.style.cursor = 'grab';
@@ -1143,6 +1516,10 @@ export function init(container) {
             tooltip.style.left = tx + 'px';
             tooltip.style.top = ty + 'px';
             tooltip.style.opacity = '1';
+        } else if (gizmoHover === 'translate') {
+            overlayCanvas.style.cursor = 'move';
+            tooltipLedIdx = -1;
+            tooltip.style.opacity = '0';
         } else {
             overlayCanvas.style.cursor = 'default';
             tooltipLedIdx = -1;
@@ -1154,6 +1531,14 @@ export function init(container) {
         if (e && e.button === 2) {
             rightButtonDown = false;
             // rightClickMoved is consumed by onContextMenu
+            overlayCanvas.style.cursor = 'default';
+            return;
+        }
+
+        if (gizmoActive) {
+            commitGizmoDrag();
+            gizmoActive = null;
+            gizmoDragStart = null;
             overlayCanvas.style.cursor = 'default';
             return;
         }
@@ -1185,6 +1570,12 @@ export function init(container) {
     }
 
     function onMouseLeave() {
+        if (gizmoActive) {
+            commitGizmoDrag();
+            gizmoActive = null;
+            gizmoDragStart = null;
+        }
+        gizmoHover = null;
         if (isPanning) {
             isPanning = false;
         }
@@ -1395,21 +1786,21 @@ export function init(container) {
         if (screenmap_pts.length > 0) {
             if (geometryDirty) {
                 const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
-                const flipH = dom_chk_flip_h.checked ? -1 : 1;
-                const flipV = dom_chk_flip_v.checked ? -1 : 1;
-                const scaleX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal * flipH;
-                const scaleY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal * flipV;
+                const scaleX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleGlobal;
+                const scaleY = (parseFloat(dom_txt_scale_y.value) || 1) * scaleGlobal;
                 const rotateDeg = parseInt(dom_txt_rotate.value) || 0;
                 const rotateRad = rotateDeg * Math.PI / 180;
                 const cosR = Math.cos(rotateRad);
                 const sinR = Math.sin(rotateRad);
+                const tx = parseFloat(dom_txt_translate_x.value) || 0;
+                const ty = parseFloat(dom_txt_translate_y.value) || 0;
 
                 const transformedPts = screenmap_pts.map(([x, y]) => {
                     const sx = x * scaleX;
                     const sy = y * scaleY;
                     return [
-                        sx * cosR - sy * sinR,
-                        sx * sinR + sy * cosR,
+                        sx * cosR - sy * sinR + tx,
+                        sx * sinR + sy * cosR + ty,
                     ];
                 });
                 lastTransformedPts = transformedPts;

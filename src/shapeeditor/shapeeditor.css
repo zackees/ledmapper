@@ -29,12 +29,12 @@
     @apply shrink-0 text-sm opacity-70;
 }
 
-.checkbox-row label {
-    @apply flex items-center gap-1 cursor-pointer;
+.transform-row label {
+    @apply flex items-center gap-1 text-sm text-lm-text-muted whitespace-nowrap;
 }
 
-.checkbox-row input[type="number"] {
-    width: 64px;
+.transform-row input[type="number"] {
+    width: 72px;
 }
 
 /* ── Accordion ─────────────────────────────────────────────── */
