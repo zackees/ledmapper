@@ -7,6 +7,12 @@ import {
     LineSegments,
     LineBasicMaterial,
     Line,
+    TextureLoader,
+    PlaneGeometry,
+    MeshBasicMaterial,
+    Mesh,
+    SRGBColorSpace,
+    DoubleSide,
 } from 'three';
 import { parse_screenmap_data, centerAndFitPoints, readFileAsText, download_text_as_file } from '../common.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
@@ -45,6 +51,19 @@ export function init(container) {
     const dom_btn_reset = container.querySelector("#btn_reset");
     const dom_btn_undo = container.querySelector("#btn_undo");
     const dom_btn_redo = container.querySelector("#btn_redo");
+    const dom_bg_accordion = container.querySelector("#bg_image_accordion");
+    const dom_btn_upload_image = container.querySelector("#btn_upload_image");
+    const dom_rng_image_opacity = container.querySelector("#rng_image_opacity");
+    const dom_txt_image_opacity = container.querySelector("#txt_image_opacity");
+    const dom_rng_image_scale = container.querySelector("#rng_image_scale");
+    const dom_txt_image_scale = container.querySelector("#txt_image_scale");
+    const dom_rng_image_rotate = container.querySelector("#rng_image_rotate");
+    const dom_txt_image_rotate = container.querySelector("#txt_image_rotate");
+    const dom_rng_image_tx = container.querySelector("#rng_image_tx");
+    const dom_txt_image_tx = container.querySelector("#txt_image_tx");
+    const dom_rng_image_ty = container.querySelector("#rng_image_ty");
+    const dom_txt_image_ty = container.querySelector("#txt_image_ty");
+    const dom_btn_remove_image = container.querySelector("#btn_remove_image");
 
     const ac = new AbortController();
     const { signal } = ac;
@@ -223,6 +242,9 @@ export function init(container) {
 
     // Grid line objects
     let gridLines;
+    // Background image
+    let bgImageMesh = null;
+    let bgImageTexture = null;
     // Screenmap outline
     let screenmapOutline;
 
@@ -524,6 +546,11 @@ export function init(container) {
         overlayCanvas.addEventListener('mouseup', onMouseUp, { signal });
         overlayCanvas.addEventListener('mouseleave', onMouseLeave, { signal });
         overlayCanvas.addEventListener('contextmenu', onContextMenu, { signal });
+        overlayCanvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomFactor = Math.pow(2, -e.deltaY / 3000);
+            camZoom = Math.max(0.1, Math.min(10, camZoom * zoomFactor));
+        }, { passive: false, signal });
 
         overlayCanvas.addEventListener('touchmove', (e) => {
             if (e.touches.length) onMouseMove(e.touches[0]);
@@ -565,7 +592,7 @@ export function init(container) {
 
         const geom = new BufferGeometry();
         geom.setAttribute('position', new Float32BufferAttribute(vertices, 3));
-        gridLines = new LineSegments(geom, new LineBasicMaterial({ color: 0x323232 }));
+        gridLines = new LineSegments(geom, new LineBasicMaterial({ color: 0x323232, transparent: true }));
         scene.add(gridLines);
     }
 
@@ -647,6 +674,191 @@ export function init(container) {
             dom_sel_preset.innerHTML = '<option value="">No presets available</option>';
         }
     }
+
+    // ── Background image ───────────────────────────────────────────────
+
+    let bgImageObjectURL = null;
+    const bgImageControls = [dom_rng_image_opacity, dom_rng_image_scale, dom_txt_image_scale,
+        dom_rng_image_rotate, dom_txt_image_rotate,
+        dom_rng_image_tx, dom_txt_image_tx, dom_rng_image_ty, dom_txt_image_ty,
+        dom_btn_remove_image];
+
+    function setBgControlsEnabled(enabled) {
+        for (const el of bgImageControls) el.disabled = !enabled;
+    }
+
+    function resetBgControls() {
+        dom_rng_image_opacity.value = 50;
+        dom_txt_image_opacity.textContent = '50%';
+        dom_rng_image_scale.value = 100;
+        dom_txt_image_scale.value = '1.00';
+        dom_rng_image_rotate.value = 0;
+        dom_txt_image_rotate.value = '0.00';
+        dom_rng_image_tx.value = 0;
+        dom_txt_image_tx.value = '0';
+        dom_rng_image_ty.value = 0;
+        dom_txt_image_ty.value = '0';
+    }
+
+    function applyBgImageTransform() {
+        if (!bgImageMesh) return;
+        const s = parseFloat(dom_txt_image_scale.value) || 1;
+        const deg = parseFloat(dom_txt_image_rotate.value) || 0;
+        const tx = parseFloat(dom_txt_image_tx.value) || 0;
+        const ty = parseFloat(dom_txt_image_ty.value) || 0;
+        bgImageMesh.scale.set(s, -s, 1); // negative y for y-down camera
+        bgImageMesh.rotation.z = deg * Math.PI / 180;
+        bgImageMesh.position.set(tx, ty, 0);
+    }
+
+    function clearBackgroundImage() {
+        if (bgImageMesh) {
+            scene.remove(bgImageMesh);
+            bgImageMesh.geometry.dispose();
+            bgImageMesh.material.dispose();
+            bgImageMesh = null;
+        }
+        if (bgImageTexture) {
+            bgImageTexture.dispose();
+            bgImageTexture = null;
+        }
+        if (bgImageObjectURL) {
+            URL.revokeObjectURL(bgImageObjectURL);
+            bgImageObjectURL = null;
+        }
+        setBgControlsEnabled(false);
+    }
+
+    function removeBackgroundImage() {
+        clearBackgroundImage();
+        resetBgControls();
+        dom_btn_upload_image.value = '';
+        dom_bg_accordion.removeAttribute('open');
+    }
+
+    function loadBackgroundImage(file) {
+        clearBackgroundImage();
+        resetBgControls();
+
+        bgImageObjectURL = URL.createObjectURL(file);
+        const loader = new TextureLoader();
+        loader.load(bgImageObjectURL, (texture) => {
+            bgImageTexture = texture;
+            bgImageTexture.colorSpace = SRGBColorSpace;
+
+            const img = texture.image;
+            // Size to fill the canvas, maintaining aspect ratio
+            const aspect = img.width / img.height;
+            const canvasAspect = canvasW / canvasH;
+            let fitW, fitH;
+            if (aspect > canvasAspect) {
+                fitW = canvasW;
+                fitH = canvasW / aspect;
+            } else {
+                fitH = canvasH;
+                fitW = canvasH * aspect;
+            }
+
+            const geometry = new PlaneGeometry(fitW, fitH);
+            const material = new MeshBasicMaterial({
+                map: bgImageTexture,
+                transparent: true,
+                opacity: parseFloat(dom_rng_image_opacity.value) / 100,
+                depthWrite: false,
+                depthTest: false,
+                side: DoubleSide,
+            });
+
+            bgImageMesh = new Mesh(geometry, material);
+            bgImageMesh.renderOrder = 1;
+            bgImageMesh.scale.y = -1;
+            scene.add(bgImageMesh);
+
+            setBgControlsEnabled(true);
+            dom_bg_accordion.setAttribute('open', '');
+        });
+    }
+
+    // ── Background image event listeners ─────────────────────────────
+
+    dom_btn_upload_image.addEventListener('change', () => {
+        const file = dom_btn_upload_image.files[0];
+        if (file) loadBackgroundImage(file);
+    }, { signal });
+
+    dom_rng_image_opacity.addEventListener('input', () => {
+        const val = parseFloat(dom_rng_image_opacity.value);
+        dom_txt_image_opacity.textContent = Math.round(val) + '%';
+        if (bgImageMesh) bgImageMesh.material.opacity = val / 100;
+    }, { signal });
+
+    // Scale: slider (10–500) ↔ text (0.10–5.00)
+    dom_rng_image_scale.addEventListener('input', () => {
+        dom_txt_image_scale.value = (parseInt(dom_rng_image_scale.value) / 100).toFixed(2);
+        applyBgImageTransform();
+    }, { signal });
+    dom_txt_image_scale.addEventListener('input', () => {
+        const v = Math.max(0.1, Math.min(5, parseFloat(dom_txt_image_scale.value) || 1));
+        dom_rng_image_scale.value = Math.round(v * 100);
+        applyBgImageTransform();
+    }, { signal });
+    dom_txt_image_scale.addEventListener('change', () => {
+        const v = Math.max(0.1, Math.min(5, parseFloat(dom_txt_image_scale.value) || 1));
+        dom_txt_image_scale.value = v.toFixed(2);
+        dom_rng_image_scale.value = Math.round(v * 100);
+        applyBgImageTransform();
+    }, { signal });
+
+    // Rotate: slider (-18000–18000) ↔ text (-180.00–180.00°)
+    dom_rng_image_rotate.addEventListener('input', () => {
+        dom_txt_image_rotate.value = (parseInt(dom_rng_image_rotate.value) / 100).toFixed(2);
+        applyBgImageTransform();
+    }, { signal });
+    dom_txt_image_rotate.addEventListener('input', () => {
+        const v = Math.max(-180, Math.min(180, parseFloat(dom_txt_image_rotate.value) || 0));
+        dom_rng_image_rotate.value = Math.round(v * 100);
+        applyBgImageTransform();
+    }, { signal });
+    dom_txt_image_rotate.addEventListener('change', () => {
+        const v = Math.max(-180, Math.min(180, parseFloat(dom_txt_image_rotate.value) || 0));
+        dom_txt_image_rotate.value = v.toFixed(2);
+        dom_rng_image_rotate.value = Math.round(v * 100);
+        applyBgImageTransform();
+    }, { signal });
+
+    // Translate X: slider ↔ text
+    dom_rng_image_tx.addEventListener('input', () => {
+        dom_txt_image_tx.value = dom_rng_image_tx.value;
+        applyBgImageTransform();
+    }, { signal });
+    dom_txt_image_tx.addEventListener('input', () => {
+        dom_rng_image_tx.value = Math.max(-1000, Math.min(1000, parseInt(dom_txt_image_tx.value) || 0));
+        applyBgImageTransform();
+    }, { signal });
+    dom_txt_image_tx.addEventListener('change', () => {
+        const v = parseInt(dom_txt_image_tx.value) || 0;
+        dom_txt_image_tx.value = v;
+        dom_rng_image_tx.value = Math.max(-1000, Math.min(1000, v));
+        applyBgImageTransform();
+    }, { signal });
+
+    // Translate Y: slider ↔ text
+    dom_rng_image_ty.addEventListener('input', () => {
+        dom_txt_image_ty.value = dom_rng_image_ty.value;
+        applyBgImageTransform();
+    }, { signal });
+    dom_txt_image_ty.addEventListener('input', () => {
+        dom_rng_image_ty.value = Math.max(-1000, Math.min(1000, parseInt(dom_txt_image_ty.value) || 0));
+        applyBgImageTransform();
+    }, { signal });
+    dom_txt_image_ty.addEventListener('change', () => {
+        const v = parseInt(dom_txt_image_ty.value) || 0;
+        dom_txt_image_ty.value = v;
+        dom_rng_image_ty.value = Math.max(-1000, Math.min(1000, v));
+        applyBgImageTransform();
+    }, { signal });
+
+    dom_btn_remove_image.addEventListener('click', removeBackgroundImage, { signal });
 
     // --- Overlay drawing for LED connection visualization ---
     function toCanvasCoords(x, y) {
@@ -834,7 +1046,8 @@ export function init(container) {
             dragStartRawPt = [...rawPts[idx]];
             overlayCanvas.style.cursor = 'grabbing';
         } else {
-            // Left-click on empty space: start panning (view-only)
+            // Left-click on empty space: deselect and start panning (view-only)
+            selectedIdx = -1;
             isPanning = true;
             panStartX = cx;
             panStartY = cy;
@@ -1020,7 +1233,8 @@ export function init(container) {
         transformedPts.forEach(([x, y]) => lineVerts.push(x, y, 0));
         const lineGeom = new BufferGeometry();
         lineGeom.setAttribute('position', new Float32BufferAttribute(lineVerts, 3));
-        screenmapOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3 }));
+        screenmapOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3, transparent: true }));
+        screenmapOutline.renderOrder = 2;
         scene.add(screenmapOutline);
 
         const diameterCm = parseFloat(dom_txt_diameter.value) || 0.5;
@@ -1051,6 +1265,7 @@ export function init(container) {
         pointsGeometry = result.geometry;
         pointsMaterial = result.material;
         pointsMesh = result.mesh;
+        pointsMesh.renderOrder = 3;
         scene.add(pointsMesh);
     }
 
@@ -1177,6 +1392,7 @@ export function init(container) {
             gridLines.geometry.dispose();
             gridLines.material.dispose();
         }
+        removeBackgroundImage();
         circleTexture.dispose();
         renderer.dispose();
         if (ctxMenu && ctxMenu.parentNode) ctxMenu.parentNode.removeChild(ctxMenu);
