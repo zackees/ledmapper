@@ -235,18 +235,28 @@ export function init(container) {
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, w, h);
 
-        const scaleFactor = Math.min(w / capture_width, h / capture_height);
+        // Use actual source dimensions to preserve aspect ratio
+        let srcW = capture_width, srcH = capture_height;
+        if (snapshotCanvas) {
+            srcW = snapshotCanvas.width;
+            srcH = snapshotCanvas.height;
+        } else if (videoElement && videoElement.readyState >= 2) {
+            srcW = videoElement.videoWidth || capture_width;
+            srcH = videoElement.videoHeight || capture_height;
+        }
+
+        const scaleFactor = Math.min(w / srcW, h / srcH);
 
         ctx.save();
         ctx.translate(w / 2, h / 2);
         ctx.rotate(r * Math.PI / 180);
         ctx.scale(scaleFactor * zoom, scaleFactor * zoom);
-        ctx.translate(-capture_width / 2, -capture_height / 2);
+        ctx.translate(-srcW / 2, -srcH / 2);
 
         if (snapshotCanvas) {
-            ctx.drawImage(snapshotCanvas, 0, 0, capture_width, capture_height);
+            ctx.drawImage(snapshotCanvas, 0, 0, srcW, srcH);
         } else if (videoElement && videoElement.readyState >= 2) {
-            ctx.drawImage(videoElement, 0, 0, capture_width, capture_height);
+            ctx.drawImage(videoElement, 0, 0, srcW, srcH);
         }
         ctx.restore();
 
@@ -307,10 +317,7 @@ export function init(container) {
         // Webcam init LAST — failures cannot break the controls or draw loop above
         try {
             const constraints = {
-                video: {
-                    width: { ideal: capture_width },
-                    height: { ideal: capture_height }
-                }
+                video: true
             };
             navigator.mediaDevices.getUserMedia(constraints).then(stream => {
                 videoElement = document.createElement('video');
