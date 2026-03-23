@@ -5,8 +5,6 @@ const routes = [
     { path: '/index.html',       tool: 'hub' },
     { path: '/demo/',            tool: 'demo' },
     { path: '/demo/index.html',  tool: 'demo' },
-    { path: '/screenmap/',            tool: 'screenmap' },
-    { path: '/screenmap/index.html',  tool: 'screenmap' },
     { path: '/moviemaker/',            tool: 'moviemaker' },
     { path: '/moviemaker/index.html',  tool: 'moviemaker' },
     { path: '/movieplayer/',            tool: 'movieplayer' },
@@ -21,9 +19,6 @@ const toolConfig = {
     },
     demo: {
         module: () => import('./demo/demo.js'),
-    },
-    screenmap: {
-        module: () => import('./screenmap/screenmap.js'),
     },
     moviemaker: {
         module: () => import('./moviemaker/moviemaker.js'),
@@ -74,10 +69,9 @@ export function createRouter(appEl) {
         const titles = {
             hub: 'FastLED Video Mapper',
             demo: 'Demo',
-            screenmap: 'Screenmap Maker',
             moviemaker: 'Video Maker',
             movieplayer: 'Video Player',
-            shapeeditor: 'Screenmap Editor',
+            shapeeditor: 'ScreenMap Design',
         };
         document.title = titles[tool] || 'FastLED Video Mapper';
 

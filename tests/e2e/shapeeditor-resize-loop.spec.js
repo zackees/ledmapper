@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures.js';
 
-test.describe('Screenmap Editor canvas size stability', () => {
+test.describe('ScreenMap Design canvas size stability', () => {
     test('canvas does not keep expanding', async ({ page }) => {
         await page.goto('/shapeeditor/');
         const canvas = page.locator('canvas').first();

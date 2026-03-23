@@ -9,7 +9,7 @@ test.describe('Hub Page', () => {
     test('has all tool cards', async ({ page }) => {
         await page.goto('/');
         const cards = page.locator('.tool-card');
-        await expect(cards).toHaveCount(5);
+        await expect(cards).toHaveCount(4);
     });
 
     test('has navigation bar', async ({ page }) => {

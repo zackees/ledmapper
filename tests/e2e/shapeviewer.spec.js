@@ -1,10 +1,10 @@
 import { test, expect } from './fixtures.js';
 import path from 'path';
 
-test.describe('Screenmap Editor', () => {
+test.describe('ScreenMap Design', () => {
     test('loads and shows title', async ({ page }) => {
         await page.goto('/shapeeditor/');
-        await expect(page.locator('h1')).toContainText('Screenmap Editor');
+        await expect(page.locator('h1')).toContainText('ScreenMap Design');
     });
 
     test('has screenmap upload input', async ({ page }) => {

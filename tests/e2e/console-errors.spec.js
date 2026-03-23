@@ -4,7 +4,6 @@ import { mockWebcam } from '../helpers/webcam-mock.js';
 const allPages = [
     { name: 'hub', url: '/', needsWebcam: false },
     { name: 'demo', url: '/demo/', needsWebcam: false },
-    { name: 'screenmap', url: '/screenmap/', needsWebcam: true },
     { name: 'moviemaker', url: '/moviemaker/', needsWebcam: false },
     { name: 'movieplayer', url: '/movieplayer/', needsWebcam: false },
     { name: 'shapeeditor', url: '/shapeeditor/', needsWebcam: false },
