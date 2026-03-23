@@ -68,6 +68,14 @@
     cursor: default;
 }
 
+/* ── Desktop: hide file-ops row (available via right-click) ── */
+
+@media (hover: hover) and (pointer: fine) {
+    .file-ops-row {
+        display: none;
+    }
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 
 @media (max-width: 600px) {

@@ -35,6 +35,7 @@ export function init(container) {
     mainEl.style.overflow = 'hidden';
     mainEl.style.position = 'relative';
 
+    const dom_btn_new = container.querySelector("#btn_new");
     const dom_btn_upload_screenmap = container.querySelector("#btn_upload_screenmap");
     const dom_sel_preset = container.querySelector("#sel_preset");
     const dom_txt_scale = container.querySelector("#txt_scale");
@@ -264,6 +265,33 @@ export function init(container) {
     let dragStartCanvasX = 0, dragStartCanvasY = 0;
     let dragStartScreenmapPt = null, dragStartRawPt = null;
     let ctxMenu, ctxMenuIdx = -1;
+    let ctxBtnNew, ctxBtnSave, ctxBtnLoadScreenmap, ctxLoadSubmenu;
+    let ctxBtnLoadImage, ctxLoadImageInput;
+    let ctxFileOps, ctxFileOpsSep;
+    let ctxBtnDelete, ctxBtnInsertBetween, ctxBtnInsertFwd, ctxBtnInsertBack;
+    let highlightedEdgeIdx = -1; // edge index highlighted for "insert between"
+    let loadedPresets = []; // populated by manifest fetch
+
+    const ctxBtnStyle =
+        'display:block;width:100%;padding:8px 16px;background:none;border:none;' +
+        'color:#eee;font:14px/1.4 "Outfit",system-ui,sans-serif;text-align:left;cursor:pointer;';
+    function makeCtxBtn(label, action, parent) {
+        const container = parent || ctxMenu;
+        const btn = document.createElement('button');
+        btn.dataset.action = action;
+        btn.textContent = label;
+        btn.style.cssText = ctxBtnStyle;
+        btn.addEventListener('mouseenter', () => { btn.style.background = '#3b82f6'; btn.style.color = '#fff'; });
+        btn.addEventListener('mouseleave', () => { btn.style.background = 'none'; btn.style.color = '#eee'; });
+        container.appendChild(btn);
+        return btn;
+    }
+    function makeCtxSeparator() {
+        const sep = document.createElement('div');
+        sep.style.cssText = 'height:1px;background:#444;margin:4px 0;';
+        ctxMenu.appendChild(sep);
+        return sep;
+    }
 
     // ── Camera pan/zoom state (view-only, not an edit) ───────────────────
     let camPanX = 0, camPanY = 0;
@@ -334,6 +362,10 @@ export function init(container) {
             rawPts.splice(action.idx, 1);
             if (selectedIdx === action.idx) selectedIdx = -1;
             else if (selectedIdx > action.idx) selectedIdx--;
+        } else if (action.type === 'insert') {
+            screenmap_pts.splice(action.idx, 0, [...action.screenmapPt]);
+            rawPts.splice(action.idx, 0, [...action.rawPt]);
+            selectedIdx = action.idx;
         } else if (action.type === 'transform') {
             setTransformValue(action.control, action.newValue);
             committedTransform[action.control] = action.newValue;
@@ -348,6 +380,11 @@ export function init(container) {
             screenmap_pts.splice(action.idx, 0, action.screenmapPt);
             rawPts.splice(action.idx, 0, action.rawPt);
             selectedIdx = action.idx;
+        } else if (action.type === 'insert') {
+            screenmap_pts.splice(action.idx, 1);
+            rawPts.splice(action.idx, 1);
+            if (selectedIdx === action.idx) selectedIdx = -1;
+            else if (selectedIdx > action.idx) selectedIdx--;
         } else if (action.type === 'transform') {
             setTransformValue(action.control, action.oldValue);
             committedTransform[action.control] = action.oldValue;
@@ -396,6 +433,101 @@ export function init(container) {
         rawPts.splice(idx, 1);
         if (selectedIdx === idx) selectedIdx = -1;
         else if (selectedIdx > idx) selectedIdx--;
+        setNeedsGeometryUpdate();
+    }
+
+    function insertPointAt(insertIdx, screenmapPt, rawPt) {
+        pushUndo({
+            type: 'insert',
+            idx: insertIdx,
+            screenmapPt: [...screenmapPt],
+            rawPt: [...rawPt],
+        });
+        screenmap_pts.splice(insertIdx, 0, screenmapPt);
+        rawPts.splice(insertIdx, 0, rawPt);
+        selectedIdx = insertIdx;
+        setNeedsGeometryUpdate();
+    }
+
+    function insertBetween(edgeIdx) {
+        if (edgeIdx < 0 || edgeIdx >= screenmap_pts.length - 1) return;
+        const a = edgeIdx, b = edgeIdx + 1;
+        const newScreenmap = [
+            (screenmap_pts[a][0] + screenmap_pts[b][0]) / 2,
+            (screenmap_pts[a][1] + screenmap_pts[b][1]) / 2,
+        ];
+        const newRaw = [
+            (rawPts[a][0] + rawPts[b][0]) / 2,
+            (rawPts[a][1] + rawPts[b][1]) / 2,
+        ];
+        insertPointAt(a + 1, newScreenmap, newRaw);
+    }
+
+    function insertShiftForward() {
+        const N = screenmap_pts.length;
+        if (N < 2) return;
+        const dx = screenmap_pts[N - 1][0] - screenmap_pts[N - 2][0];
+        const dy = screenmap_pts[N - 1][1] - screenmap_pts[N - 2][1];
+        const newScreenmap = [screenmap_pts[N - 1][0] + dx, screenmap_pts[N - 1][1] + dy];
+        const rdx = rawPts[N - 1][0] - rawPts[N - 2][0];
+        const rdy = rawPts[N - 1][1] - rawPts[N - 2][1];
+        const newRaw = [rawPts[N - 1][0] + rdx, rawPts[N - 1][1] + rdy];
+        insertPointAt(N, newScreenmap, newRaw);
+    }
+
+    function insertShiftBack() {
+        const N = screenmap_pts.length;
+        if (N < 2) return;
+        const dx = screenmap_pts[0][0] - screenmap_pts[1][0];
+        const dy = screenmap_pts[0][1] - screenmap_pts[1][1];
+        const newScreenmap = [screenmap_pts[0][0] + dx, screenmap_pts[0][1] + dy];
+        const rdx = rawPts[0][0] - rawPts[1][0];
+        const rdy = rawPts[0][1] - rawPts[1][1];
+        const newRaw = [rawPts[0][0] + rdx, rawPts[0][1] + rdy];
+        insertPointAt(0, newScreenmap, newRaw);
+    }
+
+    function canvasToScreenmapCoords(canvasX, canvasY) {
+        const { sX, sY, cosR, sinR, tx, ty } = getCurrentTransform();
+        const wx = (canvasX - canvasW / 2) / camZoom - camPanX;
+        const wy = (canvasY - canvasH / 2) / camZoom - camPanY;
+        const dx = wx - tx, dy = wy - ty;
+        return [(dx * cosR + dy * sinR) / sX, (-dx * sinR + dy * cosR) / sY];
+    }
+
+    function screenmapToRawCoords(sx, sy) {
+        return [
+            rawPts[0][0] + (sx - screenmap_pts[0][0]) / fitScale,
+            rawPts[0][1] + (sy - screenmap_pts[0][1]) / fitScale,
+        ];
+    }
+
+    function findNearestEdge(canvasX, canvasY) {
+        if (lastTransformedPts.length < 2) return null;
+        let bestDist = Infinity;
+        let bestIdx = -1;
+        let bestT = 0;
+
+        for (let i = 0; i < lastTransformedPts.length - 1; i++) {
+            const [ax, ay] = toCanvasCoords(lastTransformedPts[i][0], lastTransformedPts[i][1]);
+            const [bx, by] = toCanvasCoords(lastTransformedPts[i + 1][0], lastTransformedPts[i + 1][1]);
+
+            const dx = bx - ax, dy = by - ay;
+            const lenSq = dx * dx + dy * dy;
+            let t = lenSq > 0 ? ((canvasX - ax) * dx + (canvasY - ay) * dy) / lenSq : 0;
+            t = Math.max(0, Math.min(1, t));
+
+            const px = ax + t * dx, py = ay + t * dy;
+            const distSq = (canvasX - px) * (canvasX - px) + (canvasY - py) * (canvasY - py);
+
+            if (distSq < bestDist) {
+                bestDist = distSq;
+                bestIdx = i;
+                bestT = t;
+            }
+        }
+
+        return { idx: bestIdx, t: bestT, distSq: bestDist };
     }
 
     function clearEditingState() {
@@ -424,8 +556,30 @@ export function init(container) {
         setNeedsGeometryUpdate();
     }
 
-    function showContextMenu(clientX, clientY, idx) {
+    function showContextMenu(clientX, clientY, idx, edgeIdx, insideBBox) {
         ctxMenuIdx = idx;
+        const onPointOrEdge = idx >= 0 || edgeIdx >= 0;
+        // File ops: hide when on a point or edge
+        ctxFileOps.style.display = onPointOrEdge ? 'none' : '';
+        ctxFileOpsSep.style.display = onPointOrEdge ? 'none' : '';
+        // Save enabled when dirty
+        const canSave = !dom_btn_save.disabled;
+        ctxBtnSave.disabled = !canSave;
+        ctxBtnSave.style.opacity = canSave ? '1' : '0.4';
+        // Show delete only when a point is targeted
+        ctxBtnDelete.style.display = idx >= 0 ? 'block' : 'none';
+        // Show insert-between only when an edge is targeted
+        ctxBtnInsertBetween.style.display = edgeIdx >= 0 ? 'block' : 'none';
+        // Shift insert: only when on a point/edge or inside the bbox
+        const showShiftInsert = onPointOrEdge || insideBBox;
+        const canInsert = screenmap_pts.length >= 2;
+        ctxBtnInsertFwd.style.display = showShiftInsert ? 'block' : 'none';
+        ctxBtnInsertFwd.disabled = !canInsert;
+        ctxBtnInsertFwd.style.opacity = canInsert ? '1' : '0.4';
+        ctxBtnInsertBack.style.display = showShiftInsert ? 'block' : 'none';
+        ctxBtnInsertBack.disabled = !canInsert;
+        ctxBtnInsertBack.style.opacity = canInsert ? '1' : '0.4';
+        // Position — keep on screen
         ctxMenu.style.left = clientX + 'px';
         ctxMenu.style.top = clientY + 'px';
         ctxMenu.style.display = '';
@@ -433,7 +587,12 @@ export function init(container) {
 
     function hideContextMenu() {
         if (ctxMenu) ctxMenu.style.display = 'none';
+        if (ctxLoadSubmenu) ctxLoadSubmenu.style.display = 'none';
         ctxMenuIdx = -1;
+        if (highlightedEdgeIdx >= 0) {
+            highlightedEdgeIdx = -1;
+            setNeedsRender();
+        }
     }
 
     dom_btn_undo.addEventListener('click', performUndo, { signal });
@@ -536,22 +695,103 @@ export function init(container) {
         ctxMenu.style.cssText =
             'position:fixed;display:none;z-index:9999;' +
             'background:#1e1e1e;border:1px solid #444;border-radius:6px;' +
-            'padding:4px 0;box-shadow:0 4px 16px rgba(0,0,0,0.5);min-width:140px;';
-        const ctxBtn = document.createElement('button');
-        ctxBtn.dataset.action = 'delete';
-        ctxBtn.textContent = 'Delete Point';
-        ctxBtn.style.cssText =
-            'display:block;width:100%;padding:6px 14px;background:none;border:none;' +
-            'color:#eee;font:13px/1.4 "Outfit",system-ui,sans-serif;text-align:left;cursor:pointer;';
-        ctxBtn.addEventListener('mouseenter', () => { ctxBtn.style.background = '#3b82f6'; ctxBtn.style.color = '#fff'; });
-        ctxBtn.addEventListener('mouseleave', () => { ctxBtn.style.background = 'none'; ctxBtn.style.color = '#eee'; });
-        ctxMenu.appendChild(ctxBtn);
+            'padding:6px 0;box-shadow:0 4px 16px rgba(0,0,0,0.5);min-width:240px;';
+
+        // ── File operations (wrapped for show/hide) ──
+        ctxFileOps = document.createElement('div');
+        ctxMenu.appendChild(ctxFileOps);
+        ctxBtnNew = makeCtxBtn('New', 'new', ctxFileOps);
+        ctxBtnSave = makeCtxBtn('Save As\u2026', 'save', ctxFileOps);
+
+        // Load Screenmap with submenu
+        const ctxLoadWrapper = document.createElement('div');
+        ctxLoadWrapper.style.cssText = 'position:relative;';
+        ctxFileOps.appendChild(ctxLoadWrapper);
+        ctxBtnLoadScreenmap = document.createElement('button');
+        ctxBtnLoadScreenmap.textContent = 'Load Screenmap \u25B8';
+        ctxBtnLoadScreenmap.style.cssText = ctxBtnStyle;
+        ctxLoadWrapper.appendChild(ctxBtnLoadScreenmap);
+
+        ctxLoadSubmenu = document.createElement('div');
+        ctxLoadSubmenu.style.cssText =
+            'position:absolute;left:100%;top:0;display:none;' +
+            'background:#1e1e1e;border:1px solid #444;border-radius:6px;' +
+            'padding:6px 0;box-shadow:0 4px 16px rgba(0,0,0,0.5);min-width:220px;white-space:nowrap;';
+        ctxLoadWrapper.appendChild(ctxLoadSubmenu);
+
+        // "Upload file…" always first in submenu
+        const ctxBtnUploadScreenmap = makeCtxBtn('Upload file\u2026', 'upload-screenmap', ctxLoadSubmenu);
+
+        ctxLoadWrapper.addEventListener('mouseenter', () => {
+            ctxBtnLoadScreenmap.style.background = '#3b82f6';
+            ctxBtnLoadScreenmap.style.color = '#fff';
+            ctxLoadSubmenu.style.display = '';
+        });
+        ctxLoadWrapper.addEventListener('mouseleave', () => {
+            ctxBtnLoadScreenmap.style.background = 'none';
+            ctxBtnLoadScreenmap.style.color = '#eee';
+            ctxLoadSubmenu.style.display = 'none';
+        });
+
+        // Load Image (triggers file picker)
+        ctxBtnLoadImage = makeCtxBtn('Load Background Image\u2026', 'load-image', ctxFileOps);
+        ctxLoadImageInput = document.createElement('input');
+        ctxLoadImageInput.type = 'file';
+        ctxLoadImageInput.accept = 'image/*';
+        ctxLoadImageInput.style.display = 'none';
+        ctxFileOps.appendChild(ctxLoadImageInput);
+
+        ctxFileOpsSep = makeCtxSeparator();
+
+        // ── Point operations ──
+        ctxBtnDelete = makeCtxBtn('Delete Point', 'delete');
+        ctxBtnInsertBetween = makeCtxBtn('Insert between', 'insert-between');
+        ctxBtnInsertFwd = makeCtxBtn('Insert, shift forward', 'insert-forward');
+        ctxBtnInsertBack = makeCtxBtn('Insert, shift back', 'insert-back');
         document.body.appendChild(ctxMenu);
+
+        // Hidden file input for "Upload file…" submenu item
+        const ctxUploadInput = document.createElement('input');
+        ctxUploadInput.type = 'file';
+        ctxUploadInput.accept = '.json';
+        ctxUploadInput.style.display = 'none';
+        document.body.appendChild(ctxUploadInput);
+        ctxUploadInput.addEventListener('change', () => {
+            if (ctxUploadInput.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (ev) => load_screenmap_data(ev.target.result);
+                reader.readAsText(ctxUploadInput.files[0]);
+            }
+            ctxUploadInput.value = '';
+        }, { signal });
+
+        ctxLoadImageInput.addEventListener('change', () => {
+            if (ctxLoadImageInput.files[0]) loadBackgroundImage(ctxLoadImageInput.files[0]);
+            ctxLoadImageInput.value = '';
+        }, { signal });
 
         ctxMenu.addEventListener('click', (e) => {
             const action = e.target.dataset.action;
-            if (action === 'delete' && ctxMenuIdx >= 0) {
+            if (action === 'new') {
+                dom_btn_new.click();
+            } else if (action === 'save') {
+                saveAs();
+            } else if (action === 'upload-screenmap') {
+                ctxUploadInput.click();
+            } else if (action && action.startsWith('load-preset:')) {
+                const file = action.slice('load-preset:'.length);
+                fetch(`/screenmaps/${file}`).then(r => r.text()).then(load_screenmap_data)
+                    .catch(err => console.log('Failed to load preset:', err));
+            } else if (action === 'load-image') {
+                ctxLoadImageInput.click();
+            } else if (action === 'delete' && ctxMenuIdx >= 0) {
                 deletePoint(ctxMenuIdx);
+            } else if (action === 'insert-between' && highlightedEdgeIdx >= 0) {
+                insertBetween(highlightedEdgeIdx);
+            } else if (action === 'insert-forward') {
+                insertShiftForward();
+            } else if (action === 'insert-back') {
+                insertShiftBack();
             }
             hideContextMenu();
         }, { signal });
@@ -661,6 +901,20 @@ export function init(container) {
         screenmap_pts = center_and_fit(screenmap_pts, fitW, fitH);
     }
 
+    dom_btn_new.addEventListener('click', () => {
+        clearEditingState();
+        dom_sel_preset.value = '';
+        screenmap_pts = [[0, 0]];
+        rawPts = [[0, 0]];
+        origDiameter = 0.5;
+        dom_txt_diameter.value = origDiameter;
+        origWidth = 0;
+        origHeight = 0;
+        fitScale = 1;
+        resetTransforms();
+        setNeedsGeometryUpdate();
+    }, { signal });
+
     dom_btn_upload_screenmap.addEventListener('change', () => {
         dom_sel_preset.value = '';
         readFileAsText(dom_btn_upload_screenmap, load_screenmap_data);
@@ -682,16 +936,19 @@ export function init(container) {
         try {
             const resp = await fetch('/screenmaps/manifest.json');
             const manifest = await resp.json();
+            loadedPresets = manifest.presets || [];
             dom_sel_preset.innerHTML = '<option value="">-- Select preset --</option>';
-            for (const preset of manifest.presets) {
+            for (const preset of loadedPresets) {
                 const opt = document.createElement('option');
                 opt.value = preset.file;
                 opt.textContent = preset.name;
                 dom_sel_preset.appendChild(opt);
+                // Also add to context menu submenu
+                makeCtxBtn(preset.name, `load-preset:${preset.file}`, ctxLoadSubmenu);
             }
             // Auto-select the first preset
-            if (manifest.presets.length > 0) {
-                dom_sel_preset.value = manifest.presets[0].file;
+            if (loadedPresets.length > 0) {
+                dom_sel_preset.value = loadedPresets[0].file;
                 dom_sel_preset.dispatchEvent(new Event('change'));
             }
         } catch (e) {
@@ -761,6 +1018,33 @@ export function init(container) {
         dom_btn_upload_image.value = '';
         dom_bg_accordion.removeAttribute('open');
         setNeedsRender();
+    }
+
+    let deleteBgConfirmEl = null;
+    function showDeleteBgConfirm() {
+        if (deleteBgConfirmEl) return; // already showing
+        deleteBgConfirmEl = document.createElement('div');
+        deleteBgConfirmEl.style.cssText =
+            'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:100;' +
+            'background:#1e1e1e;border:1px solid #444;border-radius:8px;' +
+            'padding:16px 24px;box-shadow:0 4px 20px rgba(0,0,0,0.6);text-align:center;' +
+            'font:14px/1.4 "Outfit",system-ui,sans-serif;color:#eee;';
+        deleteBgConfirmEl.innerHTML =
+            '<div style="margin-bottom:12px">Delete background image?</div>' +
+            '<button data-bg-del="yes" style="padding:6px 16px;margin:0 6px;background:#ef4444;color:#fff;border:none;border-radius:4px;cursor:pointer;font:inherit">Delete</button>' +
+            '<button data-bg-del="no" style="padding:6px 16px;margin:0 6px;background:#333;color:#eee;border:1px solid #555;border-radius:4px;cursor:pointer;font:inherit">Cancel</button>';
+        deleteBgConfirmEl.addEventListener('click', (e) => {
+            const val = e.target.dataset.bgDel;
+            if (val === 'yes') removeBackgroundImage();
+            if (val) dismissDeleteBgConfirm();
+        });
+        wrapper.appendChild(deleteBgConfirmEl);
+    }
+    function dismissDeleteBgConfirm() {
+        if (deleteBgConfirmEl) {
+            deleteBgConfirmEl.remove();
+            deleteBgConfirmEl = null;
+        }
     }
 
     function loadBackgroundImage(file) {
@@ -997,6 +1281,24 @@ export function init(container) {
             for (let i = 2; i < pts.length - 1; i++) {
                 fillCircle(pts[i][0], pts[i][1], 4, 'rgba(255,255,255,0.5)');
             }
+        }
+
+        // Highlighted edge for "insert between"
+        if (highlightedEdgeIdx >= 0 && highlightedEdgeIdx < pts.length - 1) {
+            overlayCtx.globalAlpha = 1;
+            overlayCtx.strokeStyle = '#00ffff';
+            overlayCtx.lineWidth = 4;
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(pts[highlightedEdgeIdx][0], pts[highlightedEdgeIdx][1]);
+            overlayCtx.lineTo(pts[highlightedEdgeIdx + 1][0], pts[highlightedEdgeIdx + 1][1]);
+            overlayCtx.stroke();
+            // Midpoint marker
+            const mx = (pts[highlightedEdgeIdx][0] + pts[highlightedEdgeIdx + 1][0]) / 2;
+            const my = (pts[highlightedEdgeIdx][1] + pts[highlightedEdgeIdx + 1][1]) / 2;
+            overlayCtx.fillStyle = '#00ffff';
+            overlayCtx.beginPath();
+            overlayCtx.arc(mx, my, 5, 0, Math.PI * 2);
+            overlayCtx.fill();
         }
 
         // Start and end LEDs always visible
@@ -1522,9 +1824,26 @@ export function init(container) {
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
             selectedIdx = idx;
+            highlightedEdgeIdx = -1;
             setNeedsGeometryUpdate();
-            showContextMenu(e.clientX, e.clientY, idx);
+            showContextMenu(e.clientX, e.clientY, idx, -1);
+            return;
         }
+        // No point hit — check for edge hit
+        const edge = findNearestEdge(cx, cy);
+        if (edge && edge.distSq < 20 * 20) {
+            highlightedEdgeIdx = edge.idx;
+            setNeedsRender();
+            showContextMenu(e.clientX, e.clientY, -1, edge.idx);
+            return;
+        }
+        highlightedEdgeIdx = -1;
+        let insideBBox = false;
+        if (ptsBBox) {
+            const [lx, ly] = canvasToObbLocal(ptsBBox, cx, cy);
+            insideBBox = Math.abs(lx) <= ptsBBox.hw && Math.abs(ly) <= ptsBBox.hh;
+        }
+        showContextMenu(e.clientX, e.clientY, -1, -1, insideBBox);
     }
 
     function onMouseDown(e) {
@@ -1545,6 +1864,32 @@ export function init(container) {
 
         if (e.button !== 0) return;
         const [cx, cy] = getCanvasCoords(e);
+
+        // Shift+Left-click: insert a new point between two existing points
+        if (e.shiftKey && screenmap_pts.length >= 2) {
+            const edge = findNearestEdge(cx, cy);
+            if (edge) {
+                const { idx, t } = edge;
+                const newScreenmapPt = [
+                    screenmap_pts[idx][0] + t * (screenmap_pts[idx + 1][0] - screenmap_pts[idx][0]),
+                    screenmap_pts[idx][1] + t * (screenmap_pts[idx + 1][1] - screenmap_pts[idx][1]),
+                ];
+                const newRawPt = [
+                    rawPts[idx][0] + t * (rawPts[idx + 1][0] - rawPts[idx][0]),
+                    rawPts[idx][1] + t * (rawPts[idx + 1][1] - rawPts[idx][1]),
+                ];
+                insertPointAt(idx + 1, newScreenmapPt, newRawPt);
+                return;
+            }
+        }
+
+        // Ctrl+Left-click: extend — append a new point at the click location
+        if ((e.ctrlKey || e.metaKey) && screenmap_pts.length > 0) {
+            const newScreenmapPt = canvasToScreenmapCoords(cx, cy);
+            const newRawPt = screenmapToRawCoords(newScreenmapPt[0], newScreenmapPt[1]);
+            insertPointAt(screenmap_pts.length, newScreenmapPt, newRawPt);
+            return;
+        }
 
         // Priority 1: Gizmo handle (corner/edge/rotation)
         const gizmoHit = hitTestGizmo(cx, cy);
@@ -1569,6 +1914,7 @@ export function init(container) {
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
             selectedIdx = idx;
+            highlightedEdgeIdx = -1;
             setNeedsGeometryUpdate(); // color update for selection
             isDragging = true;
             dragStartCanvasX = cx;
@@ -1579,7 +1925,19 @@ export function init(container) {
             return;
         }
 
-        // Priority 3: Translate (inside bbox, no LED hit)
+        // Priority 3: Edge selection (click near a line segment)
+        if (screenmap_pts.length >= 2) {
+            const edge = findNearestEdge(cx, cy);
+            if (edge && edge.distSq < 20 * 20) {
+                highlightedEdgeIdx = edge.idx;
+                selectedIdx = -1;
+                setNeedsRender();
+                return;
+            }
+        }
+        if (highlightedEdgeIdx >= 0) { highlightedEdgeIdx = -1; setNeedsRender(); }
+
+        // Priority 4: Translate (inside bbox, no LED hit)
         if (gizmoHit === 'translate') {
             gizmoActive = 'translate';
             gizmoDragStart = {
@@ -1707,6 +2065,15 @@ export function init(container) {
         // Gizmo handle hover takes cursor priority
         if (gizmoHover && gizmoHover !== 'translate') {
             overlayCanvas.style.cursor = getCursorForGizmo(gizmoHover);
+            tooltipLedIdx = -1;
+            tooltip.style.opacity = '0';
+            return;
+        }
+
+        // Shift held: crosshair (insert between)
+        // Ctrl held: copy cursor (extend/append)
+        if (screenmap_pts.length > 0 && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+            overlayCanvas.style.cursor = e.shiftKey ? 'crosshair' : 'copy';
             tooltipLedIdx = -1;
             tooltip.style.opacity = '0';
             return;
@@ -1844,6 +2211,12 @@ export function init(container) {
             e.preventDefault();
             return;
         }
+        // Delete background image (when no point selected)
+        if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIdx < 0 && bgImageMesh && !isDragging) {
+            showDeleteBgConfirm();
+            e.preventDefault();
+            return;
+        }
         // Undo: Ctrl+Z / Cmd+Z
         if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
             performUndo();
@@ -1857,8 +2230,9 @@ export function init(container) {
             e.preventDefault();
             return;
         }
-        // Escape: deselect
+        // Escape: dismiss bg delete confirm or deselect
         if (e.key === 'Escape') {
+            if (deleteBgConfirmEl) { dismissDeleteBgConfirm(); e.preventDefault(); return; }
             if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
         }
     }, { signal });
@@ -1966,7 +2340,9 @@ export function init(container) {
         const physW = (origWidth * sX).toFixed(2);
         const physH = (origHeight * sY).toFixed(2);
 
-        infoDiv.innerHTML = `Points: ${screenmap_pts.length}<br>Size: ${physW} &times; ${physH} cm`;
+        infoDiv.innerHTML =
+            `Points: ${screenmap_pts.length}<br>Size: ${physW} &times; ${physH} cm` +
+            `<br><span style="opacity:0.5;font-size:12px">Shift+click: insert between &nbsp; Ctrl+click: extend end</span>`;
     }
 
     function handleResize() {

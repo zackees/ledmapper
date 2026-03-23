@@ -9,7 +9,7 @@ test.describe('Screenmap Editor', () => {
 
     test('has screenmap upload input', async ({ page }) => {
         await page.goto('/shapeeditor/');
-        await expect(page.locator('#btn_upload_screenmap')).toBeVisible();
+        await expect(page.locator('#btn_upload_screenmap')).toBeAttached();
     });
 
     test('has scale and rotate controls', async ({ page }) => {
