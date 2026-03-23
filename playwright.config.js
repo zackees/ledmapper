@@ -8,6 +8,7 @@ const protocol = hasHttps ? 'https' : 'http';
 
 export default defineConfig({
   testDir: './tests/e2e',
+  workers: 2,
   timeout: 30000,
   expect: {
     timeout: 10000,

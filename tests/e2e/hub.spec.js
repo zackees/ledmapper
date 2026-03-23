@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.js';
 
 test.describe('Hub Page', () => {
     test('loads and shows title', async ({ page }) => {

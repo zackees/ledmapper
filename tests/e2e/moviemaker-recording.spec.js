@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.js';
 import path from 'path';
 import fs from 'fs';
 import { mockWebcam } from '../helpers/webcam-mock.js';
