@@ -2,7 +2,12 @@
     <div class="flex items-center justify-between">
         <div>
             <h1 class="mb-0">ScreenMap Design</h1>
-            <p class="text-sm text-lm-text-muted mt-0.5 mb-0">changes here will modify the data when saved</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <button id="btn_undo" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Undo (Ctrl+Z)">Undo</button>
+            <button id="btn_redo" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Redo (Ctrl+Shift+Z)">Redo</button>
+            <button id="btn_reset" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled>Reset</button>
+            <button id="btn_save_as" class="btn-save py-1 px-3.5 bg-lm-accent text-white border-none rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled>Save As…</button>
         </div>
     </div>
     <div id="controls" class="flex flex-col gap-2">
@@ -21,6 +26,11 @@
                 <button id="btn_remove_image" class="py-0.5 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Remove background image">&times;</button>
             </div>
         </div>
+    </div>
+</div>
+<main id="main">
+    <!-- Canvas target -->
+    <div id="transform-overlay" class="transform-overlay">
         <details class="accordion" open>
             <summary class="cursor-pointer select-none text-sm font-medium text-lm-text py-1">Screenmap</summary>
             <div class="transform-row flex flex-wrap items-center gap-x-3 gap-y-1 pt-2">
@@ -43,14 +53,5 @@
                 <label>Move Y <input id="txt_image_ty" type="number" value="0" step="1" disabled><span class="unit">px</span></label>
             </div>
         </details>
-        <div class="flex items-center gap-2">
-            <button id="btn_undo" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Undo (Ctrl+Z)">Undo</button>
-            <button id="btn_redo" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Redo (Ctrl+Shift+Z)">Redo</button>
-            <button id="btn_reset" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled>Reset</button>
-            <button id="btn_save_as" class="btn-save py-1 px-3.5 bg-lm-accent text-white border-none rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled>Save As…</button>
-        </div>
     </div>
-</div>
-<main id="main">
-    <!-- Canvas target -->
 </main>

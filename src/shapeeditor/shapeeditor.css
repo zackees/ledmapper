@@ -7,8 +7,29 @@
 .sticky h1 {
     font-size: 1.2rem;
     font-weight: 500;
-    margin-bottom: 8px;
+    margin-bottom: 0;
     letter-spacing: -0.01em;
+}
+
+/* ── Transform overlay panel (floats over canvas) ──────────── */
+
+.transform-overlay {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 900;
+    background: rgba(17, 17, 17, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--color-lm-border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    max-width: 420px;
+    pointer-events: auto;
+    transition: opacity 0.15s ease;
+}
+
+.transform-overlay:hover {
+    background: rgba(17, 17, 17, 0.95);
 }
 
 .slider-row > label {
@@ -74,6 +95,10 @@
     .file-ops-row {
         display: none;
     }
+
+    #controls {
+        display: none;
+    }
 }
 
 /* ── Responsive ─────────────────────────────────────────────── */
@@ -81,6 +106,14 @@
 @media (max-width: 600px) {
     .sticky {
         position: static;
+    }
+
+    .transform-overlay {
+        position: static;
+        max-width: none;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
     }
 
     .slider-row > label {

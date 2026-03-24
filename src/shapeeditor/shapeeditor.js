@@ -826,7 +826,7 @@ export function init(container) {
         const labelStyle = 'position:absolute;pointer-events:none;color:#fff;font:bold 13px/1 "Outfit",system-ui,sans-serif;text-shadow:0 0 3px #000,0 0 3px #000;';
 
         infoDiv = document.createElement('div');
-        infoDiv.style.cssText = labelStyle + 'top:10px;left:10px;font-size:14px;line-height:1.6;';
+        infoDiv.style.cssText = labelStyle + 'bottom:10px;left:10px;font-size:14px;line-height:1.6;';
         wrapper.appendChild(infoDiv);
 
         placeholderDiv = document.createElement('div');
@@ -899,6 +899,7 @@ export function init(container) {
             origHeight > 0 ? availH / origHeight : availH,
         );
         screenmap_pts = center_and_fit(screenmap_pts, fitW, fitH);
+        positionRulerAboveBBox();
     }
 
     dom_btn_new.addEventListener('click', () => {
@@ -1153,6 +1154,166 @@ export function init(container) {
         ];
     }
 
+    // ── Floating cm ruler ──────────────────────────────────────────────────
+    // Two endpoints in world-space (pixels, same coordinate system as screenmap_pts).
+    // The ruler is always visible — drag either handle to reposition/expand.
+    let rulerA = { x: -80, y: -80 };  // left handle  (world px)
+    let rulerB = { x: 80, y: -80 };   // right handle (world px)
+    let rulerDrag = null;              // null | 'a' | 'b' | 'body'
+    let rulerDragStart = null;
+    const RULER_HANDLE_R = 7;          // hit radius in canvas px
+
+    /** Reposition ruler to sit 5% above the screenmap bounding box. */
+    function positionRulerAboveBBox() {
+        if (screenmap_pts.length === 0) return;
+        let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+        for (const [x, y] of screenmap_pts) {
+            if (x < xmin) xmin = x;
+            if (x > xmax) xmax = x;
+            if (y < ymin) ymin = y;
+            if (y > ymax) ymax = y;
+        }
+        const bboxH = ymax - ymin;
+        const gap = bboxH * 0.10;
+        rulerA.x = xmin;
+        rulerA.y = ymin - gap;
+        rulerB.x = xmax;
+        rulerB.y = ymin - gap;
+    }
+
+    function hitTestRuler(cx, cy) {
+        const [ax, ay] = toCanvasCoords(rulerA.x, rulerA.y);
+        const [bx, by] = toCanvasCoords(rulerB.x, rulerB.y);
+        const r = RULER_HANDLE_R + 4;
+        if (Math.hypot(cx - ax, cy - ay) <= r) return 'a';
+        if (Math.hypot(cx - bx, cy - by) <= r) return 'b';
+        // Body hit: anywhere inside the ruler band (bandHalf=10 + small margin)
+        const dx = bx - ax, dy = by - ay;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq > 0) {
+            const t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / lenSq));
+            const px = ax + t * dx, py = ay + t * dy;
+            if (Math.hypot(cx - px, cy - py) <= 14) return 'body';
+        }
+        return null;
+    }
+
+    function drawRuler() {
+        if (!overlayCtx || fitScale <= 0) return;
+        const ctx = overlayCtx;
+        const pxPerCm = fitScale * camZoom;
+        const [ax, ay] = toCanvasCoords(rulerA.x, rulerA.y);
+        const [bx, by] = toCanvasCoords(rulerB.x, rulerB.y);
+        const dx = bx - ax, dy = by - ay;
+        const lenPx = Math.hypot(dx, dy);
+        if (lenPx < 1) return;
+        const lenCm = lenPx / pxPerCm;
+
+        // Unit vector along ruler
+        const ux = dx / lenPx, uy = dy / lenPx;
+        // Normal (perpendicular, pointing "up" relative to the ruler direction)
+        const nx = -uy, ny = ux;
+
+        ctx.save();
+
+        // ── Ruler body (dark band) ──
+        const bandHalf = 10; // half-height of the ruler band
+        ctx.beginPath();
+        ctx.moveTo(ax + nx * bandHalf, ay + ny * bandHalf);
+        ctx.lineTo(bx + nx * bandHalf, by + ny * bandHalf);
+        ctx.lineTo(bx - nx * bandHalf, by - ny * bandHalf);
+        ctx.lineTo(ax - nx * bandHalf, ay - ny * bandHalf);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(20, 20, 20, 0.8)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // ── Tick marks ──
+        const niceSteps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
+        let stepCm = 1;
+        for (const s of niceSteps) {
+            if (s * pxPerCm >= 8) { stepCm = s; break; }
+        }
+        const majorEvery = stepCm < 1 ? Math.round(1 / stepCm) : (stepCm < 10 ? Math.round(10 / stepCm) : 1);
+        const nTicks = Math.floor(lenCm / stepCm);
+
+        for (let i = 0; i <= nTicks; i++) {
+            const d = i * stepCm * pxPerCm; // distance in px from A
+            const tx = ax + ux * d;
+            const ty = ay + uy * d;
+            const isMajor = (i % majorEvery === 0);
+            const tickLen = isMajor ? 8 : 4;
+
+            ctx.strokeStyle = isMajor ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.25)';
+            ctx.lineWidth = isMajor ? 1 : 0.5;
+            ctx.beginPath();
+            ctx.moveTo(tx - nx * bandHalf, ty - ny * bandHalf);
+            ctx.lineTo(tx - nx * (bandHalf - tickLen), ty - ny * (bandHalf - tickLen));
+            ctx.stroke();
+            // Mirror tick on the other side
+            ctx.beginPath();
+            ctx.moveTo(tx + nx * bandHalf, ty + ny * bandHalf);
+            ctx.lineTo(tx + nx * (bandHalf - tickLen), ty + ny * (bandHalf - tickLen));
+            ctx.stroke();
+
+            // Labels on major ticks (above the ruler)
+            if (isMajor && i > 0) {
+                const cm = i * stepCm;
+                const label = Number.isInteger(cm) ? cm.toString() : cm.toFixed(1);
+                ctx.save();
+                ctx.translate(tx + nx * (bandHalf + 10), ty + ny * (bandHalf + 10));
+                ctx.rotate(Math.atan2(dy, dx));
+                ctx.font = '9px "IBM Plex Mono", monospace';
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(label, 0, 0);
+                ctx.restore();
+            }
+        }
+
+        // ── Total length label (centered, below ruler) ──
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        ctx.save();
+        ctx.translate(mx - nx * (bandHalf + 12), my - ny * (bandHalf + 12));
+        const angle = Math.atan2(dy, dx);
+        // Flip text if ruler is angled so text would be upside-down
+        const flipText = angle > Math.PI / 2 || angle < -Math.PI / 2;
+        ctx.rotate(flipText ? angle + Math.PI : angle);
+        ctx.font = 'bold 11px "IBM Plex Mono", monospace';
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(lenCm.toFixed(2) + ' cm', 0, 0);
+        ctx.restore();
+
+        // ── Handle circles ──
+        for (const [hx, hy] of [[ax, ay], [bx, by]]) {
+            ctx.beginPath();
+            ctx.arc(hx, hy, RULER_HANDLE_R, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(59,130,246,0.85)';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        // "0" label at A handle
+        ctx.save();
+        ctx.translate(ax + nx * (bandHalf + 10), ay + ny * (bandHalf + 10));
+        ctx.rotate(Math.atan2(dy, dx));
+        ctx.font = '9px "IBM Plex Mono", monospace';
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('0', 0, 0);
+        ctx.restore();
+
+        ctx.restore();
+    }
+
     function drawOverlay() {
         if (!overlayCtx) return;
         overlayCtx.clearRect(0, 0, canvasW, canvasH);
@@ -1180,7 +1341,7 @@ export function init(container) {
             bgImageBBox = null;
         }
 
-        if (lastTransformedPts.length === 0) { ptsBBox = null; drawBgGizmoHandles(); return; }
+        if (lastTransformedPts.length === 0) { ptsBBox = null; drawBgGizmoHandles(); drawRuler(); return; }
 
         const pts = lastTransformedPts.map(([x, y]) => toCanvasCoords(x, y));
 
@@ -1328,6 +1489,7 @@ export function init(container) {
         }
 
         drawBgGizmoHandles();
+        drawRuler();
     }
 
     function fillCircle(x, y, diameter, color) {
@@ -1891,6 +2053,19 @@ export function init(container) {
             return;
         }
 
+        // Priority 0: Ruler handle / body
+        const rulerHit = hitTestRuler(cx, cy);
+        if (rulerHit) {
+            rulerDrag = rulerHit;
+            rulerDragStart = {
+                cx, cy,
+                ax: rulerA.x, ay: rulerA.y,
+                bx: rulerB.x, by: rulerB.y,
+            };
+            overlayCanvas.style.cursor = rulerHit === 'body' ? 'move' : 'grab';
+            return;
+        }
+
         // Priority 1: Gizmo handle (corner/edge/rotation)
         const gizmoHit = hitTestGizmo(cx, cy);
         if (gizmoHit && gizmoHit !== 'translate') {
@@ -1998,6 +2173,27 @@ export function init(container) {
             return;
         }
 
+        // Ruler drag in progress
+        if (rulerDrag) {
+            const wdx = (cx - rulerDragStart.cx) / camZoom;
+            const wdy = (cy - rulerDragStart.cy) / camZoom;
+            if (rulerDrag === 'a') {
+                rulerA.x = rulerDragStart.ax + wdx;
+                rulerA.y = rulerDragStart.ay + wdy;
+            } else if (rulerDrag === 'b') {
+                rulerB.x = rulerDragStart.bx + wdx;
+                rulerB.y = rulerDragStart.by + wdy;
+            } else {
+                // body — move both handles
+                rulerA.x = rulerDragStart.ax + wdx;
+                rulerA.y = rulerDragStart.ay + wdy;
+                rulerB.x = rulerDragStart.bx + wdx;
+                rulerB.y = rulerDragStart.by + wdy;
+            }
+            setNeedsRender();
+            return;
+        }
+
         // Gizmo drag in progress
         if (gizmoActive) {
             handleGizmoDrag(cx, cy);
@@ -2037,6 +2233,15 @@ export function init(container) {
             return;
         }
 
+        // Ruler hover cursor
+        const rulerHoverHit = hitTestRuler(cx, cy);
+        if (rulerHoverHit) {
+            overlayCanvas.style.cursor = rulerHoverHit === 'body' ? 'move' : 'grab';
+            tooltipLedIdx = -1;
+            tooltip.style.opacity = '0';
+            // still update gizmo/bbox hover state below so rendering stays correct
+        }
+
         // Gizmo hover detection
         const prevGizmoHover = gizmoHover;
         gizmoHover = hitTestGizmo(cx, cy);
@@ -2061,6 +2266,9 @@ export function init(container) {
             bgGizmoHover = null;
         }
         if (bgGizmoHover !== prevBgGizmoHover) setNeedsRender();
+
+        // Ruler hover takes top cursor priority
+        if (rulerHoverHit) return;
 
         // Gizmo handle hover takes cursor priority
         if (gizmoHover && gizmoHover !== 'translate') {
@@ -2115,6 +2323,13 @@ export function init(container) {
         if (e && e.button === 2) {
             rightButtonDown = false;
             // rightClickMoved is consumed by onContextMenu
+            overlayCanvas.style.cursor = 'default';
+            return;
+        }
+
+        if (rulerDrag) {
+            rulerDrag = null;
+            rulerDragStart = null;
             overlayCanvas.style.cursor = 'default';
             return;
         }
