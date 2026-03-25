@@ -16,6 +16,7 @@ import {
     DoubleSide,
 } from 'three';
 import { parse_screenmap_data, centerAndFitPoints, readFileAsText, download_text_as_file } from '../common.js';
+import { saveScreenmap, saveScreenmapPoints, getScreenmap } from '../screenmap-store.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './shapeeditor.css?url';
@@ -132,6 +133,7 @@ export function init(container) {
             map: { strip1: { x: xArr, y: yArr, diameter } }
         }, null, 2);
 
+        saveScreenmap(json);
         download_text_as_file(json, 'screenmap.json', { type: 'application/json' });
         clearDirty();
     }
@@ -870,6 +872,7 @@ export function init(container) {
 
         screenmap_pts = parse_screenmap_data(text);
         if (screenmap_pts.length === 0) return;
+        saveScreenmap(text);
 
         // Populate diameter from file if available
         if (typeof screenmap_pts.diameter === "number" && screenmap_pts.diameter > 0) {
@@ -914,6 +917,7 @@ export function init(container) {
         fitScale = 1;
         resetTransforms();
         setNeedsGeometryUpdate();
+        saveScreenmapPoints([[0, 0]], 0.5);
     }, { signal });
 
     dom_btn_upload_screenmap.addEventListener('change', () => {
@@ -947,8 +951,11 @@ export function init(container) {
                 // Also add to context menu submenu
                 makeCtxBtn(preset.name, `load-preset:${preset.file}`, ctxLoadSubmenu);
             }
-            // Auto-select the first preset
-            if (loadedPresets.length > 0) {
+            // Restore stored screenmap, or fall back to first preset
+            const storedScreenmap = getScreenmap();
+            if (storedScreenmap) {
+                load_screenmap_data(storedScreenmap);
+            } else if (loadedPresets.length > 0) {
                 dom_sel_preset.value = loadedPresets[0].file;
                 dom_sel_preset.dispatchEvent(new Event('change'));
             }

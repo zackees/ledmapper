@@ -1,5 +1,6 @@
 const Swal = import('sweetalert2').then(m => m.default);
 import { parse_screenmap_data, readFileAsText } from '../common.js';
+import { saveScreenmap, getScreenmap } from '../screenmap-store.js';
 import { transformToCenter, parseResolution, samplePixels, computeFps, scaleToMaxDimension } from './transforms.js';
 import { loadPreset } from '../preset-loader.js';
 import { createBlurPipeline } from './blur-pipeline.js';
@@ -256,8 +257,13 @@ export function init(container) {
         loadScreenmapFromPoints(await loadPreset('keytar.json'));
     }, { signal });
 
-    // Auto-select 16x16 preset on load
-    dom_btn_preset_16x16.click();
+    // Restore stored screenmap, or fall back to 16x16 preset
+    const storedScreenmap = getScreenmap();
+    if (storedScreenmap) {
+        loadScreenmapFromPoints(parse_screenmap_data(storedScreenmap));
+    } else {
+        dom_btn_preset_16x16.click();
+    }
 
     // Wire welcome overlay buttons to sidebar buttons
     container.querySelectorAll('[data-trigger]').forEach(btn => {
@@ -425,6 +431,7 @@ export function init(container) {
         updateElementStates();
         readFileAsText(dom_btn_upload_screenmap, (text) => {
             loadScreenmapFromPoints(parse_screenmap_data(text));
+            saveScreenmap(text);
         });
     }, { signal });
 

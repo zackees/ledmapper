@@ -1,4 +1,5 @@
 import { download_text_as_file } from '../common.js';
+import { saveScreenmap } from '../screenmap-store.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './screenmap.css?url';
 
@@ -121,8 +122,10 @@ export function init(container) {
     }
 
     function downloadScreenmap() {
+        const jsonStr = points_to_json_str();
+        saveScreenmap(jsonStr);
         const options = { type: 'application/json' };
-        download_text_as_file(points_to_json_str(), 'screenmap.json', options);
+        download_text_as_file(jsonStr, 'screenmap.json', options);
     }
 
     function indexOfIntersectMostRecent(x, y, radius) {
@@ -378,6 +381,7 @@ export function init(container) {
     }
 
     return function destroy() {
+        if (points.length > 0) saveScreenmap(points_to_json_str());
         ac.abort();
         if (rafId) cancelAnimationFrame(rafId);
         if (videoElement && videoElement.srcObject) {

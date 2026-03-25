@@ -1,4 +1,5 @@
 import { parse_screenmap_data, centerAndFitPoints, readFileAsText } from '../common.js';
+import { saveScreenmap, getScreenmap } from '../screenmap-store.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './movieplayer.css?url';
@@ -66,6 +67,7 @@ export function init(container) {
         screenmap_pts = parse_screenmap_data(text);
         dom_btn_load_movie.disabled = (screenmap_pts.length === 0);
         if (screenmap_pts.length === 0) return;
+        saveScreenmap(text);
         screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
         buildPoints();
     }
@@ -74,6 +76,10 @@ export function init(container) {
         set_dom_btn_play(false);
         readFileAsText(dom_btn_upload_screenmap, load_screenmap_data);
     }, { signal });
+
+    // Restore stored screenmap if available
+    const storedScreenmap = getScreenmap();
+    if (storedScreenmap) load_screenmap_data(storedScreenmap);
 
     function set_dom_btn_play(on) {
         playing = on;
