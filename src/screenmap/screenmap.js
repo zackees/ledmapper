@@ -1,4 +1,4 @@
-import { download_text_as_file } from '../common.js';
+import { download_text_as_file, getStripColors } from '../common.js';
 import { saveScreenmap } from '../screenmap-store.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './screenmap.css?url';
@@ -52,12 +52,21 @@ export function init(container) {
 
     function loadImageFile(file) {
         const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
         img.onload = () => {
+            // Release the blob URL once the image is decoded into the snapshot canvas
+            URL.revokeObjectURL(objectUrl);
+            // If destroy() ran while the image was decoding, bail out before
+            // touching the (torn-down) DOM.
+            if (signal.aborted) return;
             sourceSelect.style.display = 'none';
             mappingUI.style.display = '';
             startMappingWithImage(img);
         };
-        img.src = URL.createObjectURL(file);
+        img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+        };
+        img.src = objectUrl;
     }
 
     // --- Mapping state ---
@@ -69,8 +78,18 @@ export function init(container) {
     let pictureTaken = false;
     let rafId = null;
     const circle_diameter = 8;
-    let points = [];
+    let strips = { strip1: [] };
+    let activeStrip = 'strip1';
     let shift_active = false;
+
+    function getActivePoints() { return strips[activeStrip]; }
+    function getAllPointsFlat() { return Object.values(strips).flat(); }
+    function getStripNames() { return Object.keys(strips); }
+    function getNextStripName() {
+        let i = 1;
+        while (strips[`strip${i}`]) i++;
+        return `strip${i}`;
+    }
 
     function getDom() {
         return {
@@ -82,7 +101,27 @@ export function init(container) {
             slider_rotate: container.querySelector('#slider_rotate'),
             txt_zoom: container.querySelector('#txt_zoom'),
             slider_zoom: container.querySelector('#slider_zoom'),
+            sel_strip: container.querySelector('#sel_strip'),
+            btn_add_strip: container.querySelector('#btn_add_strip'),
+            btn_delete_strip: container.querySelector('#btn_delete_strip'),
         };
+    }
+
+    function refreshStripUI(dom) {
+        if (!dom.sel_strip) return;
+        const names = getStripNames();
+        // Rebuild options
+        dom.sel_strip.innerHTML = '';
+        for (const name of names) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            dom.sel_strip.appendChild(opt);
+        }
+        dom.sel_strip.value = activeStrip;
+        if (dom.btn_delete_strip) {
+            dom.btn_delete_strip.disabled = names.length <= 1;
+        }
     }
 
     function setupCommonControls(dom) {
@@ -109,8 +148,36 @@ export function init(container) {
         dom.slider_zoom.addEventListener('input', () => updateZoom(dom.slider_zoom.value), { signal });
 
         // Buttons
-        dom.btn_delete_last.addEventListener('click', () => { points.pop(); }, { signal });
+        dom.btn_delete_last.addEventListener('click', () => { getActivePoints().pop(); }, { signal });
         dom.btn_download.addEventListener('click', () => downloadScreenmap(), { signal });
+
+        // Strip management
+        if (dom.sel_strip) {
+            dom.sel_strip.addEventListener('change', () => {
+                const val = dom.sel_strip.value;
+                if (strips[val]) {
+                    activeStrip = val;
+                }
+                refreshStripUI(dom);
+            }, { signal });
+        }
+        if (dom.btn_add_strip) {
+            dom.btn_add_strip.addEventListener('click', () => {
+                const name = getNextStripName();
+                strips[name] = [];
+                activeStrip = name;
+                refreshStripUI(dom);
+            }, { signal });
+        }
+        if (dom.btn_delete_strip) {
+            dom.btn_delete_strip.addEventListener('click', () => {
+                const names = getStripNames();
+                if (names.length <= 1) return;
+                delete strips[activeStrip];
+                activeStrip = getStripNames()[0];
+                refreshStripUI(dom);
+            }, { signal });
+        }
 
         // Shift key tracking
         document.addEventListener('keydown', (evt) => {
@@ -119,6 +186,8 @@ export function init(container) {
         document.addEventListener('keyup', (evt) => {
             if ("Shift" === evt.key) shift_active = false;
         }, { signal });
+
+        refreshStripUI(dom);
     }
 
     function downloadScreenmap() {
@@ -130,8 +199,9 @@ export function init(container) {
 
     function indexOfIntersectMostRecent(x, y, radius) {
         const radius2 = radius * radius;
-        for (let i = points.length - 1; i >= 0; --i) {
-            const [xx, yy] = points[i];
+        const activePoints = getActivePoints();
+        for (let i = activePoints.length - 1; i >= 0; --i) {
+            const [xx, yy] = activePoints[i];
             const dist2 = Math.pow(x - xx, 2) + Math.pow(y - yy, 2);
             if (dist2 < radius2) return i;
         }
@@ -139,16 +209,21 @@ export function init(container) {
     }
 
     function points_to_json_str() {
-        const json = {
-            map: {
-                strip1: {
-                    x: points.map(([x]) => x),
-                    y: points.map(([, y]) => y),
-                    diameter: 0.5
-                }
-            }
-        };
-        return JSON.stringify(json);
+        const map = {};
+        // Only emit strips that have at least one point. If no strips have
+        // points, fall back to a single empty strip so the output is still
+        // a valid multi-strip envelope.
+        const nonEmpty = getStripNames().filter(name => strips[name].length > 0);
+        const namesToEmit = nonEmpty.length > 0 ? nonEmpty : [activeStrip];
+        for (const name of namesToEmit) {
+            const pts = strips[name];
+            map[name] = {
+                x: pts.map(([x]) => x),
+                y: pts.map(([, y]) => y),
+                diameter: 0.5,
+            };
+        }
+        return JSON.stringify({ map });
     }
 
     function showPopup() {
@@ -216,19 +291,21 @@ export function init(container) {
         if (x > canvas.width || y > canvas.height) return;
 
         const idx = indexOfIntersectMostRecent(x, y, circle_diameter);
+        const activePoints = getActivePoints();
         if (shift_active) {
-            if (idx !== -1) points.splice(idx, 1);
+            if (idx !== -1) activePoints.splice(idx, 1);
         } else {
-            if (idx === -1) points.push([x, y]);
+            if (idx === -1) activePoints.push([x, y]);
         }
     }
 
     function draw(dom) {
         rafId = requestAnimationFrame(() => draw(dom));
 
-        dom.btn_download.disabled = !points.length;
+        const allPoints = getAllPointsFlat();
+        dom.btn_download.disabled = !allPoints.length;
         dom.btn_clear.disabled = !pictureTaken;
-        dom.btn_delete_last.disabled = !points.length;
+        dom.btn_delete_last.disabled = !getActivePoints().length;
 
         const w = canvas.width;
         const h = canvas.height;
@@ -263,24 +340,45 @@ export function init(container) {
         }
         ctx.restore();
 
-        // Connection lines
-        ctx.strokeStyle = 'white';
+        // Multi-strip drawing
+        const names = getStripNames();
+        const colors = getStripColors(names.length);
+
+        // Connection lines per strip
         ctx.lineWidth = 1;
-        for (let i = 1; i < points.length; ++i) {
-            const [x0, y0] = points[i - 1];
-            const [x1, y1] = points[i];
-            ctx.beginPath();
-            ctx.moveTo(x0, y0);
-            ctx.lineTo(x1, y1);
-            ctx.stroke();
+        for (let s = 0; s < names.length; ++s) {
+            const name = names[s];
+            const pts = strips[name];
+            const isActive = name === activeStrip;
+            ctx.strokeStyle = colors[s];
+            ctx.lineWidth = isActive ? 2 : 1;
+            for (let i = 1; i < pts.length; ++i) {
+                const [x0, y0] = pts[i - 1];
+                const [x1, y1] = pts[i];
+                ctx.beginPath();
+                ctx.moveTo(x0, y0);
+                ctx.lineTo(x1, y1);
+                ctx.stroke();
+            }
         }
 
-        // Points
-        ctx.fillStyle = 'red';
-        for (const [x, y] of points) {
-            ctx.beginPath();
-            ctx.arc(x, y, circle_diameter / 2, 0, Math.PI * 2);
-            ctx.fill();
+        // Points per strip
+        for (let s = 0; s < names.length; ++s) {
+            const name = names[s];
+            const pts = strips[name];
+            const isActive = name === activeStrip;
+            ctx.fillStyle = colors[s];
+            const radius = isActive ? circle_diameter / 2 : (circle_diameter / 2) * 0.75;
+            for (const [x, y] of pts) {
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+                if (isActive) {
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            }
         }
     }
 
@@ -307,10 +405,12 @@ export function init(container) {
         // Clear button
         dom.btn_clear.addEventListener('click', () => {
             if (confirm("Delete all?")) {
-                points = [];
+                strips = { strip1: [] };
+                activeStrip = 'strip1';
                 snapshotCanvas = null;
                 pictureTaken = false;
                 dom.btn_snapshot.disabled = false;
+                refreshStripUI(dom);
             }
         }, { signal });
 
@@ -323,6 +423,12 @@ export function init(container) {
                 video: true
             };
             navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+                // If destroy() already ran while the permission prompt was open,
+                // immediately stop the stream so we don't leak the camera.
+                if (signal.aborted) {
+                    stream.getTracks().forEach(t => t.stop());
+                    return;
+                }
                 videoElement = document.createElement('video');
                 videoElement.srcObject = stream;
                 videoElement.setAttribute('autoplay', '');
@@ -340,6 +446,7 @@ export function init(container) {
                     captureContainer.style.opacity = '1';
                 }, { signal });
             }).catch(err => {
+                if (signal.aborted) return;
                 console.error('Webcam error:', err);
                 showWebcamError(err.message || 'Could not access camera.');
             });
@@ -372,7 +479,9 @@ export function init(container) {
         // Clear button
         dom.btn_clear.addEventListener('click', () => {
             if (confirm("Delete all points?")) {
-                points = [];
+                strips = { strip1: [] };
+                activeStrip = 'strip1';
+                refreshStripUI(dom);
             }
         }, { signal });
 
@@ -381,11 +490,18 @@ export function init(container) {
     }
 
     return function destroy() {
-        if (points.length > 0) saveScreenmap(points_to_json_str());
+        if (getAllPointsFlat().length > 0) saveScreenmap(points_to_json_str());
         ac.abort();
-        if (rafId) cancelAnimationFrame(rafId);
-        if (videoElement && videoElement.srcObject) {
-            videoElement.srcObject.getTracks().forEach(t => t.stop());
+        if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
         }
+        if (videoElement && videoElement.srcObject) {
+            try { videoElement.pause(); } catch { /* ignore */ }
+            videoElement.srcObject.getTracks().forEach(t => t.stop());
+            videoElement.srcObject = null;
+        }
+        videoElement = null;
+        snapshotCanvas = null;
     };
 }

@@ -163,6 +163,28 @@ test.describe('Moviemaker Recording Workflow', () => {
             expect(data.length).toBeGreaterThan(0);
             expect(data.length % bytesPerFrame).toBe(0);
         });
+
+        test('records with multi-strip screenmap (frame size = total LED count)', async ({ page }) => {
+            test.setTimeout(60000);
+
+            await page.goto('/moviemaker/');
+            await page.locator('[data-trigger="btn_start_webcam"]').click();
+            await waitForSourceActive(page);
+
+            // Upload multi-strip screenmap (4 + 3 = 7 LEDs total)
+            const MULTI_PATH = path.resolve('tests/fixtures/test-screenmap-multi.json');
+            const MULTI_TOTAL = JSON.parse(fs.readFileSync(MULTI_PATH, 'utf-8'))
+                .map ? Object.values(JSON.parse(fs.readFileSync(MULTI_PATH, 'utf-8')).map)
+                    .reduce((s, strip) => s + strip.x.length, 0) : 0;
+            await page.locator('#btn_upload_screenmap').setInputFiles(MULTI_PATH);
+            await expect(page.locator('#rng_blur')).toBeEnabled({ timeout: 10000 });
+
+            const data = await recordAndDownload(page, 1500);
+
+            const bytesPerFrame = MULTI_TOTAL * 3; // 7 LEDs × 3 bytes
+            expect(data.length).toBeGreaterThan(0);
+            expect(data.length % bytesPerFrame).toBe(0);
+        });
     });
 
     test.describe('Blur affects recorded output', () => {

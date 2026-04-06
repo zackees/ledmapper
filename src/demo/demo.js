@@ -1,4 +1,4 @@
-import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file } from '../common.js';
+import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file, parseScreenmapMultiStrip, getStripColors } from '../common.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './demo.css?url';
@@ -24,6 +24,7 @@ export function init(container) {
     const CANVAS_SIZE = 800;
     let screenmap_pts = [];
     let screenmap_pts_original = [];
+    let stripInfo = null;
     const movie_frames = [];
     let playing = false;
     let curr_frame_idx = 0;
@@ -157,6 +158,7 @@ export function init(container) {
         }
         screenmap_pts_original = screenmap_pts.map(([x, y]) => [x, y]);
         screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
+        stripInfo = parseScreenmapMultiStrip(jsonBlob);
         buildPoints();
         drawOverlay();
         dom_btn_play.disabled = false;
@@ -311,7 +313,16 @@ export function init(container) {
         if (!showLines || screenmap_pts.length === 0) return;
 
         const pts = screenmap_pts;
+        const isMultiStrip = stripInfo && stripInfo.strips.length > 1;
 
+        if (isMultiStrip) {
+            drawOverlayMultiStrip(pts);
+        } else {
+            drawOverlaySingleStrip(pts);
+        }
+    }
+
+    function drawOverlaySingleStrip(pts) {
         // Connecting lines with rainbow colors
         overlayCtx.lineWidth = 2;
         for (let i = 0; i < pts.length - 1; i++) {
@@ -325,16 +336,7 @@ export function init(container) {
             overlayCtx.stroke();
 
             if (i % 10 === 1 || i === pts.length - 2) {
-                const dx = x2 - x1, dy = y2 - y1;
-                const angle = Math.atan2(dy, dx);
-                const t = 0.2;
-                const ax = x1 + dx * t, ay = y1 + dy * t;
-                overlayCtx.beginPath();
-                overlayCtx.moveTo(ax, ay);
-                overlayCtx.lineTo(ax - 8 * Math.cos(angle - 0.4), ay - 8 * Math.sin(angle - 0.4));
-                overlayCtx.moveTo(ax, ay);
-                overlayCtx.lineTo(ax - 8 * Math.cos(angle + 0.4), ay - 8 * Math.sin(angle + 0.4));
-                overlayCtx.stroke();
+                drawArrowHead(x1, y1, x2, y2);
             }
         }
 
@@ -347,6 +349,72 @@ export function init(container) {
 
         drawOutlinedLabel("Start LED", pts[0][0] + 4, pts[0][1]);
         drawOutlinedLabel("End LED", pts[pts.length - 1][0] + 4, pts[pts.length - 1][1]);
+    }
+
+    function drawOverlayMultiStrip(pts) {
+        const strips = stripInfo.strips;
+        const colors = getStripColors(strips.length);
+
+        overlayCtx.lineWidth = 2;
+        for (let s = 0; s < strips.length; s++) {
+            const strip = strips[s];
+            // Skip empty strips and strips that fall outside the available points
+            if (strip.count <= 0) continue;
+            if (strip.offset >= pts.length) continue;
+            const color = colors[s];
+            overlayCtx.strokeStyle = color;
+
+            const startIdx = strip.offset;
+            const endIdx = Math.min(strip.offset + strip.count - 1, pts.length - 1);
+
+            // Draw connection lines within this strip
+            for (let i = startIdx; i < endIdx; i++) {
+                const [x1, y1] = pts[i];
+                const [x2, y2] = pts[i + 1];
+                overlayCtx.beginPath();
+                overlayCtx.moveTo(x1, y1);
+                overlayCtx.lineTo(x2, y2);
+                overlayCtx.stroke();
+
+                const local = i - startIdx;
+                if (local % 10 === 1 || i === endIdx - 1) {
+                    drawArrowHead(x1, y1, x2, y2);
+                }
+            }
+
+            // Draw LED circles for this strip
+            fillCircle(pts[startIdx][0], pts[startIdx][1], 8, color);
+            if (endIdx > startIdx) {
+                if (endIdx > startIdx + 1) {
+                    fillCircle(pts[startIdx + 1][0], pts[startIdx + 1][1], 6, color);
+                }
+                fillCircle(pts[endIdx][0], pts[endIdx][1], 8, color);
+            }
+            for (let i = startIdx + 2; i < endIdx; i++) {
+                fillCircle(pts[i][0], pts[i][1], 4, color);
+            }
+
+            // Label start/end of each strip (single label for 1-LED strips)
+            if (endIdx === startIdx) {
+                drawOutlinedLabel(strip.name, pts[startIdx][0] + 4, pts[startIdx][1]);
+            } else {
+                drawOutlinedLabel(`${strip.name} start`, pts[startIdx][0] + 4, pts[startIdx][1]);
+                drawOutlinedLabel(`${strip.name} end`, pts[endIdx][0] + 4, pts[endIdx][1]);
+            }
+        }
+    }
+
+    function drawArrowHead(x1, y1, x2, y2) {
+        const dx = x2 - x1, dy = y2 - y1;
+        const angle = Math.atan2(dy, dx);
+        const t = 0.2;
+        const ax = x1 + dx * t, ay = y1 + dy * t;
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(ax, ay);
+        overlayCtx.lineTo(ax - 8 * Math.cos(angle - 0.4), ay - 8 * Math.sin(angle - 0.4));
+        overlayCtx.moveTo(ax, ay);
+        overlayCtx.lineTo(ax - 8 * Math.cos(angle + 0.4), ay - 8 * Math.sin(angle + 0.4));
+        overlayCtx.stroke();
     }
 
     function fillCircle(x, y, diameter, color) {

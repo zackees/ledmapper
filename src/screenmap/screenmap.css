@@ -24,7 +24,7 @@
 
 #controls {
     @apply fixed z-[1000];
-    top: 8px;
+    bottom: 8px;
     left: 8px;
     background: rgba(10, 10, 10, 0.82);
     backdrop-filter: blur(16px);

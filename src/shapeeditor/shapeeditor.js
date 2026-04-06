@@ -15,7 +15,7 @@ import {
     SRGBColorSpace,
     DoubleSide,
 } from 'three';
-import { parse_screenmap_data, centerAndFitPoints, readFileAsText, download_text_as_file } from '../common.js';
+import { parse_screenmap_data, centerAndFitPoints, readFileAsText, download_text_as_file, parseScreenmapMultiStrip, getStripColors } from '../common.js';
 import { saveScreenmap, saveScreenmapPoints, getScreenmap } from '../screenmap-store.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
 import templateHtml from './template.html?raw';
@@ -117,21 +117,46 @@ export function init(container) {
         // Translation is in world-pixel space; convert to cm for export
         const txCm = (parseFloat(dom_txt_translate_x.value) || 0) / fitScale;
         const tyCm = (parseFloat(dom_txt_translate_y.value) || 0) / fitScale;
+        const fallbackDiameter = parseFloat(dom_txt_diameter.value) || 0.25;
 
-        const xArr = [];
-        const yArr = [];
-        rawPts.forEach(([x, y]) => {
+        const transformPoint = ([x, y]) => {
             const rx = x * sX;
             const ry = y * sY;
-            xArr.push(+(rx * cosR - ry * sinR + txCm).toFixed(4));
-            yArr.push(+(rx * sinR + ry * cosR + tyCm).toFixed(4));
-        });
+            return [
+                +(rx * cosR - ry * sinR + txCm).toFixed(4),
+                +(rx * sinR + ry * cosR + tyCm).toFixed(4),
+            ];
+        };
 
-        const diameter = parseFloat(dom_txt_diameter.value) || 0.25;
+        const map = {};
+        if (stripInfo && stripInfo.strips.length > 1
+            && stripInfo.totalCount === rawPts.length) {
+            // Preserve multi-strip structure on save
+            for (const strip of stripInfo.strips) {
+                const xArr = [];
+                const yArr = [];
+                for (let i = strip.offset; i < strip.offset + strip.count; i++) {
+                    const [tx, ty] = transformPoint(rawPts[i]);
+                    xArr.push(tx);
+                    yArr.push(ty);
+                }
+                const entry = { x: xArr, y: yArr };
+                const d = typeof strip.diameter === 'number' ? strip.diameter : fallbackDiameter;
+                if (typeof d === 'number') entry.diameter = d;
+                map[strip.name] = entry;
+            }
+        } else {
+            const xArr = [];
+            const yArr = [];
+            for (const pt of rawPts) {
+                const [tx, ty] = transformPoint(pt);
+                xArr.push(tx);
+                yArr.push(ty);
+            }
+            map.strip1 = { x: xArr, y: yArr, diameter: fallbackDiameter };
+        }
 
-        const json = JSON.stringify({
-            map: { strip1: { x: xArr, y: yArr, diameter } }
-        }, null, 2);
+        const json = JSON.stringify({ map }, null, 2);
 
         saveScreenmap(json);
         download_text_as_file(json, 'screenmap.json', { type: 'application/json' });
@@ -221,6 +246,28 @@ export function init(container) {
     let origWidth = 0, origHeight = 0;
     let fitScale = 1; // cm-to-pixel scale from centerAndFitPoints
     let origDiameter = 0.5;
+    let stripInfo = null; // multi-strip parse result (null until screenmap loaded)
+
+    /** Convert an HSL color string like "hsl(120, 80%, 60%)" to [r, g, b] floats 0-1. */
+    function hslStringToRgb(hslStr) {
+        const m = hslStr.match(/hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/);
+        if (!m) return [1, 1, 1];
+        const h = parseFloat(m[1]) / 360;
+        const s = parseFloat(m[2]) / 100;
+        const l = parseFloat(m[3]) / 100;
+        if (s === 0) return [l, l, l];
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1 / 6) return p + (q - p) * 6 * t;
+            if (t < 1 / 2) return q;
+            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+            return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        return [hue2rgb(p, q, h + 1 / 3), hue2rgb(p, q, h), hue2rgb(p, q, h - 1 / 3)];
+    }
 
     // Cached canvas dimensions — kept in sync with renderer/camera/overlay.
     // Always use these instead of reading mainEl dimensions directly.
@@ -267,8 +314,8 @@ export function init(container) {
     let dragStartCanvasX = 0, dragStartCanvasY = 0;
     let dragStartScreenmapPt = null, dragStartRawPt = null;
     let ctxMenu, ctxMenuIdx = -1;
-    let ctxBtnNew, ctxBtnSave, ctxBtnLoadScreenmap, ctxLoadSubmenu;
-    let ctxBtnLoadImage, ctxLoadImageInput;
+    let ctxBtnSave, ctxBtnLoadScreenmap, ctxLoadSubmenu;
+    let ctxLoadImageInput;
     let ctxFileOps, ctxFileOpsSep;
     let ctxBtnDelete, ctxBtnInsertBetween, ctxBtnInsertFwd, ctxBtnInsertBack;
     let highlightedEdgeIdx = -1; // edge index highlighted for "insert between"
@@ -362,11 +409,13 @@ export function init(container) {
         } else if (action.type === 'delete') {
             screenmap_pts.splice(action.idx, 1);
             rawPts.splice(action.idx, 1);
+            _stripInfoOnDelete(action.idx);
             if (selectedIdx === action.idx) selectedIdx = -1;
             else if (selectedIdx > action.idx) selectedIdx--;
         } else if (action.type === 'insert') {
             screenmap_pts.splice(action.idx, 0, [...action.screenmapPt]);
             rawPts.splice(action.idx, 0, [...action.rawPt]);
+            _stripInfoOnInsert(action.idx);
             selectedIdx = action.idx;
         } else if (action.type === 'transform') {
             setTransformValue(action.control, action.newValue);
@@ -381,10 +430,14 @@ export function init(container) {
         } else if (action.type === 'delete') {
             screenmap_pts.splice(action.idx, 0, action.screenmapPt);
             rawPts.splice(action.idx, 0, action.rawPt);
+            // Restore stripInfo from snapshot taken before delete
+            _restoreStripInfo(action.stripSnapshot);
             selectedIdx = action.idx;
         } else if (action.type === 'insert') {
             screenmap_pts.splice(action.idx, 1);
             rawPts.splice(action.idx, 1);
+            // Restore stripInfo from snapshot taken before insert
+            _restoreStripInfo(action.stripSnapshot);
             if (selectedIdx === action.idx) selectedIdx = -1;
             else if (selectedIdx > action.idx) selectedIdx--;
         } else if (action.type === 'transform') {
@@ -423,6 +476,62 @@ export function init(container) {
         dom_btn_reset.disabled = undoStack.length === 0 && redoStack.length === 0;
     }
 
+    // ── Multi-strip metadata sync helpers ────────────────────────────────
+    // Keep stripInfo.strips[].count/.offset/.totalCount in sync with edits.
+    // Returns a snapshot suitable for restoration via _restoreStripInfo().
+    function _snapshotStripInfo() {
+        if (!stripInfo) return null;
+        return {
+            strips: stripInfo.strips.map(s => ({ ...s, points: undefined })),
+            totalCount: stripInfo.totalCount,
+        };
+    }
+    function _restoreStripInfo(snap) {
+        if (!stripInfo || !snap) return;
+        for (let i = 0; i < snap.strips.length && i < stripInfo.strips.length; i++) {
+            stripInfo.strips[i].offset = snap.strips[i].offset;
+            stripInfo.strips[i].count = snap.strips[i].count;
+        }
+        stripInfo.totalCount = snap.totalCount;
+    }
+    /** Find the strip index that owns the given flat point index. */
+    function _findStripForIndex(idx) {
+        if (!stripInfo) return -1;
+        for (let s = 0; s < stripInfo.strips.length; s++) {
+            const st = stripInfo.strips[s];
+            if (idx >= st.offset && idx < st.offset + st.count) return s;
+        }
+        return -1;
+    }
+    function _stripInfoOnDelete(idx) {
+        if (!stripInfo) return;
+        const s = _findStripForIndex(idx);
+        if (s < 0) return;
+        stripInfo.strips[s].count--;
+        for (let k = s + 1; k < stripInfo.strips.length; k++) {
+            stripInfo.strips[k].offset--;
+        }
+        stripInfo.totalCount--;
+    }
+    function _stripInfoOnInsert(idx) {
+        if (!stripInfo || stripInfo.strips.length === 0) return;
+        // Insertion at idx places the new point at flat index idx.
+        // Pick the strip whose range will contain idx after insertion.
+        // If idx is exactly at a strip boundary (== strip.offset for s>0), we
+        // assign it to the previous strip (extends the strip you inserted "after").
+        let s = -1;
+        for (let k = 0; k < stripInfo.strips.length; k++) {
+            const st = stripInfo.strips[k];
+            if (idx >= st.offset && idx <= st.offset + st.count) { s = k; break; }
+        }
+        if (s < 0) s = stripInfo.strips.length - 1; // append → last strip
+        stripInfo.strips[s].count++;
+        for (let k = s + 1; k < stripInfo.strips.length; k++) {
+            stripInfo.strips[k].offset++;
+        }
+        stripInfo.totalCount++;
+    }
+
     function deletePoint(idx) {
         if (idx < 0 || idx >= screenmap_pts.length) return;
         pushUndo({
@@ -430,9 +539,11 @@ export function init(container) {
             idx,
             screenmapPt: [...screenmap_pts[idx]],
             rawPt: [...rawPts[idx]],
+            stripSnapshot: _snapshotStripInfo(),
         });
         screenmap_pts.splice(idx, 1);
         rawPts.splice(idx, 1);
+        _stripInfoOnDelete(idx);
         if (selectedIdx === idx) selectedIdx = -1;
         else if (selectedIdx > idx) selectedIdx--;
         setNeedsGeometryUpdate();
@@ -444,9 +555,11 @@ export function init(container) {
             idx: insertIdx,
             screenmapPt: [...screenmapPt],
             rawPt: [...rawPt],
+            stripSnapshot: _snapshotStripInfo(),
         });
         screenmap_pts.splice(insertIdx, 0, screenmapPt);
         rawPts.splice(insertIdx, 0, rawPt);
+        _stripInfoOnInsert(insertIdx);
         selectedIdx = insertIdx;
         setNeedsGeometryUpdate();
     }
@@ -702,7 +815,7 @@ export function init(container) {
         // ── File operations (wrapped for show/hide) ──
         ctxFileOps = document.createElement('div');
         ctxMenu.appendChild(ctxFileOps);
-        ctxBtnNew = makeCtxBtn('New', 'new', ctxFileOps);
+        makeCtxBtn('New', 'new', ctxFileOps);
         ctxBtnSave = makeCtxBtn('Save As\u2026', 'save', ctxFileOps);
 
         // Load Screenmap with submenu
@@ -722,7 +835,7 @@ export function init(container) {
         ctxLoadWrapper.appendChild(ctxLoadSubmenu);
 
         // "Upload file…" always first in submenu
-        const ctxBtnUploadScreenmap = makeCtxBtn('Upload file\u2026', 'upload-screenmap', ctxLoadSubmenu);
+        makeCtxBtn('Upload file\u2026', 'upload-screenmap', ctxLoadSubmenu);
 
         ctxLoadWrapper.addEventListener('mouseenter', () => {
             ctxBtnLoadScreenmap.style.background = '#3b82f6';
@@ -736,7 +849,7 @@ export function init(container) {
         });
 
         // Load Image (triggers file picker)
-        ctxBtnLoadImage = makeCtxBtn('Load Background Image\u2026', 'load-image', ctxFileOps);
+        makeCtxBtn('Load Background Image\u2026', 'load-image', ctxFileOps);
         ctxLoadImageInput = document.createElement('input');
         ctxLoadImageInput.type = 'file';
         ctxLoadImageInput.accept = 'image/*';
@@ -874,6 +987,13 @@ export function init(container) {
         if (screenmap_pts.length === 0) return;
         saveScreenmap(text);
 
+        // Parse multi-strip metadata for color-coded visualization
+        try {
+            stripInfo = parseScreenmapMultiStrip(text);
+        } catch {
+            stripInfo = null;
+        }
+
         // Populate diameter from file if available
         if (typeof screenmap_pts.diameter === "number" && screenmap_pts.diameter > 0) {
             origDiameter = screenmap_pts.diameter;
@@ -910,6 +1030,7 @@ export function init(container) {
         dom_sel_preset.value = '';
         screenmap_pts = [[0, 0]];
         rawPts = [[0, 0]];
+        stripInfo = null;
         origDiameter = 0.5;
         dom_txt_diameter.value = origDiameter;
         origWidth = 0;
@@ -1164,8 +1285,8 @@ export function init(container) {
     // ── Floating cm ruler ──────────────────────────────────────────────────
     // Two endpoints in world-space (pixels, same coordinate system as screenmap_pts).
     // The ruler is always visible — drag either handle to reposition/expand.
-    let rulerA = { x: -80, y: -80 };  // left handle  (world px)
-    let rulerB = { x: 80, y: -80 };   // right handle (world px)
+    const rulerA = { x: -80, y: -80 };  // left handle  (world px)
+    const rulerB = { x: 80, y: -80 };   // right handle (world px)
     let rulerDrag = null;              // null | 'a' | 'b' | 'body'
     let rulerDragStart = null;
     const RULER_HANDLE_R = 7;          // hit radius in canvas px
@@ -1417,11 +1538,39 @@ export function init(container) {
         if (overlayAlpha > 0) {
             overlayCtx.globalAlpha = overlayAlpha;
             overlayCtx.lineWidth = 2;
+            const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
+            const stripColors = hasMultiStrip ? getStripColors(stripInfo.strips.length) : null;
+            // Build a set of boundary indices (last point of each non-empty strip) to skip
+            // cross-strip lines, plus a precomputed index→strip lookup table.
+            const stripBoundaries = new Set();
+            let idxToStrip = null;
+            if (hasMultiStrip) {
+                for (const strip of stripInfo.strips) {
+                    if (strip.count > 0) {
+                        stripBoundaries.add(strip.offset + strip.count - 1);
+                    }
+                }
+                idxToStrip = new Int32Array(pts.length).fill(-1);
+                for (let s = 0; s < stripInfo.strips.length; s++) {
+                    const st = stripInfo.strips[s];
+                    const lo = Math.max(0, st.offset);
+                    const hi = Math.min(pts.length, st.offset + st.count);
+                    for (let i = lo; i < hi; i++) idxToStrip[i] = s;
+                }
+            }
             for (let i = 0; i < pts.length - 1; i++) {
+                // Skip line between last point of one strip and first point of the next
+                if (hasMultiStrip && stripBoundaries.has(i)) continue;
+
                 const [x1, y1] = pts[i];
                 const [x2, y2] = pts[i + 1];
-                const hue = (120 + i * 2) % 360;
-                overlayCtx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+                if (hasMultiStrip) {
+                    const stripIdx = idxToStrip[i] >= 0 ? idxToStrip[i] : 0;
+                    overlayCtx.strokeStyle = stripColors[stripIdx];
+                } else {
+                    const hue = (120 + i * 2) % 360;
+                    overlayCtx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+                }
                 overlayCtx.beginPath();
                 overlayCtx.moveTo(x1, y1);
                 overlayCtx.lineTo(x2, y2);
@@ -2475,17 +2624,63 @@ export function init(container) {
                 pointsMaterial.dispose();
             }
 
-            const lineVerts = new Float32Array(count * 3);
-            for (let i = 0; i < count; i++) {
-                lineVerts[i * 3] = transformedPts[i][0];
-                lineVerts[i * 3 + 1] = transformedPts[i][1];
-                lineVerts[i * 3 + 2] = 0;
+            const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
+
+            if (hasMultiStrip) {
+                // Build LineSegments pairs, skipping cross-strip boundaries.
+                // Skip empty strips (count <= 0) so we don't introduce bogus boundaries.
+                const stripColors = getStripColors(stripInfo.strips.length);
+                const stripRgbs = stripColors.map(hslStringToRgb);
+                const stripBoundaries = new Set();
+                for (const strip of stripInfo.strips) {
+                    if (strip.count > 0) {
+                        stripBoundaries.add(strip.offset + strip.count - 1);
+                    }
+                }
+                // Per-index strip lookup table — O(N) once, instead of O(N*S) inside the loop.
+                const idxToStrip = new Int32Array(count).fill(-1);
+                for (let s = 0; s < stripInfo.strips.length; s++) {
+                    const st = stripInfo.strips[s];
+                    const lo = Math.max(0, st.offset);
+                    const hi = Math.min(count, st.offset + st.count);
+                    for (let i = lo; i < hi; i++) idxToStrip[i] = s;
+                }
+                // Count valid segments (skip boundaries)
+                let segCount = 0;
+                for (let i = 0; i < count - 1; i++) {
+                    if (!stripBoundaries.has(i)) segCount++;
+                }
+                const lineVerts = new Float32Array(segCount * 2 * 3);
+                const lineColors = new Float32Array(segCount * 2 * 3);
+                let seg = 0;
+                for (let i = 0; i < count - 1; i++) {
+                    if (stripBoundaries.has(i)) continue;
+                    const stripIdx = idxToStrip[i] >= 0 ? idxToStrip[i] : 0;
+                    const [sr, sg, sb] = stripRgbs[stripIdx];
+                    const v = seg * 6;
+                    lineVerts[v] = transformedPts[i][0]; lineVerts[v + 1] = transformedPts[i][1]; lineVerts[v + 2] = 0;
+                    lineVerts[v + 3] = transformedPts[i + 1][0]; lineVerts[v + 4] = transformedPts[i + 1][1]; lineVerts[v + 5] = 0;
+                    lineColors[v] = sr; lineColors[v + 1] = sg; lineColors[v + 2] = sb;
+                    lineColors[v + 3] = sr; lineColors[v + 4] = sg; lineColors[v + 5] = sb;
+                    seg++;
+                }
+                const lineGeom = new BufferGeometry();
+                lineGeom.setAttribute('position', new Float32BufferAttribute(lineVerts, 3));
+                lineGeom.setAttribute('color', new Float32BufferAttribute(lineColors, 3));
+                screenmapOutline = new LineSegments(lineGeom, new LineBasicMaterial({ vertexColors: true, transparent: true }));
+            } else {
+                const lineVerts = new Float32Array(count * 3);
+                for (let i = 0; i < count; i++) {
+                    lineVerts[i * 3] = transformedPts[i][0];
+                    lineVerts[i * 3 + 1] = transformedPts[i][1];
+                    lineVerts[i * 3 + 2] = 0;
+                }
+                const lineGeom = new BufferGeometry();
+                const linePosAttr = new Float32BufferAttribute(lineVerts, 3);
+                linePosAttr.setUsage(DynamicDrawUsage);
+                lineGeom.setAttribute('position', linePosAttr);
+                screenmapOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3, transparent: true }));
             }
-            const lineGeom = new BufferGeometry();
-            const linePosAttr = new Float32BufferAttribute(lineVerts, 3);
-            linePosAttr.setUsage(DynamicDrawUsage);
-            lineGeom.setAttribute('position', linePosAttr);
-            screenmapOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3, transparent: true }));
             screenmapOutline.renderOrder = 2;
             scene.add(screenmapOutline);
 
@@ -2511,13 +2706,34 @@ export function init(container) {
             lastBuiltPointCount = count;
         } else {
             // Same point count — update buffers in place (no allocation)
+            const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
             const outlinePos = screenmapOutline.geometry.getAttribute('position');
             const pointsPos = pointsGeometry.getAttribute('position');
+
+            if (hasMultiStrip) {
+                // LineSegments layout: pairs of vertices, skipping cross-strip boundaries.
+                // Skip empty strips so we don't introduce bogus boundary indices.
+                const stripBoundaries = new Set();
+                for (const strip of stripInfo.strips) {
+                    if (strip.count > 0) {
+                        stripBoundaries.add(strip.offset + strip.count - 1);
+                    }
+                }
+                let seg = 0;
+                for (let i = 0; i < count - 1; i++) {
+                    if (stripBoundaries.has(i)) continue;
+                    const v = seg * 2;
+                    outlinePos.setXY(v, transformedPts[i][0], transformedPts[i][1]);
+                    outlinePos.setXY(v + 1, transformedPts[i + 1][0], transformedPts[i + 1][1]);
+                    seg++;
+                }
+            } else {
+                for (let i = 0; i < count; i++) {
+                    outlinePos.setXY(i, transformedPts[i][0], transformedPts[i][1]);
+                }
+            }
             for (let i = 0; i < count; i++) {
-                const x = transformedPts[i][0];
-                const y = transformedPts[i][1];
-                outlinePos.setXY(i, x, y);
-                pointsPos.setXY(i, x, y);
+                pointsPos.setXY(i, transformedPts[i][0], transformedPts[i][1]);
             }
             outlinePos.needsUpdate = true;
             pointsPos.needsUpdate = true;
@@ -2531,10 +2747,27 @@ export function init(container) {
         // Update colors (selection highlight, first/last LED markers)
         if (pointsColorAttr) {
             const colors = pointsColorAttr.array;
-            const r = 244 / 255, g = 67 / 255, b = 54 / 255;
-            for (let i = 0; i < count; i++) {
-                const ci = i * 3;
-                colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b;
+            const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
+
+            if (hasMultiStrip) {
+                // Per-strip coloring
+                const stripColors = getStripColors(stripInfo.strips.length);
+                const stripRgbs = stripColors.map(hslStringToRgb);
+                for (let s = 0; s < stripInfo.strips.length; s++) {
+                    const strip = stripInfo.strips[s];
+                    const [sr, sg, sb] = stripRgbs[s];
+                    for (let i = strip.offset; i < strip.offset + strip.count && i < count; i++) {
+                        const ci = i * 3;
+                        colors[ci] = sr; colors[ci + 1] = sg; colors[ci + 2] = sb;
+                    }
+                }
+            } else {
+                // Single-strip: default red
+                const r = 244 / 255, g = 67 / 255, b = 54 / 255;
+                for (let i = 0; i < count; i++) {
+                    const ci = i * 3;
+                    colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b;
+                }
             }
             // First LED green
             colors[0] = 76 / 255; colors[1] = 175 / 255; colors[2] = 80 / 255;
