@@ -159,6 +159,17 @@
     border-color: var(--color-lm-accent);
 }
 
+.toolbar-checkbox {
+    @apply flex items-center gap-1.5 cursor-pointer whitespace-nowrap select-none;
+    font-size: 0.72rem;
+    color: var(--color-lm-text-secondary);
+}
+
+.toolbar-checkbox input[type="checkbox"] {
+    @apply m-0 cursor-pointer;
+    accent-color: var(--color-lm-accent);
+}
+
 .toolbar-resolution-label {
     @apply font-mono whitespace-nowrap select-none;
     font-size: 0.62rem;
@@ -174,6 +185,11 @@
 
 #overlayCanvas {
     @apply absolute top-0 left-0 pointer-events-auto;
+    transition: opacity 300ms ease;
+}
+
+#overlayCanvas.leds-hidden {
+    opacity: 0;
 }
 
 #previewCanvas {

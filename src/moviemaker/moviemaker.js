@@ -52,6 +52,7 @@ export function init(container) {
     const dom_sel_framerate    = container.querySelector('#sel_framerate');
     const dom_sel_max_resolution = container.querySelector('#sel_max_resolution');
     const dom_txt_curr_resolution = container.querySelector('#txt_curr_resolution');
+    const dom_chk_show_leds    = container.querySelector('#chk_show_leds');
 
     const videoPlayer    = container.querySelector('#videoPlayer');
     const renderCanvas   = container.querySelector('#renderCanvas');
@@ -490,6 +491,10 @@ export function init(container) {
         dom_rng_zoom.value = v;
         dom_txt_curr_zoom.innerText = v;
         target_zoom = parseFloat(v);
+    }, { signal });
+
+    dom_chk_show_leds.addEventListener('change', () => {
+        overlayCanvas.classList.toggle('leds-hidden', !dom_chk_show_leds.checked);
     }, { signal });
 
 
