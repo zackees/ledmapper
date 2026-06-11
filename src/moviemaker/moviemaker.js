@@ -1,9 +1,9 @@
 const Swal = import('sweetalert2').then(m => m.default);
-import { parse_screenmap_data } from '../common.js';
+import { parseScreenmapMultiStrip } from '../common.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { saveScreenmap, getScreenmap } from '../screenmap-store.js';
-import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension } from './transforms.js';
-import { loadPreset } from '../preset-loader.js';
+import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension, buildVideoChannelMap } from './transforms.js';
+import { loadPresetText } from '../preset-loader.js';
 import { createBlurPipeline } from './blur-pipeline.js';
 import { createVideoSource } from './video-source.js';
 import { createRecording } from './recording.js';
@@ -61,6 +61,8 @@ export function init(container) {
     // ── State ───────────────────────────────────────────────────────────────────
     let screenmap_pts = [];
     let rawScreenmapPts = [];
+    let screenmapStrips = [];
+    let videoChannelMap = null;   // flat LED index -> .rgb channel index (null = identity)
     let screenmapValid = false;
     let sourceActive = false;
 
@@ -188,8 +190,10 @@ export function init(container) {
 
     // ── Screenmap presets ────────────────────────────────────────────────────────
 
-    function loadScreenmapFromPoints(pts) {
-        rawScreenmapPts = pts;
+    function loadScreenmapFromParsed(parsed) {
+        screenmapStrips = parsed ? parsed.strips : [];
+        videoChannelMap = parsed ? buildVideoChannelMap(parsed.strips, parsed.totalCount) : null;
+        rawScreenmapPts = parsed ? parsed.allPoints : [];
         if (rawScreenmapPts.length === 0) {
             screenmapValid = false;
         } else {
@@ -220,16 +224,27 @@ export function init(container) {
             btn.addEventListener('click', async () => {
                 clearPresetActive();
                 btn.classList.add('active-preset');
-                loadScreenmapFromPoints(await loadPreset(presetFile));
+                try {
+                    loadScreenmapFromParsed(parseScreenmapMultiStrip(await loadPresetText(presetFile)));
+                } catch (error) {
+                    alert(`Error loading preset: ${error}`);
+                }
             }, { signal });
         }
     }
 
     // Restore stored screenmap, or fall back to 16x16 preset
     const storedScreenmap = getScreenmap();
+    let restoredFromStore = false;
     if (storedScreenmap) {
-        loadScreenmapFromPoints(parse_screenmap_data(storedScreenmap));
-    } else if (presetButtons.length > 0) {
+        try {
+            loadScreenmapFromParsed(parseScreenmapMultiStrip(storedScreenmap));
+            restoredFromStore = true;
+        } catch (error) {
+            console.error('Failed to restore stored screenmap:', error);
+        }
+    }
+    if (!restoredFromStore && presetButtons.length > 0) {
         presetButtons[0].click();
     }
 
@@ -417,7 +432,7 @@ export function init(container) {
         screenmapValid = false;
         updateElementStates();
         file.text().then((text) => {
-            loadScreenmapFromPoints(parse_screenmap_data(text));
+            loadScreenmapFromParsed(parseScreenmapMultiStrip(text));
             saveScreenmap(text);
         }).catch((error) => {
             alert(`Error reading screenmap file: ${error}`);
@@ -553,6 +568,26 @@ export function init(container) {
     let lastTime = performance.now();
     let lastSample = null;
     let sampleRgbPts = null;
+    let recordRgbPts = null;
+
+    // The .rgb stream is channel-ordered. When a screenmap declares explicit
+    // video_offset values that differ from flat point order, remap the flat
+    // sample into channel order for recording (overlay/preview stay flat).
+    function toRecordingSample(sample, numPts) {
+        if (!videoChannelMap || videoChannelMap.length !== numPts) return sample;
+        if (!recordRgbPts || recordRgbPts.length !== numPts * 3) {
+            recordRgbPts = new Uint8Array(numPts * 3);
+        }
+        const src = sample.rgbPts;
+        for (let i = 0; i < numPts; i++) {
+            const ch = videoChannelMap[i] * 3;
+            const o = i * 3;
+            recordRgbPts[ch]     = src[o];
+            recordRgbPts[ch + 1] = src[o + 1];
+            recordRgbPts[ch + 2] = src[o + 2];
+        }
+        return { rgbPts: recordRgbPts, avgBri: sample.avgBri };
+    }
 
     function animationLoop() {
         rafId = requestAnimationFrame(animationLoop);
@@ -590,13 +625,13 @@ export function init(container) {
                     sampleRgbPts = new Uint8Array(gather.numPts * 3);
                 }
                 lastSample = extractGatherSample(gather.buffer, gather.numPts, sampleRgbPts);
-                recording.processFrame(lastSample, frame_rate);
+                recording.processFrame(toRecordingSample(lastSample, gather.numPts), frame_rate);
             }
         } else {
             recording.resetCapture();
         }
 
-        drawMoviemakerOverlay(overlayCtx, transformedPts, lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked);
+        drawMoviemakerOverlay(overlayCtx, transformedPts, lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips);
         drawPreview(previewCtx, transformedPts, lastSample, 200);
 
         // Update progress bar for video sources

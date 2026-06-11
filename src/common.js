@@ -136,6 +136,30 @@ export function getStripColors(n) {
 }
 
 /**
+ * Build the Start/End overlay labels for a strip, shared by every tool so
+ * the wording cannot drift: `Start<Name>`/`End<Name>` using the strip's JSON
+ * map key, falling back to the strip index (`Start0`/`End0`, `Start1`/`End1`,
+ * ...) for unnamed or auto-indexed "stripN" names. Single-LED strips collapse
+ * to one combined label (end is null).
+ *
+ * @param {{name?: string, count?: number, points?: Array}} strip
+ * @param {number} index - zero-based strip index
+ * @returns {{start: string, end: string|null}}
+ */
+export function stripStartEndLabels(strip, index) {
+    const rawName = typeof strip.name === 'string' ? strip.name.trim() : '';
+    const isAutoIndexed = rawName === '' || /^strip\d*$/i.test(rawName);
+    const name = isAutoIndexed ? String(index) : rawName;
+    const count = typeof strip.count === 'number'
+        ? strip.count
+        : (strip.points ? strip.points.length : undefined);
+    if (count === 1) {
+        return { start: `Start/End${name}`, end: null };
+    }
+    return { start: `Start${name}`, end: `End${name}` };
+}
+
+/**
  * Check if a string is valid JSON.
  * @param {string} text
  * @returns {boolean}

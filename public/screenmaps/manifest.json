@@ -39,6 +39,10 @@
                     {
                         "file":  "64x64_serpentine.json",
                         "name":  "64x64 Serpentine"
+                    },
+                    {
+                        "file":  "64x64_quad_serpentine.json",
+                        "name":  "64x64 Quad Serpentine"
                     }
                 ]
 }

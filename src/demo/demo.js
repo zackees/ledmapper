@@ -1,4 +1,4 @@
-import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file, parseScreenmapMultiStrip, getStripColors } from '../common.js';
+import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file, parseScreenmapMultiStrip, getStripColors, stripStartEndLabels } from '../common.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
@@ -433,8 +433,12 @@ export function init(container) {
             fillCircle(pts[i][0], pts[i][1], 4, 'rgba(255,255,255,0.5)');
         }
 
-        drawOutlinedLabel("Start LED", pts[0][0] + 4, pts[0][1]);
-        drawOutlinedLabel("End LED", pts[pts.length - 1][0] + 4, pts[pts.length - 1][1]);
+        const strip = (stripInfo && stripInfo.strips[0]) || { name: '', count: pts.length };
+        const labels = stripStartEndLabels(strip, 0);
+        drawOutlinedLabel(labels.start, pts[0][0] + 4, pts[0][1]);
+        if (labels.end) {
+            drawOutlinedLabel(labels.end, pts[pts.length - 1][0] + 4, pts[pts.length - 1][1]);
+        }
     }
 
     function drawOverlayMultiStrip(pts) {
@@ -481,11 +485,10 @@ export function init(container) {
             }
 
             // Label start/end of each strip (single label for 1-LED strips)
-            if (endIdx === startIdx) {
-                drawOutlinedLabel(strip.name, pts[startIdx][0] + 4, pts[startIdx][1]);
-            } else {
-                drawOutlinedLabel(`${strip.name} start`, pts[startIdx][0] + 4, pts[startIdx][1]);
-                drawOutlinedLabel(`${strip.name} end`, pts[endIdx][0] + 4, pts[endIdx][1]);
+            const labels = stripStartEndLabels({ name: strip.name, count: endIdx - startIdx + 1 }, s);
+            drawOutlinedLabel(labels.start, pts[startIdx][0] + 4, pts[startIdx][1]);
+            if (labels.end) {
+                drawOutlinedLabel(labels.end, pts[endIdx][0] + 4, pts[endIdx][1]);
             }
         }
     }
