@@ -21,6 +21,7 @@ export const BLUR_FRAG = `
     uniform float blurRadius;
     uniform float sigma;
     uniform float brightness;
+    uniform float maxBrightness;
     uniform float gamma;
     uniform vec2 direction;
     varying vec2 vUv;
@@ -49,6 +50,10 @@ export const BLUR_FRAG = `
 
         vec3 color = diffuseSum / max(totalWeight, 0.001);
         color = pow(color, vec3(gamma)) * brightness;
+        // Clamp to the max-brightness cap by subtracting the excess of the
+        // brightest channel, preserving hue better than uniform scaling.
+        float excess = max(max(color.r, max(color.g, color.b)) - maxBrightness, 0.0);
+        color = max(color - vec3(excess), 0.0);
         gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
     }
 `;

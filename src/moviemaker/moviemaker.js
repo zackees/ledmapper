@@ -519,9 +519,10 @@ export function init(container) {
         blurPipeline.updateUniforms({
             blurRadius: parseFloat(dom_rng_blur.value),
             sigma: parseFloat(dom_rng_blur_sigma.value),
-            brightness: dom_chk_limit_bri.checked
-                ? Math.min(parseInt(dom_rng_brightness.value), parseInt(dom_rng_max_bri.value)) / 100
-                : parseInt(dom_rng_brightness.value) / 100,
+            brightness: parseInt(dom_rng_brightness.value) / 100,
+            maxBrightness: dom_chk_limit_bri.checked
+                ? parseInt(dom_rng_max_bri.value) / 100
+                : 1.0,
             gamma: parseInt(dom_rng_gamma.value) / 10,
         });
 

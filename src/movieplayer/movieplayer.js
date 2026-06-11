@@ -1,5 +1,6 @@
 import { parse_screenmap_data, centerAndFitPoints } from '../common.js';
-import { saveScreenmap, getScreenmap } from '../screenmap-store.js';
+import { saveScreenmap, getScreenmap, savePresetSelection, getPresetSelection } from '../screenmap-store.js';
+import { loadPresetText, loadPresetManifest } from '../preset-loader.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './movieplayer.css?url';
@@ -14,6 +15,7 @@ export function init(container) {
     const dom_txt_curr_diameter = container.querySelector("#txt_curr_diameter");
     const dom_screenmap_drop_target = container.querySelector("#screenmap_drop_target");
     const dom_movie_drop_target = container.querySelector("#movie_drop_target");
+    const dom_preset_buttons = container.querySelector("#preset_buttons");
 
     dom_btn_load_movie.disabled = true;
     dom_btn_play.disabled = true;
@@ -65,11 +67,11 @@ export function init(container) {
         colorAttribute = result.colorAttribute;
     }
 
-    function load_screenmap_data(text) {
+    function load_screenmap_data(text, { persist = true } = {}) {
         screenmap_pts = parse_screenmap_data(text);
         dom_btn_load_movie.disabled = (screenmap_pts.length === 0);
         if (screenmap_pts.length === 0) return;
-        saveScreenmap(text);
+        if (persist) saveScreenmap(text);
         screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
         buildPoints();
     }
@@ -86,10 +88,54 @@ export function init(container) {
             alert('Please choose a .json screenmap file.');
             return;
         }
-        file.text().then(load_screenmap_data).catch((error) => {
+        file.text().then((text) => {
+            load_screenmap_data(text);
+            markActivePreset(null);
+        }).catch((error) => {
             alert(`Error reading screenmap file: ${error}`);
         });
     }
+
+    function markActivePreset(presetFile) {
+        dom_preset_buttons.querySelectorAll('.preset-btn').forEach((btn) => {
+            btn.classList.toggle('active-preset', btn.dataset.presetFile === presetFile);
+        });
+    }
+
+    async function selectPreset(presetFile) {
+        set_dom_btn_play(false);
+        try {
+            const text = await loadPresetText(presetFile);
+            load_screenmap_data(text);
+            savePresetSelection(presetFile);
+            markActivePreset(presetFile);
+        } catch (error) {
+            alert(`Error loading preset: ${error}`);
+        }
+    }
+
+    async function initPresetButtons() {
+        let presets;
+        try {
+            presets = await loadPresetManifest();
+        } catch (error) {
+            console.error('Failed to load screenmap preset manifest:', error);
+            return;
+        }
+        for (const preset of presets) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'preset-btn';
+            btn.textContent = preset.name;
+            btn.dataset.presetFile = preset.file;
+            btn.addEventListener('click', () => selectPreset(preset.file), { signal });
+            dom_preset_buttons.appendChild(btn);
+        }
+        const storedPreset = getPresetSelection();
+        if (storedPreset) markActivePreset(storedPreset);
+    }
+
+    initPresetButtons();
 
     function loadMovieFile(file) {
         if (!file) return;
@@ -131,9 +177,10 @@ export function init(container) {
         loadScreenmapFile(dom_btn_upload_screenmap.files[0]);
     }, { signal });
 
-    // Restore stored screenmap if available
+    // Restore stored screenmap if available (without re-persisting, which
+    // would clear the stored preset selection)
     const storedScreenmap = getScreenmap();
-    if (storedScreenmap) load_screenmap_data(storedScreenmap);
+    if (storedScreenmap) load_screenmap_data(storedScreenmap, { persist: false });
 
     function set_dom_btn_play(on) {
         playing = on;

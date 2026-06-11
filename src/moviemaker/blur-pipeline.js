@@ -38,6 +38,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }) {
             blurRadius: { value: initialUniforms.blurRadius },
             sigma:      { value: initialUniforms.sigma },
             brightness: { value: 1.0 },
+            maxBrightness: { value: 1.0 },
             gamma:      { value: 1.0 },
             direction:  { value: new Vector2(1, 0) },
         },
@@ -87,13 +88,14 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }) {
     /**
      * Update shader uniforms from current slider values.
      *
-     * @param {{ blurRadius: number, sigma: number, brightness: number, gamma: number }} values
+     * @param {{ blurRadius: number, sigma: number, brightness: number, maxBrightness: number, gamma: number }} values
      */
     function updateUniforms(values) {
         const u = shaderMaterial.uniforms;
         u.blurRadius.value = values.blurRadius;
         u.sigma.value = values.sigma;
         u.brightness.value = values.brightness;
+        u.maxBrightness.value = values.maxBrightness;
         u.gamma.value = values.gamma;
     }
 
@@ -106,11 +108,13 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }) {
     function renderBlurred(destTarget) {
         const u = shaderMaterial.uniforms;
         const savedBri = u.brightness.value;
+        const savedMaxBri = u.maxBrightness.value;
         const savedGamma = u.gamma.value;
 
         u.tDiffuse.value = videoTexture;
         u.direction.value.set(1, 0);
         u.brightness.value = 1.0;
+        u.maxBrightness.value = 1.0;
         u.gamma.value = 1.0;
         renderer.setRenderTarget(blurTarget);
         renderer.render(scene, camera);
@@ -118,6 +122,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }) {
         u.tDiffuse.value = blurTarget.texture;
         u.direction.value.set(0, 1);
         u.brightness.value = savedBri;
+        u.maxBrightness.value = savedMaxBri;
         u.gamma.value = savedGamma;
         renderer.setRenderTarget(destTarget);
         renderer.render(scene, camera);
