@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+﻿import { test, expect } from './fixtures.js';
 import path from 'path';
 import { dropFile, dropFixture } from '../helpers/drag-drop.js';
 
@@ -52,8 +52,8 @@ test.describe('Moviemaker drag-and-drop', () => {
     test('dropping a screenmap onto the upload row clears the active preset', async ({ page }) => {
         await page.goto('/moviemaker/');
         // Activate a preset first so we can observe the drop clearing it
-        await page.locator('#btn_preset_8x8').click();
-        await expect(page.locator('#btn_preset_8x8')).toHaveClass(/active-preset/);
+        await page.locator('#btn_preset_8x8_grid').click();
+        await expect(page.locator('#btn_preset_8x8_grid')).toHaveClass(/active-preset/);
 
         await dropFixture(page, '#screenmap_drop_target', SCREENMAP_FIXTURE, 'test-screenmap.json', 'application/json');
         await expect(page.locator('.preset-btn.active-preset')).toHaveCount(0);

@@ -1,12 +1,12 @@
 {
     "presets":  [
                     {
-                        "file":  "16x16_serpentine.json",
-                        "name":  "16x16 Serpentine"
-                    },
-                    {
                         "file":  "16x16_grid.json",
                         "name":  "16x16 Grid"
+                    },
+                    {
+                        "file":  "16x16_serpentine.json",
+                        "name":  "16x16 Serpentine"
                     },
                     {
                         "file":  "8x8_grid.json",
@@ -43,6 +43,14 @@
                     {
                         "file":  "64x64_quad_serpentine.json",
                         "name":  "64x64 Quad Serpentine"
+                    },
+                    {
+                        "file":  "22x22_serpentine.json",
+                        "name":  "22x22 Serpentine"
+                    },
+                    {
+                        "file":  "44x44_quad_serpentine.json",
+                        "name":  "44x44 Quad Pinwheel"
                     }
                 ]
 }

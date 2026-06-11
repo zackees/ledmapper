@@ -4,6 +4,7 @@ import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { saveScreenmap, getScreenmap } from '../screenmap-store.js';
 import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension, buildVideoChannelMap } from './transforms.js';
 import { loadPresetText } from '../preset-loader.js';
+import screenmapPresets from 'virtual:screenmap-presets';
 import { createBlurPipeline } from './blur-pipeline.js';
 import { createVideoSource } from './video-source.js';
 import { createRecording } from './recording.js';
@@ -216,6 +217,15 @@ export function init(container) {
     }
 
     if (dom_preset_buttons) {
+        for (const preset of screenmapPresets) {
+            const btn = document.createElement('button');
+            btn.id = `btn_preset_${preset.file.replace(/\.json$/i, '')}`;
+            btn.type = 'button';
+            btn.className = 'preset-btn';
+            btn.dataset.presetFile = preset.file;
+            btn.textContent = preset.name;
+            dom_preset_buttons.appendChild(btn);
+        }
         presetButtons = Array.from(dom_preset_buttons.querySelectorAll('button[data-preset-file]'));
         for (const btn of presetButtons) {
             const presetFile = btn.dataset.presetFile;
