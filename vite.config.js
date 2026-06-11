@@ -9,10 +9,30 @@ const httpsConfig = fs.existsSync(certPath) && fs.existsSync(keyPath)
   ? { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) }
   : undefined;
 
+// Bakes public/screenmaps/manifest.json into the JS bundle at build time so
+// tools can render preset UI from it without hand-maintained button lists.
+const presetManifestPlugin = () => {
+  const virtualId = 'virtual:screenmap-presets';
+  const resolvedId = '\0' + virtualId;
+  const manifestPath = resolve(__dirname, 'public/screenmaps/manifest.json');
+  return {
+    name: 'screenmap-presets',
+    resolveId(id) {
+      if (id === virtualId) return resolvedId;
+    },
+    load(id) {
+      if (id !== resolvedId) return;
+      this.addWatchFile(manifestPath);
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      return `export default ${JSON.stringify(manifest.presets || [])};`;
+    },
+  };
+};
+
 export default defineConfig({
   root: 'src',
   publicDir: '../public',
-  plugins: [tailwindcss(), {
+  plugins: [tailwindcss(), presetManifestPlugin(), {
     name: 'spa-fallback',
     configureServer(server) {
       return () => {

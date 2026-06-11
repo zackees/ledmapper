@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+﻿import { test, expect } from './fixtures.js';
 import path from 'path';
 import fs from 'fs';
 import { mockWebcam } from '../helpers/webcam-mock.js';
@@ -35,7 +35,7 @@ async function recordAndDownload(page, durationMs = 2000) {
     // Let frames accumulate
     await page.waitForTimeout(durationMs);
 
-    // Stop recording — triggers .rgb file download
+    // Stop recording â€” triggers .rgb file download
     await recordBtn.click();
     await expect(recordBtn).toHaveValue('Start Recording');
 
@@ -80,7 +80,7 @@ test.describe('Moviemaker Recording Workflow', () => {
             await expect(page.locator('#btn_play_pause')).toHaveAttribute('title', 'Pause');
 
             // 16x16 preset is selected by default (256 LEDs)
-            await expect(page.locator('#btn_preset_16x16')).toHaveClass(/active-preset/);
+            await expect(page.locator('#btn_preset_16x16_grid')).toHaveClass(/active-preset/);
 
             // Controls should be enabled (screenmap loaded by default)
             await expect(page.locator('#rng_blur')).toBeEnabled();
@@ -117,7 +117,7 @@ test.describe('Moviemaker Recording Workflow', () => {
             await waitForSourceActive(page);
 
             // 16x16 preset is active by default
-            await expect(page.locator('#btn_preset_16x16')).toHaveClass(/active-preset/);
+            await expect(page.locator('#btn_preset_16x16_grid')).toHaveClass(/active-preset/);
             await expect(page.locator('#btn_toggle_record')).toBeEnabled();
 
             // Record
@@ -159,8 +159,8 @@ test.describe('Moviemaker Recording Workflow', () => {
             await waitForSourceActive(page);
 
             // Switch to 8x8 preset
-            await page.locator('#btn_preset_8x8').click();
-            await expect(page.locator('#btn_preset_8x8')).toHaveClass(/active-preset/);
+            await page.locator('#btn_preset_8x8_grid').click();
+            await expect(page.locator('#btn_preset_8x8_grid')).toHaveClass(/active-preset/);
 
             const data = await recordAndDownload(page, 1500);
 
@@ -182,7 +182,7 @@ test.describe('Moviemaker Recording Workflow', () => {
 
             const data = await recordAndDownload(page, 1500);
 
-            const bytesPerFrame = SCREENMAP_LED_COUNT * 3; // 4 LEDs × 3 bytes
+            const bytesPerFrame = SCREENMAP_LED_COUNT * 3; // 4 LEDs Ã— 3 bytes
             expect(data.length).toBeGreaterThan(0);
             expect(data.length % bytesPerFrame).toBe(0);
         });
@@ -204,7 +204,7 @@ test.describe('Moviemaker Recording Workflow', () => {
 
             const data = await recordAndDownload(page, 1500);
 
-            const bytesPerFrame = MULTI_TOTAL * 3; // 7 LEDs × 3 bytes
+            const bytesPerFrame = MULTI_TOTAL * 3; // 7 LEDs Ã— 3 bytes
             expect(data.length).toBeGreaterThan(0);
             expect(data.length % bytesPerFrame).toBe(0);
         });
@@ -225,8 +225,8 @@ test.describe('Moviemaker Recording Workflow', () => {
                 await pg.locator('[data-trigger="btn_start_webcam"]').click();
                 await waitForSourceActive(pg);
 
-                await pg.locator('#btn_preset_8x8').click();
-                await expect(pg.locator('#btn_preset_8x8')).toHaveClass(/active-preset/);
+                await pg.locator('#btn_preset_8x8_grid').click();
+                await expect(pg.locator('#btn_preset_8x8_grid')).toHaveClass(/active-preset/);
 
                 const blur = pg.locator('#rng_blur');
                 const sigma = pg.locator('#rng_blur_sigma');
@@ -266,7 +266,7 @@ test.describe('Moviemaker Recording Workflow', () => {
             const avgDiff = totalDiff / bytesPerFrame;
 
             // With 5px-wide B&W stripes, blur=3 should visibly smear the edges.
-            // No-blur samples pure 0 or 255; blur samples a mix → large difference.
+            // No-blur samples pure 0 or 255; blur samples a mix â†’ large difference.
             expect(avgDiff).toBeGreaterThan(1.0);
         });
     });

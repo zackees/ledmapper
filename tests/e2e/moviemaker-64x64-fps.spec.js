@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+﻿import { test, expect } from './fixtures.js';
 import fs from 'fs';
 
 // Regression guard for issue #8: recording through a 64x64 screenmap used to
@@ -75,15 +75,15 @@ test.describe('Moviemaker 64x64 recording framerate', () => {
         test.setTimeout(120000);
 
         // Headless SwiftShader caps at ~6fps regardless of LED count, which
-        // would mask the regression — only meaningful headed with a real GPU.
+        // would mask the regression â€” only meaningful headed with a real GPU.
         await page.goto('/moviemaker/');
         const ua = await page.evaluate(() => navigator.userAgent);
         test.skip(/headless/i.test(ua), 'requires headed browser with real GPU (run with --headed)');
 
-        const fps8 = await measureRecordingFps(page, '#btn_preset_8x8');
-        const fps64 = await measureRecordingFps(page, '#btn_preset_64x64');
+        const fps8 = await measureRecordingFps(page, '#btn_preset_8x8_grid');
+        const fps64 = await measureRecordingFps(page, '#btn_preset_64x64_serpentine');
 
-        console.log(`Recording FPS — 8x8 (64 LEDs): ${fps8.toFixed(1)}, 64x64 (4096 LEDs): ${fps64.toFixed(1)}`);
+        console.log(`Recording FPS â€” 8x8 (64 LEDs): ${fps8.toFixed(1)}, 64x64 (4096 LEDs): ${fps64.toFixed(1)}`);
 
         // Issue #8 fixed: 64x64 recording holds 60fps within measurement jitter
         expect(fps64).toBeGreaterThanOrEqual(55);

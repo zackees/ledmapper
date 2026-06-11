@@ -196,6 +196,9 @@ def main():
     parser.add_argument("--first-row", choices=["ltr", "rtl"], default="ltr")
     parser.add_argument("--frame", choices=["global", "per-mcu"], default="global")
     parser.add_argument("--out", default="public/screenmaps/64x64_quad_serpentine.json")
+    parser.add_argument("--strip-name", default=None,
+                        help="override the strip name (single-strip output only); "
+                             "also omits the redundant video_offset")
     parser.add_argument("--verify", action="store_true")
     args = parser.parse_args()
 
@@ -203,17 +206,25 @@ def main():
     if args.verify:
         verify(strips, args)
 
+    if args.strip_name is not None and len(strips) != 1:
+        parser.error("--strip-name requires a single-strip layout "
+                     f"(got {len(strips)} strips)")
+
     def fmt(v):
         return int(v) if float(v).is_integer() else v
 
     out = {"map": {}}
     for name, xs, ys, video_offset in strips:
-        out["map"][name] = {
+        entry = {
             "x": [fmt(v) for v in xs],
             "y": [fmt(v) for v in ys],
             "diameter": args.diameter,
-            "video_offset": video_offset,
         }
+        if args.strip_name is None:
+            entry["video_offset"] = video_offset
+            out["map"][name] = entry
+        else:
+            out["map"][args.strip_name] = entry
 
     with open(args.out, "w", newline="\n") as f:
         json.dump(out, f, separators=(",", ":"))
