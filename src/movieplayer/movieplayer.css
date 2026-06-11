@@ -30,6 +30,31 @@
     margin-bottom: 10px;
 }
 
+.preset-buttons {
+    @apply flex flex-wrap gap-1.5;
+}
+
+.preset-btn {
+    font-size: 0.72rem;
+    padding: 4px 12px;
+    background: transparent;
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm-pill);
+    color: var(--color-lm-text-secondary);
+}
+
+.preset-btn:hover {
+    background: var(--color-lm-accent-subtle);
+    border-color: var(--color-lm-accent);
+    color: var(--color-lm-accent);
+}
+
+.preset-btn.active-preset {
+    background: var(--color-lm-accent-subtle);
+    border-color: var(--color-lm-accent);
+    color: var(--color-lm-accent);
+}
+
 .upload-row {
     display: flex;
     align-items: center;

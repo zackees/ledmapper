@@ -4,13 +4,19 @@
  */
 
 const KEY = 'lm:screenmap';
+const PRESET_KEY = 'lm:screenmap-preset';
 
 /**
  * Save raw screenmap JSON text to localStorage.
+ * Clears any stored preset selection — callers loading a built-in preset
+ * should call savePresetSelection() afterwards.
  * @param {string} jsonText
  */
 export function saveScreenmap(jsonText) {
-    try { localStorage.setItem(KEY, jsonText); } catch { /* quota / private mode */ }
+    try {
+        localStorage.setItem(KEY, jsonText);
+        localStorage.removeItem(PRESET_KEY);
+    } catch { /* quota / private mode */ }
 }
 
 /**
@@ -32,6 +38,21 @@ export function getScreenmap() {
     try { return localStorage.getItem(KEY); } catch { return null; }
 }
 
+/**
+ * Persist the active built-in preset filename (e.g. "16x16_grid.json").
+ * @param {string} file
+ */
+export function savePresetSelection(file) {
+    try { localStorage.setItem(PRESET_KEY, file); } catch { /* quota / private mode */ }
+}
+
+/**
+ * Retrieve the active built-in preset filename, or null.
+ * @returns {string|null}
+ */
+export function getPresetSelection() {
+    try { return localStorage.getItem(PRESET_KEY); } catch { return null; }
+}
 /**
  * Build a screenmap JSON string from a multi-strip structured result.
  * Produces the canonical {map: {stripName: {x:[], y:[], diameter, video_offset?}}} format.

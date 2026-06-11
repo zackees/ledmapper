@@ -97,3 +97,42 @@ test.describe('Video Player', () => {
         await expect(page.locator('#txt_curr_diameter')).toHaveText('15');
     });
 });
+
+test.describe('Video Player screenmap presets', () => {
+    test('renders preset buttons from manifest', async ({ page }) => {
+        await page.goto('/movieplayer/');
+        await expect(page.locator('#preset_buttons [data-preset-file="16x16_grid.json"]')).toBeVisible();
+        await expect(page.locator('#preset_buttons [data-preset-file="64x64_serpentine.json"]')).toBeVisible();
+    });
+
+    test('clicking a preset loads screenmap and enables movie upload', async ({ page }) => {
+        await page.goto('/movieplayer/');
+        const btn = page.locator('#preset_buttons [data-preset-file="16x16_grid.json"]');
+        await btn.click();
+        await expect(btn).toHaveClass(/active-preset/);
+        await expect(page.locator('#btn_load_movie')).toBeEnabled();
+    });
+
+    test('preset selection persists across reload', async ({ page }) => {
+        await page.goto('/movieplayer/');
+        const btn = page.locator('#preset_buttons [data-preset-file="8x8_grid.json"]');
+        await btn.click();
+        await expect(btn).toHaveClass(/active-preset/);
+
+        await page.reload();
+        const btnAfter = page.locator('#preset_buttons [data-preset-file="8x8_grid.json"]');
+        await expect(btnAfter).toHaveClass(/active-preset/);
+        await expect(page.locator('#btn_load_movie')).toBeEnabled();
+    });
+
+    test('custom screenmap upload clears active preset', async ({ page }) => {
+        await page.goto('/movieplayer/');
+        const btn = page.locator('#preset_buttons [data-preset-file="16x16_grid.json"]');
+        await btn.click();
+        await expect(btn).toHaveClass(/active-preset/);
+
+        await page.locator('#btn_upload_screenmap')
+            .setInputFiles(path.resolve('tests/fixtures/test-screenmap.json'));
+        await expect(btn).not.toHaveClass(/active-preset/);
+    });
+});
