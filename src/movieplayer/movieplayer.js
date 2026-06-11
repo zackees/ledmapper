@@ -1,4 +1,4 @@
-import { parse_screenmap_data, centerAndFitPoints, readFileAsText } from '../common.js';
+import { parse_screenmap_data, centerAndFitPoints } from '../common.js';
 import { saveScreenmap, getScreenmap } from '../screenmap-store.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
@@ -12,6 +12,8 @@ export function init(container) {
     const dom_btn_play = container.querySelector("#btn_play");
     const dom_rng_diameter = container.querySelector("#rng_diameter");
     const dom_txt_curr_diameter = container.querySelector("#txt_curr_diameter");
+    const dom_screenmap_drop_target = container.querySelector("#screenmap_drop_target");
+    const dom_movie_drop_target = container.querySelector("#movie_drop_target");
 
     dom_btn_load_movie.disabled = true;
     dom_btn_play.disabled = true;
@@ -72,9 +74,61 @@ export function init(container) {
         buildPoints();
     }
 
-    dom_btn_upload_screenmap.addEventListener('change', () => {
+    function fileHasExtension(file, extensions) {
+        const name = file.name.toLowerCase();
+        return extensions.some((extension) => name.endsWith(extension));
+    }
+
+    function loadScreenmapFile(file) {
+        if (!file) return;
         set_dom_btn_play(false);
-        readFileAsText(dom_btn_upload_screenmap, load_screenmap_data);
+        if (!fileHasExtension(file, ['.json'])) {
+            alert('Please choose a .json screenmap file.');
+            return;
+        }
+        file.text().then(load_screenmap_data).catch((error) => {
+            alert(`Error reading screenmap file: ${error}`);
+        });
+    }
+
+    function loadMovieFile(file) {
+        if (!file) return;
+        set_dom_btn_play(false);
+        if (!fileHasExtension(file, ['.rgb'])) {
+            alert('Please choose a .rgb video file.');
+            return;
+        }
+        file.arrayBuffer().then(load_movie_data).catch((error) => {
+            alert(`Error reading video file: ${error}`);
+        });
+    }
+
+    function wireFileDropTarget({ target, input, onFile }) {
+        target.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            if (event.dataTransfer) {
+                event.dataTransfer.dropEffect = input.disabled ? 'none' : 'copy';
+            }
+            if (!input.disabled) {
+                target.classList.add('drag-over');
+            }
+        }, { signal });
+
+        target.addEventListener('dragleave', () => {
+            target.classList.remove('drag-over');
+        }, { signal });
+
+        target.addEventListener('drop', (event) => {
+            event.preventDefault();
+            target.classList.remove('drag-over');
+            if (input.disabled) return;
+            const file = event.dataTransfer?.files?.[0];
+            onFile(file);
+        }, { signal });
+    }
+
+    dom_btn_upload_screenmap.addEventListener('change', () => {
+        loadScreenmapFile(dom_btn_upload_screenmap.files[0]);
     }, { signal });
 
     // Restore stored screenmap if available
@@ -116,10 +170,20 @@ export function init(container) {
     }
 
     dom_btn_load_movie.addEventListener('change', () => {
-        set_dom_btn_play(false);
-        const file = dom_btn_load_movie.files[0];
-        file.arrayBuffer().then(load_movie_data);
+        loadMovieFile(dom_btn_load_movie.files[0]);
     }, { signal });
+
+    wireFileDropTarget({
+        target: dom_screenmap_drop_target,
+        input: dom_btn_upload_screenmap,
+        onFile: loadScreenmapFile,
+    });
+
+    wireFileDropTarget({
+        target: dom_movie_drop_target,
+        input: dom_btn_load_movie,
+        onFile: loadMovieFile,
+    });
 
     const animLoop = createAnimationLoop({
         targetFPS: 30,

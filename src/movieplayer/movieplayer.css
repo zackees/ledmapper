@@ -30,6 +30,27 @@
     margin-bottom: 10px;
 }
 
+.upload-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    border: 1px dashed transparent;
+    border-radius: 6px;
+    margin-left: -8px;
+    padding: 6px 8px;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.upload-row.drag-over {
+    background: color-mix(in srgb, var(--color-lm-accent) 14%, transparent);
+    border-color: var(--color-lm-accent);
+}
+
+.upload-row:has(input:disabled) {
+    opacity: 0.65;
+}
+
 @media (max-width: 600px) {
     .controls {
         max-width: 100%;
