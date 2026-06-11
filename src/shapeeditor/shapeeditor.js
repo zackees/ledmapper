@@ -17,8 +17,12 @@ import {
 } from 'three';
 import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, stripStartEndLabels } from '../common.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
-import { saveScreenmap, saveScreenmapPoints, getScreenmap } from '../screenmap-store.js';
+import { saveScreenmap, saveScreenmapPoints, getScreenmap, saveScreenmapMultiStrip, buildScreenmapMultiStripJson } from '../screenmap-store.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
+import { StripStore } from './strips-model.js';
+import { Selection } from './selection.js';
+import { PANEL_CATALOG, getCatalogEntry, generatePanelPoints } from './panel-catalog.js';
+import { snapToGrid } from './grid-snap.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './shapeeditor.css?url';
 
@@ -129,23 +133,27 @@ export function init(container) {
             ];
         };
 
-        const map = {};
-        if (stripInfo && stripInfo.strips.length > 1
+        let json;
+        if (stripInfo && stripInfo.strips.length >= 1
             && stripInfo.totalCount === rawPts.length) {
-            // Preserve multi-strip structure on save
-            for (const strip of stripInfo.strips) {
-                const xArr = [];
-                const yArr = [];
+            // Preserve multi-strip structure (including non-sequential video_offset)
+            // via the shared builder.
+            const stripsOut = stripInfo.strips.map((strip) => {
+                const pts = [];
                 for (let i = strip.offset; i < strip.offset + strip.count; i++) {
-                    const [tx, ty] = transformPoint(rawPts[i]);
-                    xArr.push(tx);
-                    yArr.push(ty);
+                    pts.push(transformPoint(rawPts[i]));
                 }
-                const entry = { x: xArr, y: yArr };
                 const d = typeof strip.diameter === 'number' ? strip.diameter : fallbackDiameter;
-                if (typeof d === 'number') entry.diameter = d;
-                map[strip.name] = entry;
-            }
+                return {
+                    name: strip.name,
+                    points: pts,
+                    diameter: d,
+                    offset: strip.offset,
+                    count: strip.count,
+                    video_offset: typeof strip.video_offset === 'number' ? strip.video_offset : strip.offset,
+                };
+            });
+            json = buildScreenmapMultiStripJson(stripsOut);
         } else {
             const xArr = [];
             const yArr = [];
@@ -154,10 +162,9 @@ export function init(container) {
                 xArr.push(tx);
                 yArr.push(ty);
             }
-            map.strip1 = { x: xArr, y: yArr, diameter: fallbackDiameter };
+            const map = { strip1: { x: xArr, y: yArr, diameter: fallbackDiameter } };
+            json = JSON.stringify({ map }, null, 2);
         }
-
-        const json = JSON.stringify({ map }, null, 2);
 
         saveScreenmap(json);
         download_text_as_file(json, 'screenmap.json', { type: 'application/json' });
@@ -247,7 +254,13 @@ export function init(container) {
     let origWidth = 0, origHeight = 0;
     let fitScale = 1; // cm-to-pixel scale from centerAndFitPoints
     let origDiameter = 0.5;
+    // Multi-strip metadata model. The store owns mutations; `stripInfo` is
+    // kept as a local mirror of `stripStore.get()` so existing read paths
+    // (`stripInfo.strips`, `stripInfo.totalCount`, ...) work unchanged.
+    const stripStore = new StripStore();
     let stripInfo = null; // multi-strip parse result (null until screenmap loaded)
+    const selection = new Selection();
+    selection.setOnChange(() => { setNeedsGeometryUpdate(); renderStripsPanel(); });
 
     // Test/debug hook: expose strip state and computed Start/End labels so
     // E2E tests can assert on canvas-drawn labels that have no DOM presence.
@@ -256,6 +269,14 @@ export function init(container) {
         getStripLabels: () => (stripInfo
             ? stripInfo.strips.map((s, i) => stripStartEndLabels(s, i))
             : null),
+        getSelectedStrip: () => selection.getStripIdx(),
+        getStripNames: () => (stripInfo ? stripInfo.strips.map(s => s.name) : []),
+        selectStrip: (i) => { selection.selectStrip(i); },
+        placePanel: (catalogId, worldX, worldY, opts) => _debugPlacePanel(catalogId, worldX, worldY, opts || {}),
+        getPlacingMode: () => (placingState ? placingState.entry.id : null),
+        cancelPlacing: () => { _cancelPlacing(); },
+        getChainArrowCount: () => _chainArrowCount(),
+        reverseStrip: (i) => { doReverseStrip(i); },
     };
 
     /** Convert an HSL color string like "hsl(120, 80%, 60%)" to [r, g, b] floats 0-1. */
@@ -320,6 +341,15 @@ export function init(container) {
 
     // ── Editing state ─────────────────────────────────────────────────────
     let selectedIdx = -1;
+    function syncPointSelection(idx) {
+        if (idx >= 0) {
+            const sIdx = stripStore.findStripForIndex(idx);
+            selection.selectPoint(idx, sIdx);
+        } else if (selection.getPointIdx() !== null) {
+            // Clear point but keep strip selection if explicit
+            selection.selectPoint(null, selection.getStripIdx());
+        }
+    }
     let isDragging = false;
     let dragStartCanvasX = 0, dragStartCanvasY = 0;
     let dragStartScreenmapPt = null, dragStartRawPt = null;
@@ -412,6 +442,81 @@ export function init(container) {
         markDirty();
     }
 
+    function _persistMultiStrip() {
+        if (!stripInfo || stripInfo.strips.length === 0) return;
+        try {
+            const fallbackDiameter = parseFloat(dom_txt_diameter.value) || 0.25;
+            const strips = stripInfo.strips.map((s) => {
+                const pts = [];
+                for (let i = s.offset; i < s.offset + s.count; i++) {
+                    pts.push([rawPts[i][0], rawPts[i][1]]);
+                }
+                return {
+                    name: s.name,
+                    points: pts,
+                    diameter: typeof s.diameter === 'number' ? s.diameter : fallbackDiameter,
+                    offset: s.offset,
+                    count: s.count,
+                    video_offset: typeof s.video_offset === 'number' ? s.video_offset : s.offset,
+                };
+            });
+            saveScreenmapMultiStrip(strips);
+        } catch { /* persistence is best-effort */ }
+    }
+
+    function _spliceArray(arr, idx, count) {
+        return arr.splice(idx, count);
+    }
+
+    function _removeStripPoints(stripIdx) {
+        const strip = stripInfo.strips[stripIdx];
+        const removedScreenmap = _spliceArray(screenmap_pts, strip.offset, strip.count);
+        const removedRaw = _spliceArray(rawPts, strip.offset, strip.count);
+        const removedStrip = { ...strip, points: strip.points ? strip.points.map(p => [p[0], p[1]]) : null };
+        stripStore.removeStrip(stripIdx);
+        return { removedStrip, removedScreenmap, removedRaw };
+    }
+
+    function _insertStripPoints(stripIdx, removed) {
+        const { removedStrip, removedScreenmap, removedRaw } = removed;
+        // Compute the flat insertion point for screenmap_pts/rawPts:
+        // the strip will be placed at stripIdx; its starting offset equals
+        // sum of counts of strips [0..stripIdx).
+        let insertAt = 0;
+        for (let k = 0; k < stripIdx && k < stripInfo.strips.length; k++) {
+            insertAt += stripInfo.strips[k].count;
+        }
+        screenmap_pts.splice(insertAt, 0, ...removedScreenmap);
+        rawPts.splice(insertAt, 0, ...removedRaw);
+        // Reinsert in StripStore
+        const info = stripStore.get();
+        const stripObj = {
+            name: removedStrip.name,
+            points: removedStrip.points || [],
+            diameter: removedStrip.diameter,
+            offset: 0, // recomputed
+            count: removedStrip.count,
+            video_offset: typeof removedStrip.video_offset === 'number' ? removedStrip.video_offset : 0,
+        };
+        info.strips.splice(stripIdx, 0, stripObj);
+        // Recompute offsets/allPoints
+        stripStore._recomputeOffsetsAndAllPoints();
+    }
+
+    function _reorderStripPoints(fromIdx, toIdx) {
+        // Splice screenmap_pts/rawPts to mirror the strip move.
+        const fromStrip = stripInfo.strips[fromIdx];
+        const fromOff = fromStrip.offset;
+        const fromCnt = fromStrip.count;
+        const movedScreenmap = screenmap_pts.splice(fromOff, fromCnt);
+        const movedRaw = rawPts.splice(fromOff, fromCnt);
+        stripStore.reorderStrip(fromIdx, toIdx);
+        // After reorder, the moved strip is at toIdx; compute its new offset
+        const newOffset = stripInfo.strips[toIdx].offset;
+        screenmap_pts.splice(newOffset, 0, ...movedScreenmap);
+        rawPts.splice(newOffset, 0, ...movedRaw);
+    }
+
     function applyAction(action) {
         if (action.type === 'move') {
             screenmap_pts[action.idx] = [...action.newScreenmapPt];
@@ -430,6 +535,22 @@ export function init(container) {
         } else if (action.type === 'transform') {
             setTransformValue(action.control, action.newValue);
             committedTransform[action.control] = action.newValue;
+        } else if (action.type === 'strip-rename') {
+            stripStore.renameStrip(action.stripIdx, action.newName);
+        } else if (action.type === 'strip-reorder') {
+            _reorderStripPoints(action.fromIdx, action.toIdx);
+            selection.onStripReorder(action.fromIdx, action.toIdx);
+        } else if (action.type === 'strip-delete') {
+            const removed = _removeStripPoints(action.stripIdx);
+            action.removed = removed; // ensure restore data is captured
+            selection.onStripRemove(action.stripIdx);
+            selectedIdx = -1;
+        } else if (action.type === 'panel-place') {
+            _redoPanelPlace(action);
+        } else if (action.type === 'strip-reverse') {
+            _reverseStripInPlace(action.stripIdx);
+        } else if (action.type === 'strip-offset') {
+            stripStore.updateStrip(action.stripIdx, { video_offset: action.newValue });
         }
     }
 
@@ -453,7 +574,32 @@ export function init(container) {
         } else if (action.type === 'transform') {
             setTransformValue(action.control, action.oldValue);
             committedTransform[action.control] = action.oldValue;
+        } else if (action.type === 'strip-rename') {
+            stripStore.renameStrip(action.stripIdx, action.oldName);
+        } else if (action.type === 'strip-reorder') {
+            _reorderStripPoints(action.toIdx, action.fromIdx);
+            selection.onStripReorder(action.toIdx, action.fromIdx);
+        } else if (action.type === 'strip-delete') {
+            _insertStripPoints(action.stripIdx, action.removed);
+        } else if (action.type === 'panel-place') {
+            _undoPanelPlace(action);
+        } else if (action.type === 'strip-reverse') {
+            // self-inverse
+            _reverseStripInPlace(action.stripIdx);
+        } else if (action.type === 'strip-offset') {
+            stripStore.updateStrip(action.stripIdx, { video_offset: action.oldValue });
         }
+    }
+
+    function isStripAction(action) {
+        return action && (
+            action.type === 'strip-rename'
+            || action.type === 'strip-reorder'
+            || action.type === 'strip-delete'
+            || action.type === 'panel-place'
+            || action.type === 'strip-reverse'
+            || action.type === 'strip-offset'
+        );
     }
 
     function performUndo() {
@@ -463,6 +609,10 @@ export function init(container) {
         redoStack.push(action);
         updateUndoRedoButtons();
         setNeedsGeometryUpdate();
+        if (isStripAction(action)) {
+            _persistMultiStrip();
+            renderStripsPanel();
+        }
         if (undoStack.length === 0) {
             clearDirty();
         } else {
@@ -477,6 +627,10 @@ export function init(container) {
         undoStack.push(action);
         updateUndoRedoButtons();
         setNeedsGeometryUpdate();
+        if (isStripAction(action)) {
+            _persistMultiStrip();
+            renderStripsPanel();
+        }
         markDirty();
     }
 
@@ -487,60 +641,14 @@ export function init(container) {
     }
 
     // ── Multi-strip metadata sync helpers ────────────────────────────────
-    // Keep stripInfo.strips[].count/.offset/.totalCount in sync with edits.
-    // Returns a snapshot suitable for restoration via _restoreStripInfo().
-    function _snapshotStripInfo() {
-        if (!stripInfo) return null;
-        return {
-            strips: stripInfo.strips.map(s => ({ ...s, points: undefined })),
-            totalCount: stripInfo.totalCount,
-        };
-    }
-    function _restoreStripInfo(snap) {
-        if (!stripInfo || !snap) return;
-        for (let i = 0; i < snap.strips.length && i < stripInfo.strips.length; i++) {
-            stripInfo.strips[i].offset = snap.strips[i].offset;
-            stripInfo.strips[i].count = snap.strips[i].count;
-        }
-        stripInfo.totalCount = snap.totalCount;
-    }
-    /** Find the strip index that owns the given flat point index. */
-    function _findStripForIndex(idx) {
-        if (!stripInfo) return -1;
-        for (let s = 0; s < stripInfo.strips.length; s++) {
-            const st = stripInfo.strips[s];
-            if (idx >= st.offset && idx < st.offset + st.count) return s;
-        }
-        return -1;
-    }
-    function _stripInfoOnDelete(idx) {
-        if (!stripInfo) return;
-        const s = _findStripForIndex(idx);
-        if (s < 0) return;
-        stripInfo.strips[s].count--;
-        for (let k = s + 1; k < stripInfo.strips.length; k++) {
-            stripInfo.strips[k].offset--;
-        }
-        stripInfo.totalCount--;
-    }
-    function _stripInfoOnInsert(idx) {
-        if (!stripInfo || stripInfo.strips.length === 0) return;
-        // Insertion at idx places the new point at flat index idx.
-        // Pick the strip whose range will contain idx after insertion.
-        // If idx is exactly at a strip boundary (== strip.offset for s>0), we
-        // assign it to the previous strip (extends the strip you inserted "after").
-        let s = -1;
-        for (let k = 0; k < stripInfo.strips.length; k++) {
-            const st = stripInfo.strips[k];
-            if (idx >= st.offset && idx <= st.offset + st.count) { s = k; break; }
-        }
-        if (s < 0) s = stripInfo.strips.length - 1; // append → last strip
-        stripInfo.strips[s].count++;
-        for (let k = s + 1; k < stripInfo.strips.length; k++) {
-            stripInfo.strips[k].offset++;
-        }
-        stripInfo.totalCount++;
-    }
+    // Thin wrappers around the StripStore. All mutation logic lives in
+    // strips-model.js; these exist so the existing call sites read the
+    // same as before. The store operates on whatever `stripInfo` is
+    // currently loaded (kept in sync via stripStore.load(...) below).
+    function _snapshotStripInfo() { return stripStore.snapshot(); }
+    function _restoreStripInfo(snap) { stripStore.restore(snap); }
+    function _stripInfoOnDelete(idx) { stripStore.onDelete(idx); }
+    function _stripInfoOnInsert(idx) { stripStore.onInsert(idx); }
 
     function deletePoint(idx) {
         if (idx < 0 || idx >= screenmap_pts.length) return;
@@ -556,6 +664,7 @@ export function init(container) {
         _stripInfoOnDelete(idx);
         if (selectedIdx === idx) selectedIdx = -1;
         else if (selectedIdx > idx) selectedIdx--;
+        selection.onPointDelete(idx);
         setNeedsGeometryUpdate();
     }
 
@@ -570,7 +679,9 @@ export function init(container) {
         screenmap_pts.splice(insertIdx, 0, screenmapPt);
         rawPts.splice(insertIdx, 0, rawPt);
         _stripInfoOnInsert(insertIdx);
+        selection.onPointInsert(insertIdx);
         selectedIdx = insertIdx;
+        syncPointSelection(insertIdx);
         setNeedsGeometryUpdate();
     }
 
@@ -657,6 +768,7 @@ export function init(container) {
 
     function clearEditingState() {
         selectedIdx = -1;
+        selection.clear();
         isDragging = false;
         isPanning = false;
         rightButtonDown = false;
@@ -722,6 +834,245 @@ export function init(container) {
 
     dom_btn_undo.addEventListener('click', performUndo, { signal });
     dom_btn_redo.addEventListener('click', performRedo, { signal });
+
+    // ── Strips inspector panel ───────────────────────────────────────────
+    const dom_strips_panel = container.querySelector('#strips_panel');
+    const dom_strips_list = container.querySelector('#strips_list');
+
+    function hslAccentForStrip(s, total) {
+        if (total <= 1) return '#3b82f6';
+        const colors = getStripColors(total);
+        return colors[s];
+    }
+
+    function renderStripsPanel() {
+        if (!dom_strips_list) return;
+        const strips = stripStore.getStrips();
+        dom_strips_list.innerHTML = '';
+        if (strips.length === 0) {
+            dom_strips_panel.style.display = 'none';
+            return;
+        }
+        dom_strips_panel.style.display = '';
+        const selStripIdx = selection.getStripIdx();
+        const total = strips.length;
+        for (let i = 0; i < strips.length; i++) {
+            const s = strips[i];
+            const row = document.createElement('div');
+            row.className = 'strip-row' + (i === selStripIdx ? ' active' : '');
+            row.dataset.stripIdx = String(i);
+
+            const swatch = document.createElement('span');
+            swatch.className = 'strip-swatch';
+            swatch.style.background = hslAccentForStrip(i, total);
+            row.appendChild(swatch);
+
+            const name = document.createElement('span');
+            name.className = 'strip-name';
+            name.textContent = s.name;
+            row.appendChild(name);
+
+            const count = document.createElement('span');
+            count.className = 'strip-count';
+            count.textContent = `${s.count} LED${s.count === 1 ? '' : 's'}`;
+            row.appendChild(count);
+
+            const mkBtn = (label, title, action, disabled) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'strip-btn';
+                b.textContent = label;
+                b.title = title;
+                b.dataset.action = action;
+                b.dataset.stripIdx = String(i);
+                if (disabled) b.disabled = true;
+                return b;
+            };
+
+            row.appendChild(mkBtn('▲', 'Move up', 'up', i === 0));
+            row.appendChild(mkBtn('▼', 'Move down', 'down', i === strips.length - 1));
+            row.appendChild(mkBtn('Rev', 'Reverse LED order', 'reverse', s.count < 2));
+            row.appendChild(mkBtn('Rename', 'Rename strip', 'rename', false));
+            row.appendChild(mkBtn('×', 'Delete strip', 'delete', strips.length <= 1));
+
+            // video_offset numeric input (small, last)
+            const off = document.createElement('input');
+            off.type = 'number';
+            off.className = 'strip-offset';
+            off.min = '0';
+            off.step = '1';
+            off.title = 'video_offset (frame index)';
+            off.value = String(typeof s.video_offset === 'number' ? s.video_offset : s.offset);
+            off.dataset.stripIdx = String(i);
+            off.dataset.role = 'video-offset';
+            row.appendChild(off);
+
+            dom_strips_list.appendChild(row);
+        }
+    }
+
+    if (dom_strips_list) {
+        dom_strips_list.addEventListener('click', async (e) => {
+            const btn = e.target.closest('button[data-action]');
+            if (btn) {
+                e.stopPropagation();
+                const idx = parseInt(btn.dataset.stripIdx, 10);
+                const action = btn.dataset.action;
+                if (action === 'up') doReorderStrip(idx, idx - 1);
+                else if (action === 'down') doReorderStrip(idx, idx + 1);
+                else if (action === 'reverse') doReverseStrip(idx);
+                else if (action === 'rename') await doRenameStripPrompt(idx);
+                else if (action === 'delete') await doDeleteStripPrompt(idx);
+                return;
+            }
+            // Ignore clicks that target inputs (so they keep focus)
+            if (e.target.closest('input')) return;
+            const row = e.target.closest('.strip-row');
+            if (row) {
+                const idx = parseInt(row.dataset.stripIdx, 10);
+                selection.selectStrip(idx);
+            }
+        }, { signal });
+
+        dom_strips_list.addEventListener('change', (e) => {
+            const t = e.target;
+            if (t instanceof HTMLInputElement && t.dataset.role === 'video-offset') {
+                const idx = parseInt(t.dataset.stripIdx, 10);
+                doSetVideoOffset(idx, t.value);
+            }
+        }, { signal });
+    }
+
+    // ── Show chain checkbox ──────────────────────────────────────────────
+    const dom_strips_show_chain = container.querySelector('#strips_show_chain');
+    let showChainArrows = dom_strips_show_chain ? !!dom_strips_show_chain.checked : true;
+    if (dom_strips_show_chain) {
+        dom_strips_show_chain.addEventListener('change', () => {
+            showChainArrows = !!dom_strips_show_chain.checked;
+            setNeedsRender();
+        }, { signal });
+    }
+
+    function _reverseStripInPlace(stripIdx) {
+        const info = stripStore.get();
+        if (!info) return false;
+        const strip = info.strips[stripIdx];
+        if (!strip || strip.count < 2) return false;
+        const lo = strip.offset, hi = strip.offset + strip.count;
+        // Reverse the flat slice in both screenmap_pts and rawPts.
+        const sm = screenmap_pts.slice(lo, hi).reverse();
+        const rw = rawPts.slice(lo, hi).reverse();
+        for (let i = 0; i < sm.length; i++) {
+            screenmap_pts[lo + i] = sm[i];
+            rawPts[lo + i] = rw[i];
+        }
+        if (Array.isArray(strip.points)) strip.points.reverse();
+        if (Array.isArray(info.allPoints)) {
+            for (let i = 0; i < sm.length; i++) info.allPoints[lo + i] = [sm[i][0], sm[i][1]];
+        }
+        return true;
+    }
+
+    function doReverseStrip(stripIdx) {
+        if (!_reverseStripInPlace(stripIdx)) return;
+        pushUndo({ type: 'strip-reverse', stripIdx });
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+    }
+
+    function doSetVideoOffset(stripIdx, rawValue) {
+        const strips = stripStore.getStrips();
+        if (stripIdx < 0 || stripIdx >= strips.length) return;
+        const v = parseInt(rawValue, 10);
+        if (!Number.isFinite(v) || v < 0) {
+            renderStripsPanel();
+            return;
+        }
+        const oldValue = typeof strips[stripIdx].video_offset === 'number'
+            ? strips[stripIdx].video_offset
+            : strips[stripIdx].offset;
+        if (oldValue === v) return;
+        stripStore.updateStrip(stripIdx, { video_offset: v });
+        pushUndo({ type: 'strip-offset', stripIdx, oldValue, newValue: v });
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsRender();
+    }
+
+    function doReorderStrip(fromIdx, toIdx) {
+        const strips = stripStore.getStrips();
+        if (fromIdx < 0 || fromIdx >= strips.length) return;
+        if (toIdx < 0 || toIdx >= strips.length) return;
+        if (fromIdx === toIdx) return;
+        _reorderStripPoints(fromIdx, toIdx);
+        selection.onStripReorder(fromIdx, toIdx);
+        pushUndo({ type: 'strip-reorder', fromIdx, toIdx });
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+    }
+
+    async function doRenameStripPrompt(stripIdx) {
+        const strips = stripStore.getStrips();
+        const strip = strips[stripIdx];
+        if (!strip) return;
+        const oldName = strip.name;
+        const Swal = (await import('sweetalert2')).default;
+        if (signal.aborted) return;
+        const { value } = await Swal.fire({
+            title: 'Rename Strip',
+            input: 'text',
+            inputValue: oldName,
+            inputLabel: `New name for "${oldName}"`,
+            showCancelButton: true,
+            inputValidator: (v) => {
+                const name = (v || '').trim();
+                if (!name) return 'Strip name cannot be empty';
+                if (name !== oldName) {
+                    for (let i = 0; i < strips.length; i++) {
+                        if (i !== stripIdx && strips[i].name === name) {
+                            return `A strip named "${name}" already exists`;
+                        }
+                    }
+                }
+                return null;
+            },
+        });
+        if (signal.aborted || typeof value !== 'string') return;
+        const newName = value.trim();
+        if (!newName || newName === oldName) return;
+        stripStore.renameStrip(stripIdx, newName);
+        pushUndo({ type: 'strip-rename', stripIdx, oldName, newName });
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+    }
+
+    async function doDeleteStripPrompt(stripIdx) {
+        const strips = stripStore.getStrips();
+        if (strips.length <= 1) return;
+        const strip = strips[stripIdx];
+        if (!strip) return;
+        const Swal = (await import('sweetalert2')).default;
+        if (signal.aborted) return;
+        const result = await Swal.fire({
+            title: `Delete "${strip.name}"?`,
+            text: `${strip.count} LED${strip.count === 1 ? '' : 's'} will be removed.`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Delete',
+            confirmButtonColor: '#ef4444',
+        });
+        if (signal.aborted || !result.isConfirmed) return;
+        const removed = _removeStripPoints(stripIdx);
+        selection.onStripRemove(stripIdx);
+        selectedIdx = -1;
+        pushUndo({ type: 'strip-delete', stripIdx, removed });
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+    }
 
     let rafId = null;
 
@@ -1003,6 +1354,8 @@ export function init(container) {
         } catch {
             stripInfo = null;
         }
+        stripStore.load(stripInfo);
+        renderStripsPanel();
 
         // Populate diameter from file if available
         if (typeof screenmap_pts.diameter === "number" && screenmap_pts.diameter > 0) {
@@ -1041,6 +1394,8 @@ export function init(container) {
         screenmap_pts = [[0, 0]];
         rawPts = [[0, 0]];
         stripInfo = null;
+        stripStore.load(null);
+        renderStripsPanel();
         origDiameter = 0.5;
         dom_txt_diameter.value = origDiameter;
         origWidth = 0;
@@ -1484,6 +1839,76 @@ export function init(container) {
         ctx.restore();
     }
 
+    function _chainArrowCount() {
+        if (!showChainArrows) return 0;
+        if (!stripInfo || stripInfo.strips.length <= 1) return 0;
+        let drawable = 0;
+        for (let s = 0; s < stripInfo.strips.length - 1; s++) {
+            const a = stripInfo.strips[s];
+            const b = stripInfo.strips[s + 1];
+            if (a.count > 0 && b.count > 0) drawable++;
+        }
+        return drawable;
+    }
+
+    function drawChainArrows(pts) {
+        const strips = stripInfo.strips;
+        const ctx = overlayCtx;
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = '#3b82f6';
+        ctx.fillStyle = '#3b82f6';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        let badgeN = 1;
+        for (let s = 0; s < strips.length - 1; s++) {
+            const a = strips[s], b = strips[s + 1];
+            if (a.count <= 0 || b.count <= 0) continue;
+            const aLast = a.offset + a.count - 1;
+            const bFirst = b.offset;
+            if (aLast >= pts.length || bFirst >= pts.length) continue;
+            const [x1, y1] = pts[aLast];
+            const [x2, y2] = pts[bFirst];
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+            // arrowhead at target
+            const dx = x2 - x1, dy = y2 - y1;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len > 4) {
+                const ang = Math.atan2(dy, dx);
+                const al = 10, ah = 0.5;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(x2, y2);
+                ctx.lineTo(x2 - al * Math.cos(ang - ah), y2 - al * Math.sin(ang - ah));
+                ctx.lineTo(x2 - al * Math.cos(ang + ah), y2 - al * Math.sin(ang + ah));
+                ctx.closePath();
+                ctx.fill();
+                ctx.setLineDash([6, 4]);
+            }
+            // numbered badge at midpoint
+            const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#0a0a0a';
+            ctx.beginPath();
+            ctx.arc(mx, my, 9, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.fillStyle = '#3b82f6';
+            ctx.font = '10px "IBM Plex Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(String(badgeN), mx, my);
+            ctx.setLineDash([6, 4]);
+            badgeN++;
+        }
+        ctx.restore();
+    }
+
     function drawOverlay() {
         if (!overlayCtx) return;
         overlayCtx.clearRect(0, 0, canvasW, canvasH);
@@ -1511,7 +1936,7 @@ export function init(container) {
             bgImageBBox = null;
         }
 
-        if (lastTransformedPts.length === 0) { ptsBBox = null; drawBgGizmoHandles(); drawRuler(); return; }
+        if (lastTransformedPts.length === 0) { ptsBBox = null; drawBgGizmoHandles(); drawRuler(); _drawPlacingGhost(); return; }
 
         const pts = lastTransformedPts.map(([x, y]) => toCanvasCoords(x, y));
 
@@ -1660,6 +2085,11 @@ export function init(container) {
             overlayCtx.fill();
         }
 
+        // Chain-order arrows: from each strip's LAST LED to next strip's FIRST LED.
+        if (showChainArrows && stripInfo && stripInfo.strips.length > 1) {
+            drawChainArrows(pts);
+        }
+
         // Start and end LEDs always visible (per strip when multi-strip)
         overlayCtx.globalAlpha = 1;
         const hasMultiStripLabels = stripInfo && stripInfo.strips.length > 1;
@@ -1692,6 +2122,33 @@ export function init(container) {
             }
         }
 
+        // Strip selection bounding box (axis-aligned in canvas space)
+        const selStripIdx = selection.getStripIdx();
+        if (selStripIdx !== null && stripInfo && selStripIdx < stripInfo.strips.length) {
+            const st = stripInfo.strips[selStripIdx];
+            if (st.count > 0) {
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                const lo = Math.max(0, st.offset);
+                const hi = Math.min(pts.length, st.offset + st.count);
+                for (let i = lo; i < hi; i++) {
+                    const [px, py] = pts[i];
+                    if (px < minX) minX = px;
+                    if (py < minY) minY = py;
+                    if (px > maxX) maxX = px;
+                    if (py > maxY) maxY = py;
+                }
+                if (isFinite(minX)) {
+                    const pad = 10;
+                    overlayCtx.globalAlpha = 0.9;
+                    overlayCtx.strokeStyle = '#3b82f6';
+                    overlayCtx.lineWidth = 2;
+                    overlayCtx.setLineDash([6, 4]);
+                    overlayCtx.strokeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2);
+                    overlayCtx.setLineDash([]);
+                }
+            }
+        }
+
         // Selection indicator
         if (selectedIdx >= 0 && selectedIdx < pts.length) {
             const [sx, sy] = pts[selectedIdx];
@@ -1711,6 +2168,7 @@ export function init(container) {
 
         drawBgGizmoHandles();
         drawRuler();
+        _drawPlacingGhost();
     }
 
     function fillCircle(x, y, diameter, color) {
@@ -2198,6 +2656,11 @@ export function init(container) {
 
     function onContextMenu(e) {
         e.preventDefault();
+        // Cancel panel placement on right-click
+        if (placingState) {
+            _cancelPlacing();
+            return;
+        }
         // If right-click was used for zoom dragging, skip the context menu
         const wasMoved = rightClickMoved;
         rightClickMoved = false;
@@ -2207,6 +2670,7 @@ export function init(container) {
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
             selectedIdx = idx;
+            syncPointSelection(idx);
             highlightedEdgeIdx = -1;
             setNeedsGeometryUpdate();
             showContextMenu(e.clientX, e.clientY, idx, -1);
@@ -2232,6 +2696,22 @@ export function init(container) {
     function onMouseDown(e) {
         // Dismiss context menu on any click
         hideContextMenu();
+
+        // Panel placement takes priority over every other handler
+        if (placingState) {
+            if (e.button === 2) {
+                e.preventDefault();
+                _cancelPlacing();
+                return;
+            }
+            if (e.button === 0) {
+                e.preventDefault();
+                const [cx, cy] = getCanvasCoords(e);
+                _commitPlacingAt(cx, cy);
+                return;
+            }
+            return;
+        }
 
         if (screenmap_pts.length === 0 && !bgImageMesh) return;
 
@@ -2310,6 +2790,7 @@ export function init(container) {
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
             selectedIdx = idx;
+            syncPointSelection(idx);
             highlightedEdgeIdx = -1;
             setNeedsGeometryUpdate(); // color update for selection
             isDragging = true;
@@ -2327,6 +2808,7 @@ export function init(container) {
             if (edge && edge.distSq < 20 * 20) {
                 highlightedEdgeIdx = edge.idx;
                 selectedIdx = -1;
+                selection.clear();
                 setNeedsRender();
                 return;
             }
@@ -2367,6 +2849,7 @@ export function init(container) {
 
         // Priority 5: Pan camera (outside bbox)
         if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
+        selection.clear();
         isPanning = true;
         panStartX = cx;
         panStartY = cy;
@@ -2376,6 +2859,12 @@ export function init(container) {
     }
 
     function onMouseMove(e) {
+        if (placingState) {
+            const [cx, cy] = getCanvasCoords(e);
+            _updateGhostFromCanvas(cx, cy);
+            overlayCanvas.style.cursor = 'crosshair';
+            return;
+        }
         if (screenmap_pts.length === 0 && !bgImageMesh) return;
         const [cx, cy] = getCanvasCoords(e);
 
@@ -2666,10 +3155,12 @@ export function init(container) {
             e.preventDefault();
             return;
         }
-        // Escape: dismiss bg delete confirm or deselect
+        // Escape: cancel panel placement, dismiss bg delete confirm, or deselect
         if (e.key === 'Escape') {
+            if (placingState) { _cancelPlacing(); e.preventDefault(); return; }
             if (deleteBgConfirmEl) { dismissDeleteBgConfirm(); e.preventDefault(); return; }
             if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
+            selection.clear();
         }
     }, { signal });
 
@@ -2815,12 +3306,17 @@ export function init(container) {
             const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
 
             if (hasMultiStrip) {
-                // Per-strip coloring
+                // Per-strip coloring (dim non-selected strips when one is selected)
                 const stripColors = getStripColors(stripInfo.strips.length);
                 const stripRgbs = stripColors.map(hslStringToRgb);
+                const selStrip = selection.getStripIdx();
+                const dim = 0.35;
                 for (let s = 0; s < stripInfo.strips.length; s++) {
                     const strip = stripInfo.strips[s];
-                    const [sr, sg, sb] = stripRgbs[s];
+                    let [sr, sg, sb] = stripRgbs[s];
+                    if (selStrip !== null && s !== selStrip) {
+                        sr *= dim; sg *= dim; sb *= dim;
+                    }
                     for (let i = strip.offset; i < strip.offset + strip.count && i < count; i++) {
                         const ci = i * 3;
                         colors[ci] = sr; colors[ci + 1] = sg; colors[ci + 2] = sb;
@@ -2948,6 +3444,8 @@ export function init(container) {
                 lastBuiltPointCount = -1;
             }
             updateLabels([]);
+            lastTransformedPts = [];
+            drawOverlay();
         }
 
         // Apply camera pan/zoom (view-only, not an edit)
@@ -2962,9 +3460,292 @@ export function init(container) {
         frameDirty = false;
     }
 
+    // ── Panel placement palette ─────────────────────────────────────────
+    // Catalog: commodity panels. Clicking enters "placing" mode; a ghost
+    // follows the cursor on the overlay canvas, snapped to the grid when
+    // enabled. Clicking on canvas commits the placement as a new strip.
+    /** @type {null | { entry:object, opts:object, localPts:Array<[number,number]>, ghostWorld:[number,number] | null }} */
+    let placingState = null;
+
+    const dom_panel_buttons = container.querySelector('#panel_catalog_buttons');
+    const dom_pp_wiring = container.querySelector('#pp_wiring');
+    const dom_pp_corner = container.querySelector('#pp_corner');
+    const dom_pp_rotation = container.querySelector('#pp_rotation');
+    const dom_pp_flipH = container.querySelector('#pp_flipH');
+    const dom_pp_flipV = container.querySelector('#pp_flipV');
+    const dom_pp_spacing = container.querySelector('#pp_spacing');
+    const dom_pp_snap = container.querySelector('#pp_snap');
+    const dom_pp_grid = container.querySelector('#pp_grid');
+    const dom_pp_status = container.querySelector('#pp_status');
+
+    if (dom_panel_buttons) {
+        for (const entry of PANEL_CATALOG) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'panel-btn py-1 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs';
+            btn.textContent = entry.label;
+            btn.dataset.catalogId = entry.id;
+            btn.addEventListener('click', () => _enterPlacing(entry.id), { signal });
+            dom_panel_buttons.appendChild(btn);
+        }
+    }
+
+    function _readPanelOpts() {
+        return {
+            wiring: dom_pp_wiring ? dom_pp_wiring.value : 'serpentine',
+            dataInCorner: dom_pp_corner ? dom_pp_corner.value : 'TL',
+            rotation: dom_pp_rotation ? parseInt(dom_pp_rotation.value, 10) || 0 : 0,
+            flipH: dom_pp_flipH ? !!dom_pp_flipH.checked : false,
+            flipV: dom_pp_flipV ? !!dom_pp_flipV.checked : false,
+            spacing: dom_pp_spacing ? (parseFloat(dom_pp_spacing.value) || 1) : 1,
+        };
+    }
+
+    function _enterPlacing(catalogId) {
+        const entry = getCatalogEntry(catalogId);
+        if (!entry) return;
+        const opts = _readPanelOpts();
+        const localPts = generatePanelPoints(entry, opts);
+        placingState = { entry, opts, localPts, ghostWorld: null };
+        if (dom_pp_status) dom_pp_status.textContent = `Placing ${entry.label} — click canvas (Esc to cancel)`;
+        overlayCanvas.style.cursor = 'crosshair';
+        setNeedsRender();
+    }
+
+    function _cancelPlacing() {
+        placingState = null;
+        if (dom_pp_status) dom_pp_status.textContent = '';
+        overlayCanvas.style.cursor = 'default';
+        setNeedsRender();
+    }
+
+    function _canvasToWorldPx(cx, cy) {
+        return [
+            (cx - canvasW / 2) / camZoom - camPanX,
+            (cy - canvasH / 2) / camZoom - camPanY,
+        ];
+    }
+
+    function _gridSizePx() {
+        const grid = dom_pp_grid ? (parseFloat(dom_pp_grid.value) || 1) : 1;
+        const fs = fitScale > 0 ? fitScale : 1;
+        return grid * fs;
+    }
+
+    function _updateGhostFromCanvas(cx, cy) {
+        if (!placingState) return;
+        let [wx, wy] = _canvasToWorldPx(cx, cy);
+        if (dom_pp_snap && dom_pp_snap.checked) {
+            const gpx = _gridSizePx();
+            [wx, wy] = snapToGrid([wx, wy], gpx);
+        }
+        placingState.ghostWorld = [wx, wy];
+        setNeedsRender();
+    }
+
+    function _drawPlacingGhost() {
+        if (!placingState || !placingState.ghostWorld) return;
+        const ctx = overlayCtx;
+        const [wx, wy] = placingState.ghostWorld;
+        const fs = fitScale > 0 ? fitScale : 1;
+        const pts = placingState.localPts;
+        if (pts.length === 0) return;
+        ctx.save();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(59,130,246,0.9)';
+        ctx.fillStyle = 'rgba(59,130,246,0.4)';
+        // Connecting polyline (wiring order)
+        ctx.beginPath();
+        for (let i = 0; i < pts.length; i++) {
+            const [px, py] = pts[i];
+            const [cx, cy] = toCanvasCoords(wx + px * fs, wy + py * fs);
+            if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+        }
+        ctx.stroke();
+        const r = Math.max(2, 0.3 * fs * camZoom);
+        for (const [px, py] of pts) {
+            const [cx, cy] = toCanvasCoords(wx + px * fs, wy + py * fs);
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // Crosshair at origin
+        const [ocx, ocy] = toCanvasCoords(wx, wy);
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.beginPath();
+        ctx.moveTo(ocx - 6, ocy); ctx.lineTo(ocx + 6, ocy);
+        ctx.moveTo(ocx, ocy - 6); ctx.lineTo(ocx, ocy + 6);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function _uniqueStripName(base) {
+        const used = new Set();
+        const strips = stripStore.getStrips();
+        for (const s of strips) used.add(s.name);
+        let i = 1;
+        while (used.has(`${base}${i}`)) i++;
+        return `${base}${i}`;
+    }
+
+    function _isEmptyScreenmap() {
+        return !stripInfo || stripInfo.strips.length === 0
+            || (stripInfo.strips.length === 1 && stripInfo.strips[0].count <= 1
+                && stripInfo.totalCount <= 1);
+    }
+
+    function _initFreshScreenmapForPanel() {
+        // Initialise transform + fitScale + storage for a brand-new screenmap
+        // when the user places a panel onto an empty editor.
+        screenmap_pts = [];
+        rawPts = [];
+        stripInfo = null;
+        stripStore.load(null);
+        origDiameter = 0.5;
+        dom_txt_diameter.value = origDiameter;
+        origWidth = 0;
+        origHeight = 0;
+        // Choose a fitScale that gives a reasonable initial pixel pitch.
+        const { width: fitW, height: fitH } = getFitSize();
+        fitScale = Math.min(fitW, fitH) / 40;
+        if (!isFinite(fitScale) || fitScale <= 0) fitScale = 20;
+        resetTransforms();
+    }
+
+    function _commitPlacingAt(cx, cy) {
+        if (!placingState) return;
+        const entry = placingState.entry;
+        const opts = placingState.opts;
+        let [wx, wy] = _canvasToWorldPx(cx, cy);
+        if (dom_pp_snap && dom_pp_snap.checked) {
+            const gpx = _gridSizePx();
+            [wx, wy] = snapToGrid([wx, wy], gpx);
+        }
+        if (_isEmptyScreenmap()) {
+            _initFreshScreenmapForPanel();
+        }
+        const name = _uniqueStripName('panel');
+        const action = {
+            type: 'panel-place',
+            catalogId: entry.id,
+            opts: { ...opts },
+            worldX: wx,
+            worldY: wy,
+            name,
+        };
+        _doPanelPlace(action);
+        pushUndo(action);
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+        placingState = null;
+        if (dom_pp_status) dom_pp_status.textContent = `Placed ${entry.label} as ${name}`;
+        overlayCanvas.style.cursor = 'default';
+    }
+
+    function _doPanelPlace(action) {
+        const entry = getCatalogEntry(action.catalogId);
+        if (!entry) return;
+        const localPts = generatePanelPoints(entry, action.opts);
+        const fs = fitScale > 0 ? fitScale : 1;
+        // rawPts (cm-units): use worldX/worldY divided by fitScale to place
+        // the panel origin at the click point. screenmap_pts = rawPts * fs
+        // - offset (keeps consistency with existing screenmap_pts coords).
+        // For a fresh map (rawPts empty) we set rawPts directly so
+        // rawPts[i]*fitScale == screenmap_pts[i].
+        const screenmapPts = [];
+        const rawPtsAdd = [];
+        // Determine current "raw->screenmap" offset using existing point 0
+        let offX = 0, offY = 0;
+        if (rawPts.length > 0) {
+            offX = rawPts[0][0] * fs - screenmap_pts[0][0];
+            offY = rawPts[0][1] * fs - screenmap_pts[0][1];
+        }
+        for (const [px, py] of localPts) {
+            const sx = action.worldX + px * fs;
+            const sy = action.worldY + py * fs;
+            screenmapPts.push([sx, sy]);
+            rawPtsAdd.push([(sx + offX) / fs, (sy + offY) / fs]);
+        }
+        // Append to flat arrays
+        const insertAt = screenmap_pts.length;
+        for (let i = 0; i < screenmapPts.length; i++) {
+            screenmap_pts.push(screenmapPts[i]);
+            rawPts.push(rawPtsAdd[i]);
+        }
+        const newIdx = stripStore.addStrip({
+            name: action.name,
+            points: rawPtsAdd,
+            diameter: typeof origDiameter === 'number' ? origDiameter : 0.5,
+            video_offset: insertAt,
+        });
+        stripInfo = stripStore.get();
+        // origWidth/Height may still be 0 for fresh maps — recompute from rawPts
+        // so the cm size label is reasonable.
+        if (origWidth === 0 && origHeight === 0 && rawPts.length > 0) {
+            let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+            for (const [x, y] of rawPts) {
+                if (x < xmin) xmin = x; if (x > xmax) xmax = x;
+                if (y < ymin) ymin = y; if (y > ymax) ymax = y;
+            }
+            origWidth = xmax - xmin;
+            origHeight = ymax - ymin;
+        }
+        selection.selectStrip(newIdx);
+        action._insertAt = insertAt;
+        action._count = screenmapPts.length;
+    }
+
+    function _redoPanelPlace(action) {
+        _doPanelPlace(action);
+    }
+
+    function _undoPanelPlace(action) {
+        if (!stripInfo) return;
+        // Find the strip we added by name (most reliable after reordering).
+        let stripIdx = -1;
+        const strips = stripInfo.strips;
+        for (let i = strips.length - 1; i >= 0; i--) {
+            if (strips[i].name === action.name) { stripIdx = i; break; }
+        }
+        if (stripIdx < 0) return;
+        const strip = strips[stripIdx];
+        screenmap_pts.splice(strip.offset, strip.count);
+        rawPts.splice(strip.offset, strip.count);
+        stripStore.removeStrip(stripIdx);
+        selection.onStripRemove(stripIdx);
+        selectedIdx = -1;
+        stripInfo = stripStore.get();
+    }
+
+    function _debugPlacePanel(catalogId, worldX, worldY, opts) {
+        const entry = getCatalogEntry(catalogId);
+        if (!entry) return null;
+        const mergedOpts = { ..._readPanelOpts(), ...opts };
+        if (_isEmptyScreenmap()) {
+            _initFreshScreenmapForPanel();
+        }
+        const name = _uniqueStripName('panel');
+        const action = {
+            type: 'panel-place',
+            catalogId,
+            opts: mergedOpts,
+            worldX,
+            worldY,
+            name,
+        };
+        _doPanelPlace(action);
+        pushUndo(action);
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+        return name;
+    }
+
     // --- Initialize ---
     initRenderer();
     loadPresetsFromManifest();
+    renderStripsPanel();
     rafId = requestAnimationFrame(animate);
 
     return function destroy() {

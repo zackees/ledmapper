@@ -89,6 +89,56 @@
     cursor: default;
 }
 
+/* ── Strips inspector panel ────────────────────────────────── */
+
+.strip-row {
+    @apply flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm text-lm-text;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid transparent;
+}
+
+.strip-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.strip-row.active {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: #3b82f6;
+}
+
+.strip-row .strip-name {
+    @apply flex-1 truncate;
+}
+
+.strip-row .strip-count {
+    @apply text-xs text-lm-text-muted shrink-0;
+}
+
+.strip-row .strip-btn {
+    @apply shrink-0 py-0.5 px-1.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs;
+}
+
+.strip-row .strip-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.strip-row .strip-swatch {
+    @apply shrink-0 inline-block rounded-full;
+    width: 10px;
+    height: 10px;
+}
+
+.strip-row .strip-offset {
+    @apply shrink-0 text-xs text-lm-text bg-lm-surface-1 border border-lm-border rounded;
+    width: 48px;
+    padding: 1px 4px;
+}
+
+.strip-row .strip-offset:invalid {
+    border-color: #ef4444;
+}
+
 /* ── Desktop: hide file-ops row (available via right-click) ── */
 
 @media (hover: hover) and (pointer: fine) {
