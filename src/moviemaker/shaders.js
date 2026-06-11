@@ -57,3 +57,37 @@ export const BLUR_FRAG = `
         gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
     }
 `;
+
+/**
+ * Fragment shader that copies a texture to the framebuffer unchanged.
+ * Used to blit the offscreen output target to the visible canvas.
+ * @type {string}
+ */
+export const COPY_FRAG = `
+    uniform sampler2D tDiffuse;
+    varying vec2 vUv;
+    void main() {
+        gl_FragColor = texture2D(tDiffuse, vUv);
+    }
+`;
+
+/**
+ * Fragment shader for the LED gather pass.
+ * Each texel of the (small) gather target corresponds to one LED. tPositions
+ * holds the LED's source UV in .rg and a validity flag in .a (0 = LED is
+ * out of bounds, output transparent black so the CPU can tell them apart).
+ * @type {string}
+ */
+export const GATHER_FRAG = `
+    uniform sampler2D tPositions;
+    uniform sampler2D tSource;
+    varying vec2 vUv;
+    void main() {
+        vec4 pos = texture2D(tPositions, vUv);
+        if (pos.a < 0.5) {
+            gl_FragColor = vec4(0.0);
+            return;
+        }
+        gl_FragColor = vec4(texture2D(tSource, pos.rg).rgb, 1.0);
+    }
+`;

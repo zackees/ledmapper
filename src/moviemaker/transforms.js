@@ -140,6 +140,42 @@ export function samplePixels(readbackBuffer, transformedPts, width, height) {
 }
 
 /**
+ * Extract LED colors from a GPU gather-pass readback buffer.
+ * Texel i corresponds to LED i; alpha 0 marks an out-of-bounds LED
+ * (rendered black, excluded from the brightness average).
+ *
+ * @param {Uint8Array} gatherBuffer - RGBA readback from the gather target
+ * @param {number} numPts - LED count (≤ buffer texel count)
+ * @param {Uint8Array} rgbPts - output buffer of length numPts * 3 (reused)
+ * @returns {{rgbPts: Uint8Array, avgBri: number}}
+ */
+export function extractGatherSample(gatherBuffer, numPts, rgbPts) {
+    let totalBri = 0;
+    let inBoundsCount = 0;
+
+    for (let i = 0; i < numPts; i++) {
+        const idx = i * 4;
+        const o = i * 3;
+        if (gatherBuffer[idx + 3] >= 128) {
+            const r = gatherBuffer[idx];
+            const g = gatherBuffer[idx + 1];
+            const b = gatherBuffer[idx + 2];
+            rgbPts[o]     = r;
+            rgbPts[o + 1] = g;
+            rgbPts[o + 2] = b;
+            totalBri += r + g + b;
+            inBoundsCount++;
+        } else {
+            rgbPts[o] = 0;
+            rgbPts[o + 1] = 0;
+            rgbPts[o + 2] = 0;
+        }
+    }
+    const avgBri = inBoundsCount > 0 ? totalBri / (inBoundsCount * 3 * 255) : 0;
+    return { rgbPts, avgBri };
+}
+
+/**
  * Compute FPS from frame timestamps.
  *
  * @param {number} nowMs - current time in ms
