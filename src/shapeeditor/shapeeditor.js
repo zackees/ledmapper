@@ -15,7 +15,7 @@ import {
     SRGBColorSpace,
     DoubleSide,
 } from 'three';
-import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors } from '../common.js';
+import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, stripStartEndLabels } from '../common.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { saveScreenmap, saveScreenmapPoints, getScreenmap } from '../screenmap-store.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
@@ -248,6 +248,15 @@ export function init(container) {
     let fitScale = 1; // cm-to-pixel scale from centerAndFitPoints
     let origDiameter = 0.5;
     let stripInfo = null; // multi-strip parse result (null until screenmap loaded)
+
+    // Test/debug hook: expose strip state and computed Start/End labels so
+    // E2E tests can assert on canvas-drawn labels that have no DOM presence.
+    window.__shapeeditorDebug = {
+        getStripCount: () => (stripInfo ? stripInfo.strips.length : 0),
+        getStripLabels: () => (stripInfo
+            ? stripInfo.strips.map((s, i) => stripStartEndLabels(s, i))
+            : null),
+    };
 
     /** Convert an HSL color string like "hsl(120, 80%, 60%)" to [r, g, b] floats 0-1. */
     function hslStringToRgb(hslStr) {
@@ -1651,14 +1660,37 @@ export function init(container) {
             overlayCtx.fill();
         }
 
-        // Start and end LEDs always visible
+        // Start and end LEDs always visible (per strip when multi-strip)
         overlayCtx.globalAlpha = 1;
-        fillCircle(pts[0][0], pts[0][1], 8, 'rgba(0,255,0,1)');
-        if (pts.length > 1) fillCircle(pts[1][0], pts[1][1], 6, 'rgba(0,255,0,0.5)');
-        fillCircle(pts[pts.length - 1][0], pts[pts.length - 1][1], 8, 'rgba(255,0,0,1)');
-
-        drawOutlinedLabel("Start LED", pts[0][0] + 4, pts[0][1]);
-        drawOutlinedLabel("End LED", pts[pts.length - 1][0] + 4, pts[pts.length - 1][1]);
+        const hasMultiStripLabels = stripInfo && stripInfo.strips.length > 1;
+        if (hasMultiStripLabels) {
+            for (let s = 0; s < stripInfo.strips.length; s++) {
+                const st = stripInfo.strips[s];
+                if (st.count <= 0) continue;
+                const startIdx = st.offset;
+                const endIdx = st.offset + st.count - 1;
+                if (startIdx < 0 || endIdx >= pts.length) continue;
+                const labels = stripStartEndLabels(st, s);
+                fillCircle(pts[startIdx][0], pts[startIdx][1], 8, 'rgba(0,255,0,1)');
+                drawOutlinedLabel(labels.start, pts[startIdx][0] + 4, pts[startIdx][1]);
+                if (labels.end !== null) {
+                    fillCircle(pts[endIdx][0], pts[endIdx][1], 8, 'rgba(255,0,0,1)');
+                    drawOutlinedLabel(labels.end, pts[endIdx][0] + 4, pts[endIdx][1]);
+                }
+            }
+        } else {
+            fillCircle(pts[0][0], pts[0][1], 8, 'rgba(0,255,0,1)');
+            if (pts.length > 1) fillCircle(pts[1][0], pts[1][1], 6, 'rgba(0,255,0,0.5)');
+            const singleStrip = (stripInfo && stripInfo.strips.length === 1)
+                ? { name: stripInfo.strips[0].name, count: pts.length }
+                : { name: '', count: pts.length };
+            const labels = stripStartEndLabels(singleStrip, 0);
+            drawOutlinedLabel(labels.start, pts[0][0] + 4, pts[0][1]);
+            if (labels.end !== null) {
+                fillCircle(pts[pts.length - 1][0], pts[pts.length - 1][1], 8, 'rgba(255,0,0,1)');
+                drawOutlinedLabel(labels.end, pts[pts.length - 1][0] + 4, pts[pts.length - 1][1]);
+            }
+        }
 
         // Selection indicator
         if (selectedIdx >= 0 && selectedIdx < pts.length) {

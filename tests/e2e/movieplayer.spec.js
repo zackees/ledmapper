@@ -30,8 +30,9 @@ test.describe('Video Player', () => {
         const fileInput = page.locator('#btn_upload_screenmap');
         const fixturePath = path.resolve('tests/fixtures/test-screenmap.json');
         await fileInput.setInputFiles(fixturePath);
-        // Canvas should render after screenmap upload
-        const canvas = page.locator('canvas');
+        // Canvas should render after screenmap upload (renderer canvas plus
+        // the strip-label overlay canvas — assert on the first one)
+        const canvas = page.locator('canvas').first();
         await expect(canvas).toBeVisible({ timeout: 10000 });
     });
 

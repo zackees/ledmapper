@@ -1,4 +1,4 @@
-import { download_text_as_file, getStripColors } from '../common.js';
+import { download_text_as_file, getStripColors, stripStartEndLabels } from '../common.js';
 import { saveScreenmap } from '../screenmap-store.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './screenmap.css?url';
@@ -103,6 +103,7 @@ export function init(container) {
             slider_zoom: container.querySelector('#slider_zoom'),
             sel_strip: container.querySelector('#sel_strip'),
             btn_add_strip: container.querySelector('#btn_add_strip'),
+            btn_rename_strip: container.querySelector('#btn_rename_strip'),
             btn_delete_strip: container.querySelector('#btn_delete_strip'),
         };
     }
@@ -169,6 +170,32 @@ export function init(container) {
                 refreshStripUI(dom);
             }, { signal });
         }
+        if (dom.btn_rename_strip) {
+            dom.btn_rename_strip.addEventListener('click', async () => {
+                const Swal = (await import('sweetalert2')).default;
+                if (signal.aborted) return;
+                const { value } = await Swal.fire({
+                    title: 'Rename Strip',
+                    input: 'text',
+                    inputValue: activeStrip,
+                    inputLabel: `New name for "${activeStrip}"`,
+                    showCancelButton: true,
+                    inputValidator: (v) => {
+                        const name = (v || '').trim();
+                        if (!name) return 'Strip name cannot be empty';
+                        if (name !== activeStrip && strips[name]) {
+                            return `A strip named "${name}" already exists`;
+                        }
+                        return null;
+                    },
+                });
+                if (signal.aborted || typeof value !== 'string') return;
+                const newName = value.trim();
+                if (!newName || newName === activeStrip) return;
+                renameStrip(activeStrip, newName);
+                refreshStripUI(dom);
+            }, { signal });
+        }
         if (dom.btn_delete_strip) {
             dom.btn_delete_strip.addEventListener('click', () => {
                 const names = getStripNames();
@@ -188,6 +215,17 @@ export function init(container) {
         }, { signal });
 
         refreshStripUI(dom);
+    }
+
+    function renameStrip(oldName, newName) {
+        // Rebuild the strips object so key order (and therefore strip
+        // indices / colors / labels) is preserved across the rename.
+        const next = {};
+        for (const key of Object.keys(strips)) {
+            next[key === oldName ? newName : key] = strips[key];
+        }
+        strips = next;
+        if (activeStrip === oldName) activeStrip = newName;
     }
 
     function downloadScreenmap() {
@@ -380,6 +418,61 @@ export function init(container) {
                 }
             }
         }
+
+        // Start/end markers + labels per strip
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        for (let s = 0; s < names.length; ++s) {
+            const name = names[s];
+            const pts = strips[name];
+            if (!pts.length) continue;
+            const labels = stripStartEndLabels({ name, count: pts.length }, s);
+            const [sx, sy] = pts[0];
+            drawEndpointMarker(sx, sy, colors[s], 'start');
+            drawEndpointLabel(labels.start, sx, sy);
+            if (labels.end) {
+                const [ex, ey] = pts[pts.length - 1];
+                drawEndpointMarker(ex, ey, colors[s], 'end');
+                drawEndpointLabel(labels.end, ex, ey);
+            }
+        }
+    }
+
+    // Start marker: ring around the first LED. End marker: square outline
+    // around the last LED. Both use the strip color over a dark halo so they
+    // stay readable on any snapshot background.
+    function drawEndpointMarker(x, y, color, kind) {
+        const r = circle_diameter / 2 + 4;
+        ctx.lineWidth = 2;
+        if (kind === 'start') {
+            ctx.beginPath();
+            ctx.arc(x, y, r + 1, 0, Math.PI * 2);
+            ctx.strokeStyle = 'black';
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.strokeStyle = color;
+            ctx.stroke();
+        } else {
+            ctx.strokeStyle = 'black';
+            ctx.strokeRect(x - r - 1, y - r - 1, (r + 1) * 2, (r + 1) * 2);
+            ctx.strokeStyle = color;
+            ctx.strokeRect(x - r, y - r, r * 2, r * 2);
+        }
+    }
+
+    // Outlined text: black stroke under white fill so labels read against
+    // both the dark page background and bright snapshot regions.
+    function drawEndpointLabel(text, x, y) {
+        const lx = x + circle_diameter / 2 + 8;
+        const ly = y - circle_diameter / 2 - 8;
+        ctx.lineWidth = 3;
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'black';
+        ctx.strokeText(text, lx, ly);
+        ctx.fillStyle = 'white';
+        ctx.fillText(text, lx, ly);
     }
 
     // --- Start mapping with webcam ---

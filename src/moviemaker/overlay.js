@@ -2,17 +2,58 @@
  * Overlay drawing for the Video Maker's 2D canvas layer.
  */
 
+import { getStripColors, stripStartEndLabels } from '../common.js';
 import { computePreviewFactor, estimateLedSize } from './transforms.js';
 
 // Stroking thousands of LED rings every frame is the single biggest
 // main-thread/raster cost at 64x64 (4096 LEDs). The ring layer only depends
-// on the (memoized) points array and canvas size, so render it once into an
-// offscreen canvas and blit it per frame; rebuild only when inputs change.
+// on the (memoized) points array, strip metadata, and canvas size, so render
+// it once into an offscreen canvas and blit it per frame; rebuild only when
+// inputs change.
 const ringLayerCache = new WeakMap();
 
-function getRingLayer(ctx, transformedPts, videoWidth, videoHeight) {
+function strokeRings(lctx, transformedPts, start, end, r, color) {
+    lctx.strokeStyle = color;
+    lctx.lineWidth = 1;
+    lctx.beginPath();
+    for (let i = start; i < end; i++) {
+        const [x, y] = transformedPts[i];
+        lctx.moveTo(x + r, y);
+        lctx.arc(x, y, r, 0, Math.PI * 2);
+    }
+    lctx.stroke();
+}
+
+function drawStripLabel(lctx, text, pt, r, color) {
+    const x = pt[0] + r + 3;
+    const y = pt[1] - r - 3;
+    lctx.font = 'bold 12px monospace';
+    lctx.textAlign = 'left';
+    lctx.textBaseline = 'bottom';
+    lctx.lineWidth = 3;
+    lctx.strokeStyle = 'black';
+    lctx.strokeText(text, x, y);
+    lctx.fillStyle = color;
+    lctx.fillText(text, x, y);
+}
+
+function drawStripLabels(lctx, transformedPts, strips, r, colors) {
+    for (let si = 0; si < strips.length; si++) {
+        const strip = strips[si];
+        const first = strip.offset;
+        const last = strip.offset + strip.count - 1;
+        if (first < 0 || last >= transformedPts.length || strip.count === 0) continue;
+        const { start, end } = stripStartEndLabels(strip, si);
+        drawStripLabel(lctx, start, transformedPts[first], r, colors[si]);
+        if (end !== null) {
+            drawStripLabel(lctx, end, transformedPts[last], r, colors[si]);
+        }
+    }
+}
+
+function getRingLayer(ctx, transformedPts, videoWidth, videoHeight, strips) {
     const cached = ringLayerCache.get(ctx);
-    if (cached && cached.pts === transformedPts &&
+    if (cached && cached.pts === transformedPts && cached.strips === strips &&
         cached.w === videoWidth && cached.h === videoHeight) {
         return cached.layer;
     }
@@ -23,17 +64,25 @@ function getRingLayer(ctx, transformedPts, videoWidth, videoHeight) {
 
     const lctx = layer.getContext('2d');
     const r = estimateLedSize(transformedPts) / 2;
-    lctx.strokeStyle = 'white';
-    lctx.lineWidth = 1;
-    lctx.beginPath();
-    for (let i = 0; i < transformedPts.length; i++) {
-        const [x, y] = transformedPts[i];
-        lctx.moveTo(x + r, y);
-        lctx.arc(x, y, r, 0, Math.PI * 2);
-    }
-    lctx.stroke();
+    const multiStrip = Array.isArray(strips) && strips.length > 1;
 
-    ringLayerCache.set(ctx, { pts: transformedPts, w: videoWidth, h: videoHeight, layer });
+    if (multiStrip) {
+        // Tint rings per strip so the physical wiring order is visible.
+        const colors = getStripColors(strips.length);
+        for (let si = 0; si < strips.length; si++) {
+            const strip = strips[si];
+            const end = Math.min(strip.offset + strip.count, transformedPts.length);
+            strokeRings(lctx, transformedPts, strip.offset, end, r, colors[si]);
+        }
+        drawStripLabels(lctx, transformedPts, strips, r, colors);
+    } else {
+        strokeRings(lctx, transformedPts, 0, transformedPts.length, r, 'white');
+        if (Array.isArray(strips) && strips.length === 1) {
+            drawStripLabels(lctx, transformedPts, strips, r, ['white']);
+        }
+    }
+
+    ringLayerCache.set(ctx, { pts: transformedPts, strips, w: videoWidth, h: videoHeight, layer });
     return layer;
 }
 
@@ -46,13 +95,15 @@ function getRingLayer(ctx, transformedPts, videoWidth, videoHeight) {
  * @param {number} videoWidth
  * @param {number} videoHeight
  * @param {number} fps - Current frames per second.
+ * @param {boolean} [showLeds=true] - Whether to draw the LED ring layer.
+ * @param {Array<{name:string, offset:number, count:number}>} [strips] - Strip metadata for tinting/labels.
  */
-export function drawMoviemakerOverlay(ctx, transformedPts, lastSample, videoWidth, videoHeight, fps, showLeds = true) {
+export function drawMoviemakerOverlay(ctx, transformedPts, lastSample, videoWidth, videoHeight, fps, showLeds = true, strips = null) {
     ctx.clearRect(0, 0, videoWidth, videoHeight);
     if (transformedPts.length === 0) return;
 
     if (showLeds) {
-        ctx.drawImage(getRingLayer(ctx, transformedPts, videoWidth, videoHeight), 0, 0);
+        ctx.drawImage(getRingLayer(ctx, transformedPts, videoWidth, videoHeight, strips), 0, 0);
     }
 
     ctx.fillStyle = 'white';

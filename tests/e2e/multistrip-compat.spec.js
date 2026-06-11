@@ -12,6 +12,16 @@ const TOTAL_LEDS = Object.values(multiScreenmap.map)
 
 test.describe('Multi-strip screenmap compatibility', () => {
 
+    // The worker shares one browser context; screenmap uploads persist via
+    // screenmap-store ('lm:screenmap' / 'lm:screenmap-preset'), which would
+    // leak into later specs that expect default preset state.
+    test.afterEach(async ({ page }) => {
+        await page.evaluate(() => {
+            localStorage.removeItem('lm:screenmap');
+            localStorage.removeItem('lm:screenmap-preset');
+        }).catch(() => { /* page never navigated (no localStorage access) */ });
+    });
+
     test('moviemaker: upload multi-strip screenmap enables controls', async ({ page }) => {
         const errors = [];
         page.on('pageerror', err => errors.push(err.message));
@@ -27,8 +37,67 @@ test.describe('Multi-strip screenmap compatibility', () => {
         await page.goto('/movieplayer/');
         const fileInput = page.locator('#btn_upload_screenmap');
         await fileInput.setInputFiles(MULTI_SCREENMAP_PATH);
-        const canvas = page.locator('canvas');
+        const canvas = page.locator('canvas').first();
         await expect(canvas).toBeVisible({ timeout: 10000 });
+    });
+
+    test('moviemaker: multi-strip screenmap loads with no console errors and persists', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', err => errors.push(err.message));
+        const consoleHandler = msg => { if (msg.type() === 'error') errors.push(msg.text()); };
+        page.on('console', consoleHandler);
+
+        await page.goto('/moviemaker/');
+        await page.locator('#btn_upload_screenmap').setInputFiles(MULTI_SCREENMAP_PATH);
+        await expect(page.locator('#rng_blur')).toBeEnabled({ timeout: 10000 });
+
+        // Persisted screenmap should round-trip the multi-strip structure
+        const stored = await page.evaluate(() => localStorage.getItem('lm:screenmap'));
+        expect(stored).toBeTruthy();
+        const storedJson = JSON.parse(stored);
+        const storedLeds = Object.values(storedJson.map)
+            .reduce((sum, strip) => sum + strip.x.length, 0);
+        expect(storedLeds).toBe(TOTAL_LEDS);
+
+        // Let a couple of animation frames run so overlay/strip drawing executes
+        await page.waitForTimeout(1000);
+        page.removeListener('console', consoleHandler);
+        expect(errors, `Unexpected errors: ${errors.join('; ')}`).toHaveLength(0);
+    });
+
+    test('movieplayer: multi-strip screenmap accepts .rgb sized to total LED count', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', err => errors.push(err.message));
+        const consoleHandler = msg => { if (msg.type() === 'error') errors.push(msg.text()); };
+        page.on('console', consoleHandler);
+
+        await page.goto('/movieplayer/');
+        await page.locator('#btn_upload_screenmap').setInputFiles(MULTI_SCREENMAP_PATH);
+        await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
+
+        // The movie input is only enabled once the screenmap parsed successfully
+        const movieInput = page.locator('#btn_load_movie');
+        await expect(movieInput).toBeEnabled({ timeout: 10000 });
+
+        // Synthetic 2-frame .rgb: frame size must equal TOTAL_LEDS * 3 bytes,
+        // proving playback uses the flat multi-strip LED count.
+        const frames = 2;
+        const rgbBytes = Buffer.alloc(TOTAL_LEDS * 3 * frames, 0x40);
+        await movieInput.setInputFiles({
+            name: 'multi.rgb',
+            mimeType: 'application/octet-stream',
+            buffer: rgbBytes,
+        });
+
+        // Accepted movie auto-plays (button flips to "Pause"); a count mismatch
+        // would have alerted and left the play button disabled.
+        const playBtn = page.locator('#btn_play');
+        await expect(playBtn).toBeEnabled({ timeout: 10000 });
+        await expect(playBtn).toHaveValue('Pause');
+
+        await page.waitForTimeout(500);
+        page.removeListener('console', consoleHandler);
+        expect(errors, `Unexpected errors: ${errors.join('; ')}`).toHaveLength(0);
     });
 
     test('shapeeditor: upload multi-strip screenmap renders canvas', async ({ page }) => {
@@ -45,7 +114,7 @@ test.describe('Multi-strip screenmap compatibility', () => {
         const fileInput = page.locator('#btn_upload_screenmap');
         await fileInput.setInputFiles(MULTI_SCREENMAP_PATH);
         // Wait for the canvas to appear — proves the screenmap was parsed and saved
-        await expect(page.locator('canvas')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
         // Verify localStorage was actually populated
         const stored = await page.evaluate(() => localStorage.getItem('lm:screenmap'));
         expect(stored, 'localStorage should contain screenmap after upload').toBeTruthy();

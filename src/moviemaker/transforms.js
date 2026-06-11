@@ -176,6 +176,41 @@ export function extractGatherSample(gatherBuffer, numPts, rgbPts) {
 }
 
 /**
+ * Build a flat-index -> video-channel map for multi-strip screenmaps that
+ * declare an explicit `video_offset`. Strip s's LED j occupies frame channel
+ * `video_offset + j` in the .rgb stream. Returns null when every strip's
+ * video_offset equals its flat offset (the common sequential case), so
+ * callers can skip remapping entirely.
+ *
+ * Shared by the moviemaker recording path and the movieplayer playback path
+ * so both sides of the .rgb format always agree.
+ *
+ * @param {Array<{offset:number, count:number, video_offset:number}>} strips
+ * @param {number} totalCount - total LED count across all strips
+ * @returns {Int32Array|null} map[flatIndex] = channelIndex, or null if identity
+ */
+export function buildVideoChannelMap(strips, totalCount) {
+    if (!strips || strips.length === 0) return null;
+    let sequential = true;
+    for (const s of strips) {
+        const vo = typeof s.video_offset === 'number' ? s.video_offset : s.offset;
+        if (vo !== s.offset) { sequential = false; break; }
+    }
+    if (sequential) return null;
+    const map = new Int32Array(totalCount);
+    for (const s of strips) {
+        const vo = typeof s.video_offset === 'number' ? s.video_offset : s.offset;
+        for (let j = 0; j < s.count; j++) {
+            const ch = vo + j;
+            // Out-of-range channel declarations fall back to the flat index
+            // rather than corrupting neighbouring strips.
+            map[s.offset + j] = (ch >= 0 && ch < totalCount) ? ch : (s.offset + j);
+        }
+    }
+    return map;
+}
+
+/**
  * Compute FPS from frame timestamps.
  *
  * @param {number} nowMs - current time in ms

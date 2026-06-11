@@ -1,6 +1,7 @@
-import { parse_screenmap_data, centerAndFitPoints } from '../common.js';
+import { parseScreenmapMultiStrip, centerAndFitPoints, getStripColors, stripStartEndLabels } from '../common.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { saveScreenmap, getScreenmap, savePresetSelection, getPresetSelection } from '../screenmap-store.js';
+import { buildVideoChannelMap } from '../moviemaker/transforms.js';
 import { loadPresetText, loadPresetManifest } from '../preset-loader.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
@@ -24,6 +25,8 @@ export function init(container) {
     const CANVAS_SIZE = 1000;
 
     let screenmap_pts = [];
+    let screenmap_strips = [];
+    let videoChannelMap = null;   // flat LED index -> .rgb channel index (null = identity)
     let movie_frames = [];
     let playing = false;
     let curr_frame_idx = 0;
@@ -37,11 +40,14 @@ export function init(container) {
     const circleTexture = createCircleTexture(64);
 
     const main = container.querySelector('main');
-    const { renderer, scene, camera } = createRendererAndScene({
+    const { renderer, scene, camera, overlayCanvas, overlayCtx } = createRendererAndScene({
         width: CANVAS_SIZE,
         height: CANVAS_SIZE,
         parent: main,
+        enableOverlay: true,
     });
+    // Labels only — let mouse events fall through to the renderer canvas.
+    overlayCanvas.style.pointerEvents = 'none';
 
     const ac = new AbortController();
     const { signal } = ac;
@@ -68,13 +74,56 @@ export function init(container) {
         colorAttribute = result.colorAttribute;
     }
 
+    // Draw per-strip Start/End labels over the LED view. Multi-strip maps get
+    // one color per strip (matching the moviemaker overlay); single-strip maps
+    // use white. Redrawn only on screenmap load — positions are static.
+    function drawStripLabels() {
+        overlayCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        if (screenmap_strips.length === 0 || screenmap_pts.length === 0) return;
+        const colors = screenmap_strips.length > 1
+            ? getStripColors(screenmap_strips.length)
+            : ['white'];
+        overlayCtx.font = 'bold 18px monospace';
+        overlayCtx.textAlign = 'left';
+        overlayCtx.textBaseline = 'bottom';
+        for (let si = 0; si < screenmap_strips.length; si++) {
+            const strip = screenmap_strips[si];
+            const first = strip.offset;
+            const last = strip.offset + strip.count - 1;
+            if (strip.count === 0 || last >= screenmap_pts.length) continue;
+            const { start, end } = stripStartEndLabels(strip, si);
+            const targets = [[start, screenmap_pts[first]]];
+            if (end !== null) targets.push([end, screenmap_pts[last]]);
+            for (const [text, [x, y]] of targets) {
+                const lx = Math.min(x + 8, CANVAS_SIZE - 120);
+                const ly = Math.max(y - 8, 20);
+                overlayCtx.lineWidth = 4;
+                overlayCtx.strokeStyle = 'black';
+                overlayCtx.strokeText(text, lx, ly);
+                overlayCtx.fillStyle = colors[si];
+                overlayCtx.fillText(text, lx, ly);
+            }
+        }
+    }
+
     function load_screenmap_data(text, { persist = true } = {}) {
-        screenmap_pts = parse_screenmap_data(text);
+        let parsed;
+        try {
+            parsed = parseScreenmapMultiStrip(text);
+        } catch (error) {
+            console.error('Error parsing screenmap:', error);
+            if (persist) alert(`Error parsing screenmap: ${error}`);
+            parsed = null;
+        }
+        screenmap_pts = parsed ? parsed.allPoints : [];
+        screenmap_strips = parsed ? parsed.strips : [];
+        videoChannelMap = parsed ? buildVideoChannelMap(parsed.strips, parsed.totalCount) : null;
         dom_btn_load_movie.disabled = (screenmap_pts.length === 0);
         if (screenmap_pts.length === 0) return;
         if (persist) saveScreenmap(text);
         screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
         buildPoints();
+        drawStripLabels();
     }
 
     function loadScreenmapFile(file) {
@@ -221,11 +270,14 @@ export function init(container) {
             if (curr_frame && colorAttribute) {
                 const arr = colorAttribute.array;
                 const count = screenmap_pts.length;
+                // LED i reads frame channel videoChannelMap[i] when the
+                // screenmap declares explicit video_offsets; identity otherwise.
                 for (let i = 0; i < count; i++) {
                     const i3 = i * 3;
-                    arr[i3    ] = curr_frame[i3    ] * INV_255;
-                    arr[i3 + 1] = curr_frame[i3 + 1] * INV_255;
-                    arr[i3 + 2] = curr_frame[i3 + 2] * INV_255;
+                    const c3 = (videoChannelMap ? videoChannelMap[i] : i) * 3;
+                    arr[i3    ] = curr_frame[c3    ] * INV_255;
+                    arr[i3 + 1] = curr_frame[c3 + 1] * INV_255;
+                    arr[i3 + 2] = curr_frame[c3 + 2] * INV_255;
                 }
                 colorAttribute.needsUpdate = true;
             }
