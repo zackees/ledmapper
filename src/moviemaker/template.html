@@ -21,14 +21,15 @@
                     <div class="control-group">
                         <span class="field-label">Presets</span>
                         <div class="preset-buttons">
-                            <button id="btn_preset_16x16" type="button" class="preset-btn">16x16</button>
-                            <button id="btn_preset_8x8" type="button" class="preset-btn">8x8</button>
-                            <button id="btn_preset_strip" type="button" class="preset-btn">Strip 60</button>
-                            <button id="btn_preset_ring" type="button" class="preset-btn">Ring 24</button>
-                            <button id="btn_preset_32x32" type="button" class="preset-btn">32x32</button>
-                            <button id="btn_preset_spaceface" type="button" class="preset-btn">Space Face</button>
-                            <button id="btn_preset_piano" type="button" class="preset-btn">Piano Grand</button>
-                            <button id="btn_preset_keytar" type="button" class="preset-btn">Keytar</button>
+                            <button id="btn_preset_16x16" type="button" class="preset-btn" data-preset-file="16x16_grid.json">16x16</button>
+                            <button id="btn_preset_8x8" type="button" class="preset-btn" data-preset-file="8x8_grid.json">8x8</button>
+                            <button id="btn_preset_strip" type="button" class="preset-btn" data-preset-file="strip_60.json">Strip 60</button>
+                            <button id="btn_preset_ring" type="button" class="preset-btn" data-preset-file="ring_24.json">Ring 24</button>
+                            <button id="btn_preset_32x32" type="button" class="preset-btn" data-preset-file="32x32_quad_serpentine.json">32x32</button>
+                            <button id="btn_preset_spaceface" type="button" class="preset-btn" data-preset-file="spaceface.json">Space Face</button>
+                            <button id="btn_preset_piano" type="button" class="preset-btn" data-preset-file="piano_grand.json">Piano Grand</button>
+                            <button id="btn_preset_keytar" type="button" class="preset-btn" data-preset-file="keytar.json">Keytar</button>
+                            <button id="btn_preset_64x64" type="button" class="preset-btn" data-preset-file="64x64_serpentine.json">64x64 Serpentine</button>
                         </div>
                         <label class="field-label" for="btn_upload_screenmap">Upload custom</label>
                         <input type="file" id="btn_upload_screenmap" accept=".csv,.json">

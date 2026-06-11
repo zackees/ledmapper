@@ -14,17 +14,10 @@ export function init(container) {
     container.innerHTML = templateHtml;
 
     // ── DOM refs ────────────────────────────────────────────────────────────────
-    const dom_btn_preset_16x16 = container.querySelector('#btn_preset_16x16');
-    const dom_btn_preset_8x8   = container.querySelector('#btn_preset_8x8');
-    const dom_btn_preset_strip = container.querySelector('#btn_preset_strip');
-    const dom_btn_preset_ring  = container.querySelector('#btn_preset_ring');
-    const dom_btn_preset_32x32  = container.querySelector('#btn_preset_32x32');
-    const dom_btn_preset_spaceface = container.querySelector('#btn_preset_spaceface');
-    const dom_btn_preset_piano = container.querySelector('#btn_preset_piano');
-    const dom_btn_preset_keytar = container.querySelector('#btn_preset_keytar');
     const dom_btn_load_video    = container.querySelector('#btn_load_video');
     const dom_btn_start_webcam  = container.querySelector('#btn_start_webcam');
     const dom_btn_upload_screenmap  = container.querySelector('#btn_upload_screenmap');
+    const dom_preset_buttons = container.querySelector('.preset-buttons');
     const dom_btn_unload_source = container.querySelector('#btn_unload_source');
     const dom_btn_play_pause    = container.querySelector('#btn_play_pause');
     const dom_video_progress    = container.querySelector('#video-progress');
@@ -211,59 +204,32 @@ export function init(container) {
         updateElementStates();
     }
 
-    const presetButtons = [dom_btn_preset_16x16, dom_btn_preset_8x8, dom_btn_preset_strip, dom_btn_preset_ring, dom_btn_preset_32x32, dom_btn_preset_spaceface, dom_btn_preset_piano, dom_btn_preset_keytar];
+    let presetButtons = [];
 
     function clearPresetActive() {
         presetButtons.forEach(b => b.classList.remove('active-preset'));
     }
 
-    dom_btn_preset_16x16.addEventListener('click', async () => {
-        clearPresetActive();
-        dom_btn_preset_16x16.classList.add('active-preset');
-        loadScreenmapFromPoints(await loadPreset('16x16_grid.json'));
-    }, { signal });
-    dom_btn_preset_8x8.addEventListener('click', async () => {
-        clearPresetActive();
-        dom_btn_preset_8x8.classList.add('active-preset');
-        loadScreenmapFromPoints(await loadPreset('8x8_grid.json'));
-    }, { signal });
-    dom_btn_preset_strip.addEventListener('click', async () => {
-        clearPresetActive();
-        dom_btn_preset_strip.classList.add('active-preset');
-        loadScreenmapFromPoints(await loadPreset('strip_60.json'));
-    }, { signal });
-    dom_btn_preset_ring.addEventListener('click', async () => {
-        clearPresetActive();
-        dom_btn_preset_ring.classList.add('active-preset');
-        loadScreenmapFromPoints(await loadPreset('ring_24.json'));
-    }, { signal });
-    dom_btn_preset_32x32.addEventListener('click', async () => {
-        clearPresetActive();
-        dom_btn_preset_32x32.classList.add('active-preset');
-        loadScreenmapFromPoints(await loadPreset('32x32_quad_serpentine.json'));
-    }, { signal });
-    dom_btn_preset_spaceface.addEventListener('click', async () => {
-        clearPresetActive();
-        dom_btn_preset_spaceface.classList.add('active-preset');
-        loadScreenmapFromPoints(await loadPreset('spaceface.json'));
-    }, { signal });
-    dom_btn_preset_piano.addEventListener('click', async () => {
-        clearPresetActive();
-        dom_btn_preset_piano.classList.add('active-preset');
-        loadScreenmapFromPoints(await loadPreset('piano_grand.json'));
-    }, { signal });
-    dom_btn_preset_keytar.addEventListener('click', async () => {
-        clearPresetActive();
-        dom_btn_preset_keytar.classList.add('active-preset');
-        loadScreenmapFromPoints(await loadPreset('keytar.json'));
-    }, { signal });
+    if (dom_preset_buttons) {
+        presetButtons = Array.from(dom_preset_buttons.querySelectorAll('button[data-preset-file]'));
+        for (const btn of presetButtons) {
+            const presetFile = btn.dataset.presetFile;
+            if (!presetFile) continue;
+
+            btn.addEventListener('click', async () => {
+                clearPresetActive();
+                btn.classList.add('active-preset');
+                loadScreenmapFromPoints(await loadPreset(presetFile));
+            }, { signal });
+        }
+    }
 
     // Restore stored screenmap, or fall back to 16x16 preset
     const storedScreenmap = getScreenmap();
     if (storedScreenmap) {
         loadScreenmapFromPoints(parse_screenmap_data(storedScreenmap));
-    } else {
-        dom_btn_preset_16x16.click();
+    } else if (presetButtons.length > 0) {
+        presetButtons[0].click();
     }
 
     // Wire welcome overlay buttons to sidebar buttons
@@ -599,3 +565,4 @@ export function init(container) {
         blurPipeline.dispose();
     };
 }
+
