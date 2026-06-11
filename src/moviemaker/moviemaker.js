@@ -1,5 +1,6 @@
 const Swal = import('sweetalert2').then(m => m.default);
-import { parse_screenmap_data, readFileAsText } from '../common.js';
+import { parse_screenmap_data } from '../common.js';
+import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { saveScreenmap, getScreenmap } from '../screenmap-store.js';
 import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension } from './transforms.js';
 import { loadPreset } from '../preset-loader.js';
@@ -406,15 +407,46 @@ export function init(container) {
     }, { signal });
 
     // Screenmap upload
-    dom_btn_upload_screenmap.addEventListener('change', () => {
+    function loadScreenmapFile(file) {
+        if (!file) return;
+        if (!fileHasExtension(file, ['.csv', '.json'])) {
+            alert('Please choose a .csv or .json screenmap file.');
+            return;
+        }
         clearPresetActive();
         screenmapValid = false;
         updateElementStates();
-        readFileAsText(dom_btn_upload_screenmap, (text) => {
+        file.text().then((text) => {
             loadScreenmapFromPoints(parse_screenmap_data(text));
             saveScreenmap(text);
+        }).catch((error) => {
+            alert(`Error reading screenmap file: ${error}`);
         });
+    }
+
+    dom_btn_upload_screenmap.addEventListener('change', () => {
+        loadScreenmapFile(dom_btn_upload_screenmap.files[0]);
     }, { signal });
+
+    wireFileDropTarget({
+        target: container.querySelector('#screenmap_drop_target'),
+        input: dom_btn_upload_screenmap,
+        onFile: loadScreenmapFile,
+        signal,
+    });
+
+    wireFileDropTarget({
+        target: container.querySelector('.canvas-area'),
+        onFile: (file) => {
+            if (!file) return;
+            if (!file.type.startsWith('video/')) {
+                alert('Please drop a video file.');
+                return;
+            }
+            videoSource.loadVideoFile(file);
+        },
+        signal,
+    });
 
     // Slider handlers
     const SNAP_STEP = 45;

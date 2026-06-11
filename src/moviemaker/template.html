@@ -32,8 +32,10 @@
                             <button id="btn_preset_keytar" type="button" class="preset-btn" data-preset-file="keytar.json">Keytar</button>
                             <button id="btn_preset_64x64" type="button" class="preset-btn" data-preset-file="64x64_serpentine.json">64x64 Serpentine</button>
                         </div>
-                        <label class="field-label" for="btn_upload_screenmap">Upload custom</label>
-                        <input type="file" id="btn_upload_screenmap" accept=".csv,.json">
+                        <div id="screenmap_drop_target" class="drop-zone">
+                            <label class="field-label" for="btn_upload_screenmap">Upload custom</label>
+                            <input type="file" id="btn_upload_screenmap" accept=".csv,.json">
+                        </div>
                     </div>
                 </div>
             </details>
@@ -105,7 +107,7 @@
             </details>
         </aside>
 
-        <main class="canvas-area flex-1 flex justify-center items-center p-6 relative min-w-0 bg-lm-bg">
+        <main class="canvas-area drop-zone flex-1 flex justify-center items-center p-6 relative min-w-0 bg-lm-bg">
             <div id="welcome-overlay">
                 <div class="welcome-content">
                     <h2 class="welcome-title">Video Maker</h2>

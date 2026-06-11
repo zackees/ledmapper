@@ -1,4 +1,5 @@
 import { parse_screenmap_data, centerAndFitPoints } from '../common.js';
+import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { saveScreenmap, getScreenmap, savePresetSelection, getPresetSelection } from '../screenmap-store.js';
 import { loadPresetText, loadPresetManifest } from '../preset-loader.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
@@ -76,11 +77,6 @@ export function init(container) {
         buildPoints();
     }
 
-    function fileHasExtension(file, extensions) {
-        const name = file.name.toLowerCase();
-        return extensions.some((extension) => name.endsWith(extension));
-    }
-
     function loadScreenmapFile(file) {
         if (!file) return;
         set_dom_btn_play(false);
@@ -149,30 +145,6 @@ export function init(container) {
         });
     }
 
-    function wireFileDropTarget({ target, input, onFile }) {
-        target.addEventListener('dragover', (event) => {
-            event.preventDefault();
-            if (event.dataTransfer) {
-                event.dataTransfer.dropEffect = input.disabled ? 'none' : 'copy';
-            }
-            if (!input.disabled) {
-                target.classList.add('drag-over');
-            }
-        }, { signal });
-
-        target.addEventListener('dragleave', () => {
-            target.classList.remove('drag-over');
-        }, { signal });
-
-        target.addEventListener('drop', (event) => {
-            event.preventDefault();
-            target.classList.remove('drag-over');
-            if (input.disabled) return;
-            const file = event.dataTransfer?.files?.[0];
-            onFile(file);
-        }, { signal });
-    }
-
     dom_btn_upload_screenmap.addEventListener('change', () => {
         loadScreenmapFile(dom_btn_upload_screenmap.files[0]);
     }, { signal });
@@ -224,12 +196,14 @@ export function init(container) {
         target: dom_screenmap_drop_target,
         input: dom_btn_upload_screenmap,
         onFile: loadScreenmapFile,
+        signal,
     });
 
     wireFileDropTarget({
         target: dom_movie_drop_target,
         input: dom_btn_load_movie,
         onFile: loadMovieFile,
+        signal,
     });
 
     const animLoop = createAnimationLoop({

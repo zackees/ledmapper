@@ -15,7 +15,8 @@ import {
     SRGBColorSpace,
     DoubleSide,
 } from 'three';
-import { parse_screenmap_data, centerAndFitPoints, readFileAsText, download_text_as_file, parseScreenmapMultiStrip, getStripColors } from '../common.js';
+import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors } from '../common.js';
+import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { saveScreenmap, saveScreenmapPoints, getScreenmap } from '../screenmap-store.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
 import templateHtml from './template.html?raw';
@@ -1041,10 +1042,42 @@ export function init(container) {
         saveScreenmapPoints([[0, 0]], 0.5);
     }, { signal });
 
-    dom_btn_upload_screenmap.addEventListener('change', () => {
+    function loadScreenmapFile(file) {
+        if (!file) return;
+        if (!fileHasExtension(file, ['.json'])) {
+            alert('Please choose a .json screenmap file.');
+            return;
+        }
         dom_sel_preset.value = '';
-        readFileAsText(dom_btn_upload_screenmap, load_screenmap_data);
+        file.text().then(load_screenmap_data).catch((error) => {
+            alert(`Error reading screenmap file: ${error}`);
+        });
+    }
+
+    dom_btn_upload_screenmap.addEventListener('change', () => {
+        loadScreenmapFile(dom_btn_upload_screenmap.files[0]);
     }, { signal });
+
+    wireFileDropTarget({
+        target: container.querySelector('#screenmap_drop_target'),
+        input: dom_btn_upload_screenmap,
+        onFile: loadScreenmapFile,
+        signal,
+    });
+
+    wireFileDropTarget({
+        target: container.querySelector('#image_drop_target'),
+        input: dom_btn_upload_image,
+        onFile: (file) => {
+            if (!file) return;
+            if (!file.type.startsWith('image/')) {
+                alert('Please drop an image file.');
+                return;
+            }
+            loadBackgroundImage(file);
+        },
+        signal,
+    });
 
     dom_sel_preset.addEventListener('change', async () => {
         const file = dom_sel_preset.value;

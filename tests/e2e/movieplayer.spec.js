@@ -1,20 +1,6 @@
 import { test, expect } from './fixtures.js';
 import path from 'path';
-import { readFileSync } from 'fs';
-
-async function dropFixture(page, selector, fixturePath, fileName, mimeType) {
-    const bytes = Array.from(readFileSync(fixturePath));
-    const dataTransfer = await page.evaluateHandle(({ fileName, mimeType, bytes }) => {
-        const transfer = new DataTransfer();
-        const file = new File([new Uint8Array(bytes)], fileName, { type: mimeType });
-        transfer.items.add(file);
-        return transfer;
-    }, { fileName, mimeType, bytes });
-
-    await page.dispatchEvent(selector, 'dragover', { dataTransfer });
-    await page.dispatchEvent(selector, 'drop', { dataTransfer });
-    await dataTransfer.dispose();
-}
+import { dropFixture } from '../helpers/drag-drop.js';
 
 test.describe('Video Player', () => {
     test('loads and shows title', async ({ page }) => {

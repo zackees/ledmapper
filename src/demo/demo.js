@@ -1,4 +1,5 @@
 import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file, parseScreenmapMultiStrip, getStripColors } from '../common.js';
+import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './demo.css?url';
@@ -11,6 +12,8 @@ export function init(container) {
     let videoBuffer = new Uint8Array();
 
     // DOM elements
+    const dom_btn_upload_screenmap = container.querySelector("#btn_upload_screenmap");
+    const dom_btn_load_movie = container.querySelector("#btn_load_movie");
     const dom_btn_play = container.querySelector("#btn_play");
     const dom_rng_diameter = container.querySelector("#rng_diameter");
     const dom_txt_curr_diameter = container.querySelector("#txt_curr_diameter");
@@ -163,6 +166,89 @@ export function init(container) {
         drawOverlay();
         dom_btn_play.disabled = false;
     }
+
+    function stopVideoStream() {
+        if (videoReader) {
+            videoReader.cancel().catch(() => {});
+            videoReader = null;
+        }
+        videoBuffer = new Uint8Array();
+    }
+
+    function loadScreenmapFile(file) {
+        if (!file) return;
+        if (!fileHasExtension(file, ['.json'])) {
+            alert('Please choose a .json screenmap file.');
+            return;
+        }
+        file.text().then((text) => {
+            // A new screenmap invalidates frames sized for the old LED count
+            stopVideoStream();
+            movie_frames.length = 0;
+            curr_frame_idx = 0;
+            set_dom_btn_play(false);
+            load_screenmap_data(JSON.parse(text));
+        }).catch((error) => {
+            alert(`Error reading screenmap file: ${error}`);
+        });
+    }
+
+    function loadMovieFile(file) {
+        if (!file) return;
+        if (!fileHasExtension(file, ['.rgb'])) {
+            alert('Please choose a .rgb video file.');
+            return;
+        }
+        file.arrayBuffer().then(load_movie_data).catch((error) => {
+            alert(`Error reading video file: ${error}`);
+        });
+    }
+
+    function load_movie_data(arrayBuffer) {
+        if (screenmap_pts.length === 0) {
+            alert("No screenmap is loaded!");
+            return;
+        }
+        const uint8_array = new Uint8Array(arrayBuffer);
+        const num_pixels = uint8_array.length / 3;
+        if (num_pixels % screenmap_pts.length !== 0) {
+            alert("Frame size should be a multiple of the number of screenmap points!");
+            return;
+        }
+        stopVideoStream();
+        movie_frames.length = 0;
+        curr_frame_idx = 0;
+        const frameSize = screenmap_pts.length * 3;
+        const n_frames = num_pixels / screenmap_pts.length;
+        for (let i = 0; i < n_frames; i++) {
+            movie_frames.push(uint8_array.slice(i * frameSize, (i + 1) * frameSize));
+        }
+        dom_btn_play.disabled = false;
+        set_dom_btn_play(true);
+    }
+
+    dom_btn_upload_screenmap.addEventListener('change', () => {
+        loadScreenmapFile(dom_btn_upload_screenmap.files[0]);
+    }, { signal });
+
+    dom_btn_load_movie.addEventListener('change', () => {
+        loadMovieFile(dom_btn_load_movie.files[0]);
+    }, { signal });
+
+    wireFileDropTarget({
+        target: main,
+        onFile: (file) => {
+            if (!file) return;
+            if (fileHasExtension(file, ['.json'])) {
+                loadScreenmapFile(file);
+            } else if (fileHasExtension(file, ['.rgb'])) {
+                loadMovieFile(file);
+            } else {
+                alert('Please drop a .json screenmap or .rgb video file.');
+            }
+        },
+        signal,
+    });
 
     function fetchAndLoadJSON() {
         fetch('/screenmaps/32x32_quad_serpentine.json')
