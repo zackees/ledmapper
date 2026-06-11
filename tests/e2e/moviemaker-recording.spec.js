@@ -128,6 +128,29 @@ test.describe('Moviemaker Recording Workflow', () => {
             expect(data.length % bytesPerFrame).toBe(0);
         });
 
+        test('max brightness limit clamps recorded output', async ({ page }) => {
+            test.setTimeout(60000);
+
+            await page.goto('/moviemaker/');
+            await page.locator('[data-trigger="btn_start_webcam"]').click();
+            await waitForSourceActive(page);
+
+            await page.locator('#chk_limit_brightness').check();
+            const maxBri = page.locator('#rng_max_brightness');
+            await expect(maxBri).toBeEnabled();
+            await maxBri.fill('50');
+            await maxBri.dispatchEvent('input');
+            await expect(page.locator('#txt_curr_max_bri')).toHaveText('50%');
+
+            const data = await recordAndDownload(page, 1500);
+            expect(data.length).toBeGreaterThan(0);
+
+            // 50% cap: subtraction clamp guarantees no channel exceeds ~128
+            let maxByte = 0;
+            for (const b of data) maxByte = Math.max(maxByte, b);
+            expect(maxByte).toBeLessThanOrEqual(130);
+        });
+
         test('can switch presets and record with each', async ({ page }) => {
             test.setTimeout(60000);
 
