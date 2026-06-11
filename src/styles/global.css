@@ -307,6 +307,13 @@ canvas {
     background: var(--color-lm-accent-subtle);
 }
 
+/* Generic drag-and-drop affordance for file drop targets */
+.drop-zone.drag-over {
+    outline: 2px dashed var(--color-lm-accent);
+    outline-offset: -2px;
+    background: var(--color-lm-accent-subtle);
+}
+
 /* ── Focus Visible ──────────────────────────────────────────── */
 
 :focus-visible {
