@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FastLED Video Mapper (www.ledmapper.com) — a web-based tool suite for mapping video content to physical LED arrays (WS2812/APA102). Built with Vite (MPA), ES modules, and hosted on GitHub Pages.
+FastLED Video Mapper (www.ledmapper.com) — a web-based tool suite for mapping video content to physical LED arrays (WS2812/APA102). Built with Vite (SPA with a client-side router), ES modules, and hosted on GitHub Pages.
 
 ## Running Locally
 
@@ -30,7 +30,7 @@ npm test
 
 ## Architecture
 
-**Vite MPA (Multi-Page App)** using vanilla JavaScript, p5.js (instance mode), Three.js, Tailwind CSS v4, and SweetAlert2. All dependencies managed via npm. ES modules throughout.
+**Vite SPA (single `src/index.html` + client-side router in `src/router.js`)** using vanilla JavaScript, Three.js, Tailwind CSS v4, and SweetAlert2. All dependencies managed via npm. ES modules throughout.
 
 **Shared nav bar:** Each tool page includes a shared navigation header (`src/nav.js`). Regular `<a>` links navigate between tools. No iframes.
 
@@ -39,6 +39,8 @@ npm test
 ```
 src/              # Source code (Vite root)
   common.js       # Shared utility functions (ES module)
+  router.js       # Client-side router (loads tools into single index.html)
+  three-utils.js  # Shared Three.js helpers (renderer/scene, points mesh, animation loop)
   nav.js          # Shared navigation bar component
   styles/         # Shared CSS (global.css, nav.css)
   hub/            # Landing page with tool cards
@@ -60,19 +62,28 @@ tests/
 
 | Directory | Tool | Core Tech | Purpose |
 |-----------|------|-----------|---------|
-| `demo/` | Demo | p5.js | Visualize mapped video playback with sample data |
-| `screenmap/` | Screenmap Maker | p5.js | Interactively map physical LED positions, export JSON |
+| `demo/` | Demo | Three.js (`three-utils.js`) | Visualize mapped video playback with sample data |
+| `screenmap/` | Screenmap Maker | Canvas 2D | Interactively map physical LED positions, export JSON |
 | `moviemaker/` | Mapped Video Maker | Three.js + GLSL | Load video files or webcam, GPU blur, record mapped LED output |
-| `movieplayer/` | Movie Player | p5.js | Play back pre-recorded .rgb LED video files |
-| `shapeeditor/` | Screenmap Editor | p5.js | View and transform screenmap.json files |
+| `movieplayer/` | Movie Player | Three.js (`three-utils.js`) | Play back pre-recorded .rgb LED video files |
+| `shapeeditor/` | Screenmap Editor | Three.js points mesh + Canvas 2D overlay | View and transform screenmap.json files |
 
 ### Shared Code
 
 `src/common.js` — ES module with utility functions imported by each tool:
-- `parse_screenmap_data_json()` / `parse_screenmap_data_csv()` — parse screenmap formats
-- `transform_to_center_of_canvas()` — center and scale points to canvas
+- `parse_screenmap_data_json()` / `parse_screenmap_data_csv()` / `parse_screenmap_data()` — parse screenmap formats
+- `parseScreenmapMultiStrip()` — parse into per-strip structure (`{strips, allPoints, totalCount}`)
+- `getStripColors()` / `stripStartEndLabels()` — per-strip colors and Start/End overlay labels
+- `centerAndFitPoints()` / `transform_to_center_of_canvas()` — center and scale points to canvas
 - `download_blob_as_file()` / `download_binary_as_file()` / `download_text_as_file()` — file downloads
 - `estimate_led_size()` — calculate LED diameter from point spacing
+
+`src/three-utils.js` — shared Three.js rendering helpers:
+- `createRendererAndScene()` — WebGL renderer + orthographic camera + optional Canvas 2D overlay
+- `buildPointsMesh()` / `rebuildPointsMesh()` — LED scatter as a GPU points mesh
+- `createCircleTexture()` — round point sprite texture
+- `createAnimationLoop()` — frame-rate-limited requestAnimationFrame loop
+- `wireDiameterSlider()` — bind a slider to point size
 
 ### Data Formats
 
@@ -115,7 +126,7 @@ tests/
 
 ### Key Patterns
 
-- p5.js tools use **instance mode**: `new p5((p) => { p.setup = () => {...}; p.draw = () => {...}; })`
+- Rendering rule: **Three.js points mesh (via `three-utils.js`) for LED visualization** (GPU-friendly at thousands of points); **Canvas 2D for interactive editing and text/wire overlays**. Do not add new rendering libraries (p5.js was removed in `7a91434`).
 - All JS uses ES module `import`/`export` — no CDN `<script>` tags
 - `moviemaker/` uses Three.js with GLSL fragment shaders for GPU-accelerated blur and readback for recording
 - UI uses dark theme (bg: `--color-lm-bg` #0a0a0a, accent: `--color-lm-accent` #3b82f6) with SweetAlert2 for dialogs

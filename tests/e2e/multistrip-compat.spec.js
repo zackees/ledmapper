@@ -128,7 +128,7 @@ test.describe('Multi-strip screenmap compatibility', () => {
             const handler = err => errors.push(err.message);
             page.on('pageerror', handler);
             await page.goto(url, { waitUntil: 'load' });
-            // Allow async init (p5/Three.js setup) to settle after page load
+            // Allow async init (Three.js setup) to settle after page load
             await page.waitForTimeout(2000);
             page.removeListener('pageerror', handler);
             expect(errors, `JS errors on ${url}: ${errors.join('; ')}`).toHaveLength(0);
