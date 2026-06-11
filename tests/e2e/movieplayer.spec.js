@@ -1,5 +1,20 @@
 import { test, expect } from './fixtures.js';
 import path from 'path';
+import { readFileSync } from 'fs';
+
+async function dropFixture(page, selector, fixturePath, fileName, mimeType) {
+    const bytes = Array.from(readFileSync(fixturePath));
+    const dataTransfer = await page.evaluateHandle(({ fileName, mimeType, bytes }) => {
+        const transfer = new DataTransfer();
+        const file = new File([new Uint8Array(bytes)], fileName, { type: mimeType });
+        transfer.items.add(file);
+        return transfer;
+    }, { fileName, mimeType, bytes });
+
+    await page.dispatchEvent(selector, 'dragover', { dataTransfer });
+    await page.dispatchEvent(selector, 'drop', { dataTransfer });
+    await dataTransfer.dispose();
+}
 
 test.describe('Video Player', () => {
     test('loads and shows title', async ({ page }) => {
@@ -32,6 +47,42 @@ test.describe('Video Player', () => {
         // Canvas should render after screenmap upload
         const canvas = page.locator('canvas');
         await expect(canvas).toBeVisible({ timeout: 10000 });
+    });
+
+    test('screenmap can be dragged onto upload screenmap row', async ({ page }) => {
+        await page.goto('/movieplayer/');
+        await dropFixture(
+            page,
+            '#screenmap_drop_target',
+            path.resolve('tests/fixtures/test-screenmap.json'),
+            'test-screenmap.json',
+            'application/json',
+        );
+
+        await expect(page.locator('#btn_load_movie')).toBeEnabled();
+    });
+
+    test('movie can be dragged onto upload video row after screenmap load', async ({ page }) => {
+        await page.goto('/movieplayer/');
+        await dropFixture(
+            page,
+            '#screenmap_drop_target',
+            path.resolve('tests/fixtures/test-screenmap.json'),
+            'test-screenmap.json',
+            'application/json',
+        );
+        await expect(page.locator('#btn_load_movie')).toBeEnabled();
+
+        await dropFixture(
+            page,
+            '#movie_drop_target',
+            path.resolve('tests/fixtures/test-video.rgb'),
+            'test-video.rgb',
+            'application/octet-stream',
+        );
+
+        await expect(page.locator('#btn_play')).toBeEnabled();
+        await expect(page.locator('#btn_play')).toHaveValue('Pause');
     });
 
     test('play button exists', async ({ page }) => {
