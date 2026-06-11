@@ -193,7 +193,7 @@ export function init(container) {
 
     async function streamVideoData() {
         try {
-            while (true) {
+            for (;;) {
                 const { done, value } = await videoReader.read();
                 if (done) {
                     console.log("Finished streaming video data");
