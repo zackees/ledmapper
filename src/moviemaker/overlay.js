@@ -4,6 +4,39 @@
 
 import { computePreviewFactor, estimateLedSize } from './transforms.js';
 
+// Stroking thousands of LED rings every frame is the single biggest
+// main-thread/raster cost at 64x64 (4096 LEDs). The ring layer only depends
+// on the (memoized) points array and canvas size, so render it once into an
+// offscreen canvas and blit it per frame; rebuild only when inputs change.
+const ringLayerCache = new WeakMap();
+
+function getRingLayer(ctx, transformedPts, videoWidth, videoHeight) {
+    const cached = ringLayerCache.get(ctx);
+    if (cached && cached.pts === transformedPts &&
+        cached.w === videoWidth && cached.h === videoHeight) {
+        return cached.layer;
+    }
+
+    const layer = cached ? cached.layer : document.createElement('canvas');
+    layer.width = videoWidth;   // resizing also clears the layer
+    layer.height = videoHeight;
+
+    const lctx = layer.getContext('2d');
+    const r = estimateLedSize(transformedPts) / 2;
+    lctx.strokeStyle = 'white';
+    lctx.lineWidth = 1;
+    lctx.beginPath();
+    for (let i = 0; i < transformedPts.length; i++) {
+        const [x, y] = transformedPts[i];
+        lctx.moveTo(x + r, y);
+        lctx.arc(x, y, r, 0, Math.PI * 2);
+    }
+    lctx.stroke();
+
+    ringLayerCache.set(ctx, { pts: transformedPts, w: videoWidth, h: videoHeight, layer });
+    return layer;
+}
+
 /**
  * Draw the moviemaker overlay: LED position circles, mini preview, and status text.
  *
@@ -14,19 +47,12 @@ import { computePreviewFactor, estimateLedSize } from './transforms.js';
  * @param {number} videoHeight
  * @param {number} fps - Current frames per second.
  */
-export function drawMoviemakerOverlay(ctx, transformedPts, lastSample, videoWidth, videoHeight, fps) {
+export function drawMoviemakerOverlay(ctx, transformedPts, lastSample, videoWidth, videoHeight, fps, showLeds = true) {
     ctx.clearRect(0, 0, videoWidth, videoHeight);
     if (transformedPts.length === 0) return;
 
-    const ledSize = estimateLedSize(transformedPts);
-
-    ctx.strokeStyle = 'white';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < transformedPts.length; i++) {
-        const [x, y] = transformedPts[i];
-        ctx.beginPath();
-        ctx.arc(x, y, ledSize / 2, 0, Math.PI * 2);
-        ctx.stroke();
+    if (showLeds) {
+        ctx.drawImage(getRingLayer(ctx, transformedPts, videoWidth, videoHeight), 0, 0);
     }
 
     ctx.fillStyle = 'white';

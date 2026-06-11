@@ -1,7 +1,7 @@
 const Swal = import('sweetalert2').then(m => m.default);
 import { parse_screenmap_data, readFileAsText } from '../common.js';
 import { saveScreenmap, getScreenmap } from '../screenmap-store.js';
-import { transformToCenter, parseResolution, samplePixels, computeFps, scaleToMaxDimension } from './transforms.js';
+import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension } from './transforms.js';
 import { loadPreset } from '../preset-loader.js';
 import { createBlurPipeline } from './blur-pipeline.js';
 import { createVideoSource } from './video-source.js';
@@ -255,8 +255,19 @@ export function init(container) {
         }
     }
 
+    // Memoized: the smooth interpolation converges to exact target values,
+    // so at rest this returns the same array reference every frame — no
+    // per-frame allocations, and downstream consumers can cheap-compare.
+    let memoTransformedPts = null;
+    let memoTransformKey = '';
+    let memoSourcePts = null;
+
     function create_transformed_screenmap() {
         if (screenmap_pts.length === 0) return [];
+        const key = `${curr_rotate}|${curr_zoom}|${curr_translate[0]}|${curr_translate[1]}`;
+        if (memoTransformedPts && memoSourcePts === screenmap_pts && memoTransformKey === key) {
+            return memoTransformedPts;
+        }
         let pts = screenmap_pts.map(([x, y]) => [x, y]);
         if (curr_rotate !== 0) {
             const r = curr_rotate * Math.PI / 180;
@@ -267,6 +278,9 @@ export function init(container) {
             x * curr_zoom + curr_translate[0],
             y * curr_zoom + curr_translate[1]
         ]);
+        memoTransformedPts = pts;
+        memoTransformKey = key;
+        memoSourcePts = screenmap_pts;
         return pts;
     }
 
@@ -506,6 +520,7 @@ export function init(container) {
 
     let lastTime = performance.now();
     let lastSample = null;
+    let sampleRgbPts = null;
 
     function animationLoop() {
         rafId = requestAnimationFrame(animationLoop);
@@ -529,19 +544,27 @@ export function init(container) {
         update_screenmap_parameters();
         const transformedPts = create_transformed_screenmap();
 
-        const needReadback = screenmapValid && transformedPts.length > 0;
+        blurPipeline.renderFrame();
 
-        if (needReadback) {
-            const readback = blurPipeline.readbackPixels(videoWidth, videoHeight);
-            const sample = samplePixels(readback, transformedPts, videoWidth, videoHeight);
-            lastSample = sample;
-            recording.processFrame(sample, frame_rate);
+        const needSample = screenmapValid && transformedPts.length > 0;
+
+        if (needSample) {
+            blurPipeline.setSamplePoints(transformedPts, videoWidth, videoHeight);
+            blurPipeline.requestSample();
+            // Consume the latest resolved async readback (1-2 frames behind)
+            const gather = blurPipeline.getLatestSample();
+            if (gather && gather.numPts === transformedPts.length) {
+                if (!sampleRgbPts || sampleRgbPts.length !== gather.numPts * 3) {
+                    sampleRgbPts = new Uint8Array(gather.numPts * 3);
+                }
+                lastSample = extractGatherSample(gather.buffer, gather.numPts, sampleRgbPts);
+                recording.processFrame(lastSample, frame_rate);
+            }
         } else {
-            blurPipeline.renderBlurred(null);
             recording.resetCapture();
         }
 
-        drawMoviemakerOverlay(overlayCtx, transformedPts, lastSample, videoWidth, videoHeight, fps);
+        drawMoviemakerOverlay(overlayCtx, transformedPts, lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked);
         drawPreview(previewCtx, transformedPts, lastSample, 200);
 
         // Update progress bar for video sources
