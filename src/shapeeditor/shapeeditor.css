@@ -89,6 +89,52 @@
     cursor: default;
 }
 
+/* ── Hint strip (bottom of canvas) ─────────────────────────── */
+
+.hint-strip {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 10px;
+    background: rgba(10, 10, 10, 0.72);
+    color: #e5e7eb;
+    font: 12px/1 "Outfit", system-ui, sans-serif;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(6px);
+    z-index: 850;
+    pointer-events: none;
+    user-select: none;
+}
+
+.hint-strip-text {
+    pointer-events: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hint-strip-help {
+    pointer-events: auto;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #e5e7eb;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.hint-strip-help:hover {
+    background: rgba(59, 130, 246, 0.6);
+    border-color: #3b82f6;
+}
+
 /* ── Strips inspector panel ────────────────────────────────── */
 
 .strip-row {

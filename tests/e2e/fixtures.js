@@ -8,6 +8,12 @@ export const test = base.extend({
   // New worker-scoped fixture (can't override built-in context scope)
   sharedContext: [async ({ browser }, use) => {
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    // Suppress the shapeeditor first-run help modal in all existing specs.
+    // New discoverability-specific spec clears this key explicitly to exercise
+    // the first-run gate.
+    await context.addInitScript(() => {
+      try { localStorage.setItem('lm:shapeeditor-helpDismissed', '1'); } catch { /* ignore */ }
+    });
     await use(context);
     await context.close();
   }, { scope: 'worker' }],

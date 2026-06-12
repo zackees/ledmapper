@@ -34,6 +34,7 @@ import { StripStore } from './strips-model.js';
 import { Selection } from './selection.js';
 import { PANEL_CATALOG, getCatalogEntry, generatePanelPoints } from './panel-catalog.js';
 import { snapToGrid } from './grid-snap.js';
+import { hintTextFor } from './hints.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './shapeeditor.css?url';
 
@@ -272,7 +273,7 @@ export function init(container) {
     const stripStore = new StripStore();
     let stripInfo = null; // multi-strip parse result (null until screenmap loaded)
     const selection = new Selection();
-    selection.setOnChange(() => { setNeedsGeometryUpdate(); renderStripsPanel(); });
+    selection.setOnChange(() => { setNeedsGeometryUpdate(); renderStripsPanel(); _updateHintStrip(); });
 
     // Test/debug hook: expose strip state and computed Start/End labels so
     // E2E tests can assert on canvas-drawn labels that have no DOM presence.
@@ -293,6 +294,51 @@ export function init(container) {
             const b = getBackup();
             if (!b) return null;
             return { meta: b.meta, hasJson: typeof b.json === 'string' && b.json.length > 0 };
+        },
+        getHintText: () => (hintStripTextEl ? hintStripTextEl.textContent : ''),
+        openHelp: () => { _openHelpOverlay(); },
+        getPointEditMode: () => pointEditStripIdx,
+        enterPointEditMode: (i) => {
+            if (typeof i !== 'number' || i < 0) return;
+            const strips = stripStore.getStrips();
+            if (i >= strips.length) return;
+            selection.selectStrip(i);
+            pointEditStripIdx = i;
+            _updateHintStrip();
+        },
+        exitPointEditMode: () => { pointEditStripIdx = null; _updateHintStrip(); },
+        // Get the per-LED screenmap coords of a strip (debug for group-drag tests)
+        getStripPoints: (i) => {
+            const strips = stripStore.getStrips();
+            if (i < 0 || i >= strips.length) return null;
+            const s = strips[i];
+            const out = [];
+            for (let k = s.offset; k < s.offset + s.count; k++) {
+                out.push([screenmap_pts[k][0], screenmap_pts[k][1]]);
+            }
+            return out;
+        },
+        // Get a flat LED's transformed canvas coords (for synthetic drag tests).
+        getLedCanvasPos: (flatIdx) => {
+            if (flatIdx < 0 || flatIdx >= lastTransformedPts.length) return null;
+            const [x, y] = lastTransformedPts[flatIdx];
+            const [cx, cy] = toCanvasCoords(x, y);
+            const rect = overlayCanvas.getBoundingClientRect();
+            // Convert internal canvas px → client px
+            const clientX = rect.left + (cx / canvasW) * rect.width;
+            const clientY = rect.top + (cy / canvasH) * rect.height;
+            return { clientX, clientY, canvasX: cx, canvasY: cy };
+        },
+        // Drive a synthetic L-drag from (flatIdx) by (dxClient, dyClient) client px.
+        simulateLedDrag: (flatIdx, dxClient, dyClient, opts) => {
+            const pos = window.__shapeeditorDebug.getLedCanvasPos(flatIdx);
+            if (!pos) return false;
+            const altKey = !!(opts && opts.altKey);
+            const evtOpts = (x, y) => ({ clientX: x, clientY: y, button: 0, bubbles: true, altKey });
+            overlayCanvas.dispatchEvent(new MouseEvent('mousedown', evtOpts(pos.clientX, pos.clientY)));
+            overlayCanvas.dispatchEvent(new MouseEvent('mousemove', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
+            overlayCanvas.dispatchEvent(new MouseEvent('mouseup', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
+            return true;
         },
     };
 
@@ -534,11 +580,26 @@ export function init(container) {
     let isDragging = false;
     let dragStartCanvasX = 0, dragStartCanvasY = 0;
     let dragStartScreenmapPt = null, dragStartRawPt = null;
+
+    // ── Point-edit mode + strip group-drag state ───────────────────────
+    // pointEditMode tracks the strip the user double-clicked into; while
+    // active, a plain LED drag moves only that single LED (per the plan).
+    let pointEditStripIdx = null;
+    // Group drag for the selected strip (plain L-drag on an LED in non-point-edit mode)
+    let stripDragActive = false;
+    let stripDragIdx = -1;
+    let stripDragStartScreenmap = null; // array of [x,y] for that strip
+    let stripDragStartRaw = null;       // array of [x,y] for that strip
+    let stripDragLastSdx = 0, stripDragLastSdy = 0;
+    // Alt-drag quasimode: force single-point move regardless of mode
+    let altQuasimode = false;
     let ctxMenu, ctxMenuIdx = -1;
     let ctxBtnSave, ctxBtnLoadScreenmap, ctxLoadSubmenu;
     let ctxLoadImageInput;
     let ctxFileOps, ctxFileOpsSep;
     let ctxBtnDelete, ctxBtnInsertBetween, ctxBtnInsertFwd, ctxBtnInsertBack;
+    let hintStripTextEl, hintStripHelpBtn;
+    let _autoOpenHelpScheduled = false;
     let highlightedEdgeIdx = -1; // edge index highlighted for "insert between"
     let loadedPresets = []; // populated by manifest fetch
 
@@ -733,6 +794,8 @@ export function init(container) {
             _reverseStripInPlace(action.stripIdx);
         } else if (action.type === 'strip-offset') {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.newValue });
+        } else if (action.type === 'strip-translate') {
+            _applyStripTranslate(action.stripIdx, action.sdx, action.sdy);
         } else if (action.type === 'restore-backup') {
             if (typeof action.afterJson === 'string') {
                 load_screenmap_data(action.afterJson);
@@ -774,6 +837,8 @@ export function init(container) {
             _reverseStripInPlace(action.stripIdx);
         } else if (action.type === 'strip-offset') {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.oldValue });
+        } else if (action.type === 'strip-translate') {
+            _applyStripTranslate(action.stripIdx, -action.sdx, -action.sdy);
         } else if (action.type === 'restore-backup') {
             if (typeof action.beforeJson === 'string' && action.beforeJson.length > 0) {
                 load_screenmap_data(action.beforeJson);
@@ -801,6 +866,7 @@ export function init(container) {
             || action.type === 'panel-place'
             || action.type === 'strip-reverse'
             || action.type === 'strip-offset'
+            || action.type === 'strip-translate'
         );
     }
 
@@ -971,6 +1037,12 @@ export function init(container) {
     function clearEditingState() {
         selectedIdx = -1;
         selection.clear();
+        pointEditStripIdx = null;
+        stripDragActive = false;
+        stripDragIdx = -1;
+        stripDragStartScreenmap = null;
+        stripDragStartRaw = null;
+        altQuasimode = false;
         isDragging = false;
         isPanning = false;
         rightButtonDown = false;
@@ -1468,11 +1540,20 @@ export function init(container) {
 
         ctxFileOpsSep = makeCtxSeparator();
 
+        // ── Discoverability entry points ──
+        makeCtxBtn('Insert panel…', 'insert-panel');
+        makeCtxBtn('Paste screenmap', 'paste-screenmap');
+
         // ── Point operations ──
         ctxBtnDelete = makeCtxBtn('Delete Point', 'delete');
         ctxBtnInsertBetween = makeCtxBtn('Insert between', 'insert-between');
         ctxBtnInsertFwd = makeCtxBtn('Insert, shift forward', 'insert-forward');
         ctxBtnInsertBack = makeCtxBtn('Insert, shift back', 'insert-back');
+
+        // Trailing help entry
+        makeCtxSeparator();
+        makeCtxBtn('Keyboard help', 'kbd-help');
+
         document.body.appendChild(ctxMenu);
 
         // Hidden file input for "Upload file…" submenu item
@@ -1517,6 +1598,12 @@ export function init(container) {
                 insertShiftForward();
             } else if (action === 'insert-back') {
                 insertShiftBack();
+            } else if (action === 'insert-panel') {
+                _openInsertPanelStub();
+            } else if (action === 'paste-screenmap') {
+                _toastInfo('Paste coming soon');
+            } else if (action === 'kbd-help') {
+                _openHelpOverlay();
             }
             hideContextMenu();
         }, { signal });
@@ -1535,6 +1622,7 @@ export function init(container) {
         overlayCanvas.addEventListener('mouseup', onMouseUp, { signal });
         overlayCanvas.addEventListener('mouseleave', onMouseLeave, { signal });
         overlayCanvas.addEventListener('contextmenu', onContextMenu, { signal });
+        overlayCanvas.addEventListener('dblclick', onDoubleClick, { signal });
         overlayCanvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             const zoomFactor = Math.pow(2, -e.deltaY / 3000);
@@ -1559,7 +1647,147 @@ export function init(container) {
         placeholderDiv.textContent = 'Upload a screenmap file to begin';
         wrapper.appendChild(placeholderDiv);
 
+        // ── Hint strip (lives inside #main, outside the renderer wrapper so
+        // it sits above the canvas and is part of the tool's DOM) ──
+        hintStripTextEl = container.querySelector('#hint_strip_text');
+        hintStripHelpBtn = container.querySelector('#hint_strip_help');
+        if (hintStripHelpBtn) {
+            hintStripHelpBtn.addEventListener('click', () => {
+                _openHelpOverlay();
+            }, { signal });
+        }
+        _updateHintStrip();
+
         buildGrid(width, height);
+    }
+
+    // ── Hint strip + help overlay ─────────────────────────────────────────
+
+    function _currentHintState() {
+        const selStripIdx = selection.getStripIdx();
+        const strips = stripStore.getStrips();
+        let selectedStripName = null;
+        if (selStripIdx !== null && selStripIdx >= 0 && selStripIdx < strips.length) {
+            selectedStripName = strips[selStripIdx].name;
+        }
+        let pointEditStripName = '';
+        if (pointEditStripIdx !== null && pointEditStripIdx >= 0 && pointEditStripIdx < strips.length) {
+            pointEditStripName = strips[pointEditStripIdx].name;
+        }
+        return {
+            empty: !stripInfo || stripInfo.strips.length === 0
+                || (stripInfo.strips.length === 1 && stripInfo.strips[0].count <= 1
+                    && stripInfo.totalCount <= 1),
+            placing: !!placingState,
+            placingLabel: placingState && placingState.entry ? placingState.entry.label : '',
+            pasting: false,
+            pastingCount: 0,
+            pointEditMode: pointEditStripIdx !== null,
+            pointEditStripName,
+            selectedStripName,
+        };
+    }
+
+    function _updateHintStrip() {
+        if (!hintStripTextEl) return;
+        hintStripTextEl.textContent = hintTextFor(_currentHintState());
+    }
+
+    async function _openHelpOverlay() {
+        try {
+            const Swal = (await import('sweetalert2')).default;
+            if (signal.aborted) return;
+            const dismissed = localStorage.getItem('lm:shapeeditor-helpDismissed') === '1';
+            const html = `
+                <div style="text-align:left;font:13px/1.45 'Outfit',system-ui,sans-serif;color:#e5e7eb;display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+                    <div>
+                        <h3 style="margin:0 0 6px 0;font-size:14px;color:#93c5fd;">Mouse</h3>
+                        <ul style="margin:0;padding-left:18px;">
+                            <li>Drag canvas: pan</li>
+                            <li>R-drag: zoom</li>
+                            <li>Click LED: select its strip</li>
+                            <li>Drag LED: move whole strip</li>
+                            <li>Alt + drag LED: move single point</li>
+                            <li>Double-click LED: enter point-edit</li>
+                            <li>Drag inside box: move selection</li>
+                            <li>Corner/edge/rotate handles: scale &amp; rotate layout</li>
+                            <li>Shift + click edge: insert between</li>
+                            <li>Ctrl + click: extend (append LED)</li>
+                            <li>Right-click: context menu</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 style="margin:0 0 6px 0;font-size:14px;color:#93c5fd;">Keyboard</h3>
+                        <ul style="margin:0;padding-left:18px;">
+                            <li><b>I</b> — Insert panel</li>
+                            <li><b>Ctrl+V</b> — Paste screenmap</li>
+                            <li><b>?</b> / <b>F1</b> — This help</li>
+                            <li><b>Ctrl+Z</b> / <b>Ctrl+Y</b> — Undo / Redo</li>
+                            <li><b>Delete</b> — Remove selection</li>
+                            <li><b>Esc</b> — Cancel / exit point-edit</li>
+                        </ul>
+                        <h3 style="margin:12px 0 6px 0;font-size:14px;color:#93c5fd;">Touch</h3>
+                        <ul style="margin:0;padding-left:18px;">
+                            <li>Drag: pan / move strip</li>
+                            <li>Long-press LED: point-edit mode</li>
+                            <li>Two-finger / pinch: pan &amp; zoom</li>
+                        </ul>
+                    </div>
+                </div>
+                <div style="margin-top:14px;text-align:left;">
+                    <label style="font-size:12px;color:#9ca3af;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+                        <input id="help_dont_show" type="checkbox" ${dismissed ? 'checked' : ''}>
+                        Don't show on launch
+                    </label>
+                </div>
+            `;
+            const res = await Swal.fire({
+                title: 'ScreenMap Editor — Keyboard help',
+                html,
+                width: 640,
+                background: '#1a1a1a',
+                color: '#e5e7eb',
+                confirmButtonText: 'Got it',
+                showCloseButton: true,
+                focusConfirm: false,
+                preConfirm: () => {
+                    const cb = document.getElementById('help_dont_show');
+                    return cb ? !!cb.checked : false;
+                },
+            });
+            const dontShow = res && (res.value === true || res.value === false ? res.value : false);
+            try {
+                if (dontShow) {
+                    localStorage.setItem('lm:shapeeditor-helpDismissed', '1');
+                }
+            } catch { /* persistence is best-effort */ }
+        } catch { /* swal may fail in headless edge cases */ }
+    }
+
+    // Phase 4 will replace this with a SweetAlert2 modal; for now we open
+    // (and focus) the existing Add-Panel accordion so the user has a path
+    // to insert a panel.
+    function _openInsertPanelStub() {
+        const panel = container.querySelector('#panel_palette');
+        if (panel) {
+            panel.open = true;
+            try { panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { /* ignore */ }
+            const firstBtn = panel.querySelector('.panel-btn');
+            if (firstBtn) firstBtn.focus();
+        }
+    }
+
+    function _maybeAutoOpenHelpOnLaunch() {
+        if (_autoOpenHelpScheduled) return;
+        _autoOpenHelpScheduled = true;
+        try {
+            if (localStorage.getItem('lm:shapeeditor-helpDismissed') === '1') return;
+        } catch { return; }
+        // Defer to next tick so any preset autoload finishes first
+        setTimeout(() => {
+            if (signal.aborted) return;
+            _openHelpOverlay();
+        }, 250);
     }
 
     function buildGrid(width, height) {
@@ -1742,9 +1970,12 @@ export function init(container) {
                 dom_sel_preset.value = loadedPresets[0].file;
                 dom_sel_preset.dispatchEvent(new Event('change'));
             }
+            _updateHintStrip();
+            _maybeAutoOpenHelpOnLaunch();
         } catch (e) {
             console.log("Failed to load preset manifest:", e);
             dom_sel_preset.innerHTML = '<option value="">No presets available</option>';
+            _maybeAutoOpenHelpOnLaunch();
         }
     }
 
@@ -3058,12 +3289,35 @@ export function init(container) {
             syncPointSelection(idx);
             highlightedEdgeIdx = -1;
             setNeedsGeometryUpdate(); // color update for selection
-            isDragging = true;
             dragStartCanvasX = cx;
             dragStartCanvasY = cy;
             dragStartScreenmapPt = [...screenmap_pts[idx]];
             dragStartRawPt = [...rawPts[idx]];
-            overlayCanvas.style.cursor = 'grabbing';
+
+            // Alt quasimode = single-point move regardless of mode.
+            altQuasimode = !!e.altKey;
+            const hitStripIdx = stripStore.findStripForIndex(idx);
+            const inPointEdit = pointEditStripIdx !== null && pointEditStripIdx === hitStripIdx;
+
+            if (altQuasimode || inPointEdit) {
+                // Single-point drag (existing behavior)
+                isDragging = true;
+                overlayCanvas.style.cursor = 'grabbing';
+            } else {
+                // Group drag for the whole strip
+                stripDragActive = true;
+                stripDragIdx = hitStripIdx;
+                const strip = stripInfo.strips[hitStripIdx];
+                stripDragStartScreenmap = [];
+                stripDragStartRaw = [];
+                for (let k = strip.offset; k < strip.offset + strip.count; k++) {
+                    stripDragStartScreenmap.push([screenmap_pts[k][0], screenmap_pts[k][1]]);
+                    stripDragStartRaw.push([rawPts[k][0], rawPts[k][1]]);
+                }
+                stripDragLastSdx = 0;
+                stripDragLastSdy = 0;
+                overlayCanvas.style.cursor = 'grabbing';
+            }
             return;
         }
 
@@ -3114,6 +3368,7 @@ export function init(container) {
 
         // Priority 5: Pan camera (outside bbox)
         if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
+        if (pointEditStripIdx !== null) { pointEditStripIdx = null; _updateHintStrip(); }
         selection.clear();
         isPanning = true;
         panStartX = cx;
@@ -3204,6 +3459,28 @@ export function init(container) {
                 dragStartRawPt[0] + sdx / fitScale,
                 dragStartRawPt[1] + sdy / fitScale,
             ];
+            setNeedsGeometryUpdate();
+            return;
+        }
+
+        if (stripDragActive && stripDragIdx >= 0 && stripInfo) {
+            const dx = cx - dragStartCanvasX;
+            const dy = cy - dragStartCanvasY;
+            const [sdx, sdy] = canvasDeltaToScreenmapDelta(dx, dy);
+            const strip = stripInfo.strips[stripDragIdx];
+            for (let k = 0; k < strip.count; k++) {
+                const base = strip.offset + k;
+                screenmap_pts[base] = [
+                    stripDragStartScreenmap[k][0] + sdx,
+                    stripDragStartScreenmap[k][1] + sdy,
+                ];
+                rawPts[base] = [
+                    stripDragStartRaw[k][0] + sdx / fitScale,
+                    stripDragStartRaw[k][1] + sdy / fitScale,
+                ];
+            }
+            stripDragLastSdx = sdx;
+            stripDragLastSdy = sdy;
             setNeedsGeometryUpdate();
             return;
         }
@@ -3346,8 +3623,66 @@ export function init(container) {
                 });
             }
             isDragging = false;
+            altQuasimode = false;
             overlayCanvas.style.cursor = 'grab';
+            return;
         }
+
+        if (stripDragActive) {
+            _finalizeStripDrag();
+            overlayCanvas.style.cursor = 'grab';
+            return;
+        }
+    }
+
+    function _finalizeStripDrag() {
+        if (!stripDragActive) return;
+        const sdx = stripDragLastSdx;
+        const sdy = stripDragLastSdy;
+        if (sdx !== 0 || sdy !== 0) {
+            pushUndo({
+                type: 'strip-translate',
+                stripIdx: stripDragIdx,
+                sdx,
+                sdy,
+            });
+            _persistMultiStrip();
+        }
+        stripDragActive = false;
+        stripDragIdx = -1;
+        stripDragStartScreenmap = null;
+        stripDragStartRaw = null;
+        stripDragLastSdx = 0;
+        stripDragLastSdy = 0;
+    }
+
+    function _applyStripTranslate(stripIdx, sdx, sdy) {
+        if (!stripInfo || stripIdx < 0 || stripIdx >= stripInfo.strips.length) return;
+        const strip = stripInfo.strips[stripIdx];
+        for (let k = strip.offset; k < strip.offset + strip.count; k++) {
+            screenmap_pts[k] = [screenmap_pts[k][0] + sdx, screenmap_pts[k][1] + sdy];
+            rawPts[k] = [rawPts[k][0] + sdx / fitScale, rawPts[k][1] + sdy / fitScale];
+        }
+    }
+
+    function onDoubleClick(e) {
+        if (placingState) return;
+        if (e.button !== 0) return;
+        if (screenmap_pts.length === 0) return;
+        const [cx, cy] = getCanvasCoords(e);
+        const idx = hitTestLED(cx, cy);
+        if (idx < 0) return;
+        const sIdx = stripStore.findStripForIndex(idx);
+        if (sIdx < 0) return;
+        if (pointEditStripIdx === sIdx) {
+            // Double-click again exits point-edit
+            pointEditStripIdx = null;
+        } else {
+            pointEditStripIdx = sIdx;
+            selection.selectStrip(sIdx);
+        }
+        _updateHintStrip();
+        setNeedsGeometryUpdate();
     }
 
     function onMouseLeave() {
@@ -3385,6 +3720,10 @@ export function init(container) {
                 });
             }
             isDragging = false;
+            altQuasimode = false;
+        }
+        if (stripDragActive) {
+            _finalizeStripDrag();
         }
         isHovering = false;
         tooltipLedIdx = -1;
@@ -3420,12 +3759,40 @@ export function init(container) {
             e.preventDefault();
             return;
         }
-        // Escape: cancel panel placement, dismiss bg delete confirm, or deselect
+        // Escape: cancel panel placement, dismiss bg delete confirm, exit point-edit, or deselect
         if (e.key === 'Escape') {
             if (placingState) { _cancelPlacing(); e.preventDefault(); return; }
             if (deleteBgConfirmEl) { dismissDeleteBgConfirm(); e.preventDefault(); return; }
+            if (pointEditStripIdx !== null) {
+                pointEditStripIdx = null;
+                _updateHintStrip();
+                e.preventDefault();
+                return;
+            }
             if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
             selection.clear();
+            _updateHintStrip();
+        }
+        // Discoverability shortcuts — skip when typing in an input/textarea
+        const isTyping = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable);
+        if (isTyping) return;
+        // ? or F1 → help
+        if (e.key === '?' || e.key === 'F1') {
+            _openHelpOverlay();
+            e.preventDefault();
+            return;
+        }
+        // I → insert panel stub
+        if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            _openInsertPanelStub();
+            e.preventDefault();
+            return;
+        }
+        // Ctrl+V → paste stub
+        if (e.key === 'v' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+            _toastInfo('Paste coming soon');
+            e.preventDefault();
+            return;
         }
     }, { signal });
 
@@ -3772,6 +4139,7 @@ export function init(container) {
         const opts = _readPanelOpts();
         const localPts = generatePanelPoints(entry, opts);
         placingState = { entry, opts, localPts, ghostWorld: null };
+        _updateHintStrip();
         if (dom_pp_status) dom_pp_status.textContent = `Placing ${entry.label} — click canvas (Esc to cancel)`;
         overlayCanvas.style.cursor = 'crosshair';
         setNeedsRender();
@@ -3782,6 +4150,7 @@ export function init(container) {
         if (dom_pp_status) dom_pp_status.textContent = '';
         overlayCanvas.style.cursor = 'default';
         setNeedsRender();
+        _updateHintStrip();
     }
 
     function _canvasToWorldPx(cx, cy) {
@@ -3906,6 +4275,7 @@ export function init(container) {
         placingState = null;
         if (dom_pp_status) dom_pp_status.textContent = `Placed ${entry.label} as ${name}`;
         overlayCanvas.style.cursor = 'default';
+        _updateHintStrip();
     }
 
     function _doPanelPlace(action) {
