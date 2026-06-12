@@ -3,6 +3,7 @@ import { parseScreenmapMultiStrip } from '../common.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { saveScreenmap, getScreenmap } from '../screenmap-store.js';
 import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension, buildVideoChannelMap } from './transforms.js';
+import { resolveLedDiameter, computeFitScale } from '../bloom-utils.js';
 import { loadPresetText } from '../preset-loader.js';
 import screenmapPresets from 'virtual:screenmap-presets';
 import { createBlurPipeline } from './blur-pipeline.js';
@@ -71,6 +72,7 @@ export function init(container) {
     let rawScreenmapPts = [];
     let screenmapStrips = [];
     let videoChannelMap = null;   // flat LED index -> .rgb channel index (null = identity)
+    let previewLedDiameter = null; // screenmap-declared diameter in screenmap_pts units (null = heuristic)
     let screenmapValid = false;
     let sourceActive = false;
 
@@ -139,6 +141,7 @@ export function init(container) {
 
         if (screenmapValid) {
             screenmap_pts = transformToCenter(rawScreenmapPts, videoWidth, videoHeight);
+            updatePreviewLedDiameter();
             target_translate = [w / 2, h / 2];
             curr_translate = [w / 2, h / 2];
         }
@@ -198,14 +201,27 @@ export function init(container) {
 
     // ── Screenmap presets ────────────────────────────────────────────────────────
 
+    // The screenmap's declared diameter (world units) defines the rendered
+    // LED size; scale it into screenmap_pts units for the preview pane.
+    // Stays null when no strip declares one (preview falls back to the
+    // spacing heuristic).
+    function updatePreviewLedDiameter() {
+        const declared = resolveLedDiameter(screenmapStrips);
+        previewLedDiameter = (declared !== null && screenmap_pts.length > 0)
+            ? declared * computeFitScale(rawScreenmapPts, screenmap_pts)
+            : null;
+    }
+
     function loadScreenmapFromParsed(parsed) {
         screenmapStrips = parsed ? parsed.strips : [];
         videoChannelMap = parsed ? buildVideoChannelMap(parsed.strips, parsed.totalCount) : null;
         rawScreenmapPts = parsed ? parsed.allPoints : [];
         if (rawScreenmapPts.length === 0) {
             screenmapValid = false;
+            previewLedDiameter = null;
         } else {
             screenmap_pts = transformToCenter(rawScreenmapPts, videoWidth, videoHeight);
+            updatePreviewLedDiameter();
             screenmapValid = true;
             target_zoom = 1; curr_zoom = 1;
             curr_rotate = 0; target_rotate = 0;
@@ -715,7 +731,7 @@ export function init(container) {
         }
 
         drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips);
-        preview.render(screenmap_pts, curr_rotate, lastSample);
+        preview.render(screenmap_pts, curr_rotate, lastSample, previewLedDiameter);
 
         // Update progress bar for video sources
         if (videoSource.sourceType === 'video' && !isScrubbing) {
