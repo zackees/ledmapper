@@ -71,8 +71,8 @@ export function init(container) {
     let target_zoom = 1, curr_zoom = 1;
     let target_rotate = 0, curr_rotate = 0;
     let target_translate = [0, 0], curr_translate = [0, 0];
-    let isDraggingRight = false;
-    let lastMouseY = 0;
+    // Drag state: null when idle, or { kind: 'translate'|'zoom', pointerId, lastY }
+    let drag = null;
 
     let frame_rate = 30;
     let nativeVideoWidth = 640, nativeVideoHeight = 480;
@@ -280,10 +280,6 @@ export function init(container) {
             const dr = target_rotate - curr_rotate;
             curr_rotate += Math.abs(dr) < 0.05 ? dr : dr * 0.1;
         }
-    }
-
-    function mouseInCanvas(mx, my) {
-        return mx >= 0 && mx <= videoWidth && my >= 0 && my <= videoHeight;
     }
 
     // ── Event handlers ──────────────────────────────────────────────────────────
@@ -518,32 +514,52 @@ export function init(container) {
         dom_btn_toggle_record.classList.toggle('recording', active);
     }, { signal });
 
-    // Mouse interaction on overlay canvas
-    overlayCanvas.addEventListener('mousedown', (e) => {
-        if (e.button === 2 && screenmap_pts.length > 0) {
-            isDraggingRight = true;
-            lastMouseY = e.offsetY;
+    // Pointer-Events drag on overlay canvas.
+    // Using setPointerCapture so pointerup fires even when the pointer is
+    // released outside the element — fixes the stale isDraggingRight state
+    // that occurred when the user released outside the canvas (issue #31).
+    function cancelDrag() {
+        if (!drag) return;
+        const { pointerId } = drag;
+        drag = null;
+        try { overlayCanvas.releasePointerCapture(pointerId); } catch { /* already released */ }
+    }
+
+    overlayCanvas.addEventListener('pointerdown', (e) => {
+        if (screenmap_pts.length === 0) return;
+        if (e.button === 0) {
+            drag = { kind: 'translate', pointerId: e.pointerId, lastY: e.offsetY };
+            overlayCanvas.setPointerCapture(e.pointerId);
+        } else if (e.button === 2) {
+            drag = { kind: 'zoom', pointerId: e.pointerId, lastY: e.offsetY };
+            overlayCanvas.setPointerCapture(e.pointerId);
             e.preventDefault();
         }
     }, { signal });
-    overlayCanvas.addEventListener('mousemove', (e) => {
-        if (e.buttons & 1 && screenmap_pts.length > 0 && mouseInCanvas(e.offsetX, e.offsetY)) {
+
+    overlayCanvas.addEventListener('pointermove', (e) => {
+        if (!drag || screenmap_pts.length === 0) return;
+        if (drag.kind === 'translate') {
             target_translate[0] = e.offsetX;
             target_translate[1] = e.offsetY;
-        }
-        if (isDraggingRight && screenmap_pts.length > 0) {
-            const dy = e.offsetY - lastMouseY;
+        } else if (drag.kind === 'zoom') {
+            const dy = e.offsetY - drag.lastY;
             target_zoom -= dy * 0.01;
             target_zoom = Math.max(Math.min(target_zoom, 3), 0.15);
             dom_rng_zoom.value = target_zoom.toFixed(2);
             dom_txt_curr_zoom.innerText = target_zoom.toFixed(2);
-            lastMouseY = e.offsetY;
+            drag.lastY = e.offsetY;
         }
     }, { signal });
-    overlayCanvas.addEventListener('mouseup', (e) => {
-        if (e.button === 2) isDraggingRight = false;
-    }, { signal });
+
+    overlayCanvas.addEventListener('pointerup', cancelDrag, { signal });
+    overlayCanvas.addEventListener('pointercancel', cancelDrag, { signal });
+    overlayCanvas.addEventListener('lostpointercapture', cancelDrag, { signal });
     overlayCanvas.addEventListener('contextmenu', e => e.preventDefault(), { signal });
+
+    // Safety net: cancel any in-progress drag on window blur or tab hide.
+    window.addEventListener('blur', cancelDrag, { signal });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) cancelDrag(); }, { signal });
 
     // ── Animation loop ──────────────────────────────────────────────────────────
 
@@ -552,20 +568,22 @@ export function init(container) {
     let sampleRgbPts = null;
     let recordRgbPts = null;
 
+    // Debug hook always exposed for e2e tests (drag state needed for issue #31 tests).
+    if (!window.__mmDebug) window.__mmDebug = {};
+    window.__mmDebug.getDragState = () => drag ? { kind: drag.kind } : null;
+
     if (perfEnabled) {
-        // Debug hook for e2e correctness tests: exposes the exact transform
+        // Extended debug hook for e2e correctness tests: exposes the exact transform
         // state and latest GPU-gathered sample for CPU-reference comparison.
-        window.__mmDebug = {
-            getState: () => ({
-                localPts: screenmap_pts.map(([x, y]) => [x, y]),
-                rotate: curr_rotate,
-                zoom: curr_zoom,
-                translate: [curr_translate[0], curr_translate[1]],
-                videoWidth,
-                videoHeight,
-                sample: lastSample ? Array.from(lastSample.rgbPts) : null,
-            }),
-        };
+        window.__mmDebug.getState = () => ({
+            localPts: screenmap_pts.map(([x, y]) => [x, y]),
+            rotate: curr_rotate,
+            zoom: curr_zoom,
+            translate: [curr_translate[0], curr_translate[1]],
+            videoWidth,
+            videoHeight,
+            sample: lastSample ? Array.from(lastSample.rgbPts) : null,
+        });
     }
 
     // The .rgb stream is channel-ordered. When a screenmap declares explicit
