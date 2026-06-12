@@ -87,6 +87,10 @@
                     Show chain
                 </label>
                 <div id="strips_list" class="flex flex-col gap-1 max-h-64 overflow-y-auto"></div>
+                <div id="strips_backup_row" class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-lm-border text-xs text-lm-text-muted" style="display:none;">
+                    <span id="strips_backup_summary">No backup</span>
+                    <button id="strips_btn_restore_backup" type="button" class="py-1 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed">Restore backup…</button>
+                </div>
             </div>
         </details>
         <details id="bg_image_accordion" class="accordion">

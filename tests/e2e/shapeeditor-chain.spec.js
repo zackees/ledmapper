@@ -5,6 +5,9 @@ test.describe('Shapeeditor chain assembly', () => {
         await page.evaluate(() => {
             localStorage.removeItem('lm:screenmap');
             localStorage.removeItem('lm:screenmap-preset');
+            localStorage.removeItem('lm:screenmap-meta');
+            localStorage.removeItem('lm:screenmap-backup');
+            localStorage.removeItem('lm:screenmap-backup-meta');
         });
     });
 

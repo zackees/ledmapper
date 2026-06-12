@@ -19,6 +19,9 @@ test.describe('Multi-strip screenmap compatibility', () => {
         await page.evaluate(() => {
             localStorage.removeItem('lm:screenmap');
             localStorage.removeItem('lm:screenmap-preset');
+            localStorage.removeItem('lm:screenmap-meta');
+            localStorage.removeItem('lm:screenmap-backup');
+            localStorage.removeItem('lm:screenmap-backup-meta');
         }).catch(() => { /* page never navigated (no localStorage access) */ });
     });
 
