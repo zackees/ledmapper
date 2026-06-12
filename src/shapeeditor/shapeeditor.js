@@ -17,7 +17,18 @@ import {
 } from 'three';
 import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, stripStartEndLabels } from '../common.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
-import { saveScreenmap, saveScreenmapPoints, getScreenmap, saveScreenmapMultiStrip, buildScreenmapMultiStripJson } from '../screenmap-store.js';
+import {
+    saveScreenmap,
+    getScreenmap,
+    saveScreenmapMultiStrip,
+    buildScreenmapMultiStripJson,
+    getScreenmapMeta,
+    getBackup,
+    promoteToBackup,
+    restoreBackup,
+    backfillMeta,
+    isDegenerate,
+} from '../screenmap-store.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
 import { StripStore } from './strips-model.js';
 import { Selection } from './selection.js';
@@ -169,6 +180,7 @@ export function init(container) {
         saveScreenmap(json);
         download_text_as_file(json, 'screenmap.json', { type: 'application/json' });
         clearDirty();
+        try { renderBackupRow(); } catch { /* render is best-effort */ }
     }
 
     dom_btn_save.addEventListener('click', saveAs, { signal });
@@ -277,7 +289,176 @@ export function init(container) {
         cancelPlacing: () => { _cancelPlacing(); },
         getChainArrowCount: () => _chainArrowCount(),
         reverseStrip: (i) => { doReverseStrip(i); },
+        getBackupInfo: () => {
+            const b = getBackup();
+            if (!b) return null;
+            return { meta: b.meta, hasJson: typeof b.json === 'string' && b.json.length > 0 };
+        },
     };
+
+    // ── Autosave / backup helpers ────────────────────────────────────────
+
+    /** "just now", "5 min ago", "2 h ago", "3 d ago". */
+    function _relativeTime(savedAt) {
+        const ms = Math.max(0, Date.now() - savedAt);
+        const sec = Math.floor(ms / 1000);
+        if (sec < 45) return 'just now';
+        const min = Math.floor(sec / 60);
+        if (min < 60) return `${min} min ago`;
+        const hr = Math.floor(min / 60);
+        if (hr < 24) return `${hr} h ago`;
+        const day = Math.floor(hr / 24);
+        return `${day} d ago`;
+    }
+
+    async function _toast(opts) {
+        try {
+            const Swal = (await import('sweetalert2')).default;
+            if (signal.aborted) return null;
+            return Swal.fire({
+                toast: true,
+                position: 'top',
+                showConfirmButton: false,
+                timer: 6000,
+                timerProgressBar: true,
+                background: '#1a1a1a',
+                color: '#e5e7eb',
+                ...opts,
+            });
+        } catch { return null; }
+    }
+
+    function _toastInfo(text) {
+        return _toast({ icon: 'info', title: text });
+    }
+
+    function _toastSuccess(text) {
+        return _toast({ icon: 'success', title: text });
+    }
+
+    /** Show a non-blocking "looks like an empty edit" banner-toast with
+     *  Restore + Dismiss buttons. */
+    async function _toastFreshDegenerate(backupMeta) {
+        const ledCount = (backupMeta && typeof backupMeta.ledCount === 'number')
+            ? backupMeta.ledCount : 0;
+        try {
+            const Swal = (await import('sweetalert2')).default;
+            if (signal.aborted) return;
+            const res = await Swal.fire({
+                toast: true,
+                position: 'top',
+                icon: 'info',
+                title: 'Looks like an empty edit',
+                html: `Your last good layout had <b>${ledCount} LED${ledCount === 1 ? '' : 's'}</b>.`,
+                showConfirmButton: true,
+                showCancelButton: true,
+                confirmButtonText: 'Restore previous layout',
+                cancelButtonText: 'Dismiss',
+                background: '#1a1a1a',
+                color: '#e5e7eb',
+                timer: 12000,
+                timerProgressBar: true,
+            });
+            if (res && res.isConfirmed) {
+                const json = restoreBackup();
+                if (json) {
+                    load_screenmap_data(json);
+                    renderBackupRow();
+                }
+            }
+        } catch { /* ignore */ }
+    }
+
+    /** Show "restored your last good layout" toast with an [Undo] action that
+     *  puts the degenerate copy back and reloads it. */
+    async function _toastSilentRestored(restoredMeta, degenerateJson) {
+        const ledCount = (restoredMeta && typeof restoredMeta.ledCount === 'number')
+            ? restoredMeta.ledCount : 0;
+        const when = (restoredMeta && typeof restoredMeta.savedAt === 'number')
+            ? _relativeTime(restoredMeta.savedAt) : 'recently';
+        try {
+            const Swal = (await import('sweetalert2')).default;
+            if (signal.aborted) return;
+            const res = await Swal.fire({
+                toast: true,
+                position: 'top',
+                icon: 'success',
+                title: 'Restored your last good layout',
+                html: `${ledCount} LED${ledCount === 1 ? '' : 's'}, saved ${when}`,
+                showConfirmButton: true,
+                confirmButtonText: 'Undo',
+                showCancelButton: false,
+                background: '#1a1a1a',
+                color: '#e5e7eb',
+                timer: 8000,
+                timerProgressBar: true,
+            });
+            if (res && res.isConfirmed && typeof degenerateJson === 'string') {
+                // Put the degenerate copy back as the working copy. We bypass
+                // the save gate by writing directly to the store keys.
+                try {
+                    localStorage.setItem('lm:screenmap', degenerateJson);
+                    localStorage.removeItem('lm:screenmap-meta');
+                } catch { /* ignore */ }
+                load_screenmap_data(degenerateJson);
+                renderBackupRow();
+            }
+        } catch { /* ignore */ }
+    }
+
+    /** Implements the launch-time autosave behavior matrix. Returns true
+     *  when this function loaded a screenmap (caller skips fallback). */
+    function _autoloadOnLaunch() {
+        backfillMeta();
+        const stored = getScreenmap();
+        const meta = getScreenmapMeta();
+        const backup = getBackup();
+        const STALE_MS = 30 * 60 * 1000; // 30 minutes
+        const now = Date.now();
+
+        if (stored && !isDegenerate(stored)) {
+            // Valid working copy — load it; if stale, show passive toast.
+            load_screenmap_data(stored);
+            if (meta && typeof meta.savedAt === 'number'
+                && (now - meta.savedAt) > STALE_MS) {
+                _toastInfo(`Loaded layout from ${_relativeTime(meta.savedAt)}`);
+            }
+            return true;
+        }
+
+        if (stored && isDegenerate(stored)) {
+            // Working copy is degenerate. Decide based on staleness + backup.
+            const stale = !meta || typeof meta.savedAt !== 'number'
+                || (now - meta.savedAt) > STALE_MS;
+            if (stale && backup) {
+                // Silent restore + Undo toast.
+                const restored = restoreBackup();
+                if (restored) {
+                    load_screenmap_data(restored);
+                    _toastSilentRestored(backup.meta, stored);
+                    return true;
+                }
+            } else if (!stale && backup) {
+                // Fresh degenerate — load the degenerate copy and show banner.
+                load_screenmap_data(stored);
+                _toastFreshDegenerate(backup.meta);
+                return true;
+            }
+            // Degenerate, no backup — fall through to default behavior.
+            return false;
+        }
+
+        // Missing/corrupt JSON — try backup, otherwise fall through.
+        if (backup) {
+            const restored = restoreBackup();
+            if (restored) {
+                load_screenmap_data(restored);
+                _toastSuccess('Restored your last good layout');
+                return true;
+            }
+        }
+        return false;
+    }
 
     /** Convert an HSL color string like "hsl(120, 80%, 60%)" to [r, g, b] floats 0-1. */
     function hslStringToRgb(hslStr) {
@@ -462,6 +643,7 @@ export function init(container) {
             });
             saveScreenmapMultiStrip(strips);
         } catch { /* persistence is best-effort */ }
+        try { renderBackupRow(); } catch { /* render is best-effort */ }
     }
 
     function _spliceArray(arr, idx, count) {
@@ -551,6 +733,10 @@ export function init(container) {
             _reverseStripInPlace(action.stripIdx);
         } else if (action.type === 'strip-offset') {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.newValue });
+        } else if (action.type === 'restore-backup') {
+            if (typeof action.afterJson === 'string') {
+                load_screenmap_data(action.afterJson);
+            }
         }
     }
 
@@ -588,6 +774,22 @@ export function init(container) {
             _reverseStripInPlace(action.stripIdx);
         } else if (action.type === 'strip-offset') {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.oldValue });
+        } else if (action.type === 'restore-backup') {
+            if (typeof action.beforeJson === 'string' && action.beforeJson.length > 0) {
+                load_screenmap_data(action.beforeJson);
+            } else {
+                // No prior working copy — clear back to a fresh empty state.
+                try {
+                    localStorage.removeItem('lm:screenmap');
+                    localStorage.removeItem('lm:screenmap-meta');
+                } catch { /* ignore */ }
+                stripStore.load(null);
+                screenmap_pts = [[0, 0]];
+                rawPts = [[0, 0]];
+                stripInfo = null;
+                renderStripsPanel();
+                setNeedsGeometryUpdate();
+            }
         }
     }
 
@@ -849,8 +1051,12 @@ export function init(container) {
         if (!dom_strips_list) return;
         const strips = stripStore.getStrips();
         dom_strips_list.innerHTML = '';
+        // Keep the panel visible whenever we have a backup to surface — even
+        // when no strips are currently loaded — so the user can find "Restore
+        // backup…" after pressing New.
+        const haveBackup = !!getBackup();
         if (strips.length === 0) {
-            dom_strips_panel.style.display = 'none';
+            dom_strips_panel.style.display = haveBackup ? '' : 'none';
             return;
         }
         dom_strips_panel.style.display = '';
@@ -909,6 +1115,49 @@ export function init(container) {
 
             dom_strips_list.appendChild(row);
         }
+    }
+
+    // ── Backup row inside #strips_panel ─────────────────────────────────
+    const dom_strips_backup_row = container.querySelector('#strips_backup_row');
+    const dom_strips_backup_summary = container.querySelector('#strips_backup_summary');
+    const dom_strips_btn_restore_backup = container.querySelector('#strips_btn_restore_backup');
+
+    function renderBackupRow() {
+        if (!dom_strips_backup_row) return;
+        const b = getBackup();
+        if (!b || !b.meta) {
+            dom_strips_backup_row.style.display = 'none';
+            if (dom_strips_btn_restore_backup) dom_strips_btn_restore_backup.disabled = true;
+            return;
+        }
+        const m = b.meta;
+        const stripCount = typeof m.stripCount === 'number' ? m.stripCount : 0;
+        const ledCount = typeof m.ledCount === 'number' ? m.ledCount : 0;
+        const when = typeof m.savedAt === 'number' ? _relativeTime(m.savedAt) : '';
+        const summary = `${stripCount} strip${stripCount === 1 ? '' : 's'} · ${ledCount} LED${ledCount === 1 ? '' : 's'} · ${when}`;
+        if (dom_strips_backup_summary) dom_strips_backup_summary.textContent = summary;
+        dom_strips_backup_row.style.display = '';
+        if (dom_strips_btn_restore_backup) dom_strips_btn_restore_backup.disabled = false;
+    }
+
+    function doRestoreBackupFromButton() {
+        const b = getBackup();
+        if (!b) return;
+        const beforeJson = getScreenmap();
+        const restored = restoreBackup();
+        if (!restored) return;
+        pushUndo({
+            type: 'restore-backup',
+            beforeJson: typeof beforeJson === 'string' ? beforeJson : null,
+            afterJson: restored,
+        });
+        load_screenmap_data(restored);
+        renderBackupRow();
+        _toastSuccess('Backup restored');
+    }
+
+    if (dom_strips_btn_restore_backup) {
+        dom_strips_btn_restore_backup.addEventListener('click', doRestoreBackupFromButton, { signal });
     }
 
     if (dom_strips_list) {
@@ -1347,6 +1596,7 @@ export function init(container) {
         screenmap_pts = parse_screenmap_data(text);
         if (screenmap_pts.length === 0) return;
         saveScreenmap(text);
+        try { renderBackupRow(); } catch { /* render is best-effort */ }
 
         // Parse multi-strip metadata for color-coded visualization
         try {
@@ -1389,6 +1639,11 @@ export function init(container) {
     }
 
     dom_btn_new.addEventListener('click', () => {
+        // Promote current working copy (if any) into the backup slot BEFORE
+        // we wipe it, so the prior layout stays restorable. Then drop the
+        // working copy entirely instead of writing a degenerate
+        // single-LED screenmap that would auto-load on next launch.
+        const hadBackupPromote = promoteToBackup();
         clearEditingState();
         dom_sel_preset.value = '';
         screenmap_pts = [[0, 0]];
@@ -1403,7 +1658,15 @@ export function init(container) {
         fitScale = 1;
         resetTransforms();
         setNeedsGeometryUpdate();
-        saveScreenmapPoints([[0, 0]], 0.5);
+        try {
+            localStorage.removeItem('lm:screenmap');
+            localStorage.removeItem('lm:screenmap-meta');
+            localStorage.removeItem('lm:screenmap-preset');
+        } catch { /* quota / private mode */ }
+        try { renderBackupRow(); } catch { /* render is best-effort */ }
+        if (hadBackupPromote) {
+            _toastInfo('New layout — previous layout kept as backup');
+        }
     }, { signal });
 
     function loadScreenmapFile(file) {
@@ -1469,10 +1732,12 @@ export function init(container) {
                 // Also add to context menu submenu
                 makeCtxBtn(preset.name, `load-preset:${preset.file}`, ctxLoadSubmenu);
             }
-            // Restore stored screenmap, or fall back to first preset
-            const storedScreenmap = getScreenmap();
-            if (storedScreenmap) {
-                load_screenmap_data(storedScreenmap);
+            // Restore stored screenmap (autosave/backup-aware), then fall
+            // back to the first preset if nothing was auto-loaded.
+            const autoLoaded = _autoloadOnLaunch();
+            renderBackupRow();
+            if (autoLoaded) {
+                // already loaded
             } else if (loadedPresets.length > 0) {
                 dom_sel_preset.value = loadedPresets[0].file;
                 dom_sel_preset.dispatchEvent(new Event('change'));

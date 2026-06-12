@@ -18,6 +18,9 @@ test.describe('Screenmap Maker Multi-Strip', () => {
         await page.evaluate(() => {
             localStorage.removeItem('lm:screenmap');
             localStorage.removeItem('lm:screenmap-preset');
+            localStorage.removeItem('lm:screenmap-meta');
+            localStorage.removeItem('lm:screenmap-backup');
+            localStorage.removeItem('lm:screenmap-backup-meta');
         });
     });
 
@@ -134,11 +137,17 @@ test.describe('Screenmap Maker Multi-Strip', () => {
     });
 
     test('renaming a strip updates exported JSON and localStorage key', async ({ page }) => {
-        // Take snapshot and add a point to strip1
+        // Take snapshot and add several points to strip1.
+        // The shared screenmap-store refuses degenerate autosaves (<4 LEDs),
+        // so seed enough points for the persisted-localStorage assertion below
+        // to find a real autosave entry.
         await page.locator('#btn_snapshot').click();
         await page.waitForTimeout(500);
         const canvas = page.locator('canvas');
         await canvas.click({ position: { x: 120, y: 120 } });
+        await canvas.click({ position: { x: 140, y: 120 } });
+        await canvas.click({ position: { x: 160, y: 120 } });
+        await canvas.click({ position: { x: 180, y: 120 } });
         await page.waitForTimeout(200);
 
         // Rename strip1 -> left_panel via the Rename button (SweetAlert2 prompt)
@@ -160,7 +169,7 @@ test.describe('Screenmap Maker Multi-Strip', () => {
         const json = JSON.parse(text);
         expect(json.map.left_panel).toBeTruthy();
         expect(json.map.strip1).toBeUndefined();
-        expect(json.map.left_panel.x.length).toBe(1);
+        expect(json.map.left_panel.x.length).toBe(4);
 
         // Persisted localStorage screenmap also uses the renamed key
         const stored = await page.evaluate(() => localStorage.getItem('lm:screenmap'));
