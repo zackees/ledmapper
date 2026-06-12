@@ -30,6 +30,10 @@
 </div>
 <main id="main">
     <!-- Canvas target -->
+    <div id="hint_strip" class="hint-strip" role="status" aria-live="polite">
+        <span id="hint_strip_text" class="hint-strip-text"></span>
+        <button id="hint_strip_help" type="button" class="hint-strip-help" title="Keyboard help (?, F1)">? Help</button>
+    </div>
     <div id="transform-overlay" class="transform-overlay">
         <details class="accordion" open>
             <summary class="cursor-pointer select-none text-sm font-medium text-lm-text py-1">Screenmap</summary>
@@ -46,6 +50,7 @@
         <details id="panel_palette" class="accordion">
             <summary class="cursor-pointer select-none text-sm font-medium text-lm-text py-1">Add Panel</summary>
             <div class="pt-2 flex flex-col gap-2">
+                <button id="pp_open_dialog" type="button" class="self-start py-1 px-2 bg-lm-surface-1 text-lm-accent border border-lm-border rounded cursor-pointer text-xs hover:underline" title="Insert panel… (I)">Open Insert dialog…</button>
                 <div id="panel_catalog_buttons" class="flex flex-wrap gap-1"></div>
                 <div class="transform-row flex flex-wrap items-center gap-x-3 gap-y-1">
                     <label>Wiring

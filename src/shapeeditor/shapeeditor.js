@@ -34,6 +34,8 @@ import { StripStore } from './strips-model.js';
 import { Selection } from './selection.js';
 import { PANEL_CATALOG, getCatalogEntry, generatePanelPoints } from './panel-catalog.js';
 import { snapToGrid } from './grid-snap.js';
+import { hintTextFor } from './hints.js';
+import { parsePastedScreenmap, planPasteMerge } from './paste-parse.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './shapeeditor.css?url';
 
@@ -272,7 +274,12 @@ export function init(container) {
     const stripStore = new StripStore();
     let stripInfo = null; // multi-strip parse result (null until screenmap loaded)
     const selection = new Selection();
-    selection.setOnChange(() => { setNeedsGeometryUpdate(); renderStripsPanel(); });
+    selection.setOnChange(() => {
+        setNeedsGeometryUpdate();
+        renderStripsPanel();
+        _updateHintStrip();
+        _maybeShowGestureNotice();
+    });
 
     // Test/debug hook: expose strip state and computed Start/End labels so
     // E2E tests can assert on canvas-drawn labels that have no DOM presence.
@@ -293,6 +300,73 @@ export function init(container) {
             const b = getBackup();
             if (!b) return null;
             return { meta: b.meta, hasJson: typeof b.json === 'string' && b.json.length > 0 };
+        },
+        getHintText: () => (hintStripTextEl ? hintStripTextEl.textContent : ''),
+        openHelp: () => { _openHelpOverlay(); },
+        getPointEditMode: () => pointEditStripIdx,
+        enterPointEditMode: (i) => {
+            if (typeof i !== 'number' || i < 0) return;
+            const strips = stripStore.getStrips();
+            if (i >= strips.length) return;
+            selection.selectStrip(i);
+            pointEditStripIdx = i;
+            _updateHintStrip();
+        },
+        exitPointEditMode: () => { pointEditStripIdx = null; _updateHintStrip(); },
+        // Get the per-LED screenmap coords of a strip (debug for group-drag tests)
+        getStripPoints: (i) => {
+            const strips = stripStore.getStrips();
+            if (i < 0 || i >= strips.length) return null;
+            const s = strips[i];
+            const out = [];
+            for (let k = s.offset; k < s.offset + s.count; k++) {
+                out.push([screenmap_pts[k][0], screenmap_pts[k][1]]);
+            }
+            return out;
+        },
+        // Get a flat LED's transformed canvas coords (for synthetic drag tests).
+        getLedCanvasPos: (flatIdx) => {
+            if (flatIdx < 0 || flatIdx >= lastTransformedPts.length) return null;
+            const [x, y] = lastTransformedPts[flatIdx];
+            const [cx, cy] = toCanvasCoords(x, y);
+            const rect = overlayCanvas.getBoundingClientRect();
+            // Convert internal canvas px → client px
+            const clientX = rect.left + (cx / canvasW) * rect.width;
+            const clientY = rect.top + (cy / canvasH) * rect.height;
+            return { clientX, clientY, canvasX: cx, canvasY: cy };
+        },
+        // Paste flow hooks (Phase 3)
+        pasteScreenmapText: (text) => _enterPasteFromText(text || ''),
+        getPasteState: () => (pasteState
+            ? { count: pasteState.strips.length, names: pasteState.strips.map((s) => s.name) }
+            : null),
+        commitPasteAt: (canvasX, canvasY) => _commitPasteAt(canvasX, canvasY),
+        cancelPaste: () => _cancelPaste(),
+        copySelectedStrip: () => _copySelectedStripToClipboard(),
+        // Insert dialog hooks (Phase 4)
+        openInsertDialog: () => _openInsertDialog(),
+        submitInsertDialog: (opts) => _submitInsertDialog(opts),
+        // Touch (Phase 5) — synchronously execute the long-press action at
+        // the given canvas-internal coords without waiting 600ms in tests.
+        simulateLongPress: (canvasX, canvasY) => {
+            const rect = overlayCanvas.getBoundingClientRect();
+            const clientX = rect.left + (canvasX / canvasW) * rect.width;
+            const clientY = rect.top + (canvasY / canvasH) * rect.height;
+            _doLongPress(canvasX, canvasY, clientX, clientY);
+            return true;
+        },
+        getCamZoom: () => camZoom,
+        getCamPan: () => ({ x: camPanX, y: camPanY }),
+        // Drive a synthetic L-drag from (flatIdx) by (dxClient, dyClient) client px.
+        simulateLedDrag: (flatIdx, dxClient, dyClient, opts) => {
+            const pos = window.__shapeeditorDebug.getLedCanvasPos(flatIdx);
+            if (!pos) return false;
+            const altKey = !!(opts && opts.altKey);
+            const evtOpts = (x, y) => ({ clientX: x, clientY: y, button: 0, bubbles: true, altKey });
+            overlayCanvas.dispatchEvent(new MouseEvent('mousedown', evtOpts(pos.clientX, pos.clientY)));
+            overlayCanvas.dispatchEvent(new MouseEvent('mousemove', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
+            overlayCanvas.dispatchEvent(new MouseEvent('mouseup', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
+            return true;
         },
     };
 
@@ -534,11 +608,27 @@ export function init(container) {
     let isDragging = false;
     let dragStartCanvasX = 0, dragStartCanvasY = 0;
     let dragStartScreenmapPt = null, dragStartRawPt = null;
+
+    // ── Point-edit mode + strip group-drag state ───────────────────────
+    // pointEditMode tracks the strip the user double-clicked into; while
+    // active, a plain LED drag moves only that single LED (per the plan).
+    let pointEditStripIdx = null;
+    // Group drag for the selected strip (plain L-drag on an LED in non-point-edit mode)
+    let stripDragActive = false;
+    let stripDragIdx = -1;
+    let stripDragStartScreenmap = null; // array of [x,y] for that strip
+    let stripDragStartRaw = null;       // array of [x,y] for that strip
+    let stripDragLastSdx = 0, stripDragLastSdy = 0;
+    // Alt-drag quasimode: force single-point move regardless of mode
+    let altQuasimode = false;
     let ctxMenu, ctxMenuIdx = -1;
     let ctxBtnSave, ctxBtnLoadScreenmap, ctxLoadSubmenu;
     let ctxLoadImageInput;
     let ctxFileOps, ctxFileOpsSep;
     let ctxBtnDelete, ctxBtnInsertBetween, ctxBtnInsertFwd, ctxBtnInsertBack;
+    let ctxBtnCopyStrip;
+    let hintStripTextEl, hintStripHelpBtn;
+    let _autoOpenHelpScheduled = false;
     let highlightedEdgeIdx = -1; // edge index highlighted for "insert between"
     let loadedPresets = []; // populated by manifest fetch
 
@@ -733,6 +823,10 @@ export function init(container) {
             _reverseStripInPlace(action.stripIdx);
         } else if (action.type === 'strip-offset') {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.newValue });
+        } else if (action.type === 'strip-translate') {
+            _applyStripTranslate(action.stripIdx, action.sdx, action.sdy);
+        } else if (action.type === 'paste-strips') {
+            _doPasteStrips(action);
         } else if (action.type === 'restore-backup') {
             if (typeof action.afterJson === 'string') {
                 load_screenmap_data(action.afterJson);
@@ -774,6 +868,10 @@ export function init(container) {
             _reverseStripInPlace(action.stripIdx);
         } else if (action.type === 'strip-offset') {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.oldValue });
+        } else if (action.type === 'strip-translate') {
+            _applyStripTranslate(action.stripIdx, -action.sdx, -action.sdy);
+        } else if (action.type === 'paste-strips') {
+            _undoPasteStrips(action);
         } else if (action.type === 'restore-backup') {
             if (typeof action.beforeJson === 'string' && action.beforeJson.length > 0) {
                 load_screenmap_data(action.beforeJson);
@@ -801,6 +899,8 @@ export function init(container) {
             || action.type === 'panel-place'
             || action.type === 'strip-reverse'
             || action.type === 'strip-offset'
+            || action.type === 'strip-translate'
+            || action.type === 'paste-strips'
         );
     }
 
@@ -971,6 +1071,12 @@ export function init(container) {
     function clearEditingState() {
         selectedIdx = -1;
         selection.clear();
+        pointEditStripIdx = null;
+        stripDragActive = false;
+        stripDragIdx = -1;
+        stripDragStartScreenmap = null;
+        stripDragStartRaw = null;
+        altQuasimode = false;
         isDragging = false;
         isPanning = false;
         rightButtonDown = false;
@@ -1018,6 +1124,11 @@ export function init(container) {
         ctxBtnInsertBack.style.display = showShiftInsert ? 'block' : 'none';
         ctxBtnInsertBack.disabled = !canInsert;
         ctxBtnInsertBack.style.opacity = canInsert ? '1' : '0.4';
+        // Copy strip only when a strip is selected
+        if (ctxBtnCopyStrip) {
+            const sIdx = selection.getStripIdx();
+            ctxBtnCopyStrip.style.display = (sIdx !== null && sIdx >= 0) ? 'block' : 'none';
+        }
         // Position — keep on screen
         ctxMenu.style.left = clientX + 'px';
         ctxMenu.style.top = clientY + 'px';
@@ -1401,7 +1512,7 @@ export function init(container) {
         const dpr = window.devicePixelRatio || 1;
         overlayCanvas.width = width * dpr;
         overlayCanvas.height = height * dpr;
-        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;touch-action:none;';
         wrapper.appendChild(overlayCanvas);
         overlayCtx = overlayCanvas.getContext('2d');
         overlayCtx.scale(dpr, dpr);
@@ -1468,11 +1579,21 @@ export function init(container) {
 
         ctxFileOpsSep = makeCtxSeparator();
 
+        // ── Discoverability entry points ──
+        makeCtxBtn('Insert panel…', 'insert-panel');
+        makeCtxBtn('Paste screenmap', 'paste-screenmap');
+        ctxBtnCopyStrip = makeCtxBtn('Copy strip', 'copy-strip');
+
         // ── Point operations ──
         ctxBtnDelete = makeCtxBtn('Delete Point', 'delete');
         ctxBtnInsertBetween = makeCtxBtn('Insert between', 'insert-between');
         ctxBtnInsertFwd = makeCtxBtn('Insert, shift forward', 'insert-forward');
         ctxBtnInsertBack = makeCtxBtn('Insert, shift back', 'insert-back');
+
+        // Trailing help entry
+        makeCtxSeparator();
+        makeCtxBtn('Keyboard help', 'kbd-help');
+
         document.body.appendChild(ctxMenu);
 
         // Hidden file input for "Upload file…" submenu item
@@ -1517,6 +1638,14 @@ export function init(container) {
                 insertShiftForward();
             } else if (action === 'insert-back') {
                 insertShiftBack();
+            } else if (action === 'insert-panel') {
+                _openInsertDialog();
+            } else if (action === 'paste-screenmap') {
+                _pasteFromClipboardAPI();
+            } else if (action === 'copy-strip') {
+                _copySelectedStripToClipboard();
+            } else if (action === 'kbd-help') {
+                _openHelpOverlay();
             }
             hideContextMenu();
         }, { signal });
@@ -1535,6 +1664,7 @@ export function init(container) {
         overlayCanvas.addEventListener('mouseup', onMouseUp, { signal });
         overlayCanvas.addEventListener('mouseleave', onMouseLeave, { signal });
         overlayCanvas.addEventListener('contextmenu', onContextMenu, { signal });
+        overlayCanvas.addEventListener('dblclick', onDoubleClick, { signal });
         overlayCanvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             const zoomFactor = Math.pow(2, -e.deltaY / 3000);
@@ -1542,11 +1672,7 @@ export function init(container) {
             setNeedsRender();
         }, { passive: false, signal });
 
-        overlayCanvas.addEventListener('touchmove', (e) => {
-            if (e.touches.length) onMouseMove(e.touches[0]);
-        }, { passive: true, signal });
-        overlayCanvas.addEventListener('touchend', onMouseLeave, { passive: true, signal });
-        overlayCanvas.addEventListener('touchcancel', onMouseLeave, { passive: true, signal });
+        _wireTouchHandlers(signal);
 
         const labelStyle = 'position:absolute;pointer-events:none;color:#fff;font:bold 13px/1 "Outfit",system-ui,sans-serif;text-shadow:0 0 3px #000,0 0 3px #000;';
 
@@ -1559,7 +1685,159 @@ export function init(container) {
         placeholderDiv.textContent = 'Upload a screenmap file to begin';
         wrapper.appendChild(placeholderDiv);
 
+        // ── Hint strip (lives inside #main, outside the renderer wrapper so
+        // it sits above the canvas and is part of the tool's DOM) ──
+        hintStripTextEl = container.querySelector('#hint_strip_text');
+        hintStripHelpBtn = container.querySelector('#hint_strip_help');
+        if (hintStripHelpBtn) {
+            hintStripHelpBtn.addEventListener('click', () => {
+                _openHelpOverlay();
+            }, { signal });
+        }
+        _updateHintStrip();
+
         buildGrid(width, height);
+    }
+
+    // ── Hint strip + help overlay ─────────────────────────────────────────
+
+    function _currentHintState() {
+        const selStripIdx = selection.getStripIdx();
+        const strips = stripStore.getStrips();
+        let selectedStripName = null;
+        if (selStripIdx !== null && selStripIdx >= 0 && selStripIdx < strips.length) {
+            selectedStripName = strips[selStripIdx].name;
+        }
+        let pointEditStripName = '';
+        if (pointEditStripIdx !== null && pointEditStripIdx >= 0 && pointEditStripIdx < strips.length) {
+            pointEditStripName = strips[pointEditStripIdx].name;
+        }
+        return {
+            empty: !stripInfo || stripInfo.strips.length === 0
+                || (stripInfo.strips.length === 1 && stripInfo.strips[0].count <= 1
+                    && stripInfo.totalCount <= 1),
+            placing: !!placingState,
+            placingLabel: placingState && placingState.entry ? placingState.entry.label : '',
+            pasting: !!pasteState,
+            pastingCount: pasteState ? pasteState.strips.length : 0,
+            pointEditMode: pointEditStripIdx !== null,
+            pointEditStripName,
+            selectedStripName,
+        };
+    }
+
+    function _updateHintStrip() {
+        if (!hintStripTextEl) return;
+        hintStripTextEl.textContent = hintTextFor(_currentHintState());
+    }
+
+    async function _openHelpOverlay() {
+        try {
+            const Swal = (await import('sweetalert2')).default;
+            if (signal.aborted) return;
+            const dismissed = localStorage.getItem('lm:shapeeditor-helpDismissed') === '1';
+            const html = `
+                <div style="text-align:left;font:13px/1.45 'Outfit',system-ui,sans-serif;color:#e5e7eb;display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+                    <div>
+                        <h3 style="margin:0 0 6px 0;font-size:14px;color:#93c5fd;">Mouse</h3>
+                        <ul style="margin:0;padding-left:18px;">
+                            <li>Drag canvas: pan</li>
+                            <li>R-drag: zoom</li>
+                            <li>Click LED: select its strip</li>
+                            <li>Drag LED: move whole strip</li>
+                            <li>Alt + drag LED: move single point</li>
+                            <li>Double-click LED: enter point-edit</li>
+                            <li>Drag inside box: move selection</li>
+                            <li>Corner/edge/rotate handles: scale &amp; rotate layout</li>
+                            <li>Shift + click edge: insert between</li>
+                            <li>Ctrl + click: extend (append LED)</li>
+                            <li>Right-click: context menu</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 style="margin:0 0 6px 0;font-size:14px;color:#93c5fd;">Keyboard</h3>
+                        <ul style="margin:0;padding-left:18px;">
+                            <li><b>I</b> — Insert panel</li>
+                            <li><b>Ctrl+V</b> — Paste screenmap</li>
+                            <li><b>?</b> / <b>F1</b> — This help</li>
+                            <li><b>Ctrl+Z</b> / <b>Ctrl+Y</b> — Undo / Redo</li>
+                            <li><b>Delete</b> — Remove selection</li>
+                            <li><b>Esc</b> — Cancel / exit point-edit</li>
+                        </ul>
+                        <h3 style="margin:12px 0 6px 0;font-size:14px;color:#93c5fd;">Touch</h3>
+                        <ul style="margin:0;padding-left:18px;">
+                            <li>Tap LED: select strip</li>
+                            <li>Drag LED: move whole strip</li>
+                            <li>Drag empty space: pan</li>
+                            <li>Long-press LED: enter point-edit</li>
+                            <li>Long-press empty: context menu</li>
+                            <li>Two-finger drag: pan</li>
+                            <li>Pinch: zoom</li>
+                        </ul>
+                    </div>
+                </div>
+                <div style="margin-top:14px;text-align:left;">
+                    <label style="font-size:12px;color:#9ca3af;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+                        <input id="help_dont_show" type="checkbox" ${dismissed ? 'checked' : ''}>
+                        Don't show on launch
+                    </label>
+                </div>
+            `;
+            const res = await Swal.fire({
+                title: 'ScreenMap Editor — Keyboard help',
+                html,
+                width: 640,
+                background: '#1a1a1a',
+                color: '#e5e7eb',
+                confirmButtonText: 'Got it',
+                showCloseButton: true,
+                focusConfirm: false,
+                preConfirm: () => {
+                    const cb = document.getElementById('help_dont_show');
+                    return cb ? !!cb.checked : false;
+                },
+            });
+            const dontShow = res && (res.value === true || res.value === false ? res.value : false);
+            try {
+                if (dontShow) {
+                    localStorage.setItem('lm:shapeeditor-helpDismissed', '1');
+                }
+            } catch { /* persistence is best-effort */ }
+        } catch { /* swal may fail in headless edge cases */ }
+    }
+
+    let _gestureNoticeShown = false;
+    function _maybeShowGestureNotice() {
+        if (_gestureNoticeShown) return;
+        const sIdx = selection.getStripIdx();
+        if (sIdx === null || sIdx < 0) return;
+        try {
+            if (localStorage.getItem('lm:shapeeditor-gestureNotice') === '1') {
+                _gestureNoticeShown = true;
+                return;
+            }
+        } catch { return; }
+        // Don't stack on top of the first-run help modal — skip if the
+        // dismissal key is missing (help is about to auto-open or did).
+        try {
+            if (localStorage.getItem('lm:shapeeditor-helpDismissed') !== '1') return;
+        } catch { return; }
+        _gestureNoticeShown = true;
+        try { localStorage.setItem('lm:shapeeditor-gestureNotice', '1'); } catch { /* ignore */ }
+        _toastInfo('New: drag moves the strip — double-click to edit points');
+    }
+
+    function _maybeAutoOpenHelpOnLaunch() {
+        if (_autoOpenHelpScheduled) return;
+        _autoOpenHelpScheduled = true;
+        try {
+            if (localStorage.getItem('lm:shapeeditor-helpDismissed') === '1') return;
+        } catch { return; }
+        // Defer to next tick so any preset autoload finishes first
+        setTimeout(() => {
+            if (signal.aborted) return;
+            _openHelpOverlay();
+        }, 250);
     }
 
     function buildGrid(width, height) {
@@ -1742,9 +2020,12 @@ export function init(container) {
                 dom_sel_preset.value = loadedPresets[0].file;
                 dom_sel_preset.dispatchEvent(new Event('change'));
             }
+            _updateHintStrip();
+            _maybeAutoOpenHelpOnLaunch();
         } catch (e) {
             console.log("Failed to load preset manifest:", e);
             dom_sel_preset.innerHTML = '<option value="">No presets available</option>';
+            _maybeAutoOpenHelpOnLaunch();
         }
     }
 
@@ -2201,7 +2482,7 @@ export function init(container) {
             bgImageBBox = null;
         }
 
-        if (lastTransformedPts.length === 0) { ptsBBox = null; drawBgGizmoHandles(); drawRuler(); _drawPlacingGhost(); return; }
+        if (lastTransformedPts.length === 0) { ptsBBox = null; drawBgGizmoHandles(); drawRuler(); _drawPlacingGhost(); _drawPasteGhost(); return; }
 
         const pts = lastTransformedPts.map(([x, y]) => toCanvasCoords(x, y));
 
@@ -2434,6 +2715,7 @@ export function init(container) {
         drawBgGizmoHandles();
         drawRuler();
         _drawPlacingGhost();
+        _drawPasteGhost();
     }
 
     function fillCircle(x, y, diameter, color) {
@@ -2926,6 +3208,10 @@ export function init(container) {
             _cancelPlacing();
             return;
         }
+        if (pasteState) {
+            _cancelPaste();
+            return;
+        }
         // If right-click was used for zoom dragging, skip the context menu
         const wasMoved = rightClickMoved;
         rightClickMoved = false;
@@ -2973,6 +3259,22 @@ export function init(container) {
                 e.preventDefault();
                 const [cx, cy] = getCanvasCoords(e);
                 _commitPlacingAt(cx, cy);
+                return;
+            }
+            return;
+        }
+
+        // Paste-pending ghost commit / cancel
+        if (pasteState) {
+            if (e.button === 2) {
+                e.preventDefault();
+                _cancelPaste();
+                return;
+            }
+            if (e.button === 0) {
+                e.preventDefault();
+                const [cx, cy] = getCanvasCoords(e);
+                _commitPasteAt(cx, cy);
                 return;
             }
             return;
@@ -3058,12 +3360,35 @@ export function init(container) {
             syncPointSelection(idx);
             highlightedEdgeIdx = -1;
             setNeedsGeometryUpdate(); // color update for selection
-            isDragging = true;
             dragStartCanvasX = cx;
             dragStartCanvasY = cy;
             dragStartScreenmapPt = [...screenmap_pts[idx]];
             dragStartRawPt = [...rawPts[idx]];
-            overlayCanvas.style.cursor = 'grabbing';
+
+            // Alt quasimode = single-point move regardless of mode.
+            altQuasimode = !!e.altKey;
+            const hitStripIdx = stripStore.findStripForIndex(idx);
+            const inPointEdit = pointEditStripIdx !== null && pointEditStripIdx === hitStripIdx;
+
+            if (altQuasimode || inPointEdit) {
+                // Single-point drag (existing behavior)
+                isDragging = true;
+                overlayCanvas.style.cursor = 'grabbing';
+            } else {
+                // Group drag for the whole strip
+                stripDragActive = true;
+                stripDragIdx = hitStripIdx;
+                const strip = stripInfo.strips[hitStripIdx];
+                stripDragStartScreenmap = [];
+                stripDragStartRaw = [];
+                for (let k = strip.offset; k < strip.offset + strip.count; k++) {
+                    stripDragStartScreenmap.push([screenmap_pts[k][0], screenmap_pts[k][1]]);
+                    stripDragStartRaw.push([rawPts[k][0], rawPts[k][1]]);
+                }
+                stripDragLastSdx = 0;
+                stripDragLastSdy = 0;
+                overlayCanvas.style.cursor = 'grabbing';
+            }
             return;
         }
 
@@ -3114,6 +3439,7 @@ export function init(container) {
 
         // Priority 5: Pan camera (outside bbox)
         if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
+        if (pointEditStripIdx !== null) { pointEditStripIdx = null; _updateHintStrip(); }
         selection.clear();
         isPanning = true;
         panStartX = cx;
@@ -3127,6 +3453,12 @@ export function init(container) {
         if (placingState) {
             const [cx, cy] = getCanvasCoords(e);
             _updateGhostFromCanvas(cx, cy);
+            overlayCanvas.style.cursor = 'crosshair';
+            return;
+        }
+        if (pasteState) {
+            const [cx, cy] = getCanvasCoords(e);
+            _updatePasteGhostFromCanvas(cx, cy);
             overlayCanvas.style.cursor = 'crosshair';
             return;
         }
@@ -3204,6 +3536,28 @@ export function init(container) {
                 dragStartRawPt[0] + sdx / fitScale,
                 dragStartRawPt[1] + sdy / fitScale,
             ];
+            setNeedsGeometryUpdate();
+            return;
+        }
+
+        if (stripDragActive && stripDragIdx >= 0 && stripInfo) {
+            const dx = cx - dragStartCanvasX;
+            const dy = cy - dragStartCanvasY;
+            const [sdx, sdy] = canvasDeltaToScreenmapDelta(dx, dy);
+            const strip = stripInfo.strips[stripDragIdx];
+            for (let k = 0; k < strip.count; k++) {
+                const base = strip.offset + k;
+                screenmap_pts[base] = [
+                    stripDragStartScreenmap[k][0] + sdx,
+                    stripDragStartScreenmap[k][1] + sdy,
+                ];
+                rawPts[base] = [
+                    stripDragStartRaw[k][0] + sdx / fitScale,
+                    stripDragStartRaw[k][1] + sdy / fitScale,
+                ];
+            }
+            stripDragLastSdx = sdx;
+            stripDragLastSdy = sdy;
             setNeedsGeometryUpdate();
             return;
         }
@@ -3346,8 +3700,261 @@ export function init(container) {
                 });
             }
             isDragging = false;
+            altQuasimode = false;
             overlayCanvas.style.cursor = 'grab';
+            return;
         }
+
+        if (stripDragActive) {
+            _finalizeStripDrag();
+            overlayCanvas.style.cursor = 'grab';
+            return;
+        }
+    }
+
+    function _finalizeStripDrag() {
+        if (!stripDragActive) return;
+        const sdx = stripDragLastSdx;
+        const sdy = stripDragLastSdy;
+        if (sdx !== 0 || sdy !== 0) {
+            pushUndo({
+                type: 'strip-translate',
+                stripIdx: stripDragIdx,
+                sdx,
+                sdy,
+            });
+            _persistMultiStrip();
+        }
+        stripDragActive = false;
+        stripDragIdx = -1;
+        stripDragStartScreenmap = null;
+        stripDragStartRaw = null;
+        stripDragLastSdx = 0;
+        stripDragLastSdy = 0;
+    }
+
+    function _applyStripTranslate(stripIdx, sdx, sdy) {
+        if (!stripInfo || stripIdx < 0 || stripIdx >= stripInfo.strips.length) return;
+        const strip = stripInfo.strips[stripIdx];
+        for (let k = strip.offset; k < strip.offset + strip.count; k++) {
+            screenmap_pts[k] = [screenmap_pts[k][0] + sdx, screenmap_pts[k][1] + sdy];
+            rawPts[k] = [rawPts[k][0] + sdx / fitScale, rawPts[k][1] + sdy / fitScale];
+        }
+    }
+
+    function onDoubleClick(e) {
+        if (placingState) return;
+        if (e.button !== 0) return;
+        if (screenmap_pts.length === 0) return;
+        const [cx, cy] = getCanvasCoords(e);
+        const idx = hitTestLED(cx, cy);
+        if (idx < 0) return;
+        const sIdx = stripStore.findStripForIndex(idx);
+        if (sIdx < 0) return;
+        if (pointEditStripIdx === sIdx) {
+            // Double-click again exits point-edit
+            pointEditStripIdx = null;
+        } else {
+            pointEditStripIdx = sIdx;
+            selection.selectStrip(sIdx);
+        }
+        _updateHintStrip();
+        setNeedsGeometryUpdate();
+    }
+
+    // ── Touch handling (Phase 5) ──────────────────────────────────────────
+    // Single-touch is forwarded as a synthesized left-mouse gesture. A
+    // long-press timer (600ms / 10px tolerance) consumes the gesture and
+    // either enters point-edit mode on an LED or pops the context menu on
+    // empty space. A second simultaneous touch cancels any single-touch
+    // gesture in progress and takes over with two-finger pan/pinch.
+    const LONG_PRESS_MS = 600;
+    const LONG_PRESS_MOVE_TOL = 10; // client px
+    let touchMode = 'idle'; // 'idle' | 'single' | 'multi' | 'longpress-fired'
+    let touchStartClientX = 0, touchStartClientY = 0;
+    let touchStartCanvasX = 0, touchStartCanvasY = 0;
+    let longPressTimer = null;
+    let multiPanStartCamPanX = 0, multiPanStartCamPanY = 0;
+    let multiPinchStartZoom = 1;
+    let multiStartCentroid = null; // [clientX, clientY]
+    let multiStartDist = 0;
+
+    function _clearLongPress() {
+        if (longPressTimer !== null) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+    }
+
+    function _synth(type, clientX, clientY, opts = {}) {
+        const init = { clientX, clientY, button: opts.button || 0, bubbles: true };
+        const evt = new MouseEvent(type, init);
+        if (type === 'mousedown') onMouseDown(evt);
+        else if (type === 'mousemove') onMouseMove(evt);
+        else if (type === 'mouseup') onMouseUp(evt);
+    }
+
+    function _cancelSingleTouchGesture() {
+        // Cancel any in-flight single-touch drag cleanly (no undo entry).
+        if (stripDragActive) {
+            stripDragActive = false;
+            stripDragIdx = -1;
+            stripDragStartScreenmap = null;
+            stripDragStartRaw = null;
+            stripDragLastSdx = 0;
+            stripDragLastSdy = 0;
+        }
+        if (isDragging) {
+            isDragging = false;
+            altQuasimode = false;
+        }
+        if (isPanning) {
+            isPanning = false;
+        }
+        if (gizmoActive) {
+            gizmoActive = null;
+            gizmoDragStart = null;
+        }
+        if (rulerDrag) {
+            rulerDrag = null;
+            rulerDragStart = null;
+        }
+        overlayCanvas.style.cursor = 'default';
+    }
+
+    function _doLongPress(canvasX, canvasY, clientX, clientY) {
+        // Cancel the pending single-touch synth gesture so it does not also
+        // commit a drag.
+        _cancelSingleTouchGesture();
+        if (screenmap_pts.length === 0) {
+            // Empty: open context menu
+            showContextMenu(clientX || 0, clientY || 0, -1, -1, false);
+            touchMode = 'longpress-fired';
+            return;
+        }
+        const idx = hitTestLED(canvasX, canvasY);
+        if (idx >= 0) {
+            const sIdx = stripStore.findStripForIndex(idx);
+            if (sIdx >= 0) {
+                selection.selectStrip(sIdx);
+                pointEditStripIdx = sIdx;
+                _updateHintStrip();
+                setNeedsGeometryUpdate();
+                _toastInfo(`Editing points in "${stripStore.getStrips()[sIdx].name}"`);
+            }
+        } else {
+            showContextMenu(clientX || 0, clientY || 0, -1, -1, false);
+        }
+        touchMode = 'longpress-fired';
+    }
+
+    function _wireTouchHandlers(signal) {
+        overlayCanvas.addEventListener('touchstart', (e) => {
+            // Cancel scrolling/zooming on the page during canvas touches
+            e.preventDefault();
+            if (e.touches.length === 1) {
+                const t = e.touches[0];
+                touchMode = 'single';
+                touchStartClientX = t.clientX;
+                touchStartClientY = t.clientY;
+                const [cx, cy] = getCanvasCoords(t);
+                touchStartCanvasX = cx;
+                touchStartCanvasY = cy;
+                // Start long-press timer
+                _clearLongPress();
+                longPressTimer = setTimeout(() => {
+                    longPressTimer = null;
+                    if (touchMode !== 'single') return;
+                    _doLongPress(touchStartCanvasX, touchStartCanvasY, touchStartClientX, touchStartClientY);
+                }, LONG_PRESS_MS);
+                // Forward as a synthesized mousedown for the drag/select path
+                _synth('mousedown', t.clientX, t.clientY);
+            } else if (e.touches.length >= 2) {
+                // Cancel any single-touch state cleanly
+                _clearLongPress();
+                if (touchMode === 'single') {
+                    _cancelSingleTouchGesture();
+                }
+                touchMode = 'multi';
+                const t0 = e.touches[0], t1 = e.touches[1];
+                multiStartCentroid = [(t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2];
+                const dxs = t0.clientX - t1.clientX;
+                const dys = t0.clientY - t1.clientY;
+                multiStartDist = Math.hypot(dxs, dys) || 1;
+                multiPanStartCamPanX = camPanX;
+                multiPanStartCamPanY = camPanY;
+                multiPinchStartZoom = camZoom;
+            }
+        }, { passive: false, signal });
+
+        overlayCanvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (touchMode === 'longpress-fired') return;
+            if (touchMode === 'single' && e.touches.length === 1) {
+                const t = e.touches[0];
+                const ddx = t.clientX - touchStartClientX;
+                const ddy = t.clientY - touchStartClientY;
+                if (Math.hypot(ddx, ddy) > LONG_PRESS_MOVE_TOL) _clearLongPress();
+                _synth('mousemove', t.clientX, t.clientY);
+                return;
+            }
+            if (touchMode === 'multi' && e.touches.length >= 2) {
+                const t0 = e.touches[0], t1 = e.touches[1];
+                const cx = (t0.clientX + t1.clientX) / 2;
+                const cy = (t0.clientY + t1.clientY) / 2;
+                const dx = cx - multiStartCentroid[0];
+                const dy = cy - multiStartCentroid[1];
+                // Pan: centroid delta in client px -> canvas px -> world px
+                const rect = overlayCanvas.getBoundingClientRect();
+                const sx = canvasW / rect.width;
+                const sy = canvasH / rect.height;
+                camPanX = multiPanStartCamPanX + (dx * sx) / camZoom;
+                camPanY = multiPanStartCamPanY + (dy * sy) / camZoom;
+                // Pinch: distance ratio
+                const dxs = t0.clientX - t1.clientX;
+                const dys = t0.clientY - t1.clientY;
+                const dist = Math.hypot(dxs, dys) || 1;
+                const ratio = dist / multiStartDist;
+                camZoom = Math.max(0.1, Math.min(10, multiPinchStartZoom * ratio));
+                setNeedsRender();
+            }
+        }, { passive: false, signal });
+
+        overlayCanvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            _clearLongPress();
+            if (touchMode === 'longpress-fired') {
+                // Discard the residual touch — drag was already cancelled.
+                if (e.touches.length === 0) {
+                    touchMode = 'idle';
+                }
+                return;
+            }
+            if (touchMode === 'single') {
+                // Forward as mouseup to commit / select
+                const t = (e.changedTouches && e.changedTouches[0]);
+                if (t) {
+                    _synth('mouseup', t.clientX, t.clientY);
+                }
+                touchMode = 'idle';
+                return;
+            }
+            if (touchMode === 'multi') {
+                if (e.touches.length === 0) {
+                    touchMode = 'idle';
+                } else if (e.touches.length === 1) {
+                    // Demote to single but don't restart drag — leave idle so
+                    // the user can lift their second finger without surprises.
+                    touchMode = 'idle';
+                }
+            }
+        }, { passive: false, signal });
+
+        overlayCanvas.addEventListener('touchcancel', () => {
+            _clearLongPress();
+            _cancelSingleTouchGesture();
+            touchMode = 'idle';
+        }, { passive: true, signal });
     }
 
     function onMouseLeave() {
@@ -3385,6 +3992,10 @@ export function init(container) {
                 });
             }
             isDragging = false;
+            altQuasimode = false;
+        }
+        if (stripDragActive) {
+            _finalizeStripDrag();
         }
         isHovering = false;
         tooltipLedIdx = -1;
@@ -3420,12 +4031,52 @@ export function init(container) {
             e.preventDefault();
             return;
         }
-        // Escape: cancel panel placement, dismiss bg delete confirm, or deselect
+        // Escape: cancel panel placement, dismiss bg delete confirm, exit point-edit, or deselect
         if (e.key === 'Escape') {
             if (placingState) { _cancelPlacing(); e.preventDefault(); return; }
+            if (pasteState) { _cancelPaste(); e.preventDefault(); return; }
             if (deleteBgConfirmEl) { dismissDeleteBgConfirm(); e.preventDefault(); return; }
+            if (pointEditStripIdx !== null) {
+                pointEditStripIdx = null;
+                _updateHintStrip();
+                e.preventDefault();
+                return;
+            }
             if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
             selection.clear();
+            _updateHintStrip();
+        }
+        // Discoverability shortcuts — skip when typing in an input/textarea
+        const isTyping = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable);
+        if (isTyping) return;
+        // ? or F1 → help
+        if (e.key === '?' || e.key === 'F1') {
+            _openHelpOverlay();
+            e.preventDefault();
+            return;
+        }
+        // I → insert panel dialog
+        if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            _openInsertDialog();
+            e.preventDefault();
+            return;
+        }
+        // Ctrl+V → paste screenmap. The document-level 'paste' handler is the
+        // primary path; we also try navigator.clipboard.readText() as a
+        // best-effort fallback (works in secure contexts with permission).
+        if (e.key === 'v' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+            _pasteFromClipboardAPI();
+            e.preventDefault();
+            return;
+        }
+        // Ctrl+C → copy selected strip
+        if (e.key === 'c' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+            const sIdx = selection.getStripIdx();
+            if (sIdx !== null && sIdx >= 0) {
+                _copySelectedStripToClipboard();
+                e.preventDefault();
+                return;
+            }
         }
     }, { signal });
 
@@ -3732,6 +4383,11 @@ export function init(container) {
     /** @type {null | { entry:object, opts:object, localPts:Array<[number,number]>, ghostWorld:[number,number] | null }} */
     let placingState = null;
 
+    // Paste-pending state: parsed strips ghost together around their centroid
+    // following the cursor; L-click commits, Esc/R-click cancels.
+    /** @type {null | { strips:Array<{name:string,points:Array<[number,number]>,diameter?:number,video_offset:number,offsetsLocal:Array<[number,number]>}>, ghostWorld:[number,number]|null, totalCount:number }} */
+    let pasteState = null;
+
     const dom_panel_buttons = container.querySelector('#panel_catalog_buttons');
     const dom_pp_wiring = container.querySelector('#pp_wiring');
     const dom_pp_corner = container.querySelector('#pp_corner');
@@ -3742,6 +4398,11 @@ export function init(container) {
     const dom_pp_snap = container.querySelector('#pp_snap');
     const dom_pp_grid = container.querySelector('#pp_grid');
     const dom_pp_status = container.querySelector('#pp_status');
+
+    const dom_pp_open_dialog = container.querySelector('#pp_open_dialog');
+    if (dom_pp_open_dialog) {
+        dom_pp_open_dialog.addEventListener('click', () => { _openInsertDialog(); }, { signal });
+    }
 
     if (dom_panel_buttons) {
         for (const entry of PANEL_CATALOG) {
@@ -3772,6 +4433,7 @@ export function init(container) {
         const opts = _readPanelOpts();
         const localPts = generatePanelPoints(entry, opts);
         placingState = { entry, opts, localPts, ghostWorld: null };
+        _updateHintStrip();
         if (dom_pp_status) dom_pp_status.textContent = `Placing ${entry.label} — click canvas (Esc to cancel)`;
         overlayCanvas.style.cursor = 'crosshair';
         setNeedsRender();
@@ -3782,6 +4444,7 @@ export function init(container) {
         if (dom_pp_status) dom_pp_status.textContent = '';
         overlayCanvas.style.cursor = 'default';
         setNeedsRender();
+        _updateHintStrip();
     }
 
     function _canvasToWorldPx(cx, cy) {
@@ -3906,6 +4569,7 @@ export function init(container) {
         placingState = null;
         if (dom_pp_status) dom_pp_status.textContent = `Placed ${entry.label} as ${name}`;
         overlayCanvas.style.cursor = 'default';
+        _updateHintStrip();
     }
 
     function _doPanelPlace(action) {
@@ -4005,6 +4669,522 @@ export function init(container) {
         renderStripsPanel();
         setNeedsGeometryUpdate();
         return name;
+    }
+
+    // ── Paste-pending flow ────────────────────────────────────────────────
+
+    function _enterPasteFromText(text) {
+        const parsed = parsePastedScreenmap(text);
+        if (!parsed) {
+            _toastInfo("Clipboard didn't look like a screenmap");
+            return false;
+        }
+        // Cancel any in-flight placing so the modes don't overlap
+        if (placingState) _cancelPlacing();
+
+        const existingNames = new Set(stripStore.getStrips().map((s) => s.name));
+        const merged = planPasteMerge(parsed, existingNames, stripStore.getTotalCount());
+
+        // Compute centroid of the source points (in raw cm space).
+        let sx = 0, sy = 0, n = 0;
+        for (const s of merged) {
+            for (const p of s.points) { sx += p[0]; sy += p[1]; n++; }
+        }
+        if (n === 0) {
+            _toastInfo("Clipboard didn't look like a screenmap");
+            return false;
+        }
+        const cxRaw = sx / n, cyRaw = sy / n;
+
+        // Determine the cm-to-pixel scale to apply. If we have an existing
+        // screenmap, reuse its fitScale so pasted strips visually match.
+        // For an empty editor, defer; we'll initialise fitScale on commit.
+        const fs = (rawPts.length > 0 && fitScale > 0) ? fitScale : 1;
+        // Offsets in screenmap-pixel space, centred around (0,0)
+        const strips = merged.map((s) => {
+            const offsetsLocal = s.points.map((p) => [(p[0] - cxRaw) * fs, (p[1] - cyRaw) * fs]);
+            return { ...s, offsetsLocal };
+        });
+        const totalCount = merged.reduce((a, s) => a + s.points.length, 0);
+        pasteState = { strips, ghostWorld: null, totalCount };
+        overlayCanvas.style.cursor = 'crosshair';
+        _updateHintStrip();
+        setNeedsRender();
+        return true;
+    }
+
+    function _cancelPaste() {
+        if (!pasteState) return;
+        pasteState = null;
+        overlayCanvas.style.cursor = 'default';
+        _updateHintStrip();
+        setNeedsRender();
+    }
+
+    function _updatePasteGhostFromCanvas(cx, cy) {
+        if (!pasteState) return;
+        let [wx, wy] = _canvasToWorldPx(cx, cy);
+        if (dom_pp_snap && dom_pp_snap.checked) {
+            const gpx = _gridSizePx();
+            [wx, wy] = snapToGrid([wx, wy], gpx);
+        }
+        pasteState.ghostWorld = [wx, wy];
+        setNeedsRender();
+    }
+
+    function _drawPasteGhost() {
+        if (!pasteState || !pasteState.ghostWorld) return;
+        const ctx = overlayCtx;
+        const [wx, wy] = pasteState.ghostWorld;
+        ctx.save();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(168,85,247,0.9)';
+        ctx.fillStyle = 'rgba(168,85,247,0.4)';
+        for (const strip of pasteState.strips) {
+            // Polyline of this strip
+            ctx.beginPath();
+            for (let i = 0; i < strip.offsetsLocal.length; i++) {
+                const [ox, oy] = strip.offsetsLocal[i];
+                const [px, py] = toCanvasCoords(wx + ox, wy + oy);
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+            const r = Math.max(2, 0.25 * (fitScale > 0 ? fitScale : 1) * camZoom);
+            for (const [ox, oy] of strip.offsetsLocal) {
+                const [px, py] = toCanvasCoords(wx + ox, wy + oy);
+                ctx.beginPath();
+                ctx.arc(px, py, r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        // Crosshair at drop centroid
+        const [ocx, ocy] = toCanvasCoords(wx, wy);
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.beginPath();
+        ctx.moveTo(ocx - 6, ocy); ctx.lineTo(ocx + 6, ocy);
+        ctx.moveTo(ocx, ocy - 6); ctx.lineTo(ocx, ocy + 6);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function _commitPasteAt(cx, cy) {
+        if (!pasteState) return;
+        let [wx, wy] = _canvasToWorldPx(cx, cy);
+        if (dom_pp_snap && dom_pp_snap.checked) {
+            const gpx = _gridSizePx();
+            [wx, wy] = snapToGrid([wx, wy], gpx);
+        }
+
+        if (_isEmptyScreenmap()) {
+            _initFreshScreenmapForPanel();
+            // After fresh init, fitScale is freshly chosen. Recompute the
+            // strips' offsetsLocal in that new scale.
+            const fs = fitScale > 0 ? fitScale : 1;
+            // Find raw centroid again to keep ghost-centred layout consistent.
+            let sxR = 0, syR = 0, n = 0;
+            for (const s of pasteState.strips) {
+                for (const p of s.points) { sxR += p[0]; syR += p[1]; n++; }
+            }
+            const cxRaw = n ? sxR / n : 0;
+            const cyRaw = n ? syR / n : 0;
+            for (const s of pasteState.strips) {
+                s.offsetsLocal = s.points.map((p) => [(p[0] - cxRaw) * fs, (p[1] - cyRaw) * fs]);
+            }
+        }
+
+        const fs = fitScale > 0 ? fitScale : 1;
+        // raw -> screenmap conversion offset (matches _doPanelPlace's logic)
+        let offX = 0, offY = 0;
+        if (rawPts.length > 0) {
+            offX = rawPts[0][0] * fs - screenmap_pts[0][0];
+            offY = rawPts[0][1] * fs - screenmap_pts[0][1];
+        }
+
+        // Rebuild the "addedStrips" descriptor with screenmap-coord points.
+        // Re-resolve unique names AGAIN here in case the editor changed
+        // between parse-time and commit-time (e.g. an undo happened while
+        // paste was pending).
+        const existingNames = new Set(stripStore.getStrips().map((s) => s.name));
+        const addedDescriptors = [];
+        const base = stripStore.getTotalCount();
+        let running = 0;
+        for (const s of pasteState.strips) {
+            const name = _uniqueNameAgainst(s.name, existingNames);
+            existingNames.add(name);
+            const sm = s.offsetsLocal.map(([ox, oy]) => [wx + ox, wy + oy]);
+            const raw = sm.map(([smx, smy]) => [(smx + offX) / fs, (smy + offY) / fs]);
+            addedDescriptors.push({
+                name,
+                screenmapPts: sm,
+                rawPts: raw,
+                diameter: typeof s.diameter === 'number' ? s.diameter : (typeof origDiameter === 'number' ? origDiameter : 0.5),
+                video_offset: base + running,
+            });
+            running += sm.length;
+        }
+
+        const action = { type: 'paste-strips', strips: addedDescriptors };
+        _doPasteStrips(action);
+        pushUndo(action);
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+        const pastedCount = action.strips.length;
+        pasteState = null;
+        overlayCanvas.style.cursor = 'default';
+        _updateHintStrip();
+        _toastSuccess(`Pasted ${pastedCount} strip${pastedCount === 1 ? '' : 's'}`);
+        // Select the first pasted strip for discoverability
+        if (action.strips.length > 0 && stripInfo) {
+            for (let i = stripInfo.strips.length - 1; i >= 0; i--) {
+                if (stripInfo.strips[i].name === action.strips[0].name) {
+                    selection.selectStrip(i);
+                    break;
+                }
+            }
+        }
+    }
+
+    function _uniqueNameAgainst(baseName, used) {
+        if (!used.has(baseName)) return baseName;
+        let n = 2;
+        while (used.has(`${baseName} (${n})`)) n++;
+        return `${baseName} (${n})`;
+    }
+
+    function _doPasteStrips(action) {
+        // Append every strip atomically. Identical scheme to _doPanelPlace
+        // (append to flat arrays + stripStore.addStrip), but for many at once.
+        for (const desc of action.strips) {
+            const insertAt = screenmap_pts.length;
+            for (let i = 0; i < desc.screenmapPts.length; i++) {
+                screenmap_pts.push([desc.screenmapPts[i][0], desc.screenmapPts[i][1]]);
+                rawPts.push([desc.rawPts[i][0], desc.rawPts[i][1]]);
+            }
+            stripStore.addStrip({
+                name: desc.name,
+                points: desc.rawPts,
+                diameter: desc.diameter,
+                video_offset: desc.video_offset,
+            });
+            desc._insertAt = insertAt;
+            desc._count = desc.screenmapPts.length;
+        }
+        stripInfo = stripStore.get();
+        if (origWidth === 0 && origHeight === 0 && rawPts.length > 0) {
+            let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+            for (const [x, y] of rawPts) {
+                if (x < xmin) xmin = x; if (x > xmax) xmax = x;
+                if (y < ymin) ymin = y; if (y > ymax) ymax = y;
+            }
+            origWidth = xmax - xmin;
+            origHeight = ymax - ymin;
+        }
+    }
+
+    function _undoPasteStrips(action) {
+        if (!stripInfo) return;
+        // Walk added strips in reverse order; locate each by name (most recent
+        // additions are at the end) and remove from both flat arrays + store.
+        for (let i = action.strips.length - 1; i >= 0; i--) {
+            const desc = action.strips[i];
+            const strips = stripInfo.strips;
+            let stripIdx = -1;
+            for (let k = strips.length - 1; k >= 0; k--) {
+                if (strips[k].name === desc.name) { stripIdx = k; break; }
+            }
+            if (stripIdx < 0) continue;
+            const strip = strips[stripIdx];
+            screenmap_pts.splice(strip.offset, strip.count);
+            rawPts.splice(strip.offset, strip.count);
+            stripStore.removeStrip(stripIdx);
+            selection.onStripRemove(stripIdx);
+        }
+        selectedIdx = -1;
+        stripInfo = stripStore.get();
+    }
+
+    async function _pasteFromClipboardAPI() {
+        try {
+            if (!navigator.clipboard || !navigator.clipboard.readText) {
+                _toastInfo('Clipboard read unavailable — try Ctrl+V');
+                return;
+            }
+            const text = await navigator.clipboard.readText();
+            _enterPasteFromText(text || '');
+        } catch {
+            _toastInfo("Clipboard didn't look like a screenmap");
+        }
+    }
+
+    function _copySelectedStripToClipboard() {
+        const sIdx = selection.getStripIdx();
+        if (sIdx === null || sIdx < 0) return;
+        const strips = stripStore.getStrips();
+        if (sIdx >= strips.length) return;
+        const s = strips[sIdx];
+        const x = [], y = [];
+        for (let i = s.offset; i < s.offset + s.count; i++) {
+            x.push(+rawPts[i][0].toFixed(4));
+            y.push(+rawPts[i][1].toFixed(4));
+        }
+        const d = typeof s.diameter === 'number' ? s.diameter : (parseFloat(dom_txt_diameter.value) || 0.25);
+        const json = JSON.stringify({ map: { [s.name]: { x, y, diameter: d } } }, null, 2);
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(json).then(
+                    () => _toastSuccess(`Copied "${s.name}" to clipboard`),
+                    () => _toastInfo('Copy failed — clipboard unavailable'),
+                );
+            } else {
+                _toastInfo('Copy failed — clipboard unavailable');
+            }
+        } catch {
+            _toastInfo('Copy failed — clipboard unavailable');
+        }
+    }
+
+    // Document-level paste handler — captures Ctrl+V across the page when
+    // focus is anywhere except an editable element. Works without the
+    // navigator.clipboard permission gate.
+    document.addEventListener('paste', (e) => {
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        const txt = (e.clipboardData && e.clipboardData.getData('text')) || '';
+        if (!txt) return;
+        if (_enterPasteFromText(txt)) {
+            e.preventDefault();
+        }
+    }, { signal });
+
+    // ── Insert Panel dialog (Phase 4) ─────────────────────────────────────
+
+    async function _openInsertDialog() {
+        try {
+            const Swal = (await import('sweetalert2')).default;
+            if (signal.aborted) return;
+
+            // Snapshot current accordion values for initial form state
+            const initial = {
+                catalogId: PANEL_CATALOG[0] ? PANEL_CATALOG[0].id : '',
+                wiring: dom_pp_wiring ? dom_pp_wiring.value : 'serpentine',
+                corner: dom_pp_corner ? dom_pp_corner.value : 'TL',
+                rotation: dom_pp_rotation ? dom_pp_rotation.value : '0',
+                flipH: dom_pp_flipH ? !!dom_pp_flipH.checked : false,
+                flipV: dom_pp_flipV ? !!dom_pp_flipV.checked : false,
+                spacing: dom_pp_spacing ? dom_pp_spacing.value : '1',
+                snap: dom_pp_snap ? !!dom_pp_snap.checked : true,
+                grid: dom_pp_grid ? dom_pp_grid.value : '1',
+            };
+
+            const catalogOptions = PANEL_CATALOG.map((e) => `<option value="${e.id}">${e.label}</option>`).join('');
+            const html = `
+                <div style="text-align:left;font:13px/1.4 'Outfit',system-ui,sans-serif;color:#e5e7eb;display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;">
+                    <label for="ins_catalog">Panel</label>
+                    <select id="ins_catalog" style="padding:3px;">${catalogOptions}</select>
+                    <label for="ins_wiring">Wiring</label>
+                    <select id="ins_wiring" style="padding:3px;">
+                        <option value="serpentine">Serpentine</option>
+                        <option value="progressive">Progressive</option>
+                    </select>
+                    <label for="ins_corner">Data In</label>
+                    <select id="ins_corner" style="padding:3px;">
+                        <option value="TL">TL</option><option value="TR">TR</option>
+                        <option value="BL">BL</option><option value="BR">BR</option>
+                    </select>
+                    <label for="ins_rotation">Rotate</label>
+                    <select id="ins_rotation" style="padding:3px;">
+                        <option value="0">0°</option><option value="90">90°</option>
+                        <option value="180">180°</option><option value="270">270°</option>
+                    </select>
+                    <label>Flips</label>
+                    <div>
+                        <label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;"><input id="ins_flipH" type="checkbox"> H</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;"><input id="ins_flipV" type="checkbox"> V</label>
+                    </div>
+                    <label for="ins_spacing">Spacing</label>
+                    <input id="ins_spacing" type="number" step="0.1" min="0.01" style="padding:3px;">
+                    <label>Snap / Grid</label>
+                    <div>
+                        <label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;"><input id="ins_snap" type="checkbox"> Snap</label>
+                        <input id="ins_grid" type="number" step="0.1" min="0.01" style="padding:3px;width:80px;">
+                    </div>
+                </div>
+                <div style="margin-top:12px;display:flex;justify-content:center;">
+                    <canvas id="ins_preview" width="320" height="200" style="background:#0d0d0d;border:1px solid #333;border-radius:4px;"></canvas>
+                </div>
+            `;
+
+            const res = await Swal.fire({
+                title: 'Insert Panel',
+                html,
+                width: 480,
+                background: '#1a1a1a',
+                color: '#e5e7eb',
+                showCancelButton: true,
+                showDenyButton: true,
+                cancelButtonText: 'Cancel',
+                denyButtonText: 'Place…',
+                confirmButtonText: 'Insert at center',
+                focusConfirm: false,
+                didOpen: () => {
+                    const $ = (id) => document.getElementById(id);
+                    const catalog = $('ins_catalog');
+                    const wiring = $('ins_wiring');
+                    const corner = $('ins_corner');
+                    const rotation = $('ins_rotation');
+                    const flipH = $('ins_flipH');
+                    const flipV = $('ins_flipV');
+                    const spacing = $('ins_spacing');
+                    const snap = $('ins_snap');
+                    const grid = $('ins_grid');
+                    const preview = $('ins_preview');
+
+                    if (catalog) catalog.value = initial.catalogId;
+                    if (wiring) wiring.value = initial.wiring;
+                    if (corner) corner.value = initial.corner;
+                    if (rotation) rotation.value = String(initial.rotation);
+                    if (flipH) flipH.checked = initial.flipH;
+                    if (flipV) flipV.checked = initial.flipV;
+                    if (spacing) spacing.value = initial.spacing;
+                    if (snap) snap.checked = initial.snap;
+                    if (grid) grid.value = initial.grid;
+
+                    function readForm() {
+                        return {
+                            catalogId: catalog ? catalog.value : initial.catalogId,
+                            wiring: wiring ? wiring.value : 'serpentine',
+                            corner: corner ? corner.value : 'TL',
+                            rotation: rotation ? parseInt(rotation.value, 10) || 0 : 0,
+                            flipH: flipH ? !!flipH.checked : false,
+                            flipV: flipV ? !!flipV.checked : false,
+                            spacing: spacing ? (parseFloat(spacing.value) || 1) : 1,
+                            snap: snap ? !!snap.checked : true,
+                            grid: grid ? (parseFloat(grid.value) || 1) : 1,
+                        };
+                    }
+
+                    function redrawPreview() {
+                        if (!preview) return;
+                        const ctx = preview.getContext('2d');
+                        ctx.clearRect(0, 0, preview.width, preview.height);
+                        const opts = readForm();
+                        const entry = getCatalogEntry(opts.catalogId);
+                        if (!entry) return;
+                        const pts = generatePanelPoints(entry, {
+                            wiring: opts.wiring,
+                            dataInCorner: opts.corner,
+                            rotation: opts.rotation,
+                            flipH: opts.flipH,
+                            flipV: opts.flipV,
+                            spacing: opts.spacing,
+                        });
+                        if (pts.length === 0) return;
+                        let xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+                        for (const [x, y] of pts) {
+                            if (x < xmin) xmin = x; if (x > xmax) xmax = x;
+                            if (y < ymin) ymin = y; if (y > ymax) ymax = y;
+                        }
+                        const w = xmax - xmin || 1;
+                        const h = ymax - ymin || 1;
+                        const margin = 14;
+                        const sc = Math.min((preview.width - margin * 2) / w, (preview.height - margin * 2) / h);
+                        const cxOff = preview.width / 2 - ((xmin + xmax) / 2) * sc;
+                        const cyOff = preview.height / 2 - ((ymin + ymax) / 2) * sc;
+                        // Polyline
+                        ctx.strokeStyle = '#3b82f6';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        for (let i = 0; i < pts.length; i++) {
+                            const x = pts[i][0] * sc + cxOff;
+                            const y = pts[i][1] * sc + cyOff;
+                            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                        }
+                        ctx.stroke();
+                        ctx.fillStyle = '#93c5fd';
+                        for (const [px, py] of pts) {
+                            const x = px * sc + cxOff;
+                            const y = py * sc + cyOff;
+                            ctx.beginPath();
+                            ctx.arc(x, y, 2, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                        // First LED green
+                        if (pts.length > 0) {
+                            ctx.fillStyle = '#4caf50';
+                            ctx.beginPath();
+                            ctx.arc(pts[0][0] * sc + cxOff, pts[0][1] * sc + cyOff, 3, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+
+                    for (const el of [catalog, wiring, corner, rotation, flipH, flipV, spacing, snap, grid]) {
+                        if (el) {
+                            el.addEventListener('input', redrawPreview);
+                            el.addEventListener('change', redrawPreview);
+                        }
+                    }
+                    redrawPreview();
+                },
+                preConfirm: () => _readInsertDialog(),
+                preDeny: () => _readInsertDialog(),
+            });
+
+            if (signal.aborted) return null;
+            const action = res.isConfirmed ? 'center' : (res.isDenied ? 'ghost' : null);
+            if (!action) return null;
+            const opts = (res.isConfirmed ? res.value : res.value) || _readInsertDialog();
+            return _submitInsertDialog({ ...opts, place: action });
+        } catch {
+            return null;
+        }
+    }
+
+    function _readInsertDialog() {
+        const $ = (id) => document.getElementById(id);
+        return {
+            catalogId: $('ins_catalog') ? $('ins_catalog').value : '',
+            wiring: $('ins_wiring') ? $('ins_wiring').value : 'serpentine',
+            corner: $('ins_corner') ? $('ins_corner').value : 'TL',
+            rotation: $('ins_rotation') ? parseInt($('ins_rotation').value, 10) || 0 : 0,
+            flipH: $('ins_flipH') ? !!$('ins_flipH').checked : false,
+            flipV: $('ins_flipV') ? !!$('ins_flipV').checked : false,
+            spacing: $('ins_spacing') ? (parseFloat($('ins_spacing').value) || 1) : 1,
+            snap: $('ins_snap') ? !!$('ins_snap').checked : true,
+            grid: $('ins_grid') ? (parseFloat($('ins_grid').value) || 1) : 1,
+        };
+    }
+
+    function _writeAccordionFromDialog(opts) {
+        if (dom_pp_wiring && opts.wiring) dom_pp_wiring.value = opts.wiring;
+        if (dom_pp_corner && opts.corner) dom_pp_corner.value = opts.corner;
+        if (dom_pp_rotation && (opts.rotation || opts.rotation === 0)) dom_pp_rotation.value = String(opts.rotation);
+        if (dom_pp_flipH) dom_pp_flipH.checked = !!opts.flipH;
+        if (dom_pp_flipV) dom_pp_flipV.checked = !!opts.flipV;
+        if (dom_pp_spacing && (opts.spacing || opts.spacing === 0)) dom_pp_spacing.value = String(opts.spacing);
+        if (dom_pp_snap) dom_pp_snap.checked = !!opts.snap;
+        if (dom_pp_grid && (opts.grid || opts.grid === 0)) dom_pp_grid.value = String(opts.grid);
+    }
+
+    function _submitInsertDialog(opts) {
+        if (!opts || !opts.catalogId) return null;
+        const entry = getCatalogEntry(opts.catalogId);
+        if (!entry) return null;
+        _writeAccordionFromDialog(opts);
+        if (opts.place === 'center') {
+            // Place at viewport center via existing commit path.
+            // _commitPlacingAt uses canvas coords; canvas center is (canvasW/2, canvasH/2).
+            // Use _enterPlacing then immediately commit at center, so undo is
+            // a single panel-place action.
+            _enterPlacing(opts.catalogId);
+            _commitPlacingAt(canvasW / 2, canvasH / 2);
+            return entry.label;
+        }
+        if (opts.place === 'ghost') {
+            _enterPlacing(opts.catalogId);
+            return entry.label;
+        }
+        return null;
     }
 
     // --- Initialize ---
