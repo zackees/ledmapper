@@ -78,21 +78,21 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }: {
     // Auto-bloom state: density-based envelope, recomputed on screenmap change.
     let currentRange = { min: PREVIEW_AUTO_FLOOR * 0.5, max: PREVIEW_AUTO_MAX_DENSE };
     let autoBloomEnabled = true;
-    let manualBloomStrength: any = null; // null = use auto
+    let manualBloomStrength: number | null = null; // null = use auto
     // Strength range and bloom radius proportioned to the rendered LED size
     // in fitCamera() (bloomParamsForLedSize). The effective auto range is the
     // conservative combination of this and the density envelope above.
     const bloomRange = { min: 0, max: 0 };
 
-    let meshData: any = null;
-    let cachedPts: any = null;
-    let cachedRotate: any = null;
-    let cachedLedDiameter: any = null;
+    let meshData: import('../types/domain').PointsMeshResult | null = null;
+    let cachedPts: import('../types/domain').StripPoint[] | null = null;
+    let cachedRotate: number | null = null;
+    let cachedLedDiameter: number | null = null;
     let ledWorldRadius = 0.5;
     let ledSpacing = 1;
     let sceneExtent = 1;
 
-    function rebuild(localPts: any, ledDiameter: any) {
+    function rebuild(localPts: import('../types/domain').StripPoint[], ledDiameter: number | null) {
         meshData = rebuildPointsMesh({
             scene,
             previous: meshData,
@@ -130,7 +130,7 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }: {
      * Rotation is applied via mesh.rotation.z (same x/y math as the editor's
      * y-down transform since the camera maps world y downward).
      */
-    function fitCamera(localPts: any, rotate: any) {
+    function fitCamera(localPts: import('../types/domain').StripPoint[], rotate: number) {
         const rad = rotate * Math.PI / 180;
         const cos_r = Math.cos(rad), sin_r = Math.sin(rad);
         let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
@@ -156,15 +156,15 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }: {
         camera.bottom = cy + half;
         camera.updateProjectionMatrix();
 
-        meshData.mesh.rotation.z = rad;
+        meshData!.mesh.rotation.z = rad;
         // PointsMaterial.size is in CSS pixels: the renderer multiplies the
         // size uniform by its pixelRatio internally, so the world→pixel
         // mapping must use the CSS pane size, not the drawing-buffer size.
-        meshData.material.size = Math.max((ledWorldRadius * 2 / (half * 2)) * side, 0.75);
+        meshData!.material.size = Math.max((ledWorldRadius * 2 / (half * 2)) * side, 0.75);
 
         // Proportion the bloom kernel to the rendered dot size so sparse
         // small dots keep a tight halo and large dots don't white out.
-        const params = bloomParamsForLedSize(meshData.material.size, side, localPts.length, { bloomResolution: side });
+        const params = bloomParamsForLedSize(meshData!.material.size, side, localPts.length, { bloomResolution: side });
         bloom.bloomPass.radius = params.radius;
         bloomRange.min = params.minStrength;
         bloomRange.max = params.maxStrength;
@@ -183,7 +183,7 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }: {
      *        diameter, scaled into localPts units; null falls back to the
      *        spacing heuristic.
      */
-    function render(localPts: any, rotate: any, lastSample: any, ledDiameter = null) {
+    function render(localPts: import('../types/domain').StripPoint[], rotate: number, lastSample: { rgbPts: Uint8Array } | null, ledDiameter: number | null = null) {
         if (!localPts || localPts.length === 0 || !lastSample) {
             renderer.clear();
             return;
@@ -201,15 +201,15 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }: {
 
         // Per-frame color update: Uint8 0-255 → Float32 0-1.
         const src = lastSample.rgbPts;
-        const arr = meshData.colorAttribute.array;
+        const arr = meshData!.colorAttribute.array as Float32Array;
         const count = Math.min(localPts.length, Math.floor(src.length / 3));
         for (let i = 0; i < count; i++) {
             const i3 = i * 3;
-            arr[i3    ] = src[i3    ] * INV_255;
-            arr[i3 + 1] = src[i3 + 1] * INV_255;
-            arr[i3 + 2] = src[i3 + 2] * INV_255;
+            arr[i3    ] = (src[i3]    ?? 0) * INV_255;
+            arr[i3 + 1] = (src[i3 + 1] ?? 0) * INV_255;
+            arr[i3 + 2] = (src[i3 + 2] ?? 0) * INV_255;
         }
-        meshData.colorAttribute.needsUpdate = true;
+        meshData!.colorAttribute.needsUpdate = true;
 
         // Effective auto range: conservative combination of the size-
         // proportional range and the density envelope — neither ceiling is
@@ -227,7 +227,7 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }: {
      * Enable or disable auto-bloom density scaling.
      * @param {boolean} enabled
      */
-    function setAutoBloom(enabled: any) {
+    function setAutoBloom(enabled: boolean) {
         autoBloomEnabled = enabled;
         if (enabled) {
             // Resume iris-guided envelope — no snap.
@@ -239,7 +239,7 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }: {
      * Set the manual bloom strength (used when autoBloom is disabled).
      * @param {number} strength
      */
-    function setManualBloomStrength(strength: any) {
+    function setManualBloomStrength(strength: number) {
         manualBloomStrength = strength;
     }
 

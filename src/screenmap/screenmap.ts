@@ -3,17 +3,17 @@ import { saveScreenmap } from '../screenmap-store';
 import templateHtml from './template.html?raw';
 export { default as css } from './screenmap.css?url';
 
-export function init(container: any) {
+export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
 
     const ac = new AbortController();
     const { signal } = ac;
 
-    const sourceSelect = container.querySelector('#sourceSelect');
-    const mappingUI = container.querySelector('#mappingUI');
-    const btnWebcam = container.querySelector('#btn_webcam');
-    const btnUpload = container.querySelector('#btn_upload');
-    const fileInput = container.querySelector('#fileInput');
+    const sourceSelect = container.querySelector('#sourceSelect') as HTMLElement;
+    const mappingUI = container.querySelector('#mappingUI') as HTMLElement;
+    const btnWebcam = container.querySelector('#btn_webcam') as HTMLButtonElement;
+    const btnUpload = container.querySelector('#btn_upload') as HTMLButtonElement;
+    const fileInput = container.querySelector('#fileInput') as HTMLInputElement;
 
     // --- Source selection ---
     btnWebcam.addEventListener('click', () => {
@@ -27,12 +27,12 @@ export function init(container: any) {
     }, { signal });
 
     fileInput.addEventListener('change', () => {
-        const file = fileInput.files[0];
+        const file = fileInput.files?.[0];
         if (file) loadImageFile(file);
     }, { signal });
 
     // Drag and drop on the upload card
-    btnUpload.addEventListener('dragover', (e: any) => {
+    btnUpload.addEventListener('dragover', (e: DragEvent) => {
         e.preventDefault();
         btnUpload.classList.add('drag-over');
     }, { signal });
@@ -41,16 +41,16 @@ export function init(container: any) {
         btnUpload.classList.remove('drag-over');
     }, { signal });
 
-    btnUpload.addEventListener('drop', (e: any) => {
+    btnUpload.addEventListener('drop', (e: DragEvent) => {
         e.preventDefault();
         btnUpload.classList.remove('drag-over');
-        const file = e.dataTransfer.files[0];
+        const file = e.dataTransfer?.files[0];
         if (file && file.type.startsWith('image/')) {
             loadImageFile(file);
         }
     }, { signal });
 
-    function loadImageFile(file: any) {
+    function loadImageFile(file: File) {
         const img = new Image();
         const objectUrl = URL.createObjectURL(file);
         img.onload = () => {
@@ -70,28 +70,44 @@ export function init(container: any) {
     }
 
     // --- Mapping state ---
-    let videoElement: any;
-    let canvas: any, ctx: any;
+    let videoElement: HTMLVideoElement | null = null;
+    let canvas: HTMLCanvasElement | null = null;
+    let ctx: CanvasRenderingContext2D | null = null;
     const capture_width = 480;
     const capture_height = 480;
-    let snapshotCanvas: any = null;
+    let snapshotCanvas: HTMLCanvasElement | null = null;
     let pictureTaken = false;
-    let rafId: any = null;
+    let rafId: number | null = null;
     const circle_diameter = 8;
-    let strips: any = { strip1: [] };
+    let strips: Record<string, [number, number][]> = { strip1: [] };
     let activeStrip = 'strip1';
     let shift_active = false;
 
-    function getActivePoints() { return strips[activeStrip]; }
-    function getAllPointsFlat() { return Object.values(strips).flat(); }
-    function getStripNames() { return Object.keys(strips); }
-    function getNextStripName() {
+    function getActivePoints(): [number, number][] { return strips[activeStrip] ?? []; }
+    function getAllPointsFlat(): [number, number][] { return (Object.values(strips) as [number, number][][]).flat(); }
+    function getStripNames(): string[] { return Object.keys(strips); }
+    function getNextStripName(): string {
         let i = 1;
         while (strips[`strip${i}`]) i++;
         return `strip${i}`;
     }
 
-    function getDom() {
+    interface DomRefs {
+        btn_snapshot: HTMLButtonElement | null;
+        btn_clear: HTMLButtonElement | null;
+        btn_delete_last: HTMLButtonElement | null;
+        btn_download: HTMLButtonElement | null;
+        txt_rotate: HTMLInputElement | null;
+        slider_rotate: HTMLInputElement | null;
+        txt_zoom: HTMLInputElement | null;
+        slider_zoom: HTMLInputElement | null;
+        sel_strip: HTMLSelectElement | null;
+        btn_add_strip: HTMLButtonElement | null;
+        btn_rename_strip: HTMLButtonElement | null;
+        btn_delete_strip: HTMLButtonElement | null;
+    }
+
+    function getDom(): DomRefs {
         return {
             btn_snapshot: container.querySelector('#btn_snapshot'),
             btn_clear: container.querySelector('#btn_clear'),
@@ -108,7 +124,7 @@ export function init(container: any) {
         };
     }
 
-    function refreshStripUI(dom: any) {
+    function refreshStripUI(dom: DomRefs) {
         if (!dom.sel_strip) return;
         const names = getStripNames();
         // Rebuild options
@@ -125,37 +141,37 @@ export function init(container: any) {
         }
     }
 
-    function setupCommonControls(dom: any) {
+    function setupCommonControls(dom: DomRefs) {
         // Rotation sync
-        function updateRotation(value: any) {
-            value = parseFloat(value);
-            value = isNaN(value) ? 0 : Math.max(-180, Math.min(180, value));
-            dom.txt_rotate.value = value.toFixed(1);
-            dom.slider_rotate.value = value;
+        function updateRotation(value: string) {
+            let v = parseFloat(value);
+            v = isNaN(v) ? 0 : Math.max(-180, Math.min(180, v));
+            if (dom.txt_rotate) dom.txt_rotate.value = v.toFixed(1);
+            if (dom.slider_rotate) dom.slider_rotate.value = String(v);
         }
-        dom.txt_rotate.addEventListener('input', () => updateRotation(dom.txt_rotate.value), { signal });
-        dom.txt_rotate.addEventListener('change', () => updateRotation(dom.txt_rotate.value), { signal });
-        dom.slider_rotate.addEventListener('input', () => updateRotation(dom.slider_rotate.value), { signal });
+        dom.txt_rotate?.addEventListener('input', () => updateRotation(dom.txt_rotate!.value), { signal });
+        dom.txt_rotate?.addEventListener('change', () => updateRotation(dom.txt_rotate!.value), { signal });
+        dom.slider_rotate?.addEventListener('input', () => updateRotation(dom.slider_rotate!.value), { signal });
 
         // Zoom sync
-        function updateZoom(value: any) {
-            value = parseFloat(value);
-            value = isNaN(value) ? 1 : Math.max(1, Math.min(5, value));
-            dom.txt_zoom.value = value.toFixed(2);
-            dom.slider_zoom.value = value;
+        function updateZoom(value: string) {
+            let v = parseFloat(value);
+            v = isNaN(v) ? 1 : Math.max(1, Math.min(5, v));
+            if (dom.txt_zoom) dom.txt_zoom.value = v.toFixed(2);
+            if (dom.slider_zoom) dom.slider_zoom.value = String(v);
         }
-        dom.txt_zoom.addEventListener('input', () => updateZoom(dom.txt_zoom.value), { signal });
-        dom.txt_zoom.addEventListener('change', () => updateZoom(dom.txt_zoom.value), { signal });
-        dom.slider_zoom.addEventListener('input', () => updateZoom(dom.slider_zoom.value), { signal });
+        dom.txt_zoom?.addEventListener('input', () => updateZoom(dom.txt_zoom!.value), { signal });
+        dom.txt_zoom?.addEventListener('change', () => updateZoom(dom.txt_zoom!.value), { signal });
+        dom.slider_zoom?.addEventListener('input', () => updateZoom(dom.slider_zoom!.value), { signal });
 
         // Buttons
-        dom.btn_delete_last.addEventListener('click', () => { getActivePoints().pop(); }, { signal });
-        dom.btn_download.addEventListener('click', () => downloadScreenmap(), { signal });
+        dom.btn_delete_last?.addEventListener('click', () => { getActivePoints().pop(); }, { signal });
+        dom.btn_download?.addEventListener('click', () => downloadScreenmap(), { signal });
 
         // Strip management
         if (dom.sel_strip) {
             dom.sel_strip.addEventListener('change', () => {
-                const val = dom.sel_strip.value;
+                const val = dom.sel_strip!.value;
                 if (strips[val]) {
                     activeStrip = val;
                 }
@@ -201,28 +217,28 @@ export function init(container: any) {
                 const names = getStripNames();
                 if (names.length <= 1) return;
                 delete strips[activeStrip];
-                activeStrip = getStripNames()[0];
+                activeStrip = getStripNames()[0] ?? activeStrip;
                 refreshStripUI(dom);
             }, { signal });
         }
 
         // Shift key tracking
         document.addEventListener('keydown', (evt) => {
-            if ("Shift" === evt.key) shift_active = true;
+            if ('Shift' === evt.key) shift_active = true;
         }, { signal });
         document.addEventListener('keyup', (evt) => {
-            if ("Shift" === evt.key) shift_active = false;
+            if ('Shift' === evt.key) shift_active = false;
         }, { signal });
 
         refreshStripUI(dom);
     }
 
-    function renameStrip(oldName: any, newName: any) {
+    function renameStrip(oldName: string, newName: string) {
         // Rebuild the strips object so key order (and therefore strip
         // indices / colors / labels) is preserved across the rename.
-        const next: any = {};
+        const next: Record<string, [number, number][]> = {};
         for (const key of Object.keys(strips)) {
-            next[key === oldName ? newName : key] = strips[key];
+            next[key === oldName ? newName : key] = strips[key]!;
         }
         strips = next;
         if (activeStrip === oldName) activeStrip = newName;
@@ -235,29 +251,29 @@ export function init(container: any) {
         download_text_as_file(jsonStr, 'screenmap.json', options);
     }
 
-    function indexOfIntersectMostRecent(x: any, y: any, radius: any) {
+    function indexOfIntersectMostRecent(x: number, y: number, radius: number): number {
         const radius2 = radius * radius;
         const activePoints = getActivePoints();
         for (let i = activePoints.length - 1; i >= 0; --i) {
-            const [xx, yy] = activePoints[i];
+            const [xx, yy] = activePoints[i]!;
             const dist2 = Math.pow(x - xx, 2) + Math.pow(y - yy, 2);
             if (dist2 < radius2) return i;
         }
         return -1;
     }
 
-    function points_to_json_str() {
-        const map: any = {};
+    function points_to_json_str(): string {
+        const map: Record<string, { x: number[]; y: number[]; diameter: number }> = {};
         // Only emit strips that have at least one point. If no strips have
         // points, fall back to a single empty strip so the output is still
         // a valid multi-strip envelope.
-        const nonEmpty = getStripNames().filter(name => strips[name].length > 0);
+        const nonEmpty = getStripNames().filter(name => (strips[name]?.length ?? 0) > 0);
         const namesToEmit = nonEmpty.length > 0 ? nonEmpty : [activeStrip];
         for (const name of namesToEmit) {
-            const pts = strips[name];
+            const pts = strips[name] ?? [];
             map[name] = {
-                x: pts.map(([x]: [any]) => x),
-                y: pts.map((p: any) => p[1]),
+                x: pts.map(([x]) => x),
+                y: pts.map(p => p[1]),
                 diameter: 0.5,
             };
         }
@@ -265,7 +281,8 @@ export function init(container: any) {
     }
 
     function showPopup() {
-        const popup = container.querySelector('#popup');
+        const popup = container.querySelector('#popup') as HTMLElement | null;
+        if (!popup) return;
         popup.style.display = 'block';
         setTimeout(() => { popup.style.opacity = '1'; }, 10);
         setTimeout(() => {
@@ -276,7 +293,7 @@ export function init(container: any) {
 
     function initCanvas() {
         canvas = document.createElement('canvas');
-        const main = container.querySelector('main');
+        const main = container.querySelector('main') as HTMLElement;
         canvas.width = main.clientWidth;
         canvas.height = main.clientHeight;
         ctx = canvas.getContext('2d');
@@ -284,19 +301,20 @@ export function init(container: any) {
     }
 
     function handleResize() {
-        const main = container.querySelector('main');
+        if (!canvas) return;
+        const main = container.querySelector('main') as HTMLElement;
         canvas.width = main.clientWidth;
         canvas.height = main.clientHeight;
     }
 
-    function showWebcamError(message: any) {
-        const main = container.querySelector('main');
+    function showWebcamError(message: string) {
+        const main = container.querySelector('main') as HTMLElement;
         const errorDiv = document.createElement('div');
         errorDiv.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#a1a1aa;font-size:0.9rem;max-width:360px;';
 
         const icon = document.createElement('div');
         icon.style.cssText = 'font-size:2rem;margin-bottom:12px';
-        icon.textContent = '\u26A0';
+        icon.textContent = '⚠';
 
         const title = document.createElement('div');
         title.style.cssText = 'color:#e4e4e7;font-weight:500;margin-bottom:8px';
@@ -314,14 +332,16 @@ export function init(container: any) {
         main.appendChild(errorDiv);
     }
 
-    function handleClick(event: any) {
-        if (event.target.tagName === 'INPUT' || event.target.tagName === 'BUTTON' || event.target.closest('#controls')) {
+    function handleClick(event: MouseEvent) {
+        const target = event.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'BUTTON' || target.closest('#controls')) {
             return;
         }
         if (!pictureTaken) {
-            alert("Please take a picture first before adding points.");
+            alert('Please take a picture first before adding points.');
             return;
         }
+        if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
         const x = Math.floor(event.clientX - rect.left);
         const y = Math.floor(event.clientY - rect.top);
@@ -337,18 +357,19 @@ export function init(container: any) {
         }
     }
 
-    function draw(dom: any) {
+    function draw(dom: DomRefs) {
         rafId = requestAnimationFrame(() => draw(dom));
+        if (!canvas || !ctx) return;
 
         const allPoints = getAllPointsFlat();
-        dom.btn_download.disabled = !allPoints.length;
-        dom.btn_clear.disabled = !pictureTaken;
-        dom.btn_delete_last.disabled = !getActivePoints().length;
+        if (dom.btn_download) dom.btn_download.disabled = !allPoints.length;
+        if (dom.btn_clear) dom.btn_clear.disabled = !pictureTaken;
+        if (dom.btn_delete_last) dom.btn_delete_last.disabled = !getActivePoints().length;
 
         const w = canvas.width;
         const h = canvas.height;
-        const zoom = Number.parseFloat(dom.txt_zoom.value) || 1.0;
-        const r = Number.parseFloat(dom.txt_rotate.value) || 0;
+        const zoom = Number.parseFloat(dom.txt_zoom?.value ?? '1') || 1.0;
+        const r = Number.parseFloat(dom.txt_rotate?.value ?? '0') || 0;
 
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, w, h);
@@ -385,14 +406,14 @@ export function init(container: any) {
         // Connection lines per strip
         ctx.lineWidth = 1;
         for (let s = 0; s < names.length; ++s) {
-            const name = names[s];
-            const pts = strips[name];
+            const name = names[s]!;
+            const pts = strips[name] ?? [];
             const isActive = name === activeStrip;
-            ctx.strokeStyle = colors[s];
+            ctx.strokeStyle = colors[s] ?? '#ffffff';
             ctx.lineWidth = isActive ? 2 : 1;
             for (let i = 1; i < pts.length; ++i) {
-                const [x0, y0] = pts[i - 1];
-                const [x1, y1] = pts[i];
+                const [x0, y0] = pts[i - 1]!;
+                const [x1, y1] = pts[i]!;
                 ctx.beginPath();
                 ctx.moveTo(x0, y0);
                 ctx.lineTo(x1, y1);
@@ -402,10 +423,10 @@ export function init(container: any) {
 
         // Points per strip
         for (let s = 0; s < names.length; ++s) {
-            const name = names[s];
-            const pts = strips[name];
+            const name = names[s]!;
+            const pts = strips[name] ?? [];
             const isActive = name === activeStrip;
-            ctx.fillStyle = colors[s];
+            ctx.fillStyle = colors[s] ?? '#ffffff';
             const radius = isActive ? circle_diameter / 2 : (circle_diameter / 2) * 0.75;
             for (const [x, y] of pts) {
                 ctx.beginPath();
@@ -424,16 +445,16 @@ export function init(container: any) {
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
         for (let s = 0; s < names.length; ++s) {
-            const name = names[s];
-            const pts = strips[name];
+            const name = names[s]!;
+            const pts = strips[name] ?? [];
             if (!pts.length) continue;
             const labels = stripStartEndLabels({ name, count: pts.length }, s);
-            const [sx, sy] = pts[0];
-            drawEndpointMarker(sx, sy, colors[s], 'start');
+            const [sx, sy] = pts[0]!;
+            drawEndpointMarker(sx, sy, colors[s] ?? '#ffffff', 'start');
             drawEndpointLabel(labels.start, sx, sy);
             if (labels.end) {
-                const [ex, ey] = pts[pts.length - 1];
-                drawEndpointMarker(ex, ey, colors[s], 'end');
+                const [ex, ey] = pts[pts.length - 1]!;
+                drawEndpointMarker(ex, ey, colors[s] ?? '#ffffff', 'end');
                 drawEndpointLabel(labels.end, ex, ey);
             }
         }
@@ -442,7 +463,8 @@ export function init(container: any) {
     // Start marker: ring around the first LED. End marker: square outline
     // around the last LED. Both use the strip color over a dark halo so they
     // stay readable on any snapshot background.
-    function drawEndpointMarker(x: any, y: any, color: any, kind: any) {
+    function drawEndpointMarker(x: number, y: number, color: string, kind: string) {
+        if (!ctx) return;
         const r = circle_diameter / 2 + 4;
         ctx.lineWidth = 2;
         if (kind === 'start') {
@@ -464,7 +486,8 @@ export function init(container: any) {
 
     // Outlined text: black stroke under white fill so labels read against
     // both the dark page background and bright snapshot regions.
-    function drawEndpointLabel(text: any, x: any, y: any) {
+    function drawEndpointLabel(text: string, x: number, y: number) {
+        if (!ctx) return;
         const lx = x + circle_diameter / 2 + 8;
         const ly = y - circle_diameter / 2 - 8;
         ctx.lineWidth = 3;
@@ -483,38 +506,36 @@ export function init(container: any) {
         window.addEventListener('resize', handleResize, { signal });
 
         // Snapshot button
-        dom.btn_snapshot.addEventListener('click', () => {
+        dom.btn_snapshot?.addEventListener('click', () => {
             if (!videoElement) return;
             snapshotCanvas = document.createElement('canvas');
             snapshotCanvas.width = videoElement.videoWidth || capture_width;
             snapshotCanvas.height = videoElement.videoHeight || capture_height;
-            const snapCtx = snapshotCanvas.getContext('2d');
+            const snapCtx = snapshotCanvas.getContext('2d')!;
             snapCtx.drawImage(videoElement, 0, 0, snapshotCanvas.width, snapshotCanvas.height);
             pictureTaken = true;
             showPopup();
-            dom.btn_snapshot.disabled = true;
+            if (dom.btn_snapshot) dom.btn_snapshot.disabled = true;
         }, { signal });
 
         // Clear button
-        dom.btn_clear.addEventListener('click', () => {
-            if (confirm("Delete all?")) {
+        dom.btn_clear?.addEventListener('click', () => {
+            if (confirm('Delete all?')) {
                 strips = { strip1: [] };
                 activeStrip = 'strip1';
                 snapshotCanvas = null;
                 pictureTaken = false;
-                dom.btn_snapshot.disabled = false;
+                if (dom.btn_snapshot) dom.btn_snapshot.disabled = false;
                 refreshStripUI(dom);
             }
         }, { signal });
 
-        canvas.addEventListener('click', handleClick, { signal });
+        canvas!.addEventListener('click', handleClick, { signal });
         rafId = requestAnimationFrame(() => draw(dom));
 
         // Webcam init LAST — failures cannot break the controls or draw loop above
         try {
-            const constraints = {
-                video: true
-            };
+            const constraints = { video: true };
             navigator.mediaDevices.getUserMedia(constraints).then(stream => {
                 // If destroy() already ran while the permission prompt was open,
                 // immediately stop the stream so we don't leak the camera.
@@ -529,7 +550,7 @@ export function init(container: any) {
                 videoElement.muted = true;
                 videoElement.play().catch(() => {});
 
-                const captureContainer = container.querySelector('#captureContainer');
+                const captureContainer = container.querySelector('#captureContainer') as HTMLElement;
                 captureContainer.appendChild(videoElement);
 
                 captureContainer.addEventListener('mouseenter', () => {
@@ -538,7 +559,7 @@ export function init(container: any) {
                 captureContainer.addEventListener('mouseleave', () => {
                     captureContainer.style.opacity = '1';
                 }, { signal });
-            }).catch(err => {
+            }).catch((err: Error) => {
                 if (signal.aborted) return;
                 console.error('Webcam error:', err);
                 showWebcamError(err.message || 'Could not access camera.');
@@ -550,35 +571,36 @@ export function init(container: any) {
     }
 
     // --- Start mapping with uploaded image ---
-    function startMappingWithImage(img: any) {
+    function startMappingWithImage(img: HTMLImageElement) {
         const dom = getDom();
         setupCommonControls(dom);
         initCanvas();
         window.addEventListener('resize', handleResize, { signal });
 
         // Hide webcam-only controls
-        dom.btn_snapshot.style.display = 'none';
-        container.querySelector('#captureContainer').style.display = 'none';
+        if (dom.btn_snapshot) dom.btn_snapshot.style.display = 'none';
+        const captureContainer = container.querySelector('#captureContainer') as HTMLElement | null;
+        if (captureContainer) captureContainer.style.display = 'none';
 
         // Create snapshot from the uploaded image immediately
         snapshotCanvas = document.createElement('canvas');
         snapshotCanvas.width = img.naturalWidth;
         snapshotCanvas.height = img.naturalHeight;
-        const snapCtx = snapshotCanvas.getContext('2d');
+        const snapCtx = snapshotCanvas.getContext('2d')!;
         snapCtx.drawImage(img, 0, 0);
         pictureTaken = true;
         showPopup();
 
         // Clear button
-        dom.btn_clear.addEventListener('click', () => {
-            if (confirm("Delete all points?")) {
+        dom.btn_clear?.addEventListener('click', () => {
+            if (confirm('Delete all points?')) {
                 strips = { strip1: [] };
                 activeStrip = 'strip1';
                 refreshStripUI(dom);
             }
         }, { signal });
 
-        canvas.addEventListener('click', handleClick, { signal });
+        canvas!.addEventListener('click', handleClick, { signal });
         rafId = requestAnimationFrame(() => draw(dom));
     }
 
@@ -591,7 +613,7 @@ export function init(container: any) {
         }
         if (videoElement && videoElement.srcObject) {
             try { videoElement.pause(); } catch { /* ignore */ }
-            videoElement.srcObject.getTracks().forEach((t: any) => t.stop());
+            (videoElement.srcObject as MediaStream).getTracks().forEach(t => t.stop());
             videoElement.srcObject = null;
         }
         videoElement = null;

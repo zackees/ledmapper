@@ -28,7 +28,7 @@ describe('PANEL_CATALOG', () => {
 });
 
 describe('generatePanelPoints — matrix wiring', () => {
-    const entry = getCatalogEntry('matrix-8x8');
+    const entry = getCatalogEntry('matrix-8x8')!;
 
     it('serpentine TL: starts at (0,0), row 1 reverses', () => {
         const pts = generatePanelPoints(entry, { wiring: 'serpentine', dataInCorner: 'TL' });
@@ -75,17 +75,17 @@ describe('generatePanelPoints — matrix wiring', () => {
 });
 
 describe('generatePanelPoints — rotation and flip', () => {
-    const entry = getCatalogEntry('matrix-4x16');
+    const entry = getCatalogEntry('matrix-4x16')!;
 
     // normalise -0 → 0 for stable equality
-    const z = (v: any) => (v === 0 ? 0 : v);
+    const z = (v: number) => (v === 0 ? 0 : v);
 
     it('rotation 90 swaps axes', () => {
         const ptsBase = generatePanelPoints(entry, { wiring: 'progressive', dataInCorner: 'TL', rotation: 0 });
         const ptsRot = generatePanelPoints(entry, { wiring: 'progressive', dataInCorner: 'TL', rotation: 90 });
         assert.equal(ptsBase.length, ptsRot.length);
         for (let i = 0; i < ptsBase.length; i++) {
-            const [x, y] = ptsBase[i];
+            const [x, y] = ptsBase[i]!;
             assert.deepEqual(ptsRot[i], [z(-y), z(x)]);
         }
     });
@@ -94,7 +94,7 @@ describe('generatePanelPoints — rotation and flip', () => {
         const ptsBase = generatePanelPoints(entry, { wiring: 'progressive', dataInCorner: 'TL', rotation: 0 });
         const ptsRot = generatePanelPoints(entry, { wiring: 'progressive', dataInCorner: 'TL', rotation: 180 });
         for (let i = 0; i < ptsBase.length; i++) {
-            assert.deepEqual(ptsRot[i], [z(-ptsBase[i][0]), z(-ptsBase[i][1])]);
+            assert.deepEqual(ptsRot[i], [z(-ptsBase[i]![0]), z(-ptsBase[i]![1])]);
         }
     });
 
@@ -103,20 +103,20 @@ describe('generatePanelPoints — rotation and flip', () => {
         const fh = generatePanelPoints(entry, { wiring: 'progressive', dataInCorner: 'TL', rotation: 0, flipH: true });
         const fv = generatePanelPoints(entry, { wiring: 'progressive', dataInCorner: 'TL', rotation: 0, flipV: true });
         for (let i = 0; i < base.length; i++) {
-            assert.equal(fh[i][0], z(-base[i][0]));
-            assert.equal(fh[i][1], base[i][1]);
-            assert.equal(fv[i][0], base[i][0]);
-            assert.equal(fv[i][1], z(-base[i][1]));
+            assert.equal(fh[i]![0], z(-base[i]![0]));
+            assert.equal(fh[i]![1], base[i]![1]);
+            assert.equal(fv[i]![0], base[i]![0]);
+            assert.equal(fv[i]![1], z(-base[i]![1]));
         }
     });
 });
 
 describe('generatePanelPoints — ring and strip', () => {
     it('ring-8 produces 8 points on a circle', () => {
-        const entry = getCatalogEntry('ring-8');
+        const entry = getCatalogEntry('ring-8')!;
         const pts = generatePanelPoints(entry, { spacing: 1 });
         assert.equal(pts.length, 8);
-        const r0 = Math.hypot(pts[0][0], pts[0][1]);
+        const r0 = Math.hypot(pts[0]![0], pts[0]![1]);
         for (const [x, y] of pts) {
             const r = Math.hypot(x, y);
             assert.ok(Math.abs(r - r0) < 1e-9);
@@ -124,7 +124,7 @@ describe('generatePanelPoints — ring and strip', () => {
     });
 
     it('strip-60 is a horizontal line of 60 LEDs', () => {
-        const entry = getCatalogEntry('strip-60');
+        const entry = getCatalogEntry('strip-60')!;
         const pts = generatePanelPoints(entry, { spacing: 1 });
         assert.equal(pts.length, 60);
         assert.deepEqual(pts[0], [0, 0]);

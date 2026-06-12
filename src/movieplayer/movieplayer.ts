@@ -5,38 +5,44 @@ import { saveScreenmap, getScreenmap, savePresetSelection, getPresetSelection } 
 import { buildVideoChannelMap } from '../moviemaker/transforms';
 import { loadPresetText, loadPresetManifest } from '../preset-loader';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
+import type { ParsedStrip } from '../types/domain';
+import type { BufferGeometry, PointsMaterial, Points, Float32BufferAttribute } from 'three';
 import templateHtml from './template.html?raw';
 export { default as css } from './movieplayer.css?url';
 
-export function init(container: any) {
+import type { RendererContextWithOverlay } from '../types/domain';
+
+export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
 
-    const dom_btn_upload_screenmap = container.querySelector("#btn_upload_screenmap");
-    const dom_btn_load_movie = container.querySelector("#btn_load_movie");
-    const dom_btn_play = container.querySelector("#btn_play");
-    const dom_rng_diameter = container.querySelector("#rng_diameter");
-    const dom_txt_curr_diameter = container.querySelector("#txt_curr_diameter");
-    const dom_screenmap_drop_target = container.querySelector("#screenmap_drop_target");
-    const dom_movie_drop_target = container.querySelector("#movie_drop_target");
-    const dom_preset_buttons = container.querySelector("#preset_buttons");
+    const dom_btn_upload_screenmap = container.querySelector("#btn_upload_screenmap") as HTMLInputElement;
+    const dom_btn_load_movie = container.querySelector("#btn_load_movie") as HTMLInputElement;
+    const dom_btn_play = container.querySelector("#btn_play") as HTMLInputElement;
+    const dom_rng_diameter = container.querySelector("#rng_diameter") as HTMLInputElement;
+    const dom_txt_curr_diameter = container.querySelector("#txt_curr_diameter") as HTMLElement;
+    const dom_screenmap_drop_target = container.querySelector("#screenmap_drop_target") as HTMLElement;
+    const dom_movie_drop_target = container.querySelector("#movie_drop_target") as HTMLElement;
+    const dom_preset_buttons = container.querySelector("#preset_buttons") as HTMLElement;
 
     dom_btn_load_movie.disabled = true;
     dom_btn_play.disabled = true;
 
     const CANVAS_SIZE = 1000;
 
-    let screenmap_pts: any = [];
-    let screenmap_strips: any = [];
-    let videoChannelMap: any = null;   // flat LED index -> .rgb channel index (null = identity)
-    let movie_frames: any = [];
+    let screenmap_pts: [number, number][] = [];
+    let screenmap_strips: ParsedStrip[] = [];
+    let videoChannelMap: Int32Array | null = null;
+    let movie_frames: Uint8Array[] = [];
     let playing = false;
     let curr_frame_idx = 0;
-    let curr_frame;
+    let curr_frame: Uint8Array | null = null;
 
     const INV_255 = 1 / 255;
 
-    let pointsGeometry: any, pointsMaterial: any, pointsMesh: any;
-    let colorAttribute: any;
+    let pointsGeometry: BufferGeometry | undefined;
+    let pointsMaterial: PointsMaterial | undefined;
+    let pointsMesh: Points | undefined;
+    let colorAttribute: Float32BufferAttribute | undefined;
 
     const circleTexture = createCircleTexture(64);
 
@@ -44,9 +50,9 @@ export function init(container: any) {
     const { renderer, scene, camera, overlayCanvas, overlayCtx } = createRendererAndScene({
         width: CANVAS_SIZE,
         height: CANVAS_SIZE,
-        parent: main,
+        parent: main as HTMLElement,
         enableOverlay: true,
-    });
+    }) as RendererContextWithOverlay;
     // Labels only — let mouse events fall through to the renderer canvas.
     overlayCanvas.style.pointerEvents = 'none';
 
@@ -56,12 +62,12 @@ export function init(container: any) {
     const getDiameter = wireDiameterSlider({
         slider: dom_rng_diameter,
         label: dom_txt_curr_diameter,
-        getMaterial: () => pointsMaterial,
+        getMaterial: () => pointsMaterial ?? null,
         signal,
     });
 
     function buildPoints() {
-        const previous = pointsMesh ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial } : null;
+        const previous = (pointsMesh && pointsGeometry && pointsMaterial && colorAttribute) ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial, colorAttribute } : null;
         const result = rebuildPointsMesh({
             scene, previous,
             points: screenmap_pts,
@@ -86,26 +92,26 @@ export function init(container: any) {
         const colors = screenmap_strips.length > 1
             ? getStripColors(screenmap_strips.length)
             : ['white'];
-        const items = [];
+        const items: { id: string; text: string; anchorX: number; anchorY: number; color: string }[] = [];
         for (let si = 0; si < screenmap_strips.length; si++) {
-            const strip = screenmap_strips[si];
+            const strip = screenmap_strips[si]!;
             const first = strip.offset;
             const last = strip.offset + strip.count - 1;
             if (strip.count === 0 || last >= screenmap_pts.length) continue;
             const { start, end } = stripStartEndLabels(strip, si);
-            items.push({ id: 'start:' + si, text: start, anchorX: screenmap_pts[first][0], anchorY: screenmap_pts[first][1], color: colors[si] });
+            items.push({ id: 'start:' + si, text: start, anchorX: screenmap_pts[first]![0], anchorY: screenmap_pts[first]![1], color: colors[si] ?? 'white' });
             if (end !== null) {
-                items.push({ id: 'end:' + si, text: end, anchorX: screenmap_pts[last][0], anchorY: screenmap_pts[last][1], color: colors[si] });
+                items.push({ id: 'end:' + si, text: end, anchorX: screenmap_pts[last]![0], anchorY: screenmap_pts[last]![1], color: colors[si] ?? 'white' });
             }
         }
         labelRenderer.draw(overlayCtx, items, {
             font: 'bold 18px monospace',
             bounds: { x: 0, y: 0, w: CANVAS_SIZE, h: CANVAS_SIZE },
-            obstacles: () => screenmap_pts.map(([x, y]: [any, any]) => ({ x: x - 3, y: y - 3, w: 6, h: 6 })),
+            obstacles: () => screenmap_pts.map(([x, y]) => ({ x: x - 3, y: y - 3, w: 6, h: 6 })),
         });
     }
 
-    function load_screenmap_data(text: any, { persist = true } = {}) {
+    function load_screenmap_data(text: string, { persist = true } = {}) {
         let parsed;
         try {
             parsed = parseScreenmapMultiStrip(text);
@@ -125,28 +131,28 @@ export function init(container: any) {
         drawStripLabels();
     }
 
-    function loadScreenmapFile(file: any) {
+    function loadScreenmapFile(file: File | null | undefined) {
         if (!file) return;
         set_dom_btn_play(false);
         if (!fileHasExtension(file, ['.json'])) {
             alert('Please choose a .json screenmap file.');
             return;
         }
-        file.text().then((text: any) => {
+        file.text().then((text: string) => {
             load_screenmap_data(text);
             markActivePreset(null);
-        }).catch((error: any) => {
+        }).catch((error: unknown) => {
             alert(`Error reading screenmap file: ${error}`);
         });
     }
 
-    function markActivePreset(presetFile: any) {
-        dom_preset_buttons.querySelectorAll('.preset-btn').forEach((btn: any) => {
-            btn.classList.toggle('active-preset', btn.dataset.presetFile === presetFile);
+    function markActivePreset(presetFile: string | null) {
+        dom_preset_buttons.querySelectorAll('.preset-btn').forEach((btn) => {
+            (btn as HTMLElement & { dataset: DOMStringMap }).classList.toggle('active-preset', (btn as HTMLButtonElement).dataset['presetFile'] === presetFile);
         });
     }
 
-    async function selectPreset(presetFile: any) {
+    async function selectPreset(presetFile: string) {
         set_dom_btn_play(false);
         try {
             const text = await loadPresetText(presetFile);
@@ -171,7 +177,7 @@ export function init(container: any) {
             btn.type = 'button';
             btn.className = 'preset-btn';
             btn.textContent = preset.name;
-            btn.dataset.presetFile = preset.file;
+            btn.dataset['presetFile'] = preset.file;
             btn.addEventListener('click', () => selectPreset(preset.file), { signal });
             dom_preset_buttons.appendChild(btn);
         }
@@ -181,20 +187,20 @@ export function init(container: any) {
 
     initPresetButtons();
 
-    function loadMovieFile(file: any) {
+    function loadMovieFile(file: File | null | undefined) {
         if (!file) return;
         set_dom_btn_play(false);
         if (!fileHasExtension(file, ['.rgb'])) {
             alert('Please choose a .rgb video file.');
             return;
         }
-        file.arrayBuffer().then(load_movie_data).catch((error: any) => {
+        file.arrayBuffer().then(load_movie_data).catch((error: unknown) => {
             alert(`Error reading video file: ${error}`);
         });
     }
 
     dom_btn_upload_screenmap.addEventListener('change', () => {
-        loadScreenmapFile(dom_btn_upload_screenmap.files[0]);
+        loadScreenmapFile(dom_btn_upload_screenmap.files?.[0]);
     }, { signal });
 
     // Restore stored screenmap if available (without re-persisting, which
@@ -202,7 +208,7 @@ export function init(container: any) {
     const storedScreenmap = getScreenmap();
     if (storedScreenmap) load_screenmap_data(storedScreenmap, { persist: false });
 
-    function set_dom_btn_play(on: any) {
+    function set_dom_btn_play(on: boolean) {
         playing = on;
         dom_btn_play.value = playing ? "Pause" : "Play";
     }
@@ -211,7 +217,7 @@ export function init(container: any) {
         set_dom_btn_play(!playing);
     }, { signal });
 
-    function load_movie_data(array_buffer: any) {
+    function load_movie_data(array_buffer: ArrayBuffer) {
         const uint8_array = new Uint8Array(array_buffer);
         if (screenmap_pts.length === 0) {
             alert("No screenmap is loaded!");
@@ -224,7 +230,7 @@ export function init(container: any) {
         }
         dom_btn_play.disabled = false;
         set_dom_btn_play(false);
-        const frames = [];
+        const frames: Uint8Array[] = [];
         const n_frames = num_pixels / screenmap_pts.length;
         for (let i = 0; i < n_frames; ++i) {
             const start = i * screenmap_pts.length * 3;
@@ -237,7 +243,7 @@ export function init(container: any) {
     }
 
     dom_btn_load_movie.addEventListener('change', () => {
-        loadMovieFile(dom_btn_load_movie.files[0]);
+        loadMovieFile(dom_btn_load_movie.files?.[0]);
     }, { signal });
 
     wireFileDropTarget({
@@ -261,22 +267,22 @@ export function init(container: any) {
 
             if (movie_frames.length && playing) {
                 if (curr_frame_idx >= movie_frames.length) curr_frame_idx = 0;
-                curr_frame = movie_frames[curr_frame_idx++];
+                curr_frame = movie_frames[curr_frame_idx++] ?? null;
             } else {
                 curr_frame = null;
             }
 
             if (curr_frame && colorAttribute) {
-                const arr = colorAttribute.array;
+                const arr = colorAttribute.array as Float32Array;
                 const count = screenmap_pts.length;
                 // LED i reads frame channel videoChannelMap[i] when the
                 // screenmap declares explicit video_offsets; identity otherwise.
                 for (let i = 0; i < count; i++) {
                     const i3 = i * 3;
-                    const c3 = (videoChannelMap ? videoChannelMap[i] : i) * 3;
-                    arr[i3    ] = curr_frame[c3    ] * INV_255;
-                    arr[i3 + 1] = curr_frame[c3 + 1] * INV_255;
-                    arr[i3 + 2] = curr_frame[c3 + 2] * INV_255;
+                    const c3 = (videoChannelMap ? (videoChannelMap[i] ?? i) : i) * 3;
+                    arr[i3    ] = (curr_frame[c3    ] ?? 0) * INV_255;
+                    arr[i3 + 1] = (curr_frame[c3 + 1] ?? 0) * INV_255;
+                    arr[i3 + 2] = (curr_frame[c3 + 2] ?? 0) * INV_255;
                 }
                 colorAttribute.needsUpdate = true;
             }
@@ -290,8 +296,8 @@ export function init(container: any) {
         animLoop.stop();
         if (pointsMesh) {
             scene.remove(pointsMesh);
-            pointsGeometry.dispose();
-            pointsMaterial.dispose();
+            pointsGeometry?.dispose();
+            pointsMaterial?.dispose();
         }
         circleTexture.dispose();
         renderer.dispose();

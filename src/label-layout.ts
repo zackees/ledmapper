@@ -8,9 +8,23 @@
  * label. Pure ES module: no DOM, no Canvas — testable under Node.
  */
 
+import type { LabelAnchorInput, LabelPlacement, LabelLayoutOptions, LabelLayoutDebugDump, LabelLayoutEngine, CanvasBounds, ObstacleBox } from './types/domain';
+
 const EPS = 1e-6;
 
-const DEFAULTS = {
+interface ResolvedLayoutOptions {
+    padding: number;
+    ringSlots: number;
+    ringSteps: number;
+    baseRadius: number;
+    radiusStep: number;
+    leaderThreshold: number | null;
+    canvasBounds: CanvasBounds | null;
+    obstacles: ObstacleBox[] | (() => ObstacleBox[]) | null;
+    seedSlots: boolean;
+}
+
+const DEFAULTS: ResolvedLayoutOptions = {
     padding: 2,
     ringSlots: 8,
     ringSteps: 4,
@@ -22,14 +36,17 @@ const DEFAULTS = {
     seedSlots: true,
 };
 
-function boxesOverlap(a: any, b: any) {
+interface Box { x: number; y: number; w: number; h: number; }
+interface GridEntry { box: Box; hard: boolean; }
+interface Candidate { box: Box; padded: Box; slot: number; displacement: number; hard: number; }
+
+function boxesOverlap(a: Box, b: Box): boolean {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-function createGrid(cellSize: any) {
-    const cells = new Map();
-    const all = [];
-    function keysFor(box: any, fn: any) {
+function createGrid(cellSize: number) {
+    const cells = new Map<string, GridEntry[]>();
+    function keysFor(box: Box, fn: (k: string) => void) {
         const x0 = Math.floor(box.x / cellSize);
         const y0 = Math.floor(box.y / cellSize);
         const x1 = Math.floor((box.x + box.w) / cellSize);
@@ -41,20 +58,18 @@ function createGrid(cellSize: any) {
         }
     }
     return {
-        insert(box: any, hard: any) {
-            const entry = { box, hard };
-            all.push(entry);
-            keysFor(box, (k: any) => {
+        insert(box: Box, hard: boolean) {
+            const entry: GridEntry = { box, hard };
+            keysFor(box, (k) => {
                 let bucket = cells.get(k);
                 if (!bucket) { bucket = []; cells.set(k, bucket); }
                 bucket.push(entry);
             });
         },
-        // Returns { hard, soft } overlap counts for the candidate box.
-        probe(box: any) {
+        probe(box: Box): { hard: number; soft: number } {
             let hard = 0, soft = 0;
-            const seen = new Set();
-            keysFor(box, (k: any) => {
+            const seen = new Set<GridEntry>();
+            keysFor(box, (k) => {
                 const bucket = cells.get(k);
                 if (!bucket) return;
                 for (const entry of bucket) {
@@ -71,14 +86,16 @@ function createGrid(cellSize: any) {
     };
 }
 
-function median(values: any) {
+function median(values: number[]): number {
     if (values.length === 0) return 0;
     const sorted = [...values].sort((a, b) => a - b);
-    return sorted[Math.floor(sorted.length / 2)];
+    return sorted[Math.floor(sorted.length / 2)] ?? 0;
 }
 
+interface Point2D { x: number; y: number; }
+
 // Midpoint of the label-box edge facing the anchor.
-function leaderAttachment(anchorX: any, anchorY: any, box: any) {
+function leaderAttachment(anchorX: number, anchorY: number, box: Box): Point2D {
     const cx = box.x + box.w / 2;
     const cy = box.y + box.h / 2;
     const dx = anchorX - cx;
@@ -90,7 +107,9 @@ function leaderAttachment(anchorX: any, anchorY: any, box: any) {
     return { x: cx, y: dy > 0 ? box.y + box.h : box.y };
 }
 
-function makePlacement(label: any, box: any, displacement: any, leaderThreshold: any, flags: any) {
+interface PlacementFlags { hidden?: boolean; demoted?: boolean; }
+
+function makePlacement(label: LabelAnchorInput, box: Box, displacement: number, leaderThreshold: number, flags: PlacementFlags): LabelPlacement {
     const needsLeader = !flags.hidden && displacement > leaderThreshold;
     const attach = leaderAttachment(label.anchorX, label.anchorY, box);
     return {
@@ -111,7 +130,7 @@ function makePlacement(label: any, box: any, displacement: any, leaderThreshold:
     };
 }
 
-function runLayout(labels: any, opts: any, preferredSlot: any) {
+function runLayout(labels: LabelAnchorInput[], opts: ResolvedLayoutOptions, preferredSlot: Map<string, number>): LabelPlacement[] {
     const { padding, ringSlots, ringSteps, baseRadius, radiusStep, canvasBounds, obstacles, seedSlots } = opts;
     const leaderThreshold = opts.leaderThreshold !== null && opts.leaderThreshold !== undefined
         ? opts.leaderThreshold : 1.2 * baseRadius;
@@ -122,24 +141,23 @@ function runLayout(labels: any, opts: any, preferredSlot: any) {
 
     const cell = Math.max(8, median(order.map((l) => Math.max(l.w, l.h))));
     const grid = createGrid(cell);
-    // Lazy obstacles (a function) are only evaluated on a real layout run, so
-    // per-frame callers pay nothing while the result cache holds.
+    // Lazy obstacles (a function) are only evaluated on a real layout run.
     const obs = typeof obstacles === 'function' ? obstacles() : obstacles;
     if (obs) {
         for (const ob of obs) grid.insert(ob, false);
     }
 
-    const inBounds = (box: any) => !canvasBounds || (
+    const inBounds = (box: Box) => !canvasBounds || (
         box.x >= canvasBounds.x && box.y >= canvasBounds.y &&
         box.x + box.w <= canvasBounds.x + canvasBounds.w &&
         box.y + box.h <= canvasBounds.y + canvasBounds.h);
 
-    const byId = new Map();
+    const byId = new Map<string, LabelPlacement>();
     for (const label of order) {
         const startSlot = seedSlots ? (preferredSlot.get(label.id) || 0) : 0;
-        let clean = null;        // no hard overlaps, no soft overlaps
-        let labelClean = null;   // no hard overlaps (may occlude obstacles)
-        let best = null;         // fewest hard overlaps (degradation fallback)
+        let clean: Candidate | null = null;        // no hard overlaps, no soft overlaps
+        let labelClean: Candidate | null = null;   // no hard overlaps (may occlude obstacles)
+        let best: Candidate | null = null;         // fewest hard overlaps (degradation fallback)
 
         for (let step = 0; step < ringSteps && !clean; step++) {
             const r = baseRadius + step * radiusStep;
@@ -149,11 +167,11 @@ function runLayout(labels: any, opts: any, preferredSlot: any) {
                 const angle = -Math.PI / 4 + slot * (2 * Math.PI / ringSlots);
                 const cx = label.anchorX + r * Math.cos(angle);
                 const cy = label.anchorY + r * Math.sin(angle);
-                const box = { x: cx - label.w / 2, y: cy - label.h / 2, w: label.w, h: label.h };
-                const padded = { x: box.x - padding, y: box.y - padding, w: box.w + padding * 2, h: box.h + padding * 2 };
+                const box: Box = { x: cx - label.w / 2, y: cy - label.h / 2, w: label.w, h: label.h };
+                const padded: Box = { x: box.x - padding, y: box.y - padding, w: box.w + padding * 2, h: box.h + padding * 2 };
                 if (!inBounds(box)) continue;
                 const { hard, soft } = grid.probe(padded);
-                const candidate = { box, padded, slot, displacement: r, hard };
+                const candidate: Candidate = { box, padded, slot, displacement: r, hard };
                 if (best === null || hard < best.hard) best = candidate;
                 if (hard === 0) {
                     if (labelClean === null) labelClean = candidate;
@@ -170,23 +188,25 @@ function runLayout(labels: any, opts: any, preferredSlot: any) {
         } else if (best && best.hard <= 1) {
             byId.set(label.id, makePlacement(label, best.box, best.displacement, leaderThreshold, { demoted: true }));
         } else {
-            const box = { x: label.anchorX, y: label.anchorY, w: label.w, h: label.h };
+            const box: Box = { x: label.anchorX, y: label.anchorY, w: label.w, h: label.h };
             byId.set(label.id, makePlacement(label, box, 0, leaderThreshold, { hidden: true }));
         }
     }
 
     // Return in input order so consumers can zip with their own arrays.
-    return labels.map((l: any) => byId.get(l.id));
+    return labels.map((l) => byId.get(l.id)!);
 }
+
+interface SnapshotEntry { id: string; anchorX: number; anchorY: number; w: number; h: number; }
 
 // True when `labels` is the previous input rigidly translated by a constant
 // (dx, dy) — same ids in the same order, same box sizes.
-function detectTranslation(prev: any, labels: any) {
+function detectTranslation(prev: SnapshotEntry[] | null, labels: LabelAnchorInput[]): { dx: number; dy: number } | null {
     if (!prev || prev.length !== labels.length || labels.length === 0) return null;
-    const dx = labels[0].anchorX - prev[0].anchorX;
-    const dy = labels[0].anchorY - prev[0].anchorY;
+    const dx = labels[0]!.anchorX - prev[0]!.anchorX;
+    const dy = labels[0]!.anchorY - prev[0]!.anchorY;
     for (let i = 0; i < labels.length; i++) {
-        const a = prev[i], b = labels[i];
+        const a = prev[i]!, b = labels[i]!;
         if (a.id !== b.id || a.w !== b.w || a.h !== b.h) return null;
         if (Math.abs((b.anchorX - a.anchorX) - dx) > EPS) return null;
         if (Math.abs((b.anchorY - a.anchorY) - dy) > EPS) return null;
@@ -194,7 +214,7 @@ function detectTranslation(prev: any, labels: any) {
     return { dx, dy };
 }
 
-function translatePlacement(p: any, dx: any, dy: any) {
+function translatePlacement(p: LabelPlacement, dx: number, dy: number): LabelPlacement {
     return {
         ...p,
         anchorX: p.anchorX + dx, anchorY: p.anchorY + dy,
@@ -208,20 +228,20 @@ function translatePlacement(p: any, dx: any, dy: any) {
  * Stateful engine owning the preferred-slot cache (placement stability across
  * zooms) and the last-result cache (pan = free translation, no re-layout).
  */
-export function createLabelLayoutEngine(options: any = {}) {
-    const baseOpts = { ...DEFAULTS, ...options };
-    const preferredSlot = new Map();
-    let lastInput: any = null;
-    let lastOptsKey: any = null;
-    let lastResult: any = null;
+export function createLabelLayoutEngine(options: LabelLayoutOptions = {}): LabelLayoutEngine {
+    const baseOpts: ResolvedLayoutOptions = { ...DEFAULTS, ...options };
+    const preferredSlot = new Map<string, number>();
+    let lastInput: SnapshotEntry[] | null = null;
+    let lastOptsKey: string | null = null;
+    let lastResult: LabelPlacement[] | null = null;
     const counters = { layoutRuns: 0, translations: 0, cacheHits: 0 };
 
-    function snapshot(labels: any) {
-        return labels.map((l: any) => ({ id: l.id, anchorX: l.anchorX, anchorY: l.anchorY, w: l.w, h: l.h }));
+    function snapshot(labels: LabelAnchorInput[]): SnapshotEntry[] {
+        return labels.map((l) => ({ id: l.id, anchorX: l.anchorX, anchorY: l.anchorY, w: l.w, h: l.h }));
     }
 
-    function layout(labels: any, callOptions: any = {}) {
-        const opts = { ...baseOpts, ...callOptions };
+    function layout(labels: LabelAnchorInput[], callOptions: LabelLayoutOptions = {}): LabelPlacement[] {
+        const opts: ResolvedLayoutOptions = { ...baseOpts, ...callOptions };
         const optsKey = JSON.stringify({
             padding: opts.padding, ringSlots: opts.ringSlots, ringSteps: opts.ringSteps,
             baseRadius: opts.baseRadius, radiusStep: opts.radiusStep,
@@ -237,14 +257,14 @@ export function createLabelLayoutEngine(options: any = {}) {
                     return lastResult;
                 }
                 counters.translations++;
-                lastResult = lastResult.map((p: any) => translatePlacement(p, shift.dx, shift.dy));
+                lastResult = lastResult.map((p) => translatePlacement(p, shift.dx, shift.dy));
                 lastInput = snapshot(labels);
                 return lastResult;
             }
         }
         counters.layoutRuns++;
         // Drop slot memory for labels that no longer exist.
-        const liveIds = new Set(labels.map((l: any) => l.id));
+        const liveIds = new Set(labels.map((l) => l.id));
         for (const id of preferredSlot.keys()) {
             if (!liveIds.has(id)) preferredSlot.delete(id);
         }
@@ -261,9 +281,9 @@ export function createLabelLayoutEngine(options: any = {}) {
         lastResult = null;
     }
 
-    function debugDump() {
+    function debugDump(): LabelLayoutDebugDump {
         return {
-            placements: lastResult ? lastResult.map((p: any) => ({ ...p })) : [],
+            placements: lastResult ? lastResult.map((p) => ({ ...p })) : [],
             counters: { ...counters },
         };
     }
@@ -272,6 +292,6 @@ export function createLabelLayoutEngine(options: any = {}) {
 }
 
 /** Stateless one-shot layout. */
-export function layoutLabels(labels: any, options: any = {}) {
+export function layoutLabels(labels: LabelAnchorInput[], options: LabelLayoutOptions = {}): LabelPlacement[] {
     return createLabelLayoutEngine(options).layout(labels);
 }

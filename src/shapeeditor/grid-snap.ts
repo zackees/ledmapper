@@ -4,10 +4,10 @@
  * @param {number} gridSize
  * @returns {[number,number]}
  */
-export function snapToGrid(pt: any, gridSize: any) {
-    if (!gridSize || gridSize <= 0) return [pt[0], pt[1]];
+export function snapToGrid(pt: [number, number] | number[], gridSize: number | undefined | null): [number, number] {
+    if (!gridSize || gridSize <= 0) return [pt[0]!, pt[1]!] as [number, number];
     return [
-        Math.round(pt[0] / gridSize) * gridSize,
-        Math.round(pt[1] / gridSize) * gridSize,
-    ];
+        Math.round(pt[0]! / gridSize) * gridSize,
+        Math.round(pt[1]! / gridSize) * gridSize,
+    ] as [number, number];
 }

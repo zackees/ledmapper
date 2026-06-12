@@ -17,7 +17,20 @@
  *
  * Returns the left-side hint string per the discoverability spec.
  */
-export function hintTextFor(state: any) {
+interface HintState {
+    empty?: boolean;
+    placing?: boolean;
+    placingLabel?: string;
+    pasting?: boolean;
+    pastingCount?: number;
+    pointEditMode?: boolean;
+    pointEditStripName?: string;
+    selectedStripName?: string | null;
+    chainMode?: boolean;
+    reorderMode?: boolean;
+}
+
+export function hintTextFor(state: HintState | null | undefined) {
     const s = state || {};
     if (s.placing) {
         const label = s.placingLabel || 'panel';

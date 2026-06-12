@@ -1,4 +1,5 @@
 const Swal = import('sweetalert2').then(m => m.default);
+import type { ParsedStrip, MultiStripParseResult } from '../types/domain';
 import { parseScreenmapMultiStrip } from '../common';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
 import { saveScreenmap, getScreenmap } from '../screenmap-store';
@@ -16,76 +17,79 @@ import { perfEnabled } from './perf';
 import templateHtml from './template.html?raw';
 export { default as css } from './moviemaker.css?url';
 
-export function init(container: any) {
+export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
 
     // ── DOM refs ────────────────────────────────────────────────────────────────
-    const dom_btn_load_video    = container.querySelector('#btn_load_video');
-    const dom_btn_start_webcam  = container.querySelector('#btn_start_webcam');
-    const dom_btn_upload_screenmap  = container.querySelector('#btn_upload_screenmap');
-    const dom_preset_buttons = container.querySelector('.preset-buttons');
-    const dom_btn_unload_source = container.querySelector('#btn_unload_source');
-    const dom_btn_play_pause    = container.querySelector('#btn_play_pause');
-    const dom_video_progress    = container.querySelector('#video-progress');
-    const dom_progress_track    = container.querySelector('#video-progress-track');
-    const dom_progress_fill     = container.querySelector('#video-progress-fill');
-    const dom_progress_thumb    = container.querySelector('#video-progress-thumb');
-    const dom_time_current      = container.querySelector('#video-time-current');
-    const dom_time_duration     = container.querySelector('#video-time-duration');
-    const dom_btn_how_to       = container.querySelector('#btn_how_to');
-    const dom_btn_toggle_record = container.querySelector('#btn_toggle_record');
-    const dom_rng_rotation     = container.querySelector('#rng_rotation');
-    const dom_rng_zoom         = container.querySelector('#rng_zoom');
-    const dom_txt_curr_zoom    = container.querySelector('#txt_curr_zoom');
-    const dom_rng_brightness   = container.querySelector('#rng_brightness');
-    const dom_txt_curr_bri     = container.querySelector('#txt_curr_bri');
-    const dom_chk_limit_bri    = container.querySelector('#chk_limit_brightness');
-    const dom_rng_max_bri      = container.querySelector('#rng_max_brightness');
-    const dom_txt_curr_max_bri = container.querySelector('#txt_curr_max_bri');
-    const dom_rng_gamma        = container.querySelector('#rng_gamma');
-    const dom_txt_curr_gamma   = container.querySelector('#txt_curr_gamma');
-    const dom_rng_blur         = container.querySelector('#rng_blur');
-    const dom_rng_blur_sigma   = container.querySelector('#rng_blur_sigma');
-    const dom_chk_sigma_lock   = container.querySelector('#chk_sigma_lock');
-    const dom_sel_resolution   = container.querySelector('#sel_resolution');
-    const dom_sel_framerate    = container.querySelector('#sel_framerate');
-    const dom_sel_max_resolution = container.querySelector('#sel_max_resolution');
-    const dom_txt_curr_resolution = container.querySelector('#txt_curr_resolution');
-    const dom_chk_show_leds    = container.querySelector('#chk_show_leds');
-    const dom_chk_auto_bloom       = container.querySelector('#chk_auto_bloom');
-    const dom_bloom_strength_slider = container.querySelector('#bloom_strength_slider');
-    const dom_rng_bloom_strength   = container.querySelector('#rng_bloom_strength');
-    const dom_txt_bloom_strength   = container.querySelector('#txt_curr_bloom_strength');
+    const qe  = <T extends HTMLElement>(sel: string) => container.querySelector(sel) as T;
+    const qei = (sel: string) => qe<HTMLInputElement>(sel);
 
-    const videoPlayer    = container.querySelector('#videoPlayer');
-    const renderCanvas   = container.querySelector('#renderCanvas');
-    const overlayCanvas  = container.querySelector('#overlayCanvas');
-    const overlayCtx     = overlayCanvas.getContext('2d');
-    const previewPanel   = container.querySelector('#previewPanel');
+    const dom_btn_load_video    = qe<HTMLButtonElement>('#btn_load_video');
+    const dom_btn_start_webcam  = qe<HTMLButtonElement>('#btn_start_webcam');
+    const dom_btn_upload_screenmap  = qei('#btn_upload_screenmap');
+    const dom_preset_buttons = container.querySelector('.preset-buttons') as HTMLElement | null;
+    const dom_btn_unload_source = qe<HTMLButtonElement>('#btn_unload_source');
+    const dom_btn_play_pause    = qe<HTMLButtonElement>('#btn_play_pause');
+    const dom_video_progress    = qe('#video-progress');
+    const dom_progress_track    = qe('#video-progress-track');
+    const dom_progress_fill     = qe<HTMLElement>('#video-progress-fill');
+    const dom_progress_thumb    = qe<HTMLElement>('#video-progress-thumb');
+    const dom_time_current      = qe<HTMLElement>('#video-time-current');
+    const dom_time_duration     = qe<HTMLElement>('#video-time-duration');
+    const dom_btn_how_to       = qe<HTMLButtonElement>('#btn_how_to');
+    const dom_btn_toggle_record = qe<HTMLInputElement>('#btn_toggle_record');
+    const dom_rng_rotation     = qei('#rng_rotation');
+    const dom_rng_zoom         = qei('#rng_zoom');
+    const dom_txt_curr_zoom    = qe<HTMLElement>('#txt_curr_zoom');
+    const dom_rng_brightness   = qei('#rng_brightness');
+    const dom_txt_curr_bri     = qe<HTMLElement>('#txt_curr_bri');
+    const dom_chk_limit_bri    = qei('#chk_limit_brightness');
+    const dom_rng_max_bri      = qei('#rng_max_brightness');
+    const dom_txt_curr_max_bri = qe<HTMLElement>('#txt_curr_max_bri');
+    const dom_rng_gamma        = qei('#rng_gamma');
+    const dom_txt_curr_gamma   = qe<HTMLElement>('#txt_curr_gamma');
+    const dom_rng_blur         = qei('#rng_blur');
+    const dom_rng_blur_sigma   = qei('#rng_blur_sigma');
+    const dom_chk_sigma_lock   = qei('#chk_sigma_lock');
+    const dom_sel_resolution   = qe<HTMLSelectElement>('#sel_resolution');
+    const dom_sel_framerate    = qe<HTMLSelectElement>('#sel_framerate');
+    const dom_sel_max_resolution = qe<HTMLSelectElement>('#sel_max_resolution');
+    const dom_txt_curr_resolution = qe<HTMLElement>('#txt_curr_resolution');
+    const dom_chk_show_leds    = qei('#chk_show_leds');
+    const dom_chk_auto_bloom       = qei('#chk_auto_bloom');
+    const dom_bloom_strength_slider = qe('#bloom_strength_slider');
+    const dom_rng_bloom_strength   = qei('#rng_bloom_strength');
+    const dom_txt_bloom_strength   = qe<HTMLElement>('#txt_curr_bloom_strength');
+
+    const videoPlayer    = qe<HTMLVideoElement>('#videoPlayer');
+    const renderCanvas   = qe<HTMLCanvasElement>('#renderCanvas');
+    const overlayCanvas  = qe<HTMLCanvasElement>('#overlayCanvas');
+    const overlayCtx     = overlayCanvas.getContext('2d')!;
+    const previewPanel   = qe<HTMLElement>('#previewPanel');
     const preview        = createLedPreview({ parent: previewPanel, side: 200 });
 
     const ac = new AbortController();
     const { signal } = ac;
 
     // ── State ───────────────────────────────────────────────────────────────────
-    let screenmap_pts: any = [];
-    let rawScreenmapPts: any = [];
-    let screenmapStrips: any = [];
-    let videoChannelMap: any = null;   // flat LED index -> .rgb channel index (null = identity)
-    let previewLedDiameter: any = null; // screenmap-declared diameter in screenmap_pts units (null = heuristic)
+    let screenmap_pts: [number, number][] = [];
+    let rawScreenmapPts: [number, number][] = [];
+    let screenmapStrips: ParsedStrip[] = [];
+    let videoChannelMap: Int32Array | null = null;   // flat LED index -> .rgb channel index (null = identity)
+    let previewLedDiameter: number | null = null; // screenmap-declared diameter in screenmap_pts units (null = heuristic)
     let screenmapValid = false;
     let sourceActive = false;
 
     let target_zoom = 1, curr_zoom = 1;
     let target_rotate = 0, curr_rotate = 0;
-    let target_translate = [0, 0], curr_translate = [0, 0];
+    let target_translate: [number, number] = [0, 0], curr_translate: [number, number] = [0, 0];
     // Drag state: null when idle, or { kind: 'translate'|'zoom', pointerId, lastY }
-    let drag: any = null;
+    let drag: { kind: 'translate' | 'zoom'; pointerId: number; lastY: number } | null = null;
 
     let frame_rate = 30;
     let nativeVideoWidth = 640, nativeVideoHeight = 480;
     let videoWidth = 640, videoHeight = 480;
-    let rafId: any = null;
+    let rafId: number | null = null;
     let isScrubbing = false;
 
     // ── Extracted modules ────────────────────────────────────────────────────────
@@ -101,13 +105,13 @@ export function init(container: any) {
     const videoSource = createVideoSource({
         videoPlayer,
         parseResolution,
-        onSourceReady(w: any, h: any, type: any) {
+        onSourceReady(w: number, h: number, type: string) {
             setupForNewSource(w, h);
             if (type === 'video') {
                 frame_rate = 30;
             }
         },
-        async onError(message: any) {
+        async onError(message: string) {
             (await Swal).fire('Webcam Error', message, 'error');
         },
     });
@@ -118,7 +122,7 @@ export function init(container: any) {
 
     // ── Helpers ─────────────────────────────────────────────────────────────────
 
-    function formatTime(seconds: any) {
+    function formatTime(seconds: number) {
         if (!isFinite(seconds) || seconds < 0) return '0:00';
         const m = Math.floor(seconds / 60);
         const s = Math.floor(seconds % 60);
@@ -129,7 +133,7 @@ export function init(container: any) {
         return parseInt(dom_sel_max_resolution.value);
     }
 
-    function applyResolution(nativeW: any, nativeH: any) {
+    function applyResolution(nativeW: number, nativeH: number) {
         const { width: w, height: h } = scaleToMaxDimension(nativeW, nativeH, getMaxResolution());
 
         videoWidth = w;
@@ -146,13 +150,13 @@ export function init(container: any) {
             curr_translate = [w / 2, h / 2];
         }
 
-        const canvasRow = container.querySelector('.canvas-row');
-        if (canvasRow) canvasRow.dataset.layout = (w > h) ? 'landscape' : 'portrait';
+        const canvasRow = container.querySelector('.canvas-row') as HTMLElement | null;
+        if (canvasRow) canvasRow.dataset['layout'] = (w > h) ? 'landscape' : 'portrait';
 
         dom_txt_curr_resolution.textContent = `${w}×${h}`;
     }
 
-    function setupForNewSource(nativeW: any, nativeH: any) {
+    function setupForNewSource(nativeW: number, nativeH: number) {
         nativeVideoWidth = nativeW;
         nativeVideoHeight = nativeH;
 
@@ -206,13 +210,13 @@ export function init(container: any) {
     // Stays null when no strip declares one (preview falls back to the
     // spacing heuristic).
     function updatePreviewLedDiameter() {
-        const declared = resolveLedDiameter(screenmapStrips);
+        const declared = resolveLedDiameter(screenmapStrips as unknown as Array<Record<string, unknown>>);
         previewLedDiameter = (declared !== null && screenmap_pts.length > 0)
             ? declared * computeFitScale(rawScreenmapPts, screenmap_pts)
             : null;
     }
 
-    function loadScreenmapFromParsed(parsed: any) {
+    function loadScreenmapFromParsed(parsed: MultiStripParseResult | null | undefined) {
         screenmapStrips = parsed ? parsed.strips : [];
         videoChannelMap = parsed ? buildVideoChannelMap(parsed.strips, parsed.totalCount) : null;
         rawScreenmapPts = parsed ? parsed.allPoints : [];
@@ -225,22 +229,23 @@ export function init(container: any) {
             screenmapValid = true;
             target_zoom = 1; curr_zoom = 1;
             curr_rotate = 0; target_rotate = 0;
-            container.querySelector('#txt_curr_rotation').innerText = '0';
-            dom_rng_rotation.value = 0;
+            const rotTxt = container.querySelector('#txt_curr_rotation') as HTMLElement | null;
+            if (rotTxt) rotTxt.innerText = '0';
+            dom_rng_rotation.value = '0';
             target_translate = [videoWidth / 2, videoHeight / 2];
             curr_translate = [videoWidth / 2, videoHeight / 2];
         }
         updateElementStates();
     }
 
-    let presetButtons: any = [];
+    let presetButtons: HTMLButtonElement[] = [];
 
     function clearPresetActive() {
-        presetButtons.forEach((b: any) => b.classList.remove('active-preset'));
+        presetButtons.forEach((b) => b.classList.remove('active-preset'));
     }
 
     if (dom_preset_buttons) {
-        for (const preset of screenmapPresets as any[]) {
+        for (const preset of screenmapPresets as Array<{ file: string; name: string }>) {
             const btn = document.createElement('button');
             btn.id = `btn_preset_${preset.file.replace(/\.json$/i, '')}`;
             btn.type = 'button';
@@ -278,12 +283,13 @@ export function init(container: any) {
         }
     }
     if (!restoredFromStore && presetButtons.length > 0) {
-        presetButtons[0].click();
+        presetButtons[0]!.click();
     }
 
     // Wire welcome overlay buttons to sidebar buttons
-    container.querySelectorAll('[data-trigger]').forEach((btn: any) => {
-        btn.addEventListener('click', () => container.querySelector('#' + btn.dataset.trigger).click(), { signal });
+    container.querySelectorAll('[data-trigger]').forEach((btn) => {
+        const b = btn as HTMLElement;
+        b.addEventListener('click', () => (container.querySelector('#' + b.dataset.trigger) as HTMLElement | null)?.click(), { signal });
     });
 
     // ── Camera position (smooth interpolation) ──────────────────────────────────
@@ -307,7 +313,7 @@ export function init(container: any) {
     // ── Event handlers ──────────────────────────────────────────────────────────
 
     dom_btn_how_to.addEventListener('click', async () => {
-        (await Swal as any).fire({
+        (await Swal).fire({
             title: 'How to get the best video',
             html: `
                 <div style="text-align: left; margin-bottom: 15px;">
@@ -323,7 +329,7 @@ export function init(container: any) {
                 </div>
             `,
             confirmButtonText: 'Got it!',
-            customClass: { popup: 'custom-popup-class', content: 'custom-content-class' },
+            customClass: { popup: 'custom-popup-class', htmlContainer: 'custom-content-class' },
         });
     }, { signal });
 
@@ -372,7 +378,7 @@ export function init(container: any) {
     }, { signal });
 
     // Progress bar scrubbing
-    function seekToPosition(clientX: any) {
+    function seekToPosition(clientX: number) {
         const rect = dom_progress_track.getBoundingClientRect();
         const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
         const seekTime = fraction * videoPlayer.duration;
@@ -383,7 +389,7 @@ export function init(container: any) {
         dom_time_current.textContent = formatTime(seekTime);
     }
 
-    dom_progress_track.addEventListener('mousedown', (e: any) => {
+    dom_progress_track.addEventListener('mousedown', (e: MouseEvent) => {
         if (videoSource.sourceType !== 'video') return;
         isScrubbing = true;
         dom_progress_thumb.classList.add('dragging');
@@ -417,12 +423,12 @@ export function init(container: any) {
         const toolbar = container.querySelector('.canvas-toolbar');
         if (toolbar) toolbar.classList.remove('visible');
 
-        const canvasRow = container.querySelector('.canvas-row');
-        if (canvasRow) delete canvasRow.dataset.layout;
+        const canvasRow = container.querySelector('.canvas-row') as HTMLElement | null;
+        if (canvasRow) delete canvasRow.dataset['layout'];
     }, { signal });
 
     // Screenmap upload
-    function loadScreenmapFile(file: any) {
+    function loadScreenmapFile(file: File | null | undefined) {
         if (!file) return;
         if (!fileHasExtension(file, ['.csv', '.json'])) {
             alert('Please choose a .csv or .json screenmap file.');
@@ -431,27 +437,27 @@ export function init(container: any) {
         clearPresetActive();
         screenmapValid = false;
         updateElementStates();
-        file.text().then((text: any) => {
+        file.text().then((text: string) => {
             loadScreenmapFromParsed(parseScreenmapMultiStrip(text));
             saveScreenmap(text);
-        }).catch((error: any) => {
+        }).catch((error: unknown) => {
             alert(`Error reading screenmap file: ${error}`);
         });
     }
 
     dom_btn_upload_screenmap.addEventListener('change', () => {
-        loadScreenmapFile(dom_btn_upload_screenmap.files[0]);
+        loadScreenmapFile(dom_btn_upload_screenmap.files?.[0] ?? null);
     }, { signal });
 
     wireFileDropTarget({
-        target: container.querySelector('#screenmap_drop_target'),
+        target: container.querySelector('#screenmap_drop_target') as Element,
         input: dom_btn_upload_screenmap,
         onFile: loadScreenmapFile,
         signal,
     });
 
     wireFileDropTarget({
-        target: container.querySelector('.canvas-area'),
+        target: container.querySelector('.canvas-area') as Element,
         onFile: (file) => {
             if (!file) return;
             if (!file.type.startsWith('video/')) {
@@ -466,51 +472,54 @@ export function init(container: any) {
     // Slider handlers
     const SNAP_STEP = 45;
     const SNAP_THRESHOLD = 5;
-    function snap_rotation(val: any) {
+    function snap_rotation(val: number) {
         const nearest = Math.round(val / SNAP_STEP) * SNAP_STEP;
         return Math.abs(val - nearest) <= SNAP_THRESHOLD ? nearest : val;
     }
-    function set_target_rotate(val: any) {
-        const snapped = snap_rotation(parseInt(val));
+    function set_target_rotate(val: string | number) {
+        const snapped = snap_rotation(parseInt(String(val)));
         target_rotate = snapped;
-        dom_rng_rotation.value = snapped;
-        container.querySelector('#txt_curr_rotation').innerText = snapped;
+        dom_rng_rotation.value = String(snapped);
+        const rotTxt2 = container.querySelector('#txt_curr_rotation') as HTMLElement | null;
+        if (rotTxt2) rotTxt2.innerText = String(snapped);
     }
     dom_rng_rotation.addEventListener('input', () => set_target_rotate(dom_rng_rotation.value), { signal });
 
     dom_rng_brightness.addEventListener('input', () => {
         dom_txt_curr_bri.innerText = `${dom_rng_brightness.value}%`;
     }, { signal });
-    const dom_max_bri_slider = container.querySelector('#max_bri_slider');
+    const dom_max_bri_slider = container.querySelector('#max_bri_slider') as HTMLElement | null;
     dom_chk_limit_bri.addEventListener('change', () => {
         const enabled = dom_chk_limit_bri.checked;
         dom_rng_max_bri.disabled = !enabled;
-        dom_max_bri_slider.classList.toggle('disabled', !enabled);
+        dom_max_bri_slider?.classList.toggle('disabled', !enabled);
     }, { signal });
     dom_rng_max_bri.addEventListener('input', () => {
         dom_txt_curr_max_bri.innerText = `${dom_rng_max_bri.value}%`;
     }, { signal });
     dom_rng_gamma.addEventListener('input', () => {
-        dom_txt_curr_gamma.innerText = `${(dom_rng_gamma.value / 10).toFixed(1)}`;
+        dom_txt_curr_gamma.innerText = `${(parseFloat(dom_rng_gamma.value) / 10).toFixed(1)}`;
     }, { signal });
+    const dom_txt_curr_blur = container.querySelector('#txt_curr_blur') as HTMLElement | null;
+    const dom_txt_curr_blur_sigma = container.querySelector('#txt_curr_blur_sigma') as HTMLElement | null;
     dom_rng_blur.addEventListener('input', () => {
-        container.querySelector('#txt_curr_blur').innerText = dom_rng_blur.value;
+        if (dom_txt_curr_blur) dom_txt_curr_blur.innerText = dom_rng_blur.value;
         if (dom_chk_sigma_lock.checked) {
             dom_rng_blur_sigma.value = dom_rng_blur.value;
-            container.querySelector('#txt_curr_blur_sigma').innerText = dom_rng_blur.value;
+            if (dom_txt_curr_blur_sigma) dom_txt_curr_blur_sigma.innerText = dom_rng_blur.value;
         }
     }, { signal });
     dom_rng_blur_sigma.addEventListener('input', () => {
-        container.querySelector('#txt_curr_blur_sigma').innerText = dom_rng_blur_sigma.value;
+        if (dom_txt_curr_blur_sigma) dom_txt_curr_blur_sigma.innerText = dom_rng_blur_sigma.value;
         if (dom_chk_sigma_lock.checked) {
             dom_rng_blur.value = dom_rng_blur_sigma.value;
-            container.querySelector('#txt_curr_blur').innerText = dom_rng_blur_sigma.value;
+            if (dom_txt_curr_blur) dom_txt_curr_blur.innerText = dom_rng_blur_sigma.value;
         }
     }, { signal });
     dom_chk_sigma_lock.addEventListener('change', () => {
         if (dom_chk_sigma_lock.checked) {
             dom_rng_blur_sigma.value = dom_rng_blur.value;
-            container.querySelector('#txt_curr_blur_sigma').innerText = dom_rng_blur.value;
+            if (dom_txt_curr_blur_sigma) dom_txt_curr_blur_sigma.innerText = dom_rng_blur.value;
         }
     }, { signal });
     dom_rng_zoom.addEventListener('input', () => {
@@ -532,7 +541,7 @@ export function init(container: any) {
     const _bloomAutoInit = _bloomAutoStored === null ? true : _bloomAutoStored === 'true';
     dom_chk_auto_bloom.checked = _bloomAutoInit;
 
-    function _applyBloomAutoState(enabled: any) {
+    function _applyBloomAutoState(enabled: boolean) {
         dom_rng_bloom_strength.disabled = enabled;
         dom_bloom_strength_slider.classList.toggle('disabled', enabled);
         preview.setAutoBloom(enabled);
@@ -541,14 +550,14 @@ export function init(container: any) {
     /** Compute manual strength from slider value (0-100) → bloom strength.
      *  Mapping: strength = lerp(S_MIN, sparseCeil * 1.5, (rng/100)^2)
      */
-    function _sliderToBloomStrength(rngVal: any) {
+    function _sliderToBloomStrength(rngVal: number) {
         const t = (rngVal / 100) ** 2;
         const S_MIN   = Math.max(PREVIEW_AUTO_FLOOR * 0.5, 0.05);
         const S_MAX   = PREVIEW_AUTO_MAX_SPARSE * 1.5;
         return S_MIN + (S_MAX - S_MIN) * t;
     }
 
-    function _bloomStrengthToLabel(s: any) {
+    function _bloomStrengthToLabel(s: number) {
         return s.toFixed(2);
     }
 
@@ -571,7 +580,7 @@ export function init(container: any) {
             const S_MAX = PREVIEW_AUTO_MAX_SPARSE * 1.5;
             const raw = (curr - S_MIN) / (S_MAX - S_MIN);
             const rngVal = Math.round(Math.sqrt(Math.max(raw, 0)) * 100);
-            dom_rng_bloom_strength.value = Math.min(Math.max(rngVal, 0), 100);
+            dom_rng_bloom_strength.value = String(Math.min(Math.max(rngVal, 0), 100));
             preview.setManualBloomStrength(_sliderToBloomStrength(parseInt(dom_rng_bloom_strength.value)));
         }
         _applyBloomAutoState(enabled);
@@ -606,7 +615,7 @@ export function init(container: any) {
         try { overlayCanvas.releasePointerCapture(pointerId); } catch { /* already released */ }
     }
 
-    overlayCanvas.addEventListener('pointerdown', (e: any) => {
+    overlayCanvas.addEventListener('pointerdown', (e: PointerEvent) => {
         if (screenmap_pts.length === 0) return;
         if (e.button === 0) {
             drag = { kind: 'translate', pointerId: e.pointerId, lastY: e.offsetY };
@@ -618,7 +627,7 @@ export function init(container: any) {
         }
     }, { signal });
 
-    overlayCanvas.addEventListener('pointermove', (e: any) => {
+    overlayCanvas.addEventListener('pointermove', (e: PointerEvent) => {
         if (!drag || screenmap_pts.length === 0) return;
         if (drag.kind === 'translate') {
             target_translate[0] = e.offsetX;
@@ -636,7 +645,7 @@ export function init(container: any) {
     overlayCanvas.addEventListener('pointerup', cancelDrag, { signal });
     overlayCanvas.addEventListener('pointercancel', cancelDrag, { signal });
     overlayCanvas.addEventListener('lostpointercapture', cancelDrag, { signal });
-    overlayCanvas.addEventListener('contextmenu', (e: any) => e.preventDefault(), { signal });
+    overlayCanvas.addEventListener('contextmenu', (e: Event) => e.preventDefault(), { signal });
 
     // Safety net: cancel any in-progress drag on window blur or tab hide.
     window.addEventListener('blur', cancelDrag, { signal });
@@ -645,9 +654,9 @@ export function init(container: any) {
     // ── Animation loop ──────────────────────────────────────────────────────────
 
     let lastTime = performance.now();
-    let lastSample: any = null;
-    let sampleRgbPts: any = null;
-    let recordRgbPts: any = null;
+    let lastSample: { rgbPts: Uint8Array; avgBri: number } | null = null;
+    let sampleRgbPts: Uint8Array | null = null;
+    let recordRgbPts: Uint8Array | null = null;
 
     // Debug hook always exposed for e2e tests (drag state needed for issue #31 tests).
     if (!window.__mmDebug) window.__mmDebug = {};
@@ -657,7 +666,7 @@ export function init(container: any) {
         // Extended debug hook for e2e correctness tests: exposes the exact transform
         // state and latest GPU-gathered sample for CPU-reference comparison.
         window.__mmDebug.getState = () => ({
-            localPts: screenmap_pts.map(([x, y]: [any, any]) => [x, y]),
+            localPts: screenmap_pts.map(([x, y]: [number, number]) => [x, y]),
             rotate: curr_rotate,
             zoom: curr_zoom,
             translate: [curr_translate[0], curr_translate[1]],
@@ -670,18 +679,18 @@ export function init(container: any) {
     // The .rgb stream is channel-ordered. When a screenmap declares explicit
     // video_offset values that differ from flat point order, remap the flat
     // sample into channel order for recording (overlay/preview stay flat).
-    function toRecordingSample(sample: any, numPts: any) {
+    function toRecordingSample(sample: { rgbPts: Uint8Array; avgBri: number }, numPts: number) {
         if (!videoChannelMap || videoChannelMap.length !== numPts) return sample;
         if (!recordRgbPts || recordRgbPts.length !== numPts * 3) {
             recordRgbPts = new Uint8Array(numPts * 3);
         }
         const src = sample.rgbPts;
         for (let i = 0; i < numPts; i++) {
-            const ch = videoChannelMap[i] * 3;
+            const ch = videoChannelMap![i]! * 3;
             const o = i * 3;
-            recordRgbPts[ch]     = src[o];
-            recordRgbPts[ch + 1] = src[o + 1];
-            recordRgbPts[ch + 2] = src[o + 2];
+            recordRgbPts[ch]     = src[o] ?? 0;
+            recordRgbPts[ch + 1] = src[o + 1] ?? 0;
+            recordRgbPts[ch + 2] = src[o + 2] ?? 0;
         }
         return { rgbPts: recordRgbPts, avgBri: sample.avgBri };
     }

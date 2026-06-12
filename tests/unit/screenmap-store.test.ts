@@ -6,14 +6,14 @@ import assert from 'node:assert/strict';
 class MemStorage {
     data: Map<string, string> = new Map();
     constructor() { this.data = new Map(); }
-    getItem(k: any) { return this.data.has(k) ? this.data.get(k) : null; }
-    setItem(k: any, v: any) { this.data.set(String(k), String(v)); }
-    removeItem(k: any) { this.data.delete(k); }
+    getItem(k: string) { return this.data.has(k) ? this.data.get(k) ?? null : null; }
+    setItem(k: string, v: string) { this.data.set(k, v); }
+    removeItem(k: string) { this.data.delete(k); }
     clear() { this.data.clear(); }
     get length() { return this.data.size; }
-    key(i: any) { return Array.from(this.data.keys())[i] ?? null; }
+    key(i: number) { return Array.from(this.data.keys())[i] ?? null; }
 }
-globalThis.localStorage = new MemStorage() as any;
+globalThis.localStorage = new MemStorage() as unknown as Storage;
 
 const {
     MIN_AUTOSAVE_LEDS,
@@ -37,11 +37,11 @@ function clearAll() {
     localStorage.clear();
 }
 
-function makeMap(stripLeds: any) {
-    const map: any = {};
+function makeMap(stripLeds: Record<string, number>) {
+    const map: Record<string, { x: number[]; y: number[]; diameter: number }> = {};
     for (const [name, count] of Object.entries(stripLeds)) {
         const x = [], y = [];
-        for (let i = 0; i < (count as number); i++) { x.push(i); y.push(0); }
+        for (let i = 0; i < count; i++) { x.push(i); y.push(0); }
         map[name] = { x, y, diameter: 0.5 };
     }
     return JSON.stringify({ map });
@@ -54,8 +54,8 @@ describe('screenmap-store: isDegenerate', () => {
         assert.equal(isDegenerate(''), true);
         assert.equal(isDegenerate('not json'), true);
         assert.equal(isDegenerate('{'), true);
-        assert.equal(isDegenerate(null), true);
-        assert.equal(isDegenerate(undefined), true);
+        assert.equal(isDegenerate(null as unknown as string), true);
+        assert.equal(isDegenerate(undefined as unknown as string), true);
     });
 
     it('returns true for missing map', () => {
@@ -96,7 +96,7 @@ describe('screenmap-store: saveScreenmapWithMeta', () => {
         const ok = saveScreenmapWithMeta(json, { source: 'save' });
         assert.equal(ok, true);
         assert.equal(getScreenmap(), json);
-        const meta = getScreenmapMeta();
+        const meta = getScreenmapMeta()!;
         assert.equal(meta.source, 'save');
         assert.equal(meta.ledCount, 8);
         assert.equal(meta.stripCount, 1);
@@ -112,8 +112,8 @@ describe('screenmap-store: saveScreenmapWithMeta', () => {
         const backup = getBackup();
         assert.ok(backup, 'expected a backup');
         assert.equal(backup.json, a);
-        assert.equal(backup.meta.presetFile, 'preset-a.json');
-        assert.equal(backup.meta.ledCount, 8);
+        assert.equal(backup.meta!.presetFile, 'preset-a.json');
+        assert.equal(backup.meta!.ledCount, 8);
     });
 
     it('does not promote when incoming text is identical', () => {
@@ -165,7 +165,7 @@ describe('screenmap-store: restoreBackup', () => {
         assert.equal(restored, a);
         assert.equal(getScreenmap(), a);
         assert.equal(getPresetSelection(), 'preset-a.json');
-        const meta = getScreenmapMeta();
+        const meta = getScreenmapMeta()!;
         assert.equal(meta.source, 'restore');
         assert.equal(meta.ledCount, 8);
     });
@@ -196,9 +196,9 @@ describe('screenmap-store: promoteToBackup', () => {
         saveScreenmap(a);
         savePresetSelection('p.json');
         assert.equal(promoteToBackup(), true);
-        const backup = getBackup() as any;
-        assert.equal(backup.json, a);
-        assert.equal(backup.meta.presetFile, 'p.json');
+        const backup = getBackup();
+        assert.equal(backup!.json, a);
+        assert.equal(backup!.meta!.presetFile, 'p.json');
     });
 
     it('refuses when working copy is degenerate or missing', () => {
@@ -217,7 +217,7 @@ describe('screenmap-store: backfillMeta', () => {
         localStorage.setItem('lm:screenmap', a);
         assert.equal(getScreenmapMeta(), null);
         backfillMeta();
-        const meta = getScreenmapMeta();
+        const meta = getScreenmapMeta()!;
         assert.equal(meta.source, 'backfill');
         assert.equal(meta.ledCount, 12);
         assert.equal(meta.stripCount, 1);
@@ -227,9 +227,9 @@ describe('screenmap-store: backfillMeta', () => {
     it('is a no-op when meta already exists', () => {
         const a = makeMap({ strip1: 8 });
         saveScreenmap(a);
-        const before = getScreenmapMeta();
+        const before = getScreenmapMeta()!;
         backfillMeta();
-        const after = getScreenmapMeta();
+        const after = getScreenmapMeta()!;
         assert.equal(after.savedAt, before.savedAt);
         assert.equal(after.source, before.source);
     });
@@ -258,12 +258,11 @@ describe('screenmap-store: saveScreenmapPoints delegates to gated writer', () =>
 
 // ── Pins (issue #24): meta + pin-count regression guard ──────────────
 
-function makePinMap(stripSpecs: any) {
+function makePinMap(stripSpecs: Record<string, { count: number; pin?: string }>) {
     // stripSpecs: { name: { count, pin } }
-    const map: any = {};
-    for (const [name, spec] of Object.entries(stripSpecs)) {
-        const x = [], y = [];
-        const s = spec as any;
+    const map: Record<string, { x: number[]; y: number[]; diameter: number; pin?: string }> = {};
+    for (const [name, s] of Object.entries(stripSpecs)) {
+        const x: number[] = [], y: number[] = [];
         for (let i = 0; i < s.count; i++) { x.push(i); y.push(0); }
         map[name] = { x, y, diameter: 0.5 };
         if (s.pin) map[name].pin = s.pin;
@@ -283,12 +282,12 @@ describe('screenmap-store: pinCount meta + regression guard', () => {
             b: { count: 4, pin: 'pin2' },
         });
         assert.equal(saveScreenmapWithMeta(json, { source: 'save' }), true);
-        assert.equal(getScreenmapMeta().pinCount, 2);
+        assert.equal(getScreenmapMeta()!.pinCount, 2);
     });
 
     it('pinCount defaults to 1 when strips have no pin field', () => {
         assert.equal(saveScreenmapWithMeta(makeMap({ strip1: 8 }), { source: 'save' }), true);
-        assert.equal(getScreenmapMeta().pinCount, 1);
+        assert.equal(getScreenmapMeta()!.pinCount, 1);
     });
 
     it('refuses a write that silently drops pin count (no recent mutation)', () => {
@@ -303,9 +302,9 @@ describe('screenmap-store: pinCount meta + regression guard', () => {
             a: { count: 4, pin: 'pin1' },
             b: { count: 4, pin: 'pin1' },
         });
-        const warnings: any = [];
+        const warnings: string[] = [];
         const origWarn = console.warn;
-        console.warn = (...args) => warnings.push(args.join(' '));
+        console.warn = (...args) => warnings.push(String(args[0] ?? ''));
         try {
             assert.equal(saveScreenmapWithMeta(onePin, { source: 'save' }), false);
         } finally {
@@ -313,7 +312,7 @@ describe('screenmap-store: pinCount meta + regression guard', () => {
         }
         // Working copy untouched
         assert.equal(getScreenmap(), twoPins);
-        assert.ok(warnings.some((w: any) => /pin/i.test(w)), 'expected a console.warn mentioning pins');
+        assert.ok(warnings.some((w) => /pin/i.test(w)), 'expected a console.warn mentioning pins');
     });
 
     it('allows pin-count drop within grace window after notePinMutation()', () => {
@@ -330,7 +329,7 @@ describe('screenmap-store: pinCount meta + regression guard', () => {
         notePinMutation();
         assert.equal(saveScreenmapWithMeta(onePin, { source: 'save' }), true);
         assert.equal(getScreenmap(), onePin);
-        assert.equal(getScreenmapMeta().pinCount, 1);
+        assert.equal(getScreenmapMeta()!.pinCount, 1);
     });
 
     it('allows pin-count increases without mutation note', () => {
@@ -342,6 +341,6 @@ describe('screenmap-store: pinCount meta + regression guard', () => {
             b: { count: 4, pin: 'pin2' },
         });
         assert.equal(saveScreenmapWithMeta(twoPins, { source: 'save' }), true);
-        assert.equal(getScreenmapMeta().pinCount, 2);
+        assert.equal(getScreenmapMeta()!.pinCount, 2);
     });
 });

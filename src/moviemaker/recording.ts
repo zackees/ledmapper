@@ -4,32 +4,23 @@
 
 import { getFrameIndex, flattenColorFrames } from './transforms';
 import { download_binary_as_file } from '../common';
+import type Swal from 'sweetalert2';
 
-/**
- * Create a recording manager.
- *
- * @param {Object} opts
- * @param {function(): Promise<{fire: function}>} opts.getSwal - Async function returning SweetAlert2 instance.
- * @returns {Object} Recording API
- */
-export function createRecording({getSwal}: {getSwal?: any}) {
+type SwalInstance = typeof Swal;
+
+export function createRecording({ getSwal }: { getSwal?: () => Promise<SwalInstance> }) {
     let active = false;
     let capturing = false;
     let startTimeUs = 0;
     let lastFrameIdx = -1;
-    let colorFrames: any = [];
+    const colorFrames: Uint8Array[] = [];
     let downloadIndex = 0;
 
-    function timeMicros() {
+    function timeMicros(): number {
         return Math.floor(performance.now() * 1000);
     }
 
-    /**
-     * Toggle recording on/off. When stopping, triggers download.
-     *
-     * @returns {boolean} New active state.
-     */
-    async function toggle() {
+    async function toggle(): Promise<boolean> {
         active = !active;
         if (!active) {
             await endRecording();
@@ -37,28 +28,23 @@ export function createRecording({getSwal}: {getSwal?: any}) {
         return active;
     }
 
-    async function endRecording() {
+    async function endRecording(): Promise<void> {
         const flat = flattenColorFrames(colorFrames);
         if (flat === null) {
-            const swal = await getSwal();
-            swal.fire('No Frames', 'No frames were captured during recording.', 'warning');
+            if (getSwal) {
+                const swal = await getSwal();
+                swal.fire('No Frames', 'No frames were captured during recording.', 'warning');
+            }
         } else {
             download_binary_as_file(flat, `video${downloadIndex}.rgb`);
             downloadIndex++;
         }
-        colorFrames = [];
+        colorFrames.length = 0;
         capturing = false;
         lastFrameIdx = -1;
     }
 
-    /**
-     * Process a frame during recording. Should be called every animation frame
-     * when a valid sample is available.
-     *
-     * @param {{ rgbPts: Uint8Array }} sample - The sampled pixel data.
-     * @param {number} frameRate - Current target FPS.
-     */
-    function processFrame(sample: any, frameRate: any) {
+    function processFrame(sample: { rgbPts: Uint8Array }, frameRate: number): void {
         if (!active) {
             if (capturing) {
                 capturing = false;
@@ -80,10 +66,7 @@ export function createRecording({getSwal}: {getSwal?: any}) {
         }
     }
 
-    /**
-     * Reset recording state when no valid readback is happening.
-     */
-    function resetCapture() {
+    function resetCapture(): void {
         if (capturing) {
             capturing = false;
             lastFrameIdx = -1;

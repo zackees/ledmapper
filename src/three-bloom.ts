@@ -6,6 +6,7 @@
  * The pure math lives in bloom-utils.js.
  */
 
+import type { WebGLRenderer, Scene, Camera } from 'three';
 import { Vector2 } from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -18,24 +19,27 @@ import {
     stepIrisAttackDecay,
     computeBloomStrength,
 } from './bloom-utils';
+import type { IrisState, BloomRange } from './types/domain';
 
-/**
- * Wire an EffectComposer with a RenderPass + UnrealBloomPass.
- * Call `render()` instead of `renderer.render(scene, camera)` when bloom
- * is active.
- *
- * @param {Object} opts
- * @param {THREE.WebGLRenderer} opts.renderer
- * @param {THREE.Scene} opts.scene
- * @param {THREE.Camera} opts.camera
- * @param {number} opts.width - CSS pixel width of the render surface.
- * @param {number} opts.height - CSS pixel height of the render surface.
- * @param {number} [opts.strength=BLOOM_MAX_STRENGTH]
- * @param {number} [opts.radius=BLOOM_RADIUS]
- * @param {number} [opts.threshold=BLOOM_THRESHOLD]
- * @returns {{ composer: EffectComposer, bloomPass: UnrealBloomPass, render: function(): void, setSize: function(number, number): void, dispose: function(): void }}
- */
-export function createBloomComposer({ renderer, scene, camera, width, height, strength = BLOOM_MAX_STRENGTH, radius = BLOOM_RADIUS, threshold = BLOOM_THRESHOLD }: { renderer: any; scene: any; camera: any; width: any; height: any; strength?: number; radius?: number; threshold?: number }) {
+export function createBloomComposer({
+    renderer,
+    scene,
+    camera,
+    width,
+    height,
+    strength = BLOOM_MAX_STRENGTH,
+    radius = BLOOM_RADIUS,
+    threshold = BLOOM_THRESHOLD,
+}: {
+    renderer: WebGLRenderer;
+    scene: Scene;
+    camera: Camera;
+    width: number;
+    height: number;
+    strength?: number;
+    radius?: number;
+    threshold?: number;
+}) {
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
     const bloomPass = new UnrealBloomPass(new Vector2(width, height), strength, radius, threshold);
@@ -45,7 +49,7 @@ export function createBloomComposer({ renderer, scene, camera, width, height, st
         composer,
         bloomPass,
         render() { composer.render(); },
-        setSize(w: any, h: any) { composer.setSize(w, h); },
+        setSize(w: number, h: number) { composer.setSize(w, h); },
         dispose() {
             bloomPass.dispose();
             composer.dispose();
@@ -53,26 +57,14 @@ export function createBloomComposer({ renderer, scene, camera, width, height, st
     };
 }
 
-/**
- * Per-frame auto-bloom "iris" update: track average LED brightness through
- * FastLED's attack-decay filter and scale the bloom pass strength inversely
- * (FastLED's _updateAutoBrightness). Fast attack: brightness rises are
- * tracked immediately, so bloom drops at once on blowouts. Slow exponential
- * decay: brightness falls are tracked gradually, so bloom rises slowly in
- * dark scenes. Uses real clock time between calls, so it is frame-rate
- * independent. Call before composer.render().
- *
- * @param {UnrealBloomPass} bloomPass
- * @param {{currentBrightness: number, lastTimeMs?: number}} irisState - mutated in place.
- * @param {Uint8Array|number[]} rgbBytes - this frame's LED colors, 3 bytes per LED.
- * @param {{min?: number, max?: number}} [range] - strength range override
- *        (proportioned to the rendered LED size via bloomParamsForLedSize).
- * @param {number|null} [manualStrength=null] - when provided, override the
- *        computed strength directly; the iris filter still advances so
- *        re-enabling auto is smooth (no strength jump).
- * @param {number} [nowMs=performance.now()] - injectable clock for tests.
- */
-export function updateBloomIris(bloomPass: any, irisState: any, rgbBytes: any, range: any, manualStrength = null, nowMs = performance.now()) {
+export function updateBloomIris(
+    bloomPass: UnrealBloomPass,
+    irisState: IrisState,
+    rgbBytes: Uint8Array | number[],
+    range: BloomRange | null | undefined,
+    manualStrength: number | null = null,
+    nowMs = performance.now(),
+): void {
     const { avgBrightness, litCount, totalCount } = computeFrameBrightness(rgbBytes);
     const dtSeconds = typeof irisState.lastTimeMs === 'number'
         ? (nowMs - irisState.lastTimeMs) / 1000
@@ -82,6 +74,6 @@ export function updateBloomIris(bloomPass: any, irisState: any, rgbBytes: any, r
     if (manualStrength !== null) {
         bloomPass.strength = manualStrength;
     } else {
-        bloomPass.strength = computeBloomStrength(irisState.currentBrightness, litCount, totalCount, range);
+        bloomPass.strength = computeBloomStrength(irisState.currentBrightness, litCount, totalCount, range ?? undefined);
     }
 }

@@ -2,35 +2,30 @@
  * Video source management: file loading and webcam capture.
  */
 
-/**
- * Create a video source manager.
- *
- * @param {Object} opts
- * @param {HTMLVideoElement} opts.videoPlayer - The shared video element.
- * @param {function(string): {width:number, height:number}} opts.parseResolution
- * @param {function(number, number, string): void} opts.onSourceReady - Called with (width, height, sourceType) when source is ready.
- * @param {function(string): Promise<void>} opts.onError - Called with error message.
- * @returns {Object} Video source API
- */
-export function createVideoSource({videoPlayer, parseResolution, onSourceReady, onError}: {videoPlayer?: any, parseResolution?: any, onSourceReady?: any, onError?: any}) {
-    let webcamStream: any = null;
-    let sourceType: any = null;
+export function createVideoSource({
+    videoPlayer,
+    parseResolution,
+    onSourceReady,
+    onError,
+}: {
+    videoPlayer: HTMLVideoElement;
+    parseResolution: (res: string) => { width: number; height: number };
+    onSourceReady: (width: number, height: number, sourceType: string) => void;
+    onError: (msg: string) => void;
+}) {
+    let webcamStream: MediaStream | null = null;
+    let sourceType: string | null = null;
     let isPlaying = false;
 
     function stopWebcam() {
         if (webcamStream) {
-            webcamStream.getTracks().forEach((t: any) => t.stop());
+            webcamStream.getTracks().forEach((t) => t.stop());
             webcamStream = null;
         }
         videoPlayer.srcObject = null;
     }
 
-    /**
-     * Load a video file from a file input event.
-     *
-     * @param {File} file
-     */
-    function loadVideoFile(file: any) {
+    function loadVideoFile(file: File | null | undefined) {
         if (!file) return;
         stopWebcam();
         if (videoPlayer.src && videoPlayer.src.startsWith('blob:')) {
@@ -45,16 +40,10 @@ export function createVideoSource({videoPlayer, parseResolution, onSourceReady, 
         };
     }
 
-    /**
-     * Start webcam capture with given constraints.
-     *
-     * @param {string} resolutionStr - e.g. "640x480"
-     * @param {number} frameRate
-     */
-    function startWebcam(resolutionStr: any, frameRate: any) {
+    function startWebcam(resolutionStr: string, frameRate: number) {
         stopWebcam();
         const res = parseResolution(resolutionStr);
-        const constraints = {
+        const constraints: MediaStreamConstraints = {
             video: { width: res.width, height: res.height, frameRate },
             audio: false,
         };
@@ -63,17 +52,17 @@ export function createVideoSource({videoPlayer, parseResolution, onSourceReady, 
             videoPlayer.srcObject = stream;
             videoPlayer.play();
             const track = stream.getVideoTracks()[0];
-            const settings = track.getSettings();
+            const settings = track?.getSettings() ?? {};
             sourceType = 'webcam';
             isPlaying = true;
             onSourceReady(settings.width || res.width, settings.height || res.height, 'webcam');
-        }).catch(async err => {
+        }).catch(async (err: Error) => {
             console.error('Webcam error:', err);
             onError(err.message);
         });
     }
 
-    function playPause() {
+    function playPause(): boolean {
         if (isPlaying) {
             videoPlayer.pause();
         } else {

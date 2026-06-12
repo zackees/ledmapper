@@ -3,38 +3,28 @@
  */
 
 import { centerAndFitPoints } from '../common';
+import type { StripPoint } from '../types/domain';
 
 /**
  * Centers and scales points to fit within the given video dimensions.
  * Points are centered around origin (0,0) so that rotation works correctly.
- *
- * @param {Array<[number,number]>} pts - raw screenmap points
- * @param {number} videoWidth
- * @param {number} videoHeight
- * @returns {Array<[number,number]>} transformed points centered around (0,0)
  */
-export function transformToCenter(pts: any, videoWidth: any, videoHeight: any) {
-    return centerAndFitPoints(pts, videoWidth, videoHeight, { margin: 20, center: 'origin' });
+export function transformToCenter(pts: StripPoint[] | number[][], videoWidth: number, videoHeight: number): StripPoint[] {
+    return centerAndFitPoints(pts as StripPoint[], videoWidth, videoHeight, { margin: 20, center: 'origin' });
 }
 
 /**
  * Apply rotation, zoom, and translation to screenmap points.
- *
- * @param {Array<[number,number]>} screenmapPts - points centered around (0,0)
- * @param {number} rotate - rotation in degrees
- * @param {number} zoom - zoom factor
- * @param {[number,number]} translate - [x, y] translation (canvas center)
- * @returns {Array<[number,number]>}
  */
-export function createTransformedScreenmap(screenmapPts: any, rotate: any, zoom: any, translate: any) {
+export function createTransformedScreenmap(screenmapPts: StripPoint[] | number[][], rotate: number, zoom: number, translate: [number, number]): StripPoint[] {
     if (screenmapPts.length === 0) return [];
-    let pts = screenmapPts.map(([x, y]: [any, any]) => [x, y]);
+    let pts: StripPoint[] = (screenmapPts as StripPoint[]).map(([x, y]) => [x, y]);
     if (rotate !== 0) {
         const r = rotate * Math.PI / 180;
         const cos_r = Math.cos(r), sin_r = Math.sin(r);
-        pts = pts.map(([x, y]: [any, any]) => [x * cos_r - y * sin_r, x * sin_r + y * cos_r]);
+        pts = pts.map(([x, y]) => [x * cos_r - y * sin_r, x * sin_r + y * cos_r]);
     }
-    pts = pts.map(([x, y]: [any, any]) => [
+    pts = pts.map(([x, y]) => [
         x * zoom + translate[0],
         y * zoom + translate[1]
     ]);
@@ -43,59 +33,45 @@ export function createTransformedScreenmap(screenmapPts: any, rotate: any, zoom:
 
 /**
  * Calculate frame index from timing.
- *
- * @param {number} nowUs - current time in microseconds
- * @param {number} recordingStartUs - recording start time in microseconds
- * @param {number} frameRate - target FPS
- * @returns {number} frame index (0-based)
  */
-export function getFrameIndex(nowUs: any, recordingStartUs: any, frameRate: any) {
+export function getFrameIndex(nowUs: number, recordingStartUs: number, frameRate: number): number {
     const frameTimeUs = (1 / frameRate) * 1e6;
     // Add small epsilon to avoid floating-point floor errors at exact boundaries
-    // e.g. Math.floor(4.999999999999999) should be 5, not 4
     const raw = (nowUs - recordingStartUs) / frameTimeUs;
     return Math.floor(raw + 1e-9);
 }
 
 /**
  * Flatten accumulated color frames into a single Uint8Array.
- * Returns null if there are no frames (caller should handle this case).
- *
- * @param {Uint8Array[]} colorFrames
- * @returns {Uint8Array|null}
+ * Returns null if there are no frames.
  */
-export function flattenColorFrames(colorFrames: any) {
+export function flattenColorFrames(colorFrames: Uint8Array[]): Uint8Array | null {
     if (colorFrames.length === 0) return null;
     let totalBytes = 0;
-    colorFrames.forEach((f: any) => { totalBytes += f.length; });
+    colorFrames.forEach((f) => { totalBytes += f.length; });
     const flat = new Uint8Array(totalBytes);
     let offset = 0;
-    colorFrames.forEach((f: any) => { flat.set(f, offset); offset += f.length; });
+    colorFrames.forEach((f) => { flat.set(f, offset); offset += f.length; });
     return flat;
 }
 
 /**
  * Parse a resolution string like "640x480" into {width, height}.
- *
- * @param {string} resStr
- * @returns {{width: number, height: number}}
  */
-export function parseResolution(resStr: any) {
-    const [w, h] = resStr.split('x').map((n: any) => parseInt(n));
+export function parseResolution(resStr: string): { width: number; height: number } {
+    const parts = resStr.split('x');
+    const w = parseInt(parts[0] ?? '0');
+    const h = parseInt(parts[1] ?? '0');
     return { width: w, height: h };
 }
 
 /**
  * Compute the scaling factor for fitting points into a preview box.
- *
- * @param {Array<[number,number]>} pts - transformed LED positions
- * @param {number} boxSize - side length of the square preview box
- * @returns {number} scaling factor (includes 0.8 margin)
  */
-export function computePreviewFactor(pts: any, boxSize: any) {
+export function computePreviewFactor(pts: StripPoint[] | number[][], boxSize: number): number {
     if (pts.length === 0) return 1;
     let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-    pts.forEach(([x, y]: [any, any]) => {
+    (pts as StripPoint[]).forEach(([x, y]) => {
         xmin = Math.min(x, xmin); xmax = Math.max(x, xmax);
         ymin = Math.min(y, ymin); ymax = Math.max(y, ymax);
     });
@@ -108,30 +84,25 @@ export function computePreviewFactor(pts: any, boxSize: any) {
 
 /**
  * Sample pixel values from a readback buffer at transformed LED positions.
- *
- * @param {Uint8Array} readbackBuffer - RGBA pixel data (WebGL: Y=0 is bottom)
- * @param {Array<[number,number]>} transformedPts - LED positions in video coords
- * @param {number} width - buffer width
- * @param {number} height - buffer height
- * @returns {{rgbPts: Uint8Array, avgBri: number}}
  */
-export function samplePixels(readbackBuffer: any, transformedPts: any, width: any, height: any) {
+export function samplePixels(readbackBuffer: Uint8Array, transformedPts: StripPoint[] | number[][], width: number, height: number): { rgbPts: Uint8Array; avgBri: number } {
     const numPts = transformedPts.length;
     const rgbPts = new Uint8Array(numPts * 3);
     let totalBri = 0;
     let inBoundsCount = 0;
 
     for (let i = 0; i < numPts; i++) {
-        const x = Math.round(transformedPts[i][0]);
-        const y = Math.round(transformedPts[i][1]);
+        const pt = (transformedPts as StripPoint[])[i]!;
+        const x = Math.round(pt[0]);
+        const y = Math.round(pt[1]);
         const flippedY = (height - 1) - y;
 
         if (x >= 0 && x < width && flippedY >= 0 && flippedY < height) {
             const idx = (flippedY * width + x) * 4;
-            rgbPts[i * 3]     = readbackBuffer[idx];
-            rgbPts[i * 3 + 1] = readbackBuffer[idx + 1];
-            rgbPts[i * 3 + 2] = readbackBuffer[idx + 2];
-            totalBri += readbackBuffer[idx] + readbackBuffer[idx + 1] + readbackBuffer[idx + 2];
+            rgbPts[i * 3]     = readbackBuffer[idx] ?? 0;
+            rgbPts[i * 3 + 1] = readbackBuffer[idx + 1] ?? 0;
+            rgbPts[i * 3 + 2] = readbackBuffer[idx + 2] ?? 0;
+            totalBri += (readbackBuffer[idx] ?? 0) + (readbackBuffer[idx + 1] ?? 0) + (readbackBuffer[idx + 2] ?? 0);
             inBoundsCount++;
         }
     }
@@ -143,23 +114,18 @@ export function samplePixels(readbackBuffer: any, transformedPts: any, width: an
  * Extract LED colors from a GPU gather-pass readback buffer.
  * Texel i corresponds to LED i; alpha 0 marks an out-of-bounds LED
  * (rendered black, excluded from the brightness average).
- *
- * @param {Uint8Array} gatherBuffer - RGBA readback from the gather target
- * @param {number} numPts - LED count (≤ buffer texel count)
- * @param {Uint8Array} rgbPts - output buffer of length numPts * 3 (reused)
- * @returns {{rgbPts: Uint8Array, avgBri: number}}
  */
-export function extractGatherSample(gatherBuffer: any, numPts: any, rgbPts: any) {
+export function extractGatherSample(gatherBuffer: Uint8Array, numPts: number, rgbPts: Uint8Array): { rgbPts: Uint8Array; avgBri: number } {
     let totalBri = 0;
     let inBoundsCount = 0;
 
     for (let i = 0; i < numPts; i++) {
         const idx = i * 4;
         const o = i * 3;
-        if (gatherBuffer[idx + 3] >= 128) {
-            const r = gatherBuffer[idx];
-            const g = gatherBuffer[idx + 1];
-            const b = gatherBuffer[idx + 2];
+        if ((gatherBuffer[idx + 3] ?? 0) >= 128) {
+            const r = gatherBuffer[idx] ?? 0;
+            const g = gatherBuffer[idx + 1] ?? 0;
+            const b = gatherBuffer[idx + 2] ?? 0;
             rgbPts[o]     = r;
             rgbPts[o + 1] = g;
             rgbPts[o + 2] = b;
@@ -177,19 +143,10 @@ export function extractGatherSample(gatherBuffer: any, numPts: any, rgbPts: any)
 
 /**
  * Build a flat-index -> video-channel map for multi-strip screenmaps that
- * declare an explicit `video_offset`. Strip s's LED j occupies frame channel
- * `video_offset + j` in the .rgb stream. Returns null when every strip's
- * video_offset equals its flat offset (the common sequential case), so
- * callers can skip remapping entirely.
- *
- * Shared by the moviemaker recording path and the movieplayer playback path
- * so both sides of the .rgb format always agree.
- *
- * @param {Array<{offset:number, count:number, video_offset:number}>} strips
- * @param {number} totalCount - total LED count across all strips
- * @returns {Int32Array|null} map[flatIndex] = channelIndex, or null if identity
+ * declare an explicit `video_offset`. Returns null when every strip's
+ * video_offset equals its flat offset (sequential case).
  */
-export function buildVideoChannelMap(strips: any, totalCount: any) {
+export function buildVideoChannelMap(strips: Array<{ offset: number; count: number; video_offset?: number }>, totalCount: number): Int32Array | null {
     if (!strips || strips.length === 0) return null;
     let sequential = true;
     for (const s of strips) {
@@ -202,8 +159,6 @@ export function buildVideoChannelMap(strips: any, totalCount: any) {
         const vo = typeof s.video_offset === 'number' ? s.video_offset : s.offset;
         for (let j = 0; j < s.count; j++) {
             const ch = vo + j;
-            // Out-of-range channel declarations fall back to the flat index
-            // rather than corrupting neighbouring strips.
             map[s.offset + j] = (ch >= 0 && ch < totalCount) ? ch : (s.offset + j);
         }
     }
@@ -212,12 +167,8 @@ export function buildVideoChannelMap(strips: any, totalCount: any) {
 
 /**
  * Compute FPS from frame timestamps.
- *
- * @param {number} nowMs - current time in ms
- * @param {number} lastTimeMs - previous frame time in ms
- * @returns {number} frames per second (integer)
  */
-export function computeFps(nowMs: any, lastTimeMs: any) {
+export function computeFps(nowMs: number, lastTimeMs: number): number {
     const delta = nowMs - lastTimeMs;
     if (delta <= 0) return 0;
     return Math.round(1000 / delta);
@@ -225,15 +176,9 @@ export function computeFps(nowMs: any, lastTimeMs: any) {
 
 /**
  * Scale native dimensions so the larger side fits within maxDim.
- * Never upscales — if both sides are already within maxDim, returns native.
- * A maxDim of 0 means "native" (no scaling).
- *
- * @param {number} nativeW
- * @param {number} nativeH
- * @param {number} maxDim - maximum pixels for the larger dimension (0 = native)
- * @returns {{width: number, height: number}}
+ * Never upscales.
  */
-export function scaleToMaxDimension(nativeW: any, nativeH: any, maxDim: any) {
+export function scaleToMaxDimension(nativeW: number, nativeH: number, maxDim: number): { width: number; height: number } {
     if (maxDim <= 0) return { width: nativeW, height: nativeH };
     const maxNative = Math.max(nativeW, nativeH);
     if (maxNative <= maxDim) return { width: nativeW, height: nativeH };
@@ -246,14 +191,10 @@ export function scaleToMaxDimension(nativeW: any, nativeH: any, maxDim: any) {
 
 /**
  * Estimate LED diameter from the first two points.
- * Returns the distance between them, with a minimum of 1.0.
- *
- * @param {Array<[number,number]>} pts
- * @returns {number}
  */
-export function estimateLedSize(pts: any) {
+export function estimateLedSize(pts: StripPoint[]): number {
     if (pts.length < 2) return 1.0;
-    const a = pts[0], b = pts[1];
+    const a = pts[0]!, b = pts[1]!;
     const dx = b[0] - a[0], dy = b[1] - a[1];
     return Math.max(Math.sqrt(dx * dx + dy * dy), 1.0);
 }

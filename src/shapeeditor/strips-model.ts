@@ -22,11 +22,49 @@
  * (no screenmap loaded, or single-strip CSV-only path), all helpers
  * degrade gracefully like the original code did.
  */
+
+/** A mutable strip entry inside StripStore (superset of ParsedStrip). */
+export interface StripEntry {
+    name: string;
+    points: [number, number][];
+    diameter: number | undefined;
+    offset: number;
+    count: number;
+    video_offset: number;
+    pin: string;
+    videoOffsetOverride: boolean;
+    [key: string]: unknown; // allow dynamic patching via updateStrip
+}
+
+/** The internal stripInfo object managed by StripStore. */
+export interface StripInfo {
+    strips: StripEntry[];
+    allPoints?: [number, number][];
+    totalCount: number;
+}
+
+/** Snapshot strip (metadata only, no point data). */
+export interface StripSnapshotEntry {
+    name: string;
+    diameter: number | undefined;
+    offset: number;
+    count: number;
+    video_offset: number;
+    pin: string;
+    videoOffsetOverride: boolean;
+    points: undefined;
+}
+
+/** Snapshot for undo (metadata only, no point data). */
+export interface StripSnapshot {
+    strips: StripSnapshotEntry[];
+    totalCount: number;
+}
+
 export class StripStore {
-    _info: any = null;
+    _info: StripInfo | null = null;
 
     constructor() {
-        /** @type {null | {strips: Array, allPoints?: Array, totalCount: number}} */
         this._info = null;
     }
 
@@ -35,8 +73,8 @@ export class StripStore {
      * The same reference is retained so callers holding `store.get()` see
      * subsequent mutations in place.
      */
-    load(stripInfo: any) {
-        this._info = stripInfo || null;
+    load(stripInfo: StripInfo | null | undefined) {
+        this._info = stripInfo ?? null;
         if (this._info) {
             // Normalise pin fields and re-derive non-overridden video_offsets
             // (issue #24): derived order = pins in first-appearance order,
@@ -50,18 +88,17 @@ export class StripStore {
     }
 
     /** Pin id of a strip object (default 'pin1'). */
-    static pinOf(s: any) {
+    static pinOf(s: { pin?: string | undefined }): string {
         return (s && typeof s.pin === 'string' && s.pin.trim() !== '') ? s.pin : 'pin1';
     }
 
     /**
      * Distinct pin ids in first-appearance order while walking strips[]
      * (issue #24 §1.1 — the strip array is the single source of truth).
-     * @returns {string[]}
      */
-    getPinOrder() {
-        const order = [];
-        const seen = new Set();
+    getPinOrder(): string[] {
+        const order: string[] = [];
+        const seen = new Set<string>();
         for (const s of this.getStrips()) {
             const p = StripStore.pinOf(s);
             if (!seen.has(p)) { seen.add(p); order.push(p); }
@@ -74,16 +111,16 @@ export class StripStore {
      * strips that precede it in the (pin first-appearance order, within-pin
      * array order) walk. Returns 0 when out of range.
      */
-    getDerivedVideoOffset(stripIdx: any) {
+    getDerivedVideoOffset(stripIdx: number): number {
         const strips = this.getStrips();
         if (stripIdx < 0 || stripIdx >= strips.length) return 0;
-        const targetPin = StripStore.pinOf(strips[stripIdx]);
+        const targetPin = StripStore.pinOf(strips[stripIdx]!);
         let acc = 0;
         for (const pin of this.getPinOrder()) {
             for (let i = 0; i < strips.length; i++) {
-                if (StripStore.pinOf(strips[i]) !== pin) continue;
+                if (StripStore.pinOf(strips[i]!) !== pin) continue;
                 if (pin === targetPin && i === stripIdx) return acc;
-                acc += strips[i].count;
+                acc += strips[i]!.count;
             }
         }
         return acc;
@@ -95,7 +132,7 @@ export class StripStore {
      * Overridden strips keep their manual value but still occupy their
      * count in the accumulated chain.
      */
-    recomputeDerivedVideoOffsets() {
+    recomputeDerivedVideoOffsets(): void {
         const strips = this.getStrips();
         let acc = 0;
         for (const pin of this.getPinOrder()) {
@@ -108,22 +145,22 @@ export class StripStore {
     }
 
     /** Returns the raw stripInfo object (or null). */
-    get() {
+    get(): StripInfo | null {
         return this._info;
     }
 
     /** Returns the strips array, or [] if no info loaded. */
-    getStrips() {
+    getStrips(): StripEntry[] {
         return this._info ? this._info.strips : [];
     }
 
     /** Returns totalCount, or 0 if no info loaded. */
-    getTotalCount() {
+    getTotalCount(): number {
         return this._info ? this._info.totalCount : 0;
     }
 
     /** Returns the number of strips, or 0 if no info loaded. */
-    getStripCount() {
+    getStripCount(): number {
         return this._info ? this._info.strips.length : 0;
     }
 
@@ -131,11 +168,11 @@ export class StripStore {
      * Find the strip index that owns the given flat point index.
      * Returns -1 when no info is loaded or the index is out of range.
      */
-    findStripForIndex(flatIdx: any) {
+    findStripForIndex(flatIdx: number): number {
         if (!this._info) return -1;
         const strips = this._info.strips;
         for (let s = 0; s < strips.length; s++) {
-            const st = strips[s];
+            const st = strips[s]!;
             if (flatIdx >= st.offset && flatIdx < st.offset + st.count) return s;
         }
         return -1;
@@ -152,26 +189,26 @@ export class StripStore {
      * Also pushes the new point into the owning strip's `points` array
      * and into `allPoints` so the in-memory model stays consistent.
      */
-    onInsert(flatIdx: any, point: any = null) {
+    onInsert(flatIdx: number, point: [number, number] | null = null): void {
         const info = this._info;
         if (!info || info.strips.length === 0) return;
         const strips = info.strips;
 
         let s = -1;
         for (let k = 0; k < strips.length; k++) {
-            const st = strips[k];
+            const st = strips[k]!;
             if (flatIdx >= st.offset && flatIdx <= st.offset + st.count) { s = k; break; }
         }
         if (s < 0) s = strips.length - 1;
 
-        const owning = strips[s];
+        const owning = strips[s]!;
         const localIdx = Math.max(0, Math.min(owning.count, flatIdx - owning.offset));
         owning.count++;
         if (Array.isArray(owning.points) && point) {
             owning.points.splice(localIdx, 0, point);
         }
         for (let k = s + 1; k < strips.length; k++) {
-            strips[k].offset++;
+            strips[k]!.offset++;
         }
         info.totalCount++;
         if (Array.isArray(info.allPoints) && point) {
@@ -184,20 +221,20 @@ export class StripStore {
      * Update strip offsets/counts/totalCount after a point at flat index
      * `flatIdx` has been deleted.
      */
-    onDelete(flatIdx: any) {
+    onDelete(flatIdx: number): void {
         const info = this._info;
         if (!info) return;
         const s = this.findStripForIndex(flatIdx);
         if (s < 0) return;
         const strips = info.strips;
-        const owning = strips[s];
+        const owning = strips[s]!;
         const localIdx = flatIdx - owning.offset;
         owning.count--;
         if (Array.isArray(owning.points)) {
             owning.points.splice(localIdx, 1);
         }
         for (let k = s + 1; k < strips.length; k++) {
-            strips[k].offset--;
+            strips[k]!.offset--;
         }
         info.totalCount--;
         if (Array.isArray(info.allPoints)) {
@@ -212,10 +249,19 @@ export class StripStore {
      * NOT snapshot point data — the caller is responsible for restoring
      * points (the editor keeps screenmap_pts / rawPts undo data already).
      */
-    snapshot() {
+    snapshot(): StripSnapshot | null {
         if (!this._info) return null;
         return {
-            strips: this._info.strips.map((s: any) => ({ ...s, points: undefined })),
+            strips: this._info.strips.map(s => ({
+                name: s.name,
+                diameter: s.diameter,
+                offset: s.offset,
+                count: s.count,
+                video_offset: s.video_offset,
+                pin: s.pin,
+                videoOffsetOverride: s.videoOffsetOverride,
+                points: undefined as undefined,
+            })),
             totalCount: this._info.totalCount,
         };
     }
@@ -224,20 +270,22 @@ export class StripStore {
      * Restore offset/count/totalCount from a snapshot. Mirrors the
      * original `_restoreStripInfo` semantics: only metadata, no points.
      */
-    restore(snap: any) {
+    restore(snap: StripSnapshot | null | undefined): void {
         if (!this._info || !snap) return;
         const strips = this._info.strips;
         for (let i = 0; i < snap.strips.length && i < strips.length; i++) {
-            strips[i].offset = snap.strips[i].offset;
-            strips[i].count = snap.strips[i].count;
-            if (typeof snap.strips[i].pin === 'string') {
-                strips[i].pin = snap.strips[i].pin;
+            const snapStrip = snap.strips[i]!;
+            const strip = strips[i]!;
+            strip.offset = snapStrip.offset;
+            strip.count = snapStrip.count;
+            if (typeof snapStrip.pin === 'string') {
+                strip.pin = snapStrip.pin;
             }
-            if (typeof snap.strips[i].videoOffsetOverride === 'boolean') {
-                strips[i].videoOffsetOverride = snap.strips[i].videoOffsetOverride;
+            if (typeof snapStrip.videoOffsetOverride === 'boolean') {
+                strip.videoOffsetOverride = snapStrip.videoOffsetOverride;
             }
-            if (typeof snap.strips[i].video_offset === 'number') {
-                strips[i].video_offset = snap.strips[i].video_offset;
+            if (typeof snapStrip.video_offset === 'number') {
+                strip.video_offset = snapStrip.video_offset;
             }
         }
         this._info.totalCount = snap.totalCount;
@@ -247,13 +295,20 @@ export class StripStore {
      * Append a new strip at the end. `points` is copied; offsets are
      * recomputed to chain after the previous last strip.
      */
-    addStrip({ name, points = [], diameter, video_offset, pin, videoOffsetOverride }: { name?: any; points?: any[]; diameter?: any; video_offset?: any; pin?: any; videoOffsetOverride?: any } = {}) {
+    addStrip({ name, points = [], diameter, video_offset, pin, videoOffsetOverride }: {
+        name?: string;
+        points?: [number, number][];
+        diameter?: number | undefined;
+        video_offset?: number;
+        pin?: string;
+        videoOffsetOverride?: boolean;
+    } = {}): number {
         if (!this._info) {
             this._info = { strips: [], allPoints: [], totalCount: 0 };
         }
         const info = this._info;
-        const stripName = name || `strip${info.strips.length + 1}`;
-        const ptsCopy = points.map(p => [p[0], p[1]]);
+        const stripName = name ?? `strip${info.strips.length + 1}`;
+        const ptsCopy: [number, number][] = points.map(p => [p[0], p[1]]);
         const offset = info.totalCount;
         const vo = typeof video_offset === 'number' ? video_offset : offset;
         info.strips.push({
@@ -279,17 +334,17 @@ export class StripStore {
      * decreased by the removed strip's count; totalCount is updated and
      * the removed range is spliced out of allPoints.
      */
-    removeStrip(stripIdx: any) {
+    removeStrip(stripIdx: number): void {
         const info = this._info;
         if (!info) return;
         const strips = info.strips;
         if (stripIdx < 0 || stripIdx >= strips.length) return;
-        const removed = strips[stripIdx];
+        const removed = strips[stripIdx]!;
         const removedCount = removed.count;
         const removedOffset = removed.offset;
         strips.splice(stripIdx, 1);
         for (let k = stripIdx; k < strips.length; k++) {
-            strips[k].offset -= removedCount;
+            strips[k]!.offset -= removedCount;
         }
         info.totalCount -= removedCount;
         if (Array.isArray(info.allPoints)) {
@@ -302,7 +357,7 @@ export class StripStore {
      * Move the strip at `fromIdx` to `toIdx` (insertion index in the new
      * arrangement). Recomputes offsets and the `allPoints` ordering.
      */
-    reorderStrip(fromIdx: any, toIdx: any) {
+    reorderStrip(fromIdx: number, toIdx: number): void {
         const info = this._info;
         if (!info) return;
         const strips = info.strips;
@@ -310,18 +365,18 @@ export class StripStore {
         if (toIdx < 0) toIdx = 0;
         if (toIdx >= strips.length) toIdx = strips.length - 1;
         if (fromIdx === toIdx) return;
-        const [moving] = strips.splice(fromIdx, 1);
+        const [moving] = strips.splice(fromIdx, 1) as [StripEntry];
         strips.splice(toIdx, 0, moving);
         this._recomputeOffsetsAndAllPoints();
     }
 
     /** Rename the strip at `stripIdx`. */
-    renameStrip(stripIdx: any, newName: any) {
+    renameStrip(stripIdx: number, newName: string): void {
         const info = this._info;
         if (!info) return;
         const strips = info.strips;
         if (stripIdx < 0 || stripIdx >= strips.length) return;
-        strips[stripIdx].name = newName;
+        strips[stripIdx]!.name = newName;
     }
 
     /**
@@ -329,21 +384,21 @@ export class StripStore {
      * strip's count, downstream offsets, totalCount, and allPoints are
      * all rebuilt to stay consistent.
      */
-    updateStrip(stripIdx: any, patch: any) {
+    updateStrip(stripIdx: number, patch: Partial<StripEntry> & { points?: [number, number][] }): void {
         const info = this._info;
         if (!info || !patch) return;
         const strips = info.strips;
         if (stripIdx < 0 || stripIdx >= strips.length) return;
-        const strip = strips[stripIdx];
+        const strip = strips[stripIdx]!;
         const pointsChanged = Object.prototype.hasOwnProperty.call(patch, 'points');
         const pinChanged = Object.prototype.hasOwnProperty.call(patch, 'pin');
-        for (const key of Object.keys(patch)) {
+        for (const key of Object.keys(patch) as (keyof StripEntry)[]) {
             if (key === 'offset' || key === 'count') continue; // managed
             if (key === 'points') {
-                strip.points = patch.points.map((p: any) => [p[0], p[1]]);
+                strip.points = (patch.points ?? []).map(p => [p[0], p[1]] as [number, number]);
                 strip.count = strip.points.length;
             } else {
-                strip[key] = patch[key];
+                (strip as Record<string, unknown>)[key] = patch[key];
             }
         }
         if (pointsChanged) {
@@ -358,7 +413,7 @@ export class StripStore {
      * `totalCount`, and (if present) rebuild `allPoints` by concatenating
      * each strip's `points`.
      */
-    _recomputeOffsetsAndAllPoints() {
+    _recomputeOffsetsAndAllPoints(): void {
         const info = this._info;
         if (!info) return;
         const strips = info.strips;
@@ -369,7 +424,7 @@ export class StripStore {
         }
         info.totalCount = offset;
         if (Array.isArray(info.allPoints)) {
-            const next = [];
+            const next: [number, number][] = [];
             for (const s of strips) {
                 if (Array.isArray(s.points)) {
                     for (const p of s.points) next.push([p[0], p[1]]);
