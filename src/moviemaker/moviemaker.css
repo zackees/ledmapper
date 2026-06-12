@@ -192,14 +192,16 @@
     opacity: 0;
 }
 
-#previewCanvas {
-    @apply hidden shrink-0;
+#previewPanel {
+    @apply hidden shrink-0 overflow-hidden;
+    width: 200px;
+    height: 200px;
     border: 1px solid var(--color-lm-border);
     border-radius: 2px;
     background: #000;
 }
 
-#previewCanvas.visible {
+#previewPanel.visible {
     @apply block;
 }
 

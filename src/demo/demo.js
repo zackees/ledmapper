@@ -2,6 +2,7 @@ import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file, p
 import { createLabelRenderer } from '../label-render.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
+import { createBloomComposer, updateBloomIris } from '../three-bloom.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './demo.css?url';
 
@@ -57,6 +58,13 @@ export function init(container) {
         parent: main,
         enableOverlay: true,
     });
+
+    // FastLED-style bloom: UnrealBloomPass with auto-bloom iris.
+    const bloom = createBloomComposer({
+        renderer, scene, camera,
+        width: CANVAS_SIZE, height: CANVAS_SIZE,
+    });
+    const irisState = { currentBrightness: 0 };
 
     // Configure overlay for hover/touch fade behavior
     overlayCanvas.style.opacity = '0';
@@ -553,7 +561,8 @@ export function init(container) {
                 colorAttribute.needsUpdate = true;
             }
 
-            renderer.render(scene, camera);
+            if (curr_frame) updateBloomIris(bloom.bloomPass, irisState, curr_frame);
+            bloom.render();
         }
     });
 
@@ -572,6 +581,7 @@ export function init(container) {
             pointsMaterial.dispose();
         }
         circleTexture.dispose();
+        bloom.dispose();
         renderer.dispose();
     };
 }

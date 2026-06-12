@@ -8,7 +8,8 @@ import screenmapPresets from 'virtual:screenmap-presets';
 import { createBlurPipeline } from './blur-pipeline.js';
 import { createVideoSource } from './video-source.js';
 import { createRecording } from './recording.js';
-import { drawMoviemakerOverlay, drawPreview } from './overlay.js';
+import { drawMoviemakerOverlay } from './overlay.js';
+import { createLedPreview } from './preview.js';
 import { perfEnabled } from './perf.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './moviemaker.css?url';
@@ -54,8 +55,8 @@ export function init(container) {
     const renderCanvas   = container.querySelector('#renderCanvas');
     const overlayCanvas  = container.querySelector('#overlayCanvas');
     const overlayCtx     = overlayCanvas.getContext('2d');
-    const previewCanvas  = container.querySelector('#previewCanvas');
-    const previewCtx     = previewCanvas.getContext('2d');
+    const previewPanel   = container.querySelector('#previewPanel');
+    const preview        = createLedPreview({ parent: previewPanel, side: 200 });
 
     const ac = new AbortController();
     const { signal } = ac;
@@ -158,7 +159,7 @@ export function init(container) {
         const toolbar = container.querySelector('.canvas-toolbar');
         if (toolbar) toolbar.classList.add('visible');
 
-        previewCanvas.classList.add('visible');
+        previewPanel.classList.add('visible');
 
         // Show/hide video-only controls (play button is inside progress bar)
         const isVideo = videoSource.sourceType === 'video';
@@ -391,7 +392,7 @@ export function init(container) {
         updateElementStates();
 
         dom_video_progress.classList.remove('visible');
-        previewCanvas.classList.remove('visible');
+        previewPanel.classList.remove('visible');
 
         const welcomeEl = container.querySelector('#welcome-overlay');
         if (welcomeEl) welcomeEl.classList.remove('hidden');
@@ -632,7 +633,7 @@ export function init(container) {
         }
 
         drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips);
-        drawPreview(previewCtx, screenmap_pts, curr_rotate, lastSample, 200);
+        preview.render(screenmap_pts, curr_rotate, lastSample);
 
         // Update progress bar for video sources
         if (videoSource.sourceType === 'video' && !isScrubbing) {
@@ -655,6 +656,7 @@ export function init(container) {
         if (rafId) cancelAnimationFrame(rafId);
         videoSource.dispose();
         blurPipeline.dispose();
+        preview.dispose();
     };
 }
 

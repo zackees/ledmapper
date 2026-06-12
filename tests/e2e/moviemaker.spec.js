@@ -51,6 +51,18 @@ test.describe('Video Maker', () => {
         await expect(recordBtn).toHaveValue('Start Recording');
     });
 
+    test('preview panel hosts a WebGL renderer canvas', async ({ page }) => {
+        await page.goto('/moviemaker/');
+        // The preview is now a Three.js points-mesh render; its WebGL canvas
+        // is created at init inside the preview panel (panel stays hidden
+        // until a source loads).
+        const canvas = page.locator('#previewPanel canvas');
+        await expect(canvas).toBeAttached();
+        const isWebgl = await canvas.evaluate((el) =>
+            !!(el.getContext('webgl2') || el.getContext('webgl')));
+        expect(isWebgl).toBe(true);
+    });
+
     test('screenmap upload activates controls', async ({ page }) => {
         await page.goto('/moviemaker/');
         const fileInput = page.locator('#btn_upload_screenmap');
