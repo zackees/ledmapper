@@ -14,6 +14,12 @@
 import { WebGLRenderer, Scene, OrthographicCamera } from 'three';
 import { createCircleTexture, rebuildPointsMesh } from '../three-utils.js';
 import { createBloomComposer, updateBloomIris } from '../three-bloom.js';
+import {
+    computeAutoBloomRange,
+    PREVIEW_AUTO_FLOOR,
+    PREVIEW_AUTO_MAX_DENSE,
+    PREVIEW_AUTO_MAX_SPARSE,
+} from '../bloom-utils.js';
 import { estimateLedSize } from './transforms.js';
 
 const INV_255 = 1 / 255;
@@ -26,9 +32,14 @@ const AESTHETIC_MARGIN = 1.05;
 // area on a small pane — with radius 1 the largest mips dominate, so the
 // FastLED strengths white out / smear the whole 200px preview. The iris
 // curve shape is kept but its strength range is scaled down empirically.
-const PREVIEW_BLOOM_MIN = 0.1;
-const PREVIEW_BLOOM_MAX = 0.6;
 const PREVIEW_BLOOM_RADIUS = 0.3;
+
+/** Preview profile constants for computeAutoBloomRange. */
+const PREVIEW_PROFILE = {
+    floor:     PREVIEW_AUTO_FLOOR,
+    maxDense:  PREVIEW_AUTO_MAX_DENSE,
+    maxSparse: PREVIEW_AUTO_MAX_SPARSE,
+};
 
 /**
  * Create the LED preview renderer inside `parent`.
@@ -37,7 +48,14 @@ const PREVIEW_BLOOM_RADIUS = 0.3;
  * @param {HTMLElement} opts.parent - Container the WebGL canvas is appended to.
  * @param {number} [opts.side=200] - CSS pixel size of the (square) preview.
  * @param {number} [opts.maxBufferSize=1024] - Cap on the backing resolution.
- * @returns {{ render: Function, dispose: Function, domElement: HTMLCanvasElement }}
+ * @returns {{
+ *   render: Function,
+ *   dispose: Function,
+ *   domElement: HTMLCanvasElement,
+ *   setAutoBloom: (enabled: boolean) => void,
+ *   setManualBloomStrength: (strength: number) => void,
+ *   getCurrentBloomStrength: () => number,
+ * }}
  */
 export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }) {
     // Supersample at 2x devicePixelRatio (capped) so circles stay crisp.
@@ -63,12 +81,17 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }) {
         radius: PREVIEW_BLOOM_RADIUS,
     });
     const irisState = { currentBrightness: 0 };
-    const bloomRange = { min: PREVIEW_BLOOM_MIN, max: PREVIEW_BLOOM_MAX };
+
+    // Auto-bloom state: density-based range, recomputed on screenmap change.
+    let currentRange = { min: PREVIEW_AUTO_FLOOR * 0.5, max: PREVIEW_AUTO_MAX_DENSE };
+    let autoBloomEnabled = true;
+    let manualBloomStrength = null; // null = use auto
 
     let meshData = null;
     let cachedPts = null;
     let cachedRotate = null;
     let ledWorldRadius = 0.5;
+    let sceneExtent = 1;
 
     function rebuild(localPts) {
         meshData = rebuildPointsMesh({
@@ -79,6 +102,22 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }) {
             diameter: 1, // real size set in fitCamera()
         });
         ledWorldRadius = estimateLedSize(localPts) / 2;
+        // Recompute auto-bloom range for this screenmap geometry.
+        _recomputeAutoRange(localPts);
+    }
+
+    /**
+     * Recompute the density-based bloom envelope whenever the screenmap
+     * geometry changes.  sceneExtent is set in fitCamera(); we call this
+     * after ledWorldRadius is updated.
+     */
+    function _recomputeAutoRange(_localPts) {
+        const spacing = ledWorldRadius * 2; // diameter ≈ spacing
+        currentRange = computeAutoBloomRange({
+            ledSpacing: spacing,
+            sceneExtent,
+            profile: PREVIEW_PROFILE,
+        });
     }
 
     /**
@@ -104,6 +143,9 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }) {
         const extent = Math.max(xmax - xmin, ymax - ymin);
         const half = Math.max((extent / 2 + ledWorldRadius) * AESTHETIC_MARGIN, 1e-6);
 
+        // Store scene extent so auto-bloom range can use it.
+        sceneExtent = Math.max(xmax - xmin, ymax - ymin, 1e-6);
+
         camera.left = cx - half;
         camera.right = cx + half;
         camera.top = cy - half;     // y-down
@@ -114,6 +156,9 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }) {
         // PointsMaterial size is in drawing-buffer pixels.
         const bufferPx = side * pixelRatio;
         meshData.material.size = Math.max((ledWorldRadius * 2 / (half * 2)) * bufferPx, 1);
+
+        // Re-derive auto range now that sceneExtent is up to date.
+        if (localPts) _recomputeAutoRange(localPts);
     }
 
     /**
@@ -150,8 +195,38 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }) {
         }
         meshData.colorAttribute.needsUpdate = true;
 
-        updateBloomIris(bloom.bloomPass, irisState, src, bloomRange);
+        // Pass manualStrength only when auto is disabled.
+        const override = autoBloomEnabled ? null : manualBloomStrength;
+        updateBloomIris(bloom.bloomPass, irisState, src, currentRange, override);
         bloom.render();
+    }
+
+    /**
+     * Enable or disable auto-bloom density scaling.
+     * @param {boolean} enabled
+     */
+    function setAutoBloom(enabled) {
+        autoBloomEnabled = enabled;
+        if (enabled) {
+            // Resume iris-guided envelope — no snap.
+            manualBloomStrength = null;
+        }
+    }
+
+    /**
+     * Set the manual bloom strength (used when autoBloom is disabled).
+     * @param {number} strength
+     */
+    function setManualBloomStrength(strength) {
+        manualBloomStrength = strength;
+    }
+
+    /**
+     * Return the current bloom pass strength (auto or manual).
+     * @returns {number}
+     */
+    function getCurrentBloomStrength() {
+        return bloom.bloomPass.strength;
     }
 
     function dispose() {
@@ -167,5 +242,5 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }) {
         renderer.domElement.remove();
     }
 
-    return { render, dispose, domElement: renderer.domElement };
+    return { render, dispose, domElement: renderer.domElement, setAutoBloom, setManualBloomStrength, getCurrentBloomStrength };
 }

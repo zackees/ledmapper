@@ -64,9 +64,16 @@ export function createBloomComposer({ renderer, scene, camera, width, height, st
  * @param {{min?: number, max?: number}} [range] - strength range override
  *        (small render surfaces need a lower max — bloom mips cover a
  *        proportionally larger area, so full FastLED strength whites out).
+ * @param {number|null} [manualStrength=null] - when provided, override the
+ *        computed strength directly; the iris LERP still advances so
+ *        re-enabling auto is smooth (no strength jump).
  */
-export function updateBloomIris(bloomPass, irisState, rgbBytes, range) {
+export function updateBloomIris(bloomPass, irisState, rgbBytes, range, manualStrength = null) {
     const { avgBrightness, litCount, totalCount } = computeFrameBrightness(rgbBytes);
     irisState.currentBrightness = stepIris(irisState.currentBrightness, avgBrightness);
-    bloomPass.strength = computeBloomStrength(irisState.currentBrightness, litCount, totalCount, range);
+    if (manualStrength !== null) {
+        bloomPass.strength = manualStrength;
+    } else {
+        bloomPass.strength = computeBloomStrength(irisState.currentBrightness, litCount, totalCount, range);
+    }
 }

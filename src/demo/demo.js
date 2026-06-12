@@ -3,6 +3,14 @@ import { createLabelRenderer } from '../label-render.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import { createBloomComposer, updateBloomIris } from '../three-bloom.js';
+import {
+    computeAutoBloomRange,
+    DEMO_AUTO_FLOOR,
+    DEMO_AUTO_MAX_DENSE,
+    DEMO_AUTO_MAX_SPARSE,
+    BLOOM_MIN_STRENGTH,
+} from '../bloom-utils.js';
+import { estimateLedSize } from '../moviemaker/transforms.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './demo.css?url';
 
@@ -23,6 +31,10 @@ export function init(container) {
     const dom_btn_download_video = container.querySelector("#btn_download_video");
     const dom_sel_framerate = container.querySelector("#sel_framerate");
     const dom_btn_download_screenmap_16x16_serpentine = container.querySelector("#btn_download_screenmap_16x16_serpentine");
+    const dom_chk_auto_bloom        = container.querySelector('#chk_auto_bloom');
+    const dom_bloom_strength_slider = container.querySelector('#bloom_strength_slider');
+    const dom_rng_bloom_strength    = container.querySelector('#rng_bloom_strength');
+    const dom_txt_bloom_strength    = container.querySelector('#txt_curr_bloom_strength');
 
     dom_btn_play.disabled = true;
 
@@ -65,6 +77,76 @@ export function init(container) {
         width: CANVAS_SIZE, height: CANVAS_SIZE,
     });
     const irisState = { currentBrightness: 0 };
+
+    /** Demo bloom profile constants. */
+    const DEMO_PROFILE = { floor: DEMO_AUTO_FLOOR, maxDense: DEMO_AUTO_MAX_DENSE, maxSparse: DEMO_AUTO_MAX_SPARSE };
+    let demoBloomRange = { min: Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5), max: DEMO_AUTO_MAX_DENSE };
+    let demoAutoBloomEnabled = true;
+    let demoManualBloomStrength = null;
+
+    /** Recompute bloom envelope from the current screenmap geometry. */
+    function _recomputeDemoBloomRange() {
+        if (screenmap_pts.length < 2) return;
+        const spacing = estimateLedSize(screenmap_pts);
+        // sceneExtent: bounding box max dimension of screen-space pts
+        let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+        for (const [x, y] of screenmap_pts) {
+            if (x < xmin) xmin = x; if (x > xmax) xmax = x;
+            if (y < ymin) ymin = y; if (y > ymax) ymax = y;
+        }
+        const extent = Math.max(xmax - xmin, ymax - ymin, 1e-6);
+        demoBloomRange = computeAutoBloomRange({ ledSpacing: spacing, sceneExtent: extent, profile: DEMO_PROFILE });
+    }
+
+    const DEMO_BLOOM_LS_KEY = 'ledmapper.demo.autoBloom';
+
+    function _sliderToDemoBloomStrength(rngVal) {
+        const t = (rngVal / 100) ** 2;
+        const S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
+        const S_MAX = DEMO_AUTO_MAX_SPARSE * 1.5;
+        return S_MIN + (S_MAX - S_MIN) * t;
+    }
+
+    function _applyDemoBloomAutoState(enabled) {
+        dom_rng_bloom_strength.disabled = enabled;
+        if (enabled) {
+            dom_bloom_strength_slider.classList.add('opacity-50', 'pointer-events-none');
+            dom_bloom_strength_slider.classList.remove('opacity-100');
+        } else {
+            dom_bloom_strength_slider.classList.remove('opacity-50', 'pointer-events-none');
+            dom_bloom_strength_slider.classList.add('opacity-100');
+        }
+        demoAutoBloomEnabled = enabled;
+        if (enabled) demoManualBloomStrength = null;
+    }
+
+    // Restore persisted auto-bloom state (default: on).
+    const _demoAutoStored = localStorage.getItem(DEMO_BLOOM_LS_KEY);
+    const _demoAutoInit = _demoAutoStored === null ? true : _demoAutoStored === 'true';
+    dom_chk_auto_bloom.checked = _demoAutoInit;
+    _applyDemoBloomAutoState(_demoAutoInit);
+
+    dom_chk_auto_bloom.addEventListener('change', () => {
+        const enabled = dom_chk_auto_bloom.checked;
+        localStorage.setItem(DEMO_BLOOM_LS_KEY, String(enabled));
+        if (!enabled) {
+            // Seed slider from current bloom strength.
+            const curr = bloom.bloomPass.strength;
+            const S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
+            const S_MAX = DEMO_AUTO_MAX_SPARSE * 1.5;
+            const raw = (curr - S_MIN) / (S_MAX - S_MIN);
+            const rngVal = Math.round(Math.sqrt(Math.max(raw, 0)) * 100);
+            dom_rng_bloom_strength.value = Math.min(Math.max(rngVal, 0), 100);
+            demoManualBloomStrength = _sliderToDemoBloomStrength(parseInt(dom_rng_bloom_strength.value));
+            dom_txt_bloom_strength.innerText = demoManualBloomStrength.toFixed(2);
+        }
+        _applyDemoBloomAutoState(enabled);
+    }, { signal });
+
+    dom_rng_bloom_strength.addEventListener('input', () => {
+        demoManualBloomStrength = _sliderToDemoBloomStrength(parseInt(dom_rng_bloom_strength.value));
+        dom_txt_bloom_strength.innerText = demoManualBloomStrength.toFixed(2);
+    }, { signal });
 
     // Configure overlay for hover/touch fade behavior
     overlayCanvas.style.opacity = '0';
@@ -172,6 +254,7 @@ export function init(container) {
         screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
         stripInfo = parseScreenmapMultiStrip(jsonBlob);
         buildPoints();
+        _recomputeDemoBloomRange();
         drawOverlay();
         dom_btn_play.disabled = false;
     }
@@ -561,7 +644,10 @@ export function init(container) {
                 colorAttribute.needsUpdate = true;
             }
 
-            if (curr_frame) updateBloomIris(bloom.bloomPass, irisState, curr_frame);
+            if (curr_frame) {
+                const override = demoAutoBloomEnabled ? null : demoManualBloomStrength;
+                updateBloomIris(bloom.bloomPass, irisState, curr_frame, demoBloomRange, override);
+            }
             bloom.render();
         }
     });

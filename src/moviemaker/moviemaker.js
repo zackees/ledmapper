@@ -10,6 +10,7 @@ import { createVideoSource } from './video-source.js';
 import { createRecording } from './recording.js';
 import { drawMoviemakerOverlay } from './overlay.js';
 import { createLedPreview } from './preview.js';
+import { PREVIEW_AUTO_MAX_SPARSE, PREVIEW_AUTO_FLOOR } from '../bloom-utils.js';
 import { perfEnabled } from './perf.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './moviemaker.css?url';
@@ -50,6 +51,10 @@ export function init(container) {
     const dom_sel_max_resolution = container.querySelector('#sel_max_resolution');
     const dom_txt_curr_resolution = container.querySelector('#txt_curr_resolution');
     const dom_chk_show_leds    = container.querySelector('#chk_show_leds');
+    const dom_chk_auto_bloom       = container.querySelector('#chk_auto_bloom');
+    const dom_bloom_strength_slider = container.querySelector('#bloom_strength_slider');
+    const dom_rng_bloom_strength   = container.querySelector('#rng_bloom_strength');
+    const dom_txt_bloom_strength   = container.querySelector('#txt_curr_bloom_strength');
 
     const videoPlayer    = container.querySelector('#videoPlayer');
     const renderCanvas   = container.querySelector('#renderCanvas');
@@ -503,6 +508,65 @@ export function init(container) {
         overlayCanvas.classList.toggle('leds-hidden', !dom_chk_show_leds.checked);
     }, { signal });
 
+    // ── Bloom controls ──────────────────────────────────────────────────────────
+    const BLOOM_LS_KEY = 'ledmapper.moviemaker.autoBloom';
+
+    // Restore persisted state (default: auto on).
+    const _bloomAutoStored = localStorage.getItem(BLOOM_LS_KEY);
+    const _bloomAutoInit = _bloomAutoStored === null ? true : _bloomAutoStored === 'true';
+    dom_chk_auto_bloom.checked = _bloomAutoInit;
+
+    function _applyBloomAutoState(enabled) {
+        dom_rng_bloom_strength.disabled = enabled;
+        dom_bloom_strength_slider.classList.toggle('disabled', enabled);
+        preview.setAutoBloom(enabled);
+    }
+
+    /** Compute manual strength from slider value (0-100) → bloom strength.
+     *  Mapping: strength = lerp(S_MIN, sparseCeil * 1.5, (rng/100)^2)
+     */
+    function _sliderToBloomStrength(rngVal) {
+        const t = (rngVal / 100) ** 2;
+        const S_MIN   = Math.max(PREVIEW_AUTO_FLOOR * 0.5, 0.05);
+        const S_MAX   = PREVIEW_AUTO_MAX_SPARSE * 1.5;
+        return S_MIN + (S_MAX - S_MIN) * t;
+    }
+
+    function _bloomStrengthToLabel(s) {
+        return s.toFixed(2);
+    }
+
+    function _syncBloomReadout() {
+        const s = dom_chk_auto_bloom.checked
+            ? preview.getCurrentBloomStrength()
+            : _sliderToBloomStrength(parseInt(dom_rng_bloom_strength.value));
+        dom_txt_bloom_strength.innerText = _bloomStrengthToLabel(s);
+    }
+
+    _applyBloomAutoState(_bloomAutoInit);
+
+    dom_chk_auto_bloom.addEventListener('change', () => {
+        const enabled = dom_chk_auto_bloom.checked;
+        localStorage.setItem(BLOOM_LS_KEY, String(enabled));
+        if (!enabled) {
+            // Seed slider from current auto strength so there's no visual jump.
+            const curr = preview.getCurrentBloomStrength();
+            const S_MIN = Math.max(PREVIEW_AUTO_FLOOR * 0.5, 0.05);
+            const S_MAX = PREVIEW_AUTO_MAX_SPARSE * 1.5;
+            const raw = (curr - S_MIN) / (S_MAX - S_MIN);
+            const rngVal = Math.round(Math.sqrt(Math.max(raw, 0)) * 100);
+            dom_rng_bloom_strength.value = Math.min(Math.max(rngVal, 0), 100);
+            preview.setManualBloomStrength(_sliderToBloomStrength(parseInt(dom_rng_bloom_strength.value)));
+        }
+        _applyBloomAutoState(enabled);
+        _syncBloomReadout();
+    }, { signal });
+
+    dom_rng_bloom_strength.addEventListener('input', () => {
+        const s = _sliderToBloomStrength(parseInt(dom_rng_bloom_strength.value));
+        preview.setManualBloomStrength(s);
+        dom_txt_bloom_strength.innerText = _bloomStrengthToLabel(s);
+    }, { signal });
 
     // Recording toggle
     dom_btn_toggle_record.addEventListener('click', async () => {
