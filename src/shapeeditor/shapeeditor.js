@@ -1792,17 +1792,24 @@ export function init(container) {
                 confirmButtonText: 'Got it',
                 showCloseButton: true,
                 focusConfirm: false,
+                // preConfirm returning false would block the popup from
+                // closing, so wrap the checkbox state in an object.
                 preConfirm: () => {
                     const cb = document.getElementById('help_dont_show');
-                    return cb ? !!cb.checked : false;
+                    return { dontShow: cb ? !!cb.checked : false };
                 },
             });
-            const dontShow = res && (res.value === true || res.value === false ? res.value : false);
-            try {
-                if (dontShow) {
-                    localStorage.setItem('lm:shapeeditor-helpDismissed', '1');
-                }
-            } catch { /* persistence is best-effort */ }
+            // Only the confirm button reports the checkbox; closing via the
+            // × or Esc leaves the stored preference untouched.
+            if (res && res.isConfirmed && res.value) {
+                try {
+                    if (res.value.dontShow === true) {
+                        localStorage.setItem('lm:shapeeditor-helpDismissed', '1');
+                    } else {
+                        localStorage.removeItem('lm:shapeeditor-helpDismissed');
+                    }
+                } catch { /* persistence is best-effort */ }
+            }
         } catch { /* swal may fail in headless edge cases */ }
     }
 

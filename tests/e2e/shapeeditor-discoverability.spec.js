@@ -76,6 +76,37 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         await expect(modal.locator('#help_dont_show')).toBeVisible();
     });
 
+    test('Got it button dismisses help with checkbox unchecked', async ({ page }) => {
+        await page.addInitScript(() => {
+            try { localStorage.setItem('lm:shapeeditor-helpDismissed', '1'); } catch { /* ignore */ }
+        });
+        await gotoEditor(page);
+        await page.keyboard.press('F1');
+        const modal = page.locator('.swal2-popup');
+        await expect(modal).toBeVisible({ timeout: 5000 });
+        // Uncheck "Don't show on launch" — confirm must still close the modal
+        await modal.locator('#help_dont_show').uncheck();
+        await page.locator('.swal2-confirm').click();
+        await expect(modal).toBeHidden({ timeout: 5000 });
+        const dismissed = await page.evaluate(() => localStorage.getItem('lm:shapeeditor-helpDismissed'));
+        expect(dismissed).toBeNull();
+    });
+
+    test('Got it button persists dismissal when checkbox checked', async ({ page }) => {
+        await page.addInitScript(() => {
+            try { localStorage.setItem('lm:shapeeditor-helpDismissed', '1'); } catch { /* ignore */ }
+        });
+        await gotoEditor(page);
+        await page.keyboard.press('F1');
+        const modal = page.locator('.swal2-popup');
+        await expect(modal).toBeVisible({ timeout: 5000 });
+        await modal.locator('#help_dont_show').check();
+        await page.locator('.swal2-confirm').click();
+        await expect(modal).toBeHidden({ timeout: 5000 });
+        const dismissed = await page.evaluate(() => localStorage.getItem('lm:shapeeditor-helpDismissed'));
+        expect(dismissed).toBe('1');
+    });
+
     test('? key opens the help overlay', async ({ page }) => {
         await page.addInitScript(() => {
             try { localStorage.setItem('lm:shapeeditor-helpDismissed', '1'); } catch { /* ignore */ }
