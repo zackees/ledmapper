@@ -21,8 +21,8 @@ export async function loadPreset(file: string): Promise<StripPoint[]> {
 /**
  * Fetch the preset manifest listing all built-in screenmaps.
  */
-export async function loadPresetManifest(): Promise<Array<{ file: string; name: string }>> {
+export async function loadPresetManifest(): Promise<{ file: string; name: string }[]> {
     const resp = await fetch('/screenmaps/manifest.json');
-    const manifest = await resp.json() as { presets: Array<{ file: string; name: string }> };
+    const manifest = await resp.json() as { presets: { file: string; name: string }[] };
     return manifest.presets;
 }

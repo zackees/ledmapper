@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 // Tiny in-memory localStorage shim. The screenmap-store imports localStorage
 // at module evaluation time (via try/catch), so we install before importing.
 class MemStorage {
-    data: Map<string, string> = new Map();
+    data = new Map<string, string>();
     constructor() { this.data = new Map(); }
     getItem(k: string) { return this.data.has(k) ? this.data.get(k) ?? null : null; }
     setItem(k: string, v: string) { this.data.set(k, v); }
@@ -13,7 +13,7 @@ class MemStorage {
     get length() { return this.data.size; }
     key(i: number) { return Array.from(this.data.keys())[i] ?? null; }
 }
-globalThis.localStorage = new MemStorage() as unknown as Storage;
+globalThis.localStorage = new MemStorage();
 
 const {
     MIN_AUTOSAVE_LEDS,
@@ -54,8 +54,8 @@ describe('screenmap-store: isDegenerate', () => {
         assert.equal(isDegenerate(''), true);
         assert.equal(isDegenerate('not json'), true);
         assert.equal(isDegenerate('{'), true);
-        assert.equal(isDegenerate(null as unknown as string), true);
-        assert.equal(isDegenerate(undefined as unknown as string), true);
+        assert.equal(isDegenerate(null), true);
+        assert.equal(isDegenerate(undefined), true);
     });
 
     it('returns true for missing map', () => {

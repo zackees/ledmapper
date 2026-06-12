@@ -92,7 +92,7 @@ export function samplePixels(readbackBuffer: Uint8Array, transformedPts: StripPo
     let inBoundsCount = 0;
 
     for (let i = 0; i < numPts; i++) {
-        const pt = (transformedPts as StripPoint[])[i]!;
+        const pt = (transformedPts as StripPoint[])[i] ?? [0, 0];
         const x = Math.round(pt[0]);
         const y = Math.round(pt[1]);
         const flippedY = (height - 1) - y;
@@ -146,8 +146,8 @@ export function extractGatherSample(gatherBuffer: Uint8Array, numPts: number, rg
  * declare an explicit `video_offset`. Returns null when every strip's
  * video_offset equals its flat offset (sequential case).
  */
-export function buildVideoChannelMap(strips: Array<{ offset: number; count: number; video_offset?: number }>, totalCount: number): Int32Array | null {
-    if (!strips || strips.length === 0) return null;
+export function buildVideoChannelMap(strips: { offset: number; count: number; video_offset?: number }[], totalCount: number): Int32Array | null {
+    if (strips.length === 0) return null;
     let sequential = true;
     for (const s of strips) {
         const vo = typeof s.video_offset === 'number' ? s.video_offset : s.offset;
@@ -194,7 +194,7 @@ export function scaleToMaxDimension(nativeW: number, nativeH: number, maxDim: nu
  */
 export function estimateLedSize(pts: StripPoint[]): number {
     if (pts.length < 2) return 1.0;
-    const a = pts[0]!, b = pts[1]!;
+    const a = pts[0] ?? [0, 0], b = pts[1] ?? [1, 0];
     const dx = b[0] - a[0], dy = b[1] - a[1];
     return Math.max(Math.sqrt(dx * dx + dy * dy), 1.0);
 }

@@ -3,17 +3,23 @@ import { saveScreenmap } from '../screenmap-store';
 import templateHtml from './template.html?raw';
 export { default as css } from './screenmap.css?url';
 
+function qe<T extends HTMLElement>(parent: ParentNode, sel: string, _cast?: (e: Element) => T): T {
+    const el = parent.querySelector(sel);
+    if (!el) throw new Error(`Missing element "${sel}"`);
+    return el as T;
+}
+
 export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
 
     const ac = new AbortController();
     const { signal } = ac;
 
-    const sourceSelect = container.querySelector('#sourceSelect') as HTMLElement;
-    const mappingUI = container.querySelector('#mappingUI') as HTMLElement;
-    const btnWebcam = container.querySelector('#btn_webcam') as HTMLButtonElement;
-    const btnUpload = container.querySelector('#btn_upload') as HTMLButtonElement;
-    const fileInput = container.querySelector('#fileInput') as HTMLInputElement;
+    const sourceSelect = qe<HTMLElement>(container, '#sourceSelect');
+    const mappingUI = qe<HTMLElement>(container, '#mappingUI');
+    const btnWebcam = qe<HTMLButtonElement>(container, '#btn_webcam');
+    const btnUpload = qe<HTMLButtonElement>(container, '#btn_upload');
+    const fileInput = qe<HTMLInputElement>(container, '#fileInput');
 
     // --- Source selection ---
     btnWebcam.addEventListener('click', () => {
@@ -45,7 +51,7 @@ export function init(container: HTMLElement) {
         e.preventDefault();
         btnUpload.classList.remove('drag-over');
         const file = e.dataTransfer?.files[0];
-        if (file && file.type.startsWith('image/')) {
+        if (file?.type.startsWith('image/')) {
             loadImageFile(file);
         }
     }, { signal });
@@ -84,12 +90,12 @@ export function init(container: HTMLElement) {
     let shift_active = false;
 
     function getActivePoints(): [number, number][] { return strips[activeStrip] ?? []; }
-    function getAllPointsFlat(): [number, number][] { return (Object.values(strips) as [number, number][][]).flat(); }
+    function getAllPointsFlat(): [number, number][] { return (Object.values(strips)).flat(); }
     function getStripNames(): string[] { return Object.keys(strips); }
     function getNextStripName(): string {
         let i = 1;
-        while (strips[`strip${i}`]) i++;
-        return `strip${i}`;
+        while (strips[`strip${String(i)}`]) i++;
+        return `strip${String(i)}`;
     }
 
     interface DomRefs {
@@ -149,9 +155,9 @@ export function init(container: HTMLElement) {
             if (dom.txt_rotate) dom.txt_rotate.value = v.toFixed(1);
             if (dom.slider_rotate) dom.slider_rotate.value = String(v);
         }
-        dom.txt_rotate?.addEventListener('input', () => updateRotation(dom.txt_rotate!.value), { signal });
-        dom.txt_rotate?.addEventListener('change', () => updateRotation(dom.txt_rotate!.value), { signal });
-        dom.slider_rotate?.addEventListener('input', () => updateRotation(dom.slider_rotate!.value), { signal });
+        dom.txt_rotate?.addEventListener('input', () => { if (dom.txt_rotate) updateRotation(dom.txt_rotate.value); }, { signal });
+        dom.txt_rotate?.addEventListener('change', () => { if (dom.txt_rotate) updateRotation(dom.txt_rotate.value); }, { signal });
+        dom.slider_rotate?.addEventListener('input', () => { if (dom.slider_rotate) updateRotation(dom.slider_rotate.value); }, { signal });
 
         // Zoom sync
         function updateZoom(value: string) {
@@ -160,19 +166,19 @@ export function init(container: HTMLElement) {
             if (dom.txt_zoom) dom.txt_zoom.value = v.toFixed(2);
             if (dom.slider_zoom) dom.slider_zoom.value = String(v);
         }
-        dom.txt_zoom?.addEventListener('input', () => updateZoom(dom.txt_zoom!.value), { signal });
-        dom.txt_zoom?.addEventListener('change', () => updateZoom(dom.txt_zoom!.value), { signal });
-        dom.slider_zoom?.addEventListener('input', () => updateZoom(dom.slider_zoom!.value), { signal });
+        dom.txt_zoom?.addEventListener('input', () => { if (dom.txt_zoom) updateZoom(dom.txt_zoom.value); }, { signal });
+        dom.txt_zoom?.addEventListener('change', () => { if (dom.txt_zoom) updateZoom(dom.txt_zoom.value); }, { signal });
+        dom.slider_zoom?.addEventListener('input', () => { if (dom.slider_zoom) updateZoom(dom.slider_zoom.value); }, { signal });
 
         // Buttons
         dom.btn_delete_last?.addEventListener('click', () => { getActivePoints().pop(); }, { signal });
-        dom.btn_download?.addEventListener('click', () => downloadScreenmap(), { signal });
+        dom.btn_download?.addEventListener('click', () => { downloadScreenmap(); }, { signal });
 
         // Strip management
         if (dom.sel_strip) {
             dom.sel_strip.addEventListener('change', () => {
-                const val = dom.sel_strip!.value;
-                if (strips[val]) {
+                const val = dom.sel_strip?.value ?? '';
+                if (strips[val] !== undefined) {
                     activeStrip = val;
                 }
                 refreshStripUI(dom);
@@ -187,36 +193,37 @@ export function init(container: HTMLElement) {
             }, { signal });
         }
         if (dom.btn_rename_strip) {
-            dom.btn_rename_strip.addEventListener('click', async () => {
+            dom.btn_rename_strip.addEventListener('click', () => { void (async () => {
                 const Swal = (await import('sweetalert2')).default;
                 if (signal.aborted) return;
-                const { value } = await Swal.fire({
+                const fireResult = await Swal.fire<string>({
                     title: 'Rename Strip',
                     input: 'text',
                     inputValue: activeStrip,
                     inputLabel: `New name for "${activeStrip}"`,
                     showCancelButton: true,
-                    inputValidator: (v) => {
-                        const name = (v || '').trim();
+                    inputValidator: (v: string) => {
+                        const name = v.trim();
                         if (!name) return 'Strip name cannot be empty';
-                        if (name !== activeStrip && strips[name]) {
+                        if (name !== activeStrip && strips[name] !== undefined) {
                             return `A strip named "${name}" already exists`;
                         }
                         return null;
                     },
                 });
-                if (signal.aborted || typeof value !== 'string') return;
-                const newName = value.trim();
+                const newName = typeof fireResult.value === 'string' ? fireResult.value.trim() : '';
                 if (!newName || newName === activeStrip) return;
                 renameStrip(activeStrip, newName);
                 refreshStripUI(dom);
-            }, { signal });
+            })(); }, { signal });
         }
         if (dom.btn_delete_strip) {
             dom.btn_delete_strip.addEventListener('click', () => {
                 const names = getStripNames();
                 if (names.length <= 1) return;
-                delete strips[activeStrip];
+                strips = Object.fromEntries(
+                    Object.entries(strips).filter(([k]) => k !== activeStrip)
+                );
                 activeStrip = getStripNames()[0] ?? activeStrip;
                 refreshStripUI(dom);
             }, { signal });
@@ -238,7 +245,7 @@ export function init(container: HTMLElement) {
         // indices / colors / labels) is preserved across the rename.
         const next: Record<string, [number, number][]> = {};
         for (const key of Object.keys(strips)) {
-            next[key === oldName ? newName : key] = strips[key]!;
+            next[key === oldName ? newName : key] = strips[key] ?? [];
         }
         strips = next;
         if (activeStrip === oldName) activeStrip = newName;
@@ -255,7 +262,7 @@ export function init(container: HTMLElement) {
         const radius2 = radius * radius;
         const activePoints = getActivePoints();
         for (let i = activePoints.length - 1; i >= 0; --i) {
-            const [xx, yy] = activePoints[i]!;
+            const [xx, yy] = activePoints[i] ?? [0, 0];
             const dist2 = Math.pow(x - xx, 2) + Math.pow(y - yy, 2);
             if (dist2 < radius2) return i;
         }
@@ -281,7 +288,7 @@ export function init(container: HTMLElement) {
     }
 
     function showPopup() {
-        const popup = container.querySelector('#popup') as HTMLElement | null;
+        const popup = container.querySelector<HTMLElement>('#popup');
         if (!popup) return;
         popup.style.display = 'block';
         setTimeout(() => { popup.style.opacity = '1'; }, 10);
@@ -293,7 +300,8 @@ export function init(container: HTMLElement) {
 
     function initCanvas() {
         canvas = document.createElement('canvas');
-        const main = container.querySelector('main') as HTMLElement;
+        const main = container.querySelector<HTMLElement>('main');
+        if (!main) throw new Error('Missing <main> element');
         canvas.width = main.clientWidth;
         canvas.height = main.clientHeight;
         ctx = canvas.getContext('2d');
@@ -302,13 +310,15 @@ export function init(container: HTMLElement) {
 
     function handleResize() {
         if (!canvas) return;
-        const main = container.querySelector('main') as HTMLElement;
+        const main = container.querySelector<HTMLElement>('main');
+        if (!main) return;
         canvas.width = main.clientWidth;
         canvas.height = main.clientHeight;
     }
 
     function showWebcamError(message: string) {
-        const main = container.querySelector('main') as HTMLElement;
+        const main = container.querySelector<HTMLElement>('main');
+        if (!main) return;
         const errorDiv = document.createElement('div');
         errorDiv.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#a1a1aa;font-size:0.9rem;max-width:360px;';
 
@@ -358,7 +368,7 @@ export function init(container: HTMLElement) {
     }
 
     function draw(dom: DomRefs) {
-        rafId = requestAnimationFrame(() => draw(dom));
+        rafId = requestAnimationFrame(() => { draw(dom); });
         if (!canvas || !ctx) return;
 
         const allPoints = getAllPointsFlat();
@@ -406,14 +416,15 @@ export function init(container: HTMLElement) {
         // Connection lines per strip
         ctx.lineWidth = 1;
         for (let s = 0; s < names.length; ++s) {
-            const name = names[s]!;
+            const name = names[s];
+            if (!name) continue;
             const pts = strips[name] ?? [];
             const isActive = name === activeStrip;
             ctx.strokeStyle = colors[s] ?? '#ffffff';
             ctx.lineWidth = isActive ? 2 : 1;
             for (let i = 1; i < pts.length; ++i) {
-                const [x0, y0] = pts[i - 1]!;
-                const [x1, y1] = pts[i]!;
+                const [x0, y0] = pts[i - 1] ?? [0, 0];
+                const [x1, y1] = pts[i] ?? [0, 0];
                 ctx.beginPath();
                 ctx.moveTo(x0, y0);
                 ctx.lineTo(x1, y1);
@@ -423,7 +434,8 @@ export function init(container: HTMLElement) {
 
         // Points per strip
         for (let s = 0; s < names.length; ++s) {
-            const name = names[s]!;
+            const name = names[s];
+            if (!name) continue;;
             const pts = strips[name] ?? [];
             const isActive = name === activeStrip;
             ctx.fillStyle = colors[s] ?? '#ffffff';
@@ -445,15 +457,16 @@ export function init(container: HTMLElement) {
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
         for (let s = 0; s < names.length; ++s) {
-            const name = names[s]!;
+            const name = names[s];
+            if (!name) continue;
             const pts = strips[name] ?? [];
             if (!pts.length) continue;
             const labels = stripStartEndLabels({ name, count: pts.length }, s);
-            const [sx, sy] = pts[0]!;
+            const [sx, sy] = pts[0] ?? [0, 0];
             drawEndpointMarker(sx, sy, colors[s] ?? '#ffffff', 'start');
             drawEndpointLabel(labels.start, sx, sy);
             if (labels.end) {
-                const [ex, ey] = pts[pts.length - 1]!;
+                const [ex, ey] = pts[pts.length - 1] ?? [0, 0];
                 drawEndpointMarker(ex, ey, colors[s] ?? '#ffffff', 'end');
                 drawEndpointLabel(labels.end, ex, ey);
             }
@@ -511,8 +524,8 @@ export function init(container: HTMLElement) {
             snapshotCanvas = document.createElement('canvas');
             snapshotCanvas.width = videoElement.videoWidth || capture_width;
             snapshotCanvas.height = videoElement.videoHeight || capture_height;
-            const snapCtx = snapshotCanvas.getContext('2d')!;
-            snapCtx.drawImage(videoElement, 0, 0, snapshotCanvas.width, snapshotCanvas.height);
+            const snapCtx = snapshotCanvas.getContext('2d');
+            if (snapCtx) snapCtx.drawImage(videoElement, 0, 0, snapshotCanvas.width, snapshotCanvas.height);
             pictureTaken = true;
             showPopup();
             if (dom.btn_snapshot) dom.btn_snapshot.disabled = true;
@@ -530,17 +543,17 @@ export function init(container: HTMLElement) {
             }
         }, { signal });
 
-        canvas!.addEventListener('click', handleClick, { signal });
-        rafId = requestAnimationFrame(() => draw(dom));
+        canvas?.addEventListener('click', handleClick, { signal });
+        rafId = requestAnimationFrame(() => { draw(dom); });
 
         // Webcam init LAST — failures cannot break the controls or draw loop above
         try {
             const constraints = { video: true };
-            navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+            void navigator.mediaDevices.getUserMedia(constraints).then(stream => {
                 // If destroy() already ran while the permission prompt was open,
                 // immediately stop the stream so we don't leak the camera.
                 if (signal.aborted) {
-                    stream.getTracks().forEach(t => t.stop());
+                    stream.getTracks().forEach(t => { t.stop(); });
                     return;
                 }
                 videoElement = document.createElement('video');
@@ -548,21 +561,22 @@ export function init(container: HTMLElement) {
                 videoElement.setAttribute('autoplay', '');
                 videoElement.setAttribute('playsinline', '');
                 videoElement.muted = true;
-                videoElement.play().catch(() => {});
+                void videoElement.play().catch((_e: unknown) => { /* autoplay policy */ });
 
-                const captureContainer = container.querySelector('#captureContainer') as HTMLElement;
-                captureContainer.appendChild(videoElement);
-
-                captureContainer.addEventListener('mouseenter', () => {
-                    captureContainer.style.opacity = '0';
-                }, { signal });
-                captureContainer.addEventListener('mouseleave', () => {
-                    captureContainer.style.opacity = '1';
-                }, { signal });
-            }).catch((err: Error) => {
+                const captureContainer = container.querySelector<HTMLElement>('#captureContainer');
+                if (captureContainer) {
+                    captureContainer.appendChild(videoElement);
+                    captureContainer.addEventListener('mouseenter', () => {
+                        captureContainer.style.opacity = '0';
+                    }, { signal });
+                    captureContainer.addEventListener('mouseleave', () => {
+                        captureContainer.style.opacity = '1';
+                    }, { signal });
+                }
+            }).catch((err: unknown) => {
                 if (signal.aborted) return;
                 console.error('Webcam error:', err);
-                showWebcamError(err.message || 'Could not access camera.');
+                showWebcamError(err instanceof Error ? (err.message || 'Could not access camera.') : 'Could not access camera.');
             });
         } catch (err) {
             console.error('Webcam error:', err);
@@ -579,15 +593,15 @@ export function init(container: HTMLElement) {
 
         // Hide webcam-only controls
         if (dom.btn_snapshot) dom.btn_snapshot.style.display = 'none';
-        const captureContainer = container.querySelector('#captureContainer') as HTMLElement | null;
+        const captureContainer = container.querySelector<HTMLElement>('#captureContainer');
         if (captureContainer) captureContainer.style.display = 'none';
 
         // Create snapshot from the uploaded image immediately
         snapshotCanvas = document.createElement('canvas');
         snapshotCanvas.width = img.naturalWidth;
         snapshotCanvas.height = img.naturalHeight;
-        const snapCtx = snapshotCanvas.getContext('2d')!;
-        snapCtx.drawImage(img, 0, 0);
+        const snapCtx = snapshotCanvas.getContext('2d');
+        if (snapCtx) snapCtx.drawImage(img, 0, 0);
         pictureTaken = true;
         showPopup();
 
@@ -600,8 +614,8 @@ export function init(container: HTMLElement) {
             }
         }, { signal });
 
-        canvas!.addEventListener('click', handleClick, { signal });
-        rafId = requestAnimationFrame(() => draw(dom));
+        canvas?.addEventListener('click', handleClick, { signal });
+        rafId = requestAnimationFrame(() => { draw(dom); });
     }
 
     return function destroy() {
@@ -611,9 +625,9 @@ export function init(container: HTMLElement) {
             cancelAnimationFrame(rafId);
             rafId = null;
         }
-        if (videoElement && videoElement.srcObject) {
+        if (videoElement?.srcObject) {
             try { videoElement.pause(); } catch { /* ignore */ }
-            (videoElement.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+            (videoElement.srcObject as MediaStream).getTracks().forEach(t => { t.stop(); });
             videoElement.srcObject = null;
         }
         videoElement = null;

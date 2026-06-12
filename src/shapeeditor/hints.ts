@@ -31,14 +31,14 @@ interface HintState {
 }
 
 export function hintTextFor(state: HintState | null | undefined) {
-    const s = state || {};
+    const s = state ?? {};
     if (s.placing) {
-        const label = s.placingLabel || 'panel';
+        const label = s.placingLabel ?? 'panel';
         return `Click to place "${label}" • Esc / right-click: cancel`;
     }
     if (s.pasting) {
         const n = typeof s.pastingCount === 'number' ? s.pastingCount : 0;
-        return `Click to drop pasted strips (${n}) • Esc: cancel`;
+        return `Click to drop pasted strips (${String(n)}) • Esc: cancel`;
     }
     if (s.chainMode) {
         return 'Chain edit: drag an arrowhead to rewire • right-click arrow: menu • Esc/[Chain]: exit';
@@ -47,7 +47,7 @@ export function hintTextFor(state: HintState | null | undefined) {
         return 'Reorder: ▲/▼ move strips within a pin • drag grip across pins to repin • Esc/[Reorder]: exit';
     }
     if (s.pointEditMode) {
-        const name = s.pointEditStripName || '';
+        const name = s.pointEditStripName ?? '';
         return `Editing points in "${name}" • drag LED: move single • Shift+click edge: insert • Esc: exit`;
     }
     if (s.empty) {

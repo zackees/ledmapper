@@ -33,10 +33,10 @@ export function createRecording({ getSwal }: { getSwal?: () => Promise<SwalInsta
         if (flat === null) {
             if (getSwal) {
                 const swal = await getSwal();
-                swal.fire('No Frames', 'No frames were captured during recording.', 'warning');
+                void swal.fire('No Frames', 'No frames were captured during recording.', 'warning');
             }
         } else {
-            download_binary_as_file(flat, `video${downloadIndex}.rgb`);
+            download_binary_as_file(flat, `video${String(downloadIndex)}.rgb`);
             downloadIndex++;
         }
         colorFrames.length = 0;

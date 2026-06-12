@@ -67,10 +67,10 @@ interface MapCounts { stripCount: number; ledCount: number; pinCount: number; }
 
 function _countMap(jsonText: string): MapCounts | null {
     if (typeof jsonText !== 'string' || jsonText.length === 0) return null;
-    let obj;
-    try { obj = JSON.parse(jsonText); } catch { return null; }
+    let obj: unknown;
+    try { obj = JSON.parse(jsonText) as unknown; } catch { return null; }
     if (!obj || typeof obj !== 'object') return null;
-    const map = obj.map as Record<string, { x?: unknown[]; points?: unknown[]; pin?: string }> | undefined;
+    const map = (obj as Record<string, unknown>).map as Record<string, { x?: unknown[]; points?: unknown[]; pin?: string }> | undefined;
     if (!map || typeof map !== 'object') return null;
     const stripNames = Object.keys(map);
     let ledCount = 0;
@@ -93,7 +93,7 @@ function _countMap(jsonText: string): MapCounts | null {
  * @returns {boolean}
  */
 export function isDegenerate(jsonText: string | null | undefined): boolean {
-    if (jsonText == null) return true;
+    if (jsonText === null || jsonText === undefined) return true;
     const counts = _countMap(jsonText);
     if (counts === null) return true;
     if (counts.stripCount === 0) return true;
@@ -162,11 +162,11 @@ export function getPresetSelection() {
  * @param {Array<{name:string, points:Array<[number,number]>, diameter:number|undefined, offset:number, count:number, video_offset:number, pin?:string, videoOffsetOverride?:boolean}>} strips
  * @returns {string} JSON string
  */
-export function buildScreenmapMultiStripJson(strips: Array<{ name: string; points: [number, number][] | number[][]; diameter?: number | undefined; offset: number; count: number; video_offset?: number | undefined; pin?: string | undefined; videoOffsetOverride?: boolean | undefined }>): string {
+export function buildScreenmapMultiStripJson(strips: { name: string; points: [number, number][] | number[][]; diameter?: number | undefined; offset: number; count: number; video_offset?: number | undefined; pin?: string | undefined; videoOffsetOverride?: boolean | undefined }[]): string {
     if (!Array.isArray(strips) || strips.length === 0) {
         throw new Error('strips must be a non-empty array');
     }
-    type StripEntry = { x: number[]; y: number[]; diameter?: number; pin?: string; video_offset?: number; video_offset_override?: boolean };
+    interface StripEntry { x: number[]; y: number[]; diameter?: number; pin?: string; video_offset?: number; video_offset_override?: boolean }
     const pinOf = (s: { pin?: string | undefined }) => (typeof s.pin === 'string' && s.pin.trim() !== '') ? s.pin : 'pin1';
     const distinctPins = new Set(strips.map(pinOf));
     const emitPin = distinctPins.size >= 2 || strips.some((s) => pinOf(s) !== 'pin1');
@@ -250,7 +250,7 @@ export function getBackup(): { json: string; meta: BackupMeta | null } | null {
 export function promoteToBackup() {
     const current = _safeGet(KEY);
     if (!current || isDegenerate(current)) return false;
-    const counts: MapCounts = _countMap(current) || { ledCount: 0, stripCount: 0, pinCount: 0 };
+    const counts: MapCounts = _countMap(current) ?? { ledCount: 0, stripCount: 0, pinCount: 0 };
     const existingMeta = getScreenmapMeta();
     const backupMeta = {
         savedAt: (existingMeta && typeof existingMeta.savedAt === 'number')
@@ -286,7 +286,7 @@ export function restoreBackup() {
     const backup = getBackup();
     if (!backup) return null;
     const { json, meta } = backup;
-    const counts: MapCounts = _countMap(json) || { ledCount: 0, stripCount: 0, pinCount: 0 };
+    const counts: MapCounts = _countMap(json) ?? { ledCount: 0, stripCount: 0, pinCount: 0 };
     const newMeta = {
         savedAt: (meta && typeof meta.savedAt === 'number') ? meta.savedAt : Date.now(),
         source: 'restore',
@@ -339,8 +339,8 @@ export function backfillMeta() {
  */
 export function saveScreenmapWithMeta(jsonText: string, opts: { source?: string } = {}): boolean {
     if (isDegenerate(jsonText)) return false;
-    const source = (opts && typeof opts.source === 'string') ? opts.source : 'save';
-    const counts = _countMap(jsonText) || { ledCount: 0, stripCount: 0, pinCount: 0 };
+    const source = typeof opts.source === 'string' ? opts.source : 'save';
+    const counts = _countMap(jsonText) ?? { ledCount: 0, stripCount: 0, pinCount: 0 };
     const prev = _safeGet(KEY);
     // Pin-count regression guard (issue #24 §1.8): refuse a write whose
     // distinct pin count dropped vs. the stored working copy unless a
@@ -354,7 +354,7 @@ export function saveScreenmapWithMeta(jsonText: string, opts: { source?: string 
             && (Date.now() - _lastPinMutationAt) > PIN_MUTATION_GRACE_MS) {
             if (!_pinGuardWarned) {
                 console.warn(
-                    `screenmap-store: refused write — distinct pin count dropped from ${prevCounts.pinCount} to ${counts.pinCount} without a recent user-initiated pin mutation`,
+                    `screenmap-store: refused write — distinct pin count dropped from ${String(prevCounts.pinCount)} to ${String(counts.pinCount)} without a recent user-initiated pin mutation`,
                 );
                 _pinGuardWarned = true;
             }

@@ -8,7 +8,7 @@ import {
 import {
     buildScreenmapMultiStripJson,
 } from '../../src/screenmap-store';
-import type { ScreenmapJson, ParsedStrip } from '../../src/types/domain';
+import type { ScreenmapJson, ParsedStrip, ScreenmapStrip } from '../../src/types/domain';
 
 // ── Single-strip fixtures ────────────────────────────────────────────
 
@@ -68,7 +68,7 @@ describe('parse_screenmap_data_json backwards compatibility', () => {
     });
 
     it('throws on missing map key', () => {
-        assert.throws(() => parse_screenmap_data_json({} as import("../../src/types/domain").ScreenmapJson), /map/i);
+        assert.throws(() => parse_screenmap_data_json({}), /map/i);
     });
 
     it('throws on empty map', () => {
@@ -167,7 +167,7 @@ describe('parseScreenmapMultiStrip', () => {
     });
 
     it('throws on missing map key (object input)', () => {
-        assert.throws(() => parseScreenmapMultiStrip({} as import("../../src/types/domain").ScreenmapJson), /map/i);
+        assert.throws(() => parseScreenmapMultiStrip({}), /map/i);
     });
 
     it('throws on missing map key (string input)', () => {
@@ -194,15 +194,16 @@ describe('parseScreenmapMultiStrip', () => {
     it('round-trips through JSON serialization', () => {
         const result1 = parseScreenmapMultiStrip(JSON.stringify(TWO_STRIPS_WITH_OFFSETS));
         // Rebuild JSON from the structured result
-        const rebuilt: ScreenmapJson = { map: {} };
+        const rebuiltMap: Record<string, ScreenmapStrip> = {};
+        const rebuilt: ScreenmapJson = { map: rebuiltMap };
         for (const s of result1.strips) {
-            const entry: ScreenmapJson['map'][string] = {
+            const entry: ScreenmapStrip = {
                 x: s.points.map((p) => p[0]),
                 y: s.points.map((p) => p[1]),
                 ...(typeof s.diameter === 'number' ? { diameter: s.diameter } : {}),
             };
             if (typeof s.video_offset === 'number') entry.video_offset = s.video_offset;
-            rebuilt.map[s.name] = entry;
+            rebuiltMap[s.name] = entry;
         }
         const result2 = parseScreenmapMultiStrip(JSON.stringify(rebuilt));
         assert.deepStrictEqual(result2.allPoints, result1.allPoints);
@@ -305,14 +306,11 @@ describe('buildScreenmapMultiStripJson', () => {
     });
 
     it('throws on non-array input', () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         assert.throws(() => buildScreenmapMultiStripJson(null as unknown as ParsedStrip[]), /non-empty/i);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         assert.throws(() => buildScreenmapMultiStripJson(undefined as unknown as ParsedStrip[]), /non-empty/i);
     });
 
     it('throws when a strip has undefined points', () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const strips = [{ name: 'bad', diameter: 0.25, offset: 0, count: 0 }] as unknown as ParsedStrip[];
         assert.throws(() => buildScreenmapMultiStripJson(strips), /points/i);
     });
@@ -323,7 +321,6 @@ describe('buildScreenmapMultiStripJson', () => {
     });
 
     it('omits diameter when undefined', () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const strips = [{ name: 'strip1', points: [[0, 0]], diameter: undefined, offset: 0, count: 1, video_offset: 0 }] as unknown as ParsedStrip[];
         const json = buildScreenmapMultiStripJson(strips);
         const parsed = JSON.parse(json);

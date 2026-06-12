@@ -29,7 +29,8 @@ function strokeRings(lctx: CanvasRenderingContext2D, transformedPts: StripPoint[
     lctx.lineWidth = 1;
     lctx.beginPath();
     for (let i = start; i < end; i++) {
-        const pt = transformedPts[i]!;
+        const pt = transformedPts[i];
+        if (!pt) continue;
         const [x, y] = pt;
         lctx.moveTo(x + r, y);
         lctx.arc(x, y, r, 0, Math.PI * 2);
@@ -45,14 +46,17 @@ const labelRenderer = createLabelRenderer();
 function drawStripLabels(lctx: CanvasRenderingContext2D, transformedPts: StripPoint[], strips: ParsedStrip[], r: number, colors: string[]) {
     const items: { id: string; text: string; anchorX: number; anchorY: number; color: string }[] = [];
     for (let si = 0; si < strips.length; si++) {
-        const strip = strips[si]!;
+        const strip = strips[si];
+        if (!strip) continue;
         const first = strip.offset;
         const last = strip.offset + strip.count - 1;
         if (first < 0 || last >= transformedPts.length || strip.count === 0) continue;
         const { start, end } = stripStartEndLabels(strip, si);
-        items.push({ id: 'start:' + si, text: start, anchorX: transformedPts[first]![0], anchorY: transformedPts[first]![1], color: colors[si] ?? 'white' });
+        const firstPt = transformedPts[first] ?? [0, 0];
+        const lastPt = transformedPts[last] ?? [0, 0];
+        items.push({ id: `start:${String(si)}`, text: start, anchorX: firstPt[0], anchorY: firstPt[1], color: colors[si] ?? 'white' });
         if (end !== null) {
-            items.push({ id: 'end:' + si, text: end, anchorX: transformedPts[last]![0], anchorY: transformedPts[last]![1], color: colors[si] ?? 'white' });
+            items.push({ id: `end:${String(si)}`, text: end, anchorX: lastPt[0], anchorY: lastPt[1], color: colors[si] ?? 'white' });
         }
     }
     labelRenderer.draw(lctx, items, {
@@ -63,7 +67,7 @@ function drawStripLabels(lctx: CanvasRenderingContext2D, transformedPts: StripPo
 
 function getRingLayer(ctx: CanvasRenderingContext2D, localPts: StripPoint[], rotate: number, zoom: number, strips: ParsedStrip[] | null): RingLayerEntry {
     const cached = ringLayerCache.get(ctx);
-    if (cached && cached.pts === localPts && cached.rotate === rotate &&
+    if (cached?.pts === localPts && cached.rotate === rotate &&
         cached.zoom === zoom && cached.strips === strips) {
         return cached;
     }
@@ -95,22 +99,22 @@ function getRingLayer(ctx: CanvasRenderingContext2D, localPts: StripPoint[], rot
     layer.width = Math.ceil(xmax) - Math.floor(xmin) + pad * 2;
     layer.height = Math.ceil(ymax) - Math.floor(ymin) + pad * 2;
 
-    const lctx = layer.getContext('2d')!;
+    const lctx = layer.getContext('2d');
+    if (!lctx) throw new Error('Failed to get 2D context for ring layer');
     lctx.translate(-ox, -oy);
-    const multiStrip = Array.isArray(strips) && strips.length > 1;
-
-    if (multiStrip && strips) {
+    if (Array.isArray(strips) && strips.length > 1) {
         // Tint rings per strip so the physical wiring order is visible.
         const colors = getStripColors(strips.length);
         for (let si = 0; si < strips.length; si++) {
-            const strip = strips[si]!;
+            const strip = strips[si];
+            if (!strip) continue;
             const end = Math.min(strip.offset + strip.count, pts.length);
             strokeRings(lctx, pts, strip.offset, end, r, colors[si] ?? 'white');
         }
         drawStripLabels(lctx, pts, strips, r, colors);
     } else {
         strokeRings(lctx, pts, 0, pts.length, r, 'white');
-        if (Array.isArray(strips) && strips.length === 1 && strips[0]) {
+        if (Array.isArray(strips) && strips.length === 1 && strips[0] !== undefined) {
             drawStripLabels(lctx, pts, strips, r, ['white']);
         }
     }
@@ -144,9 +148,9 @@ export function drawMoviemakerOverlay(
 
     ctx.fillStyle = 'white';
     ctx.font = '12px monospace';
-    ctx.fillText(`FPS: ${fps}`, 10, 14);
+    ctx.fillText(`FPS: ${String(fps)}`, 10, 14);
     if (lastSample) {
         const pct = Math.round(lastSample.avgBri * 100);
-        ctx.fillText(`Avg Brightness: ${pct}%`, 10, 28);
+        ctx.fillText(`Avg Brightness: ${String(pct)}%`, 10, 28);
     }
 }

@@ -34,10 +34,10 @@ export function parse_screenmap_data_json(jsonBlob: string | ScreenmapJson): Poi
     }
     try {
         const out: PointArrayWithDiameter = [];
-        const map = parsed["map"];
-        if (!map || typeof map !== "object") {
-            throw new Error("No 'map' key found in JSON");
+        if (parsed.map === undefined) {
+            throw new Error("Missing required 'map' key in screenmap JSON");
         }
+        const map = parsed.map;
         const keys = Object.keys(map);
         if (keys.length === 0) {
             throw new Error("No strip data found");
@@ -45,17 +45,14 @@ export function parse_screenmap_data_json(jsonBlob: string | ScreenmapJson): Poi
         let firstDiameter: number | undefined;
         for (const key of keys) {
             const strip = map[key];
-            if (!strip) continue;
-            const x = strip["x"];
-            const y = strip["y"];
-            if (!x) throw new Error(`No x data found in ${key}`);
-            if (!y) throw new Error(`No y data found in ${key}`);
+            if (strip === undefined) continue;
+            const { x, y } = strip;
             const len = Math.min(x.length, y.length);
             for (let i = 0; i < len; ++i) {
                 out.push([x[i] ?? 0, y[i] ?? 0]);
             }
-            if (firstDiameter === undefined && typeof strip["diameter"] === "number") {
-                firstDiameter = strip["diameter"];
+            if (firstDiameter === undefined && typeof strip.diameter === "number") {
+                firstDiameter = strip.diameter;
             }
         }
         if (typeof firstDiameter === "number") {
@@ -63,10 +60,11 @@ export function parse_screenmap_data_json(jsonBlob: string | ScreenmapJson): Poi
         }
         return out;
     } catch (e) {
+        const msg = `Error parsing JSON: ${String(e)}`;
         if (typeof alert === "function") {
-            alert("Error parsing JSON: " + e);
+            alert(msg);
         } else {
-            console.error("Error parsing JSON: " + e);
+            console.error(msg);
         }
         throw e;
     }
@@ -77,7 +75,7 @@ export function parse_screenmap_data_json(jsonBlob: string | ScreenmapJson): Poi
  * Auto-detects JSON vs CSV. CSV is wrapped as a single strip named "strip1".
  */
 export function parseScreenmapMultiStrip(text: string | ScreenmapJson): MultiStripParseResult {
-    if (typeof text === 'object' && text !== null) {
+    if (typeof text === 'object') {
         return _parseMultiStripJson(text);
     }
     if (is_json_str(text)) {
@@ -97,10 +95,10 @@ export function parseScreenmapMultiStrip(text: string | ScreenmapJson): MultiStr
 }
 
 function _parseMultiStripJson(obj: ScreenmapJson): MultiStripParseResult {
-    const map = obj["map"];
-    if (!map || typeof map !== "object") {
-        throw new Error("No 'map' key found in JSON");
+    if (obj.map === undefined) {
+        throw new Error("Missing required 'map' key in screenmap JSON");
     }
+    const map = obj.map;
     const keys = Object.keys(map);
     if (keys.length === 0) {
         throw new Error("No strip data found");
@@ -110,11 +108,8 @@ function _parseMultiStripJson(obj: ScreenmapJson): MultiStripParseResult {
     let offset = 0;
     for (const key of keys) {
         const strip = map[key];
-        if (!strip) continue;
-        const x = strip["x"];
-        const y = strip["y"];
-        if (!x) throw new Error(`No x data found in ${key}`);
-        if (!y) throw new Error(`No y data found in ${key}`);
+        if (strip === undefined) continue;
+        const { x, y } = strip;
         const points: StripPoint[] = [];
         const len = Math.min(x.length, y.length);
         for (let i = 0; i < len; ++i) {
@@ -122,13 +117,13 @@ function _parseMultiStripJson(obj: ScreenmapJson): MultiStripParseResult {
             points.push(pt);
             allPoints.push(pt);
         }
-        const diameter = typeof strip["diameter"] === "number" ? strip["diameter"] : undefined;
-        const video_offset = typeof strip["video_offset"] === "number" ? strip["video_offset"] : offset;
-        const rawPin = strip["pin"];
+        const diameter = typeof strip.diameter === "number" ? strip.diameter : undefined;
+        const video_offset = typeof strip.video_offset === "number" ? strip.video_offset : offset;
+        const rawPin = strip.pin;
         const pin = (typeof rawPin === "string" && rawPin.trim() !== "") ? rawPin : "pin1";
-        const videoOffsetOverride = typeof strip["video_offset_override"] === "boolean"
-            ? strip["video_offset_override"]
-            : (typeof strip["video_offset"] === "number" && strip["video_offset"] !== offset);
+        const videoOffsetOverride = typeof strip.video_offset_override === "boolean"
+            ? strip.video_offset_override
+            : (typeof strip.video_offset === "number" && strip.video_offset !== offset);
         strips.push({
             name: key, points, diameter, offset, count: points.length,
             video_offset, pin, videoOffsetOverride,
@@ -145,7 +140,7 @@ export function getStripColors(n: number): string[] {
     const colors: string[] = [];
     for (let i = 0; i < n; i++) {
         const hue = (i * 360 / n) % 360;
-        colors.push(`hsl(${hue}, 80%, 60%)`);
+        colors.push(`hsl(${String(hue)}, 80%, 60%)`);
     }
     return colors;
 }
@@ -158,7 +153,7 @@ export function getPinColors(n: number): string[] {
     const count = Math.max(1, n);
     for (let i = 0; i < n; i++) {
         const hue = (210 + i * 360 / count) % 360;
-        colors.push(`hsl(${hue}, 65%, 55%)`);
+        colors.push(`hsl(${String(hue)}, 65%, 55%)`);
     }
     return colors;
 }
@@ -266,7 +261,10 @@ export function readFileAsText(fileInput: HTMLInputElement, onText: (text: strin
     const file = fileInput.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (evt) => { onText(evt.target!.result as string); };
+    reader.onload = (evt) => {
+        const result = evt.target?.result;
+        if (typeof result === 'string') { onText(result); }
+    };
     reader.readAsText(file);
 }
 
@@ -279,7 +277,8 @@ export function download_blob_as_file(blob: Blob, filename: string): void {
     document.body.appendChild(link);
     link.download = filename;
     link.href = URL.createObjectURL(blob);
-    console.log("href: ", link.href);
+    // href logged for debug; use console.warn to satisfy no-console rule in production
+    // console.log("href: ", link.href); // removed
     link.click();
     document.body.removeChild(link);
     setTimeout(() => {URL.revokeObjectURL(link.href);}, 60 * 1000);
@@ -314,10 +313,11 @@ export function estimate_led_size(pts: StripPoint[]): number {
     if (pts.length < 2) {
         return 1.0;
     }
-    const a = pts[0]!;
-    const b = pts[1]!;
-    const dx = b[0] - a[0];
-    const dy = b[1] - a[1];
+    // pts.length >= 2 checked above; fallback [0,0] satisfies TS but is unreachable
+    const [ax, ay] = pts[0] ?? [0, 0];
+    const [bx, by] = pts[1] ?? [0, 0];
+    const dx = bx - ax;
+    const dy = by - ay;
     const d2 = Math.pow(dx, 2) + Math.pow(dy, 2);
     return Math.max(Math.sqrt(d2), 1.0);
 }

@@ -24,6 +24,7 @@ import {
     RGBAFormat,
     FloatType,
 } from 'three';
+import type { Texture } from 'three';
 import { BLUR_VERT, BLUR_FRAG, COPY_FRAG, GATHER_FRAG } from './shaders';
 import { perfCount } from './perf';
 
@@ -43,8 +44,8 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
     const geometry = new PlaneGeometry(2, 2);
 
     // Typed uniform interface for the blur shader
-    type BlurShaderUniforms = {
-        tDiffuse: { value: import('three').Texture | null };
+    interface BlurShaderUniforms {
+        tDiffuse: { value: Texture | null };
         resolution: { value: Vector2 };
         blurRadius: { value: number };
         sigma: { value: number };
@@ -52,7 +53,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         maxBrightness: { value: number };
         gamma: { value: number };
         direction: { value: Vector2 };
-    };
+    }
     const blurUniforms: BlurShaderUniforms = {
         tDiffuse:   { value: null },
         resolution: { value: new Vector2(640, 480) },
@@ -64,7 +65,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         direction:  { value: new Vector2(1, 0) },
     };
     const shaderMaterial = new ShaderMaterial({
-        uniforms: blurUniforms,
+        uniforms: blurUniforms as unknown as Record<string, { value: unknown }>,
         vertexShader: BLUR_VERT,
         fragmentShader: BLUR_FRAG,
     });
@@ -76,21 +77,21 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
     const quadScene = new Scene();
     const quadCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const quadGeometry = new PlaneGeometry(2, 2);
-    type CopyShaderUniforms = { tDiffuse: { value: import('three').Texture | null } };
+    interface CopyShaderUniforms { tDiffuse: { value: Texture | null } }
     const copyUniforms: CopyShaderUniforms = { tDiffuse: { value: null } };
     const copyMaterial = new ShaderMaterial({
-        uniforms: copyUniforms,
+        uniforms: copyUniforms as unknown as Record<string, { value: unknown }>,
         vertexShader: BLUR_VERT,
         fragmentShader: COPY_FRAG,
     });
-    type GatherShaderUniforms = {
-        tPositions: { value: import('three').Texture | null };
-        tSource: { value: import('three').Texture | null };
+    interface GatherShaderUniforms {
+        tPositions: { value: Texture | null };
+        tSource: { value: Texture | null };
         uResolution: { value: Vector2 };
         uTranslate: { value: Vector2 };
         uZoom: { value: number };
         uRotate: { value: number };
-    };
+    }
     const gatherUniforms: GatherShaderUniforms = {
         tPositions:  { value: null },
         tSource:     { value: null },
@@ -100,7 +101,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         uRotate:     { value: 0 },
     };
     const gatherMaterial = new ShaderMaterial({
-        uniforms: gatherUniforms,
+        uniforms: gatherUniforms as unknown as Record<string, { value: unknown }>,
         vertexShader: BLUR_VERT,
         fragmentShader: GATHER_FRAG,
     });
@@ -157,7 +158,8 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         });
 
         if (videoTexture) videoTexture.dispose();
-        videoTexture = new VideoTexture(videoPlayer as HTMLVideoElement);
+        if (!videoPlayer) throw new Error('videoPlayer is required for setupForResolution');
+        videoTexture = new VideoTexture(videoPlayer);
         const vt = videoTexture;
         vt.minFilter = LinearFilter;
         vt.magFilter = LinearFilter;
@@ -203,10 +205,10 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         u.brightness.value = 1.0;
         u.maxBrightness.value = 1.0;
         u.gamma.value = 1.0;
-        renderer.setRenderTarget(blurTarget!);
+        renderer.setRenderTarget(blurTarget);
         renderer.render(scene, camera);
 
-        u.tDiffuse.value = blurTarget!.texture;
+        if (blurTarget) u.tDiffuse.value = blurTarget.texture;
         u.direction.value.set(0, 1);
         u.brightness.value = savedBri;
         u.maxBrightness.value = savedMaxBri;
@@ -222,9 +224,10 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
      * it to the visible canvas.
      */
     function renderFrame() {
-        renderBlurred(outputTarget!);
+        if (!outputTarget) return;
+        renderBlurred(outputTarget);
 
-        copyUniforms.tDiffuse.value = outputTarget!.texture;
+        copyUniforms.tDiffuse.value = outputTarget.texture;
         quadMesh.material = copyMaterial;
         renderer.setRenderTarget(null);
         renderer.render(quadScene, quadCamera);
@@ -282,11 +285,12 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         gatherUniforms.uResolution.value.set(w, h);
 
         // Texel i (readPixels order: row 0 = bottom) maps to LED i.
-        const pt = positionTexture!;
+        if (!positionTexture) return;
+        const pt = positionTexture;
         const data = pt.image.data as Float32Array;
         for (let i = 0; i < numPts; i++) {
             const o = i * 4;
-            const p = pts[i]!;
+            const p = pts[i] ?? [0, 0];
             data[o]     = p[0] ?? 0;
             data[o + 1] = p[1] ?? 0;
             data[o + 2] = 0;
@@ -323,15 +327,17 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         nextSlot ^= 1;
 
         gatherUniforms.tPositions.value = positionTexture;
-        gatherUniforms.tSource.value = outputTarget!.texture;
+        gatherUniforms.tSource.value = outputTarget.texture;
         quadMesh.material = gatherMaterial;
-        const slotTarget = gatherTargets[slot]!;
+        const slotTarget = gatherTargets[slot];
+        if (!slotTarget) return;
         renderer.setRenderTarget(slotTarget);
         renderer.render(quadScene, quadCamera);
         renderer.setRenderTarget(null);
 
         slotBusy[slot] = true;
-        const buffer = gatherBuffers[slot]!;
+        const buffer = gatherBuffers[slot];
+        if (!buffer) { slotBusy[slot] = false; return; }
         const numPts = gatherNumPts;
         renderer.readRenderTargetPixelsAsync(
             slotTarget, 0, 0, gatherW, gatherH, buffer,

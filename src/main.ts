@@ -8,8 +8,10 @@ if (redirect) {
     history.replaceState(null, '', redirect);
 }
 
-const router = createRouter(document.getElementById('app') as HTMLElement);
-initNav((path) => router.navigate(path));
+const appEl = document.getElementById('app');
+if (!appEl) throw new Error('Missing #app element');
+const router = createRouter(appEl);
+initNav((path) => { router.navigate(path); });
 
 // Load initial route
 router.start();

@@ -28,7 +28,7 @@ export interface PasteResult {
 
 function _isFinitePair(p: unknown): p is [number, number] {
     return Array.isArray(p) && p.length >= 2
-        && Number.isFinite(+(p[0] as number)) && Number.isFinite(+(p[1] as number));
+        && Number.isFinite(Number(p[0])) && Number.isFinite(Number(p[1]));
 }
 
 function _coercePoints(arr: unknown): [number, number][] | null {
@@ -36,7 +36,7 @@ function _coercePoints(arr: unknown): [number, number][] | null {
     const out: [number, number][] = [];
     for (const p of arr) {
         if (!_isFinitePair(p)) return null;
-        out.push([+(p[0] as number), +(p[1] as number)]);
+        out.push([p[0], p[1]]);
     }
     return out;
 }
@@ -65,14 +65,14 @@ export function parsePastedScreenmap(text: unknown): PasteResult | null {
     const objRecord = obj as Record<string, unknown>;
 
     // Case 1: full screenmap JSON with `map`
-    if (objRecord['map'] && typeof objRecord['map'] === 'object') {
+    if (objRecord.map && typeof objRecord.map === 'object') {
         try {
-            const info = parseScreenmapMultiStrip(obj as unknown as string);
-            if (!info || info.totalCount === 0 || info.strips.length === 0) return null;
+            const info = parseScreenmapMultiStrip(obj);
+            if (info.totalCount === 0 || info.strips.length === 0) return null;
             const strips: PasteStrip[] = info.strips.map((s: ParsedStrip) => {
                 const out: PasteStrip = {
-                    name: String(s.name),
-                    points: s.points.map(p => [+p[0], +p[1]] as [number, number]),
+                    name: s.name,
+                    points: s.points.map(p => [p[0], p[1]] as [number, number]),
                 };
                 if (typeof s.diameter === 'number' && isFinite(s.diameter)) out.diameter = s.diameter;
                 if (typeof s.video_offset === 'number' && isFinite(s.video_offset)) {
@@ -89,11 +89,11 @@ export function parsePastedScreenmap(text: unknown): PasteResult | null {
     }
 
     // Case 2: single strip { name?, points: [...], diameter? }
-    if (Array.isArray(objRecord['points'])) {
-        const pts = _coercePoints(objRecord['points']);
+    if (Array.isArray(objRecord.points)) {
+        const pts = _coercePoints(objRecord.points);
         if (!pts) return null;
-        const name = objRecord['name'];
-        const diameter = objRecord['diameter'];
+        const name = objRecord.name;
+        const diameter = objRecord.diameter;
         const out: PasteStrip = {
             name: (typeof name === 'string' && name.trim()) ? name.trim() : 'pasted1',
             points: pts,
@@ -116,15 +116,15 @@ export function planPasteMerge(
     parsed: PasteResult,
     existingNames: Set<string> | string[],
     currentTotalCount: number,
-): Array<PasteStrip & { video_offset: number }> {
-    const used = new Set(existingNames instanceof Set ? existingNames : (existingNames ?? []));
-    const base = currentTotalCount ?? 0;
+): (PasteStrip & { video_offset: number })[] {
+    const used = new Set(existingNames instanceof Set ? existingNames : existingNames);
+    const base = currentTotalCount;
     let runningOffset = 0;
-    const out: Array<PasteStrip & { video_offset: number }> = [];
+    const out: (PasteStrip & { video_offset: number })[] = [];
     for (const s of parsed.strips) {
-        const name = _uniqueName(s.name ?? 'pasted', used);
+        const name = _uniqueName(s.name, used);
         used.add(name);
-        const points: [number, number][] = s.points.map(p => [+p[0], +p[1]] as [number, number]);
+        const points: [number, number][] = s.points.map(p => [p[0], p[1]] as [number, number]);
         const entry: PasteStrip & { video_offset: number } = {
             name,
             points,
@@ -141,6 +141,6 @@ function _uniqueName(baseName: string, used: Set<string>): string {
     if (!used.has(baseName)) return baseName;
     // " (2)", " (3)", ...
     let n = 2;
-    while (used.has(`${baseName} (${n})`)) n++;
-    return `${baseName} (${n})`;
+    while (used.has(`${baseName} (${String(n)})`)) n++;
+    return `${baseName} (${String(n)})`;
 }

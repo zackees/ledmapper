@@ -45,23 +45,24 @@ export function createLabelRenderer(engineOptions: LabelLayoutOptions = {}) {
     }
 
     function draw(ctx: CanvasRenderingContext2D, items: LabelRenderItem[], opts: LabelRenderOptions = {}): LabelPlacement[] {
-        const font = opts.font || 'bold 13px "Outfit", system-ui, sans-serif';
+        const font = opts.font ?? 'bold 13px "Outfit", system-ui, sans-serif';
         const labels = items.map((it) => {
             const m = measure(ctx, it.text, font);
-            return { id: it.id, anchorX: it.anchorX, anchorY: it.anchorY, w: m.w, h: m.h, priority: it.priority || 0 };
+            return { id: it.id, anchorX: it.anchorX, anchorY: it.anchorY, w: m.w, h: m.h, priority: it.priority ?? 0 };
         });
         const placements = engine.layout(labels, { canvasBounds: opts.bounds ?? null, obstacles: opts.obstacles ?? null });
 
         const prevAlpha = ctx.globalAlpha;
         for (let i = 0; i < items.length; i++) {
-            const it = items[i]!;
-            const p = placements[i]!;
+            const it = items[i];
+            const p = placements[i];
+            if (!it || !p) continue;
 
             // 1. Anchor dot — always, even when the label is hidden.
             ctx.globalAlpha = 1;
-            ctx.fillStyle = it.dotColor || it.color;
+            ctx.fillStyle = it.dotColor ?? it.color;
             ctx.beginPath();
-            ctx.arc(p.anchorX, p.anchorY, it.dotRadius !== undefined ? it.dotRadius : 3, 0, Math.PI * 2);
+            ctx.arc(p.anchorX, p.anchorY, it.dotRadius ?? 3, 0, Math.PI * 2);
             ctx.fill();
 
             if (p.hidden) continue;
@@ -92,12 +93,12 @@ export function createLabelRenderer(engineOptions: LabelLayoutOptions = {}) {
             ctx.lineJoin = 'round';
             ctx.strokeStyle = 'rgba(0,0,0,0.9)';
             ctx.strokeText(it.text, p.labelX, p.labelY + p.h / 2);
-            ctx.fillStyle = opts.textColor || it.color;
+            ctx.fillStyle = opts.textColor ?? it.color;
             ctx.fillText(it.text, p.labelX, p.labelY + p.h / 2);
         }
         ctx.globalAlpha = prevAlpha;
         return placements;
     }
 
-    return { draw, engine, debugDump: () => engine.debugDump(), invalidate: () => engine.invalidate() };
+    return { draw, engine, debugDump: () => engine.debugDump(), invalidate: () => { engine.invalidate(); } };
 }
