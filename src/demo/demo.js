@@ -1,4 +1,5 @@
 import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file, parseScreenmapMultiStrip, getStripColors, stripStartEndLabels } from '../common.js';
+import { createLabelRenderer } from '../label-render.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils.js';
 import templateHtml from './template.html?raw';
@@ -435,15 +436,17 @@ export function init(container) {
 
         const strip = (stripInfo && stripInfo.strips[0]) || { name: '', count: pts.length };
         const labels = stripStartEndLabels(strip, 0);
-        drawOutlinedLabel(labels.start, pts[0][0] + 4, pts[0][1]);
+        const items = [{ id: 'start:0', text: labels.start, anchorX: pts[0][0], anchorY: pts[0][1], color: 'rgba(0,255,0,1)', dotRadius: 4 }];
         if (labels.end) {
-            drawOutlinedLabel(labels.end, pts[pts.length - 1][0] + 4, pts[pts.length - 1][1]);
+            items.push({ id: 'end:0', text: labels.end, anchorX: pts[pts.length - 1][0], anchorY: pts[pts.length - 1][1], color: 'rgba(255,0,0,1)', dotRadius: 4 });
         }
+        drawLabelItems(items, pts);
     }
 
     function drawOverlayMultiStrip(pts) {
         const strips = stripInfo.strips;
         const colors = getStripColors(strips.length);
+        const labelItems = [];
 
         overlayCtx.lineWidth = 2;
         for (let s = 0; s < strips.length; s++) {
@@ -486,11 +489,23 @@ export function init(container) {
 
             // Label start/end of each strip (single label for 1-LED strips)
             const labels = stripStartEndLabels({ name: strip.name, count: endIdx - startIdx + 1 }, s);
-            drawOutlinedLabel(labels.start, pts[startIdx][0] + 4, pts[startIdx][1]);
+            labelItems.push({ id: 'start:' + s, text: labels.start, anchorX: pts[startIdx][0], anchorY: pts[startIdx][1], color, dotRadius: 4 });
             if (labels.end) {
-                drawOutlinedLabel(labels.end, pts[endIdx][0] + 4, pts[endIdx][1]);
+                labelItems.push({ id: 'end:' + s, text: labels.end, anchorX: pts[endIdx][0], anchorY: pts[endIdx][1], color, dotRadius: 4 });
             }
         }
+        drawLabelItems(labelItems, pts);
+    }
+
+    const labelRenderer = createLabelRenderer();
+
+    function drawLabelItems(items, pts) {
+        labelRenderer.draw(overlayCtx, items, {
+            font: '12px sans-serif',
+            textColor: 'white',
+            bounds: { x: 0, y: 0, w: CANVAS_SIZE, h: CANVAS_SIZE },
+            obstacles: () => pts.map(([x, y]) => ({ x: x - 3, y: y - 3, w: 6, h: 6 })),
+        });
     }
 
     function drawArrowHead(x1, y1, x2, y2) {
@@ -511,20 +526,6 @@ export function init(container) {
         overlayCtx.beginPath();
         overlayCtx.arc(x, y, diameter / 2, 0, Math.PI * 2);
         overlayCtx.fill();
-    }
-
-    function drawOutlinedLabel(text, x, y) {
-        overlayCtx.font = '12px sans-serif';
-        overlayCtx.textBaseline = 'middle';
-        overlayCtx.fillStyle = 'black';
-        for (let a = 0; a < 360; a += 45) {
-            const rad = a * Math.PI / 180;
-            for (const r of [2, 1.5, 1]) {
-                overlayCtx.fillText(text, x + Math.cos(rad) * r, y + Math.sin(rad) * r);
-            }
-        }
-        overlayCtx.fillStyle = 'white';
-        overlayCtx.fillText(text, x, y);
     }
 
     // --- Main render loop ---
