@@ -4,8 +4,8 @@
  * @param {number} [spacing=1]
  * @returns {Array<[number,number]>}
  */
-export function generateGrid(cols: any, rows: any, spacing = 1) {
-    const pts = [];
+export function generateGrid(cols: number, rows: number, spacing = 1): [number, number][] {
+    const pts: [number, number][] = [];
     for (let row = 0; row < rows; row++) {
         const forward = row % 2 === 0;
         for (let c = 0; c < cols; c++) {
@@ -21,8 +21,8 @@ export function generateGrid(cols: any, rows: any, spacing = 1) {
  * @param {number} [spacing=1]
  * @returns {Array<[number,number]>}
  */
-export function generateStrip(count: any, spacing = 1) {
-    const pts = [];
+export function generateStrip(count: number, spacing = 1): [number, number][] {
+    const pts: [number, number][] = [];
     for (let i = 0; i < count; i++) {
         pts.push([i * spacing, 0]);
     }
@@ -34,8 +34,8 @@ export function generateStrip(count: any, spacing = 1) {
  * @param {number} [radius=5]
  * @returns {Array<[number,number]>}
  */
-export function generateRing(count: any, radius = 5) {
-    const pts = [];
+export function generateRing(count: number, radius = 5): [number, number][] {
+    const pts: [number, number][] = [];
     for (let i = 0; i < count; i++) {
         const angle = (2 * Math.PI * i) / count;
         pts.push([Math.cos(angle) * radius, Math.sin(angle) * radius]);

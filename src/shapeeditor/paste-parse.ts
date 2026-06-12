@@ -13,28 +13,40 @@
  */
 
 import { parseScreenmapMultiStrip } from '../common';
+import type { ParsedStrip } from '../types/domain';
 
-function _isFinitePair(p: any) {
-    return Array.isArray(p) && p.length >= 2
-        && Number.isFinite(+p[0]) && Number.isFinite(+p[1]);
+export interface PasteStrip {
+    name: string;
+    points: [number, number][];
+    diameter?: number;
+    video_offset?: number;
 }
 
-function _coercePoints(arr: any) {
+export interface PasteResult {
+    strips: PasteStrip[];
+}
+
+function _isFinitePair(p: unknown): p is [number, number] {
+    return Array.isArray(p) && p.length >= 2
+        && Number.isFinite(+(p[0] as number)) && Number.isFinite(+(p[1] as number));
+}
+
+function _coercePoints(arr: unknown): [number, number][] | null {
     if (!Array.isArray(arr) || arr.length === 0) return null;
-    const out = [];
+    const out: [number, number][] = [];
     for (const p of arr) {
         if (!_isFinitePair(p)) return null;
-        out.push([+p[0], +p[1]]);
+        out.push([+(p[0] as number), +(p[1] as number)]);
     }
     return out;
 }
 
-export function parsePastedScreenmap(text: any) {
+export function parsePastedScreenmap(text: unknown): PasteResult | null {
     if (typeof text !== 'string') return null;
     const trimmed = text.trim();
     if (!trimmed) return null;
 
-    let obj;
+    let obj: unknown;
     try {
         obj = JSON.parse(trimmed);
     } catch {
@@ -50,14 +62,18 @@ export function parsePastedScreenmap(text: any) {
     }
 
     if (typeof obj !== 'object') return null;
+    const objRecord = obj as Record<string, unknown>;
 
     // Case 1: full screenmap JSON with `map`
-    if (obj.map && typeof obj.map === 'object') {
+    if (objRecord['map'] && typeof objRecord['map'] === 'object') {
         try {
-            const info = parseScreenmapMultiStrip(obj);
+            const info = parseScreenmapMultiStrip(obj as unknown as string);
             if (!info || info.totalCount === 0 || info.strips.length === 0) return null;
-            const strips = info.strips.map((s: any) => {
-                const out: any = { name: String(s.name), points: s.points.map((p: any) => [+p[0], +p[1]]) };
+            const strips: PasteStrip[] = info.strips.map((s: ParsedStrip) => {
+                const out: PasteStrip = {
+                    name: String(s.name),
+                    points: s.points.map(p => [+p[0], +p[1]] as [number, number]),
+                };
                 if (typeof s.diameter === 'number' && isFinite(s.diameter)) out.diameter = s.diameter;
                 if (typeof s.video_offset === 'number' && isFinite(s.video_offset)) {
                     out.video_offset = s.video_offset;
@@ -65,23 +81,25 @@ export function parsePastedScreenmap(text: any) {
                 return out;
             });
             // Reject if every strip is empty
-            if (!strips.some((s: any) => s.points.length > 0)) return null;
-            return { strips: strips.filter((s: any) => s.points.length > 0) };
+            if (!strips.some(s => s.points.length > 0)) return null;
+            return { strips: strips.filter(s => s.points.length > 0) };
         } catch {
             return null;
         }
     }
 
     // Case 2: single strip { name?, points: [...], diameter? }
-    if (Array.isArray(obj.points)) {
-        const pts = _coercePoints(obj.points);
+    if (Array.isArray(objRecord['points'])) {
+        const pts = _coercePoints(objRecord['points']);
         if (!pts) return null;
-        const out: any = {
-            name: (typeof obj.name === 'string' && obj.name.trim()) ? obj.name.trim() : 'pasted1',
+        const name = objRecord['name'];
+        const diameter = objRecord['diameter'];
+        const out: PasteStrip = {
+            name: (typeof name === 'string' && name.trim()) ? name.trim() : 'pasted1',
             points: pts,
         };
-        if (typeof obj.diameter === 'number' && isFinite(obj.diameter)) {
-            out.diameter = obj.diameter;
+        if (typeof diameter === 'number' && isFinite(diameter)) {
+            out.diameter = diameter;
         }
         return { strips: [out] };
     }
@@ -93,23 +111,23 @@ export function parsePastedScreenmap(text: any) {
  * Merge a parsed paste-result against an existing list of strip names.
  * Returns a new array of strips with collision-renamed `name`s and
  * `video_offset` re-indexed to append after `currentTotalCount`.
- *
- * @param {{strips:Array<{name:string, points:Array<[number,number]>, diameter?:number, video_offset?:number}>}} parsed
- * @param {Set<string>|Array<string>} existingNames
- * @param {number} currentTotalCount
- * @returns {Array<{name:string, points:Array<[number,number]>, diameter?:number, video_offset:number}>}
  */
-export function planPasteMerge(parsed: any, existingNames: any, currentTotalCount: any) {
-    const used = new Set(existingNames instanceof Set ? existingNames : (existingNames || []));
-    const base = currentTotalCount || 0;
+export function planPasteMerge(
+    parsed: PasteResult,
+    existingNames: Set<string> | string[],
+    currentTotalCount: number,
+): Array<PasteStrip & { video_offset: number }> {
+    const used = new Set(existingNames instanceof Set ? existingNames : (existingNames ?? []));
+    const base = currentTotalCount ?? 0;
     let runningOffset = 0;
-    const out = [];
+    const out: Array<PasteStrip & { video_offset: number }> = [];
     for (const s of parsed.strips) {
-        const name = _uniqueName(s.name || 'pasted', used);
+        const name = _uniqueName(s.name ?? 'pasted', used);
         used.add(name);
-        const entry: any = {
+        const points: [number, number][] = s.points.map(p => [+p[0], +p[1]] as [number, number]);
+        const entry: PasteStrip & { video_offset: number } = {
             name,
-            points: s.points.map((p: any) => [+p[0], +p[1]]),
+            points,
             video_offset: base + runningOffset,
         };
         if (typeof s.diameter === 'number') entry.diameter = s.diameter;
@@ -119,7 +137,7 @@ export function planPasteMerge(parsed: any, existingNames: any, currentTotalCoun
     return out;
 }
 
-function _uniqueName(baseName: any, used: any) {
+function _uniqueName(baseName: string, used: Set<string>): string {
     if (!used.has(baseName)) return baseName;
     // " (2)", " (3)", ...
     let n = 2;

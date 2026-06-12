@@ -36,23 +36,35 @@ import { perfCount } from './perf';
  * @param {{ blurRadius: number, sigma: number }} opts.initialUniforms
  * @returns {Object} Pipeline API
  */
-export function createBlurPipeline({canvas, videoPlayer, initialUniforms}: {canvas?: any, videoPlayer?: any, initialUniforms?: any}) {
+export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { canvas?: HTMLCanvasElement; videoPlayer?: HTMLVideoElement; initialUniforms?: { blurRadius: number; sigma: number } }) {
     const scene = new Scene();
     const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const renderer = new WebGLRenderer({ canvas, antialias: false });
     const geometry = new PlaneGeometry(2, 2);
 
+    // Typed uniform interface for the blur shader
+    type BlurShaderUniforms = {
+        tDiffuse: { value: import('three').Texture | null };
+        resolution: { value: Vector2 };
+        blurRadius: { value: number };
+        sigma: { value: number };
+        brightness: { value: number };
+        maxBrightness: { value: number };
+        gamma: { value: number };
+        direction: { value: Vector2 };
+    };
+    const blurUniforms: BlurShaderUniforms = {
+        tDiffuse:   { value: null },
+        resolution: { value: new Vector2(640, 480) },
+        blurRadius: { value: initialUniforms?.blurRadius ?? 2 },
+        sigma:      { value: initialUniforms?.sigma ?? 1 },
+        brightness: { value: 1.0 },
+        maxBrightness: { value: 1.0 },
+        gamma:      { value: 1.0 },
+        direction:  { value: new Vector2(1, 0) },
+    };
     const shaderMaterial = new ShaderMaterial({
-        uniforms: {
-            tDiffuse:   { value: null },
-            resolution: { value: new Vector2(640, 480) },
-            blurRadius: { value: initialUniforms.blurRadius },
-            sigma:      { value: initialUniforms.sigma },
-            brightness: { value: 1.0 },
-            maxBrightness: { value: 1.0 },
-            gamma:      { value: 1.0 },
-            direction:  { value: new Vector2(1, 0) },
-        },
+        uniforms: blurUniforms,
         vertexShader: BLUR_VERT,
         fragmentShader: BLUR_FRAG,
     });
@@ -64,45 +76,56 @@ export function createBlurPipeline({canvas, videoPlayer, initialUniforms}: {canv
     const quadScene = new Scene();
     const quadCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const quadGeometry = new PlaneGeometry(2, 2);
+    type CopyShaderUniforms = { tDiffuse: { value: import('three').Texture | null } };
+    const copyUniforms: CopyShaderUniforms = { tDiffuse: { value: null } };
     const copyMaterial = new ShaderMaterial({
-        uniforms: { tDiffuse: { value: null } },
+        uniforms: copyUniforms,
         vertexShader: BLUR_VERT,
         fragmentShader: COPY_FRAG,
     });
+    type GatherShaderUniforms = {
+        tPositions: { value: import('three').Texture | null };
+        tSource: { value: import('three').Texture | null };
+        uResolution: { value: Vector2 };
+        uTranslate: { value: Vector2 };
+        uZoom: { value: number };
+        uRotate: { value: number };
+    };
+    const gatherUniforms: GatherShaderUniforms = {
+        tPositions:  { value: null },
+        tSource:     { value: null },
+        uResolution: { value: new Vector2(640, 480) },
+        uTranslate:  { value: new Vector2(0, 0) },
+        uZoom:       { value: 1 },
+        uRotate:     { value: 0 },
+    };
     const gatherMaterial = new ShaderMaterial({
-        uniforms: {
-            tPositions:  { value: null },
-            tSource:     { value: null },
-            uResolution: { value: new Vector2(640, 480) },
-            uTranslate:  { value: new Vector2(0, 0) },
-            uZoom:       { value: 1 },
-            uRotate:     { value: 0 },
-        },
+        uniforms: gatherUniforms,
         vertexShader: BLUR_VERT,
         fragmentShader: GATHER_FRAG,
     });
     const quadMesh = new Mesh(quadGeometry, copyMaterial);
     quadScene.add(quadMesh);
 
-    let blurTarget: any = null;
-    let outputTarget: any = null;
-    let videoTexture: any = null;
+    let blurTarget: WebGLRenderTarget | null = null;
+    let outputTarget: WebGLRenderTarget | null = null;
+    let videoTexture: VideoTexture | null = null;
 
     // ── LED gather state ──────────────────────────────────────────────────
-    let positionTexture: any = null;
-    let gatherTargets: any[] = [null, null];
-    let gatherBuffers: any[] = [null, null];
+    let positionTexture: DataTexture | null = null;
+    let gatherTargets: (WebGLRenderTarget | null)[] = [null, null];
+    let gatherBuffers: (Uint8Array | null)[] = [null, null];
     const slotBusy = [false, false];
     let nextSlot = 0;
     let gatherW = 0, gatherH = 0;
     let gatherNumPts = 0;
-    let lastPtsRef: any = null;
+    let lastPtsRef: number[][] | null = null;
     let lastPtsW = 0, lastPtsH = 0;
-    let latestSample: any = null;
+    let latestSample: { buffer: Uint8Array; numPts: number } | null = null;
 
     function disposeGatherResources() {
         if (positionTexture) { positionTexture.dispose(); positionTexture = null; }
-        gatherTargets.forEach(t => t && t.dispose());
+        gatherTargets.forEach(t => t?.dispose());
         gatherTargets = [null, null];
         gatherBuffers = [null, null];
         slotBusy[0] = false;
@@ -118,7 +141,7 @@ export function createBlurPipeline({canvas, videoPlayer, initialUniforms}: {canv
      * @param {number} w - Video width
      * @param {number} h - Video height
      */
-    function setupForResolution(w: any, h: any) {
+    function setupForResolution(w: number, h: number) {
         renderer.setSize(w, h);
 
         if (blurTarget) blurTarget.dispose();
@@ -134,11 +157,12 @@ export function createBlurPipeline({canvas, videoPlayer, initialUniforms}: {canv
         });
 
         if (videoTexture) videoTexture.dispose();
-        videoTexture = new VideoTexture(videoPlayer);
-        videoTexture.minFilter = LinearFilter;
-        videoTexture.magFilter = LinearFilter;
-        shaderMaterial.uniforms.tDiffuse.value = videoTexture;
-        shaderMaterial.uniforms.resolution.value.set(w, h);
+        videoTexture = new VideoTexture(videoPlayer as HTMLVideoElement);
+        const vt = videoTexture;
+        vt.minFilter = LinearFilter;
+        vt.magFilter = LinearFilter;
+        blurUniforms.tDiffuse.value = vt;
+        blurUniforms.resolution.value.set(w, h);
 
         const aspect = w / h;
         camera.left = -1;
@@ -159,8 +183,8 @@ export function createBlurPipeline({canvas, videoPlayer, initialUniforms}: {canv
      *
      * @param {{ blurRadius: number, sigma: number, brightness: number, maxBrightness: number, gamma: number }} values
      */
-    function updateUniforms(values: any) {
-        const u = shaderMaterial.uniforms;
+    function updateUniforms(values: { blurRadius: number; sigma: number; brightness: number; maxBrightness: number; gamma: number }) {
+        const u = blurUniforms;
         u.blurRadius.value = values.blurRadius;
         u.sigma.value = values.sigma;
         u.brightness.value = values.brightness;
@@ -168,8 +192,8 @@ export function createBlurPipeline({canvas, videoPlayer, initialUniforms}: {canv
         u.gamma.value = values.gamma;
     }
 
-    function renderBlurred(destTarget: any) {
-        const u = shaderMaterial.uniforms;
+    function renderBlurred(destTarget: WebGLRenderTarget) {
+        const u = blurUniforms;
         const savedBri = u.brightness.value;
         const savedMaxBri = u.maxBrightness.value;
         const savedGamma = u.gamma.value;
@@ -179,10 +203,10 @@ export function createBlurPipeline({canvas, videoPlayer, initialUniforms}: {canv
         u.brightness.value = 1.0;
         u.maxBrightness.value = 1.0;
         u.gamma.value = 1.0;
-        renderer.setRenderTarget(blurTarget);
+        renderer.setRenderTarget(blurTarget!);
         renderer.render(scene, camera);
 
-        u.tDiffuse.value = blurTarget.texture;
+        u.tDiffuse.value = blurTarget!.texture;
         u.direction.value.set(0, 1);
         u.brightness.value = savedBri;
         u.maxBrightness.value = savedMaxBri;
@@ -198,9 +222,9 @@ export function createBlurPipeline({canvas, videoPlayer, initialUniforms}: {canv
      * it to the visible canvas.
      */
     function renderFrame() {
-        renderBlurred(outputTarget);
+        renderBlurred(outputTarget!);
 
-        copyMaterial.uniforms.tDiffuse.value = outputTarget.texture;
+        copyUniforms.tDiffuse.value = outputTarget!.texture;
         quadMesh.material = copyMaterial;
         renderer.setRenderTarget(null);
         renderer.render(quadScene, quadCamera);
@@ -218,7 +242,7 @@ export function createBlurPipeline({canvas, videoPlayer, initialUniforms}: {canv
      * @param {number} w - Video width
      * @param {number} h - Video height
      */
-    function setSamplePoints(pts: any, w: any, h: any) {
+    function setSamplePoints(pts: number[][], w: number, h: number) {
         if (pts === lastPtsRef && w === lastPtsW && h === lastPtsH) return;
         lastPtsRef = pts;
         lastPtsW = w;
@@ -255,19 +279,21 @@ export function createBlurPipeline({canvas, videoPlayer, initialUniforms}: {canv
             }
         }
 
-        gatherMaterial.uniforms.uResolution.value.set(w, h);
+        gatherUniforms.uResolution.value.set(w, h);
 
         // Texel i (readPixels order: row 0 = bottom) maps to LED i.
-        const data = positionTexture.image.data;
+        const pt = positionTexture!;
+        const data = pt.image.data as Float32Array;
         for (let i = 0; i < numPts; i++) {
             const o = i * 4;
-            data[o]     = pts[i][0];
-            data[o + 1] = pts[i][1];
+            const p = pts[i]!;
+            data[o]     = p[0] ?? 0;
+            data[o + 1] = p[1] ?? 0;
             data[o + 2] = 0;
             data[o + 3] = 1;
         }
         data.fill(0, numPts * 4);
-        positionTexture.needsUpdate = true;
+        pt.needsUpdate = true;
     }
 
     /**
@@ -278,8 +304,8 @@ export function createBlurPipeline({canvas, videoPlayer, initialUniforms}: {canv
      * @param {number} translateX - translation x in video coords
      * @param {number} translateY - translation y in video coords
      */
-    function setSampleTransform(rotateDeg: any, zoom: any, translateX: any, translateY: any) {
-        const u = gatherMaterial.uniforms;
+    function setSampleTransform(rotateDeg: number, zoom: number, translateX: number, translateY: number) {
+        const u = gatherUniforms;
         u.uRotate.value = rotateDeg * Math.PI / 180;
         u.uZoom.value = zoom;
         u.uTranslate.value.set(translateX, translateY);
@@ -296,18 +322,19 @@ export function createBlurPipeline({canvas, videoPlayer, initialUniforms}: {canv
         if (slotBusy[slot]) return;
         nextSlot ^= 1;
 
-        gatherMaterial.uniforms.tPositions.value = positionTexture;
-        gatherMaterial.uniforms.tSource.value = outputTarget.texture;
+        gatherUniforms.tPositions.value = positionTexture;
+        gatherUniforms.tSource.value = outputTarget!.texture;
         quadMesh.material = gatherMaterial;
-        renderer.setRenderTarget(gatherTargets[slot]);
+        const slotTarget = gatherTargets[slot]!;
+        renderer.setRenderTarget(slotTarget);
         renderer.render(quadScene, quadCamera);
         renderer.setRenderTarget(null);
 
         slotBusy[slot] = true;
-        const buffer = gatherBuffers[slot];
+        const buffer = gatherBuffers[slot]!;
         const numPts = gatherNumPts;
         renderer.readRenderTargetPixelsAsync(
-            gatherTargets[slot], 0, 0, gatherW, gatherH, buffer,
+            slotTarget, 0, 0, gatherW, gatherH, buffer,
         ).then(() => {
             // Resolution/screenmap may have changed while in flight
             if (gatherBuffers[slot] === buffer) {

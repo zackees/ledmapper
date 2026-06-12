@@ -15,13 +15,13 @@ import assert from 'node:assert/strict';
 // ---------------------------------------------------------------------------
 
 function createDragStateMachine() {
-    let drag: any = null;
-    const released: any = [];   // track releasePointerCapture calls
-    const captured: any = [];   // track setPointerCapture calls
+    let drag: { kind: 'translate' | 'zoom'; pointerId: number; lastY: number } | null = null;
+    const released: number[] = [];   // track releasePointerCapture calls
+    const captured: number[] = [];   // track setPointerCapture calls
 
     const canvas = {
-        setPointerCapture(id: any)     { captured.push(id); },
-        releasePointerCapture(id: any) { released.push(id); },
+        setPointerCapture(id: number)     { captured.push(id); },
+        releasePointerCapture(id: number) { released.push(id); },
     };
 
     let zoomCallCount = 0;
@@ -34,7 +34,7 @@ function createDragStateMachine() {
         try { canvas.releasePointerCapture(pointerId); } catch { /* ok */ }
     }
 
-    function onPointerDown(e: any, hasPoints = true) {
+    function onPointerDown(e: { button: number; pointerId: number; offsetX: number; offsetY: number }, hasPoints = true) {
         if (!hasPoints) return;
         if (e.button === 0) {
             drag = { kind: 'translate', pointerId: e.pointerId, lastY: e.offsetY };
@@ -45,7 +45,7 @@ function createDragStateMachine() {
         }
     }
 
-    function onPointerMove(e: any, hasPoints = true) {
+    function onPointerMove(e: { button: number; pointerId: number; offsetX: number; offsetY: number }, hasPoints = true) {
         if (!drag || !hasPoints) return;
         if (drag.kind === 'translate') {
             translateCallCount++;
@@ -70,7 +70,7 @@ function createDragStateMachine() {
     };
 }
 
-function evt(overrides: any) {
+function evt(overrides: Partial<{ button: number; pointerId: number; offsetX: number; offsetY: number }>) {
     return { button: 0, pointerId: 1, offsetX: 100, offsetY: 100, ...overrides };
 }
 
@@ -79,7 +79,7 @@ function evt(overrides: any) {
 // ---------------------------------------------------------------------------
 
 describe('drag state machine — basic transitions', () => {
-    let sm: any;
+    let sm: ReturnType<typeof createDragStateMachine>;
     beforeEach(() => { sm = createDragStateMachine(); });
 
     it('is idle initially', () => {

@@ -86,7 +86,7 @@ describe('computeAutoBloomRange', () => {
         const range = computeAutoBloomRange({ ledSpacing: 0.05, sceneExtent: 1, profile: PREVIEW_PROFILE });
         // Test several brightness/density combos
         for (const bri of [0, 0.25, 0.5, 0.75, 1]) {
-            for (const [lit, total] of [[0, 100], [50, 100], [100, 100]]) {
+            for (const [lit, total] of [[0, 100], [50, 100], [100, 100]] as [number, number][]) {
                 const s = computeBloomStrength(bri, lit, total, range);
                 assert.ok(s >= PREVIEW_AUTO_FLOOR * 0.5 - 1e-9, `strength ${s} below floor*0.5`);
                 assert.ok(s <= PREVIEW_AUTO_MAX_SPARSE + 1e-9, `strength ${s} above sparseMax`);

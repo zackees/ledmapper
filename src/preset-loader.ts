@@ -1,30 +1,28 @@
 import { parse_screenmap_data } from './common';
+import type { StripPoint } from './types/domain';
 
 /**
  * Fetch the raw JSON text of a screenmap preset file by name.
- * @param {string} file - Filename in /screenmaps/ (e.g. "16x16_grid.json")
- * @returns {Promise<string>}
+ * @param file - Filename in /screenmaps/ (e.g. "16x16_grid.json")
  */
-export async function loadPresetText(file: any) {
+export async function loadPresetText(file: string): Promise<string> {
     const resp = await fetch(`/screenmaps/${file}`);
     return resp.text();
 }
 
 /**
  * Fetch and parse a screenmap preset file by name.
- * @param {string} file - Filename in /screenmaps/ (e.g. "16x16_grid.json")
- * @returns {Promise<Array<[number,number]>>}
+ * @param file - Filename in /screenmaps/ (e.g. "16x16_grid.json")
  */
-export async function loadPreset(file: any) {
+export async function loadPreset(file: string): Promise<StripPoint[]> {
     return parse_screenmap_data(await loadPresetText(file));
 }
 
 /**
  * Fetch the preset manifest listing all built-in screenmaps.
- * @returns {Promise<Array<{file: string, name: string}>>}
  */
-export async function loadPresetManifest() {
+export async function loadPresetManifest(): Promise<Array<{ file: string; name: string }>> {
     const resp = await fetch('/screenmaps/manifest.json');
-    const manifest = await resp.json();
+    const manifest = await resp.json() as { presets: Array<{ file: string; name: string }> };
     return manifest.presets;
 }

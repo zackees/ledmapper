@@ -14,8 +14,66 @@ import {
     Mesh,
     SRGBColorSpace,
     DoubleSide,
+    Points,
+    BufferAttribute,
+    Texture,
 } from 'three';
+import type { MultiStripParseResult } from '../types/domain';
+import type { StripEntry, StripSnapshot, StripInfo } from './strips-model';
+import type { PasteResult, PasteStrip } from './paste-parse';
+import type { CatalogEntry, PanelOpts, WiringStyle, DataInCorner, RotationDeg } from './panel-catalog';
+
+/** Undo/redo action object — discriminated by `type`, extra fields vary per action. */
+type UndoAction = { type: string; [key: string]: unknown };
+
+/** Insert-dialog / accordion form values. */
+interface InsertDialogOpts {
+    catalogId: string;
+    wiring: string;
+    corner: string;
+    rotation: number;
+    flipH: boolean;
+    flipV: boolean;
+    spacing: number;
+    snap: boolean;
+    grid: number;
+    place?: string | undefined;
+}
+
+/** An oriented bounding box in canvas space. */
+interface OBBox { cx: number; cy: number; hw: number; hh: number; cos: number; sin: number; }
+
+/** Gizmo drag-start snapshot. */
+interface GizmoDragStart { scale: number; scaleX: number; scaleY: number; rotate: number; translateX: number; translateY: number; canvasX: number; canvasY: number; bboxCenter: { x: number; y: number } | null; }
+
+/** Image gizmo drag-start snapshot. */
+interface BgGizmoDragStart { scale: number; rotate: number; tx: number; ty: number; canvasX: number; canvasY: number; bboxCenter: { x: number; y: number } | null; }
+
+/** Image bounding box in canvas space. */
+interface BgImageBBox { cx: number; cy: number; hw: number; hh: number; cos: number; sin: number; }
+
+/** Gizmo handle hit-test result. */
+interface GizmoHandle { id?: string; x: number; y: number; r?: number; cursor?: string; strip?: number; up?: number; down?: number; x1?: number; y1?: number; x2?: number; y2?: number; hx?: number; hy?: number; }
+
+/** Ruler drag state. */
+type RulerDragKind = 'a' | 'b' | 'body';
+interface RulerDragStart { cx: number; cy: number; ax: number; ay: number; bx: number; by: number; }
+
+/** Connector drag state. */
+interface ConnectorDrag { upIdx: number; x: number; y: number; targetIdx: number | null; }
+interface StartHandleDrag { stripIdx: number; x: number; y: number; targetIdx: number | null; }
+
+/** Panel placing state. */
+interface PlacingState { entry: CatalogEntry; opts: PanelOpts; localPts: [number, number][]; ghostWorld: [number, number] | null; }
+
+/** Paste state. */
+interface PasteStateItem { name: string; points: [number, number][]; diameter?: number; video_offset?: number; offsetsLocal?: [number, number][]; }
+interface PasteStateActive { strips: PasteStateItem[]; ghostWorld: [number, number] | null; totalCount: number; }
+
+/** Strip drag start snapshot. */
+type StripDragPt = [number, number];
 import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, getPinColors, stripStartEndLabels } from '../common';
+import type { PointArrayWithDiameter } from '../common';
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
 import {
@@ -31,6 +89,7 @@ import {
     isDegenerate,
     notePinMutation,
 } from '../screenmap-store';
+import type { BackupMeta } from '../screenmap-store';
 import { createCircleTexture, buildPointsMesh } from '../three-utils';
 import { StripStore } from './strips-model';
 import { Selection } from './selection';
@@ -41,7 +100,7 @@ import { parsePastedScreenmap, planPasteMerge } from './paste-parse';
 import templateHtml from './template.html?raw';
 export { default as css } from './shapeeditor.css?url';
 
-export function init(container: any) {
+export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
 
     // Make the container a flex column so #main fills the remaining viewport
@@ -50,34 +109,38 @@ export function init(container: any) {
     container.style.height = '100vh';
     container.style.overflow = 'hidden';
 
-    const mainEl = container.querySelector('#main');
+    const qe  = <T extends HTMLElement>(sel: string) => container.querySelector(sel) as T;
+    const qei = (sel: string) => qe<HTMLInputElement>(sel);
+    const qeb = (sel: string) => qe<HTMLButtonElement>(sel);
+
+    const mainEl = qe<HTMLElement>('#main');
     mainEl.style.flex = '1';
     mainEl.style.minHeight = '0';
     mainEl.style.overflow = 'hidden';
     mainEl.style.position = 'relative';
 
-    const dom_btn_new = container.querySelector("#btn_new");
-    const dom_btn_upload_screenmap = container.querySelector("#btn_upload_screenmap");
-    const dom_sel_preset = container.querySelector("#sel_preset");
-    const dom_txt_scale = container.querySelector("#txt_scale");
-    const dom_txt_scale_x = container.querySelector("#txt_scale_x");
-    const dom_txt_scale_y = container.querySelector("#txt_scale_y");
-    const dom_txt_rotate = container.querySelector("#txt_rotate");
-    const dom_txt_translate_x = container.querySelector("#txt_translate_x");
-    const dom_txt_translate_y = container.querySelector("#txt_translate_y");
-    const dom_txt_diameter = container.querySelector("#txt_diameter");
-    const dom_btn_save = container.querySelector("#btn_save_as");
-    const dom_btn_reset = container.querySelector("#btn_reset");
-    const dom_btn_undo = container.querySelector("#btn_undo");
-    const dom_btn_redo = container.querySelector("#btn_redo");
-    const dom_bg_accordion = container.querySelector("#bg_image_accordion");
-    const dom_btn_upload_image = container.querySelector("#btn_upload_image");
-    const dom_txt_image_opacity = container.querySelector("#txt_image_opacity");
-    const dom_txt_image_scale = container.querySelector("#txt_image_scale");
-    const dom_txt_image_rotate = container.querySelector("#txt_image_rotate");
-    const dom_txt_image_tx = container.querySelector("#txt_image_tx");
-    const dom_txt_image_ty = container.querySelector("#txt_image_ty");
-    const dom_btn_remove_image = container.querySelector("#btn_remove_image");
+    const dom_btn_new          = qeb('#btn_new');
+    const dom_btn_upload_screenmap = qei('#btn_upload_screenmap');
+    const dom_sel_preset       = qe<HTMLSelectElement>('#sel_preset');
+    const dom_txt_scale        = qei('#txt_scale');
+    const dom_txt_scale_x      = qei('#txt_scale_x');
+    const dom_txt_scale_y      = qei('#txt_scale_y');
+    const dom_txt_rotate       = qei('#txt_rotate');
+    const dom_txt_translate_x  = qei('#txt_translate_x');
+    const dom_txt_translate_y  = qei('#txt_translate_y');
+    const dom_txt_diameter     = qei('#txt_diameter');
+    const dom_btn_save         = qeb('#btn_save_as');
+    const dom_btn_reset        = qeb('#btn_reset');
+    const dom_btn_undo         = qeb('#btn_undo');
+    const dom_btn_redo         = qeb('#btn_redo');
+    const dom_bg_accordion     = qe('#bg_image_accordion');
+    const dom_btn_upload_image = qei('#btn_upload_image');
+    const dom_txt_image_opacity = qei('#txt_image_opacity');
+    const dom_txt_image_scale  = qei('#txt_image_scale');
+    const dom_txt_image_rotate = qei('#txt_image_rotate');
+    const dom_txt_image_tx     = qei('#txt_image_tx');
+    const dom_txt_image_ty     = qei('#txt_image_ty');
+    const dom_btn_remove_image = qeb('#btn_remove_image');
 
     const ac = new AbortController();
     const { signal } = ac;
@@ -109,7 +172,7 @@ export function init(container: any) {
         writeScale(dom_txt_scale_y, 1);
         setRotate(0);
         setTranslate(0, 0);
-        dom_txt_diameter.value = origDiameter;
+        dom_txt_diameter.value = String(origDiameter);
         committedTransform.scale = 1;
         committedTransform.scaleX = 1;
         committedTransform.scaleY = 1;
@@ -149,14 +212,14 @@ export function init(container: any) {
         };
 
         let json;
-        if (stripInfo && stripInfo.strips.length >= 1
-            && stripInfo.totalCount === rawPts.length) {
+        if (stripInfo && stripInfo!.strips.length >= 1
+            && stripInfo!.totalCount === rawPts.length) {
             // Preserve multi-strip structure (including non-sequential video_offset)
             // via the shared builder.
-            const stripsOut = stripInfo.strips.map((strip: any) => {
+            const stripsOut = stripInfo!.strips.map((strip: StripEntry) => {
                 const pts = [];
                 for (let i = strip.offset; i < strip.offset + strip.count; i++) {
-                    pts.push(transformPoint(rawPts[i]));
+                    pts.push(transformPoint(rawPts[i]!));
                 }
                 const d = typeof strip.diameter === 'number' ? strip.diameter : fallbackDiameter;
                 return {
@@ -196,15 +259,15 @@ export function init(container: any) {
     const SCALE_MIN = 0.1;
     const SCALE_MAX = 10;
 
-    function clampScale(v: any) {
-        v = parseFloat(v);
-        if (isNaN(v)) return 1;
-        const abs = Math.abs(v);
-        const sign = v < 0 ? -1 : 1;
+    function clampScale(v: number | string) {
+        const n = parseFloat(String(v));
+        if (isNaN(n)) return 1;
+        const abs = Math.abs(n);
+        const sign = n < 0 ? -1 : 1;
         return sign * Math.max(SCALE_MIN, Math.min(SCALE_MAX, abs));
     }
 
-    function writeScale(txt: any, val: any) {
+    function writeScale(txt: HTMLInputElement, val: number | string) {
         txt.value = clampScale(val).toFixed(2);
     }
 
@@ -214,42 +277,42 @@ export function init(container: any) {
 
     // ── Rotate ───────────────────────────────────────────────────────────────
 
-    function clampRotate(v: any) {
-        v = parseInt(v);
-        return isNaN(v) ? 0 : Math.max(-180, Math.min(180, v));
+    function clampRotate(v: number | string) {
+        const n = typeof v === 'number' ? v : parseInt(v);
+        return isNaN(n) ? 0 : Math.max(-180, Math.min(180, n));
     }
 
-    function setRotate(rawVal: any) {
-        dom_txt_rotate.value = clampRotate(rawVal);
+    function setRotate(rawVal: number | string) {
+        dom_txt_rotate.value = String(clampRotate(rawVal));
     }
 
     dom_txt_rotate.addEventListener('change', () => setRotate(dom_txt_rotate.value), { signal });
 
     // ── Translate ─────────────────────────────────────────────────────────────
 
-    function clampTranslate(v: any) {
-        v = parseFloat(v);
-        return isNaN(v) ? 0 : Math.max(-500, Math.min(500, Math.round(v)));
+    function clampTranslate(v: number | string) {
+        const n = parseFloat(String(v));
+        return isNaN(n) ? 0 : Math.max(-500, Math.min(500, Math.round(n)));
     }
 
-    function setTranslate(x: any, y: any) {
-        dom_txt_translate_x.value = clampTranslate(x);
-        dom_txt_translate_y.value = clampTranslate(y);
+    function setTranslate(x: number | string, y: number | string) {
+        dom_txt_translate_x.value = String(clampTranslate(x));
+        dom_txt_translate_y.value = String(clampTranslate(y));
     }
 
     dom_txt_translate_x.addEventListener('change', () => {
-        dom_txt_translate_x.value = clampTranslate(dom_txt_translate_x.value);
+        dom_txt_translate_x.value = String(clampTranslate(dom_txt_translate_x.value));
     }, { signal });
     dom_txt_translate_y.addEventListener('change', () => {
-        dom_txt_translate_y.value = clampTranslate(dom_txt_translate_y.value);
+        dom_txt_translate_y.value = String(clampTranslate(dom_txt_translate_y.value));
     }, { signal });
 
     // ── Transform undo on input release ──────────────────────────────────
-    function wireTransformUndo(controlName: any, ...elements: any[]) {
+    function wireTransformUndo(controlName: string, ...elements: HTMLInputElement[]) {
         for (const el of elements) {
             el.addEventListener('change', () => {
-                const newVal = getTransformValue(controlName);
-                const oldVal = committedTransform[controlName];
+                const newVal = getTransformValue(controlName) ?? 0;
+                const oldVal = committedTransform[controlName] ?? 0;
                 if (oldVal !== newVal) {
                     pushUndo({ type: 'transform', control: controlName, oldValue: oldVal, newValue: newVal });
                     committedTransform[controlName] = newVal;
@@ -267,16 +330,16 @@ export function init(container: any) {
 
     // ── Screenmap state ──────────────────────────────────────────────────────
 
-    let screenmap_pts: any = [];
-    let rawPts: any = [];
+    let screenmap_pts: PointArrayWithDiameter = [];
+    let rawPts: [number, number][] = [];
     let origWidth = 0, origHeight = 0;
     let fitScale = 1; // cm-to-pixel scale from centerAndFitPoints
     let origDiameter = 0.5;
     // Multi-strip metadata model. The store owns mutations; `stripInfo` is
     // kept as a local mirror of `stripStore.get()` so existing read paths
-    // (`stripInfo.strips`, `stripInfo.totalCount`, ...) work unchanged.
+    // (`stripInfo!.strips`, `stripInfo!.totalCount`, ...) work unchanged.
     const stripStore = new StripStore();
-    let stripInfo: any = null; // multi-strip parse result (null until screenmap loaded)
+    let stripInfo: StripInfo | null = null; // multi-strip parse result (null until screenmap loaded)
     const selection = new Selection();
     selection.setOnChange(() => {
         setNeedsGeometryUpdate();
@@ -286,14 +349,14 @@ export function init(container: any) {
     });
 
     // ── Toolbar modes (issue #24 §1.6): null | 'chain' | 'reorder' ──────
-    let editorMode: any = null;
+    let editorMode: string | null = null;
     // In-flight canvas connector drag (Chain mode):
     //   { upIdx, x, y, targetIdx } — arrowhead drag, drop on a Start handle
-    let connectorDrag: any = null;
+    let connectorDrag: ConnectorDrag | null = null;
     //   { stripIdx, x, y, targetIdx } — Start-handle drag, drop on an End handle
-    let startHandleDrag: any = null;
+    let startHandleDrag: StartHandleDrag | null = null;
     // Canvas-space geometry captured by drawChainArrows for hit-testing.
-    const _chainGeom: { connectors: any[]; starts: any[]; ends: any[]; crossBadges: any[] } = { connectors: [], starts: [], ends: [], crossBadges: [] };
+    const _chainGeom: { connectors: GizmoHandle[]; starts: GizmoHandle[]; ends: GizmoHandle[]; crossBadges: GizmoHandle[] } = { connectors: [], starts: [], ends: [], crossBadges: [] };
 
     // Greedy non-overlapping placement for Start/End labels (issue #28).
     const labelRenderer = createLabelRenderer();
@@ -302,18 +365,18 @@ export function init(container: any) {
     // Test/debug hook: expose strip state and computed Start/End labels so
     // E2E tests can assert on canvas-drawn labels that have no DOM presence.
     window.__shapeeditorDebug = {
-        getStripCount: () => (stripInfo ? stripInfo.strips.length : 0),
+        getStripCount: () => (stripInfo ? stripInfo!.strips.length : 0),
         getStripLabels: () => (stripInfo
-            ? stripInfo.strips.map((s: any, i: any) => stripStartEndLabels(s, i))
+            ? stripInfo!.strips.map((s, i) => stripStartEndLabels(s, i))
             : null),
         getSelectedStrip: () => selection.getStripIdx(),
-        getStripNames: () => (stripInfo ? stripInfo.strips.map((s: any) => s.name) : []),
-        selectStrip: (i: any) => { selection.selectStrip(i); },
-        placePanel: (catalogId: any, worldX: any, worldY: any, opts: any) => _debugPlacePanel(catalogId, worldX, worldY, opts || {}),
+        getStripNames: () => (stripInfo ? stripInfo!.strips.map((s) => s.name) : []),
+        selectStrip: (i: number) => { selection.selectStrip(i); },
+        placePanel: (catalogId: string, worldX: number, worldY: number, opts: PanelOpts) => _debugPlacePanel(catalogId, worldX, worldY, opts || {}),
         getPlacingMode: () => (placingState ? placingState.entry.id : null),
         cancelPlacing: () => { _cancelPlacing(); },
         getChainArrowCount: () => _chainArrowCount(),
-        reverseStrip: (i: any) => { doReverseStrip(i); },
+        reverseStrip: (i: number) => { doReverseStrip(i); },
         getBackupInfo: () => {
             const b = getBackup();
             if (!b) return null;
@@ -322,7 +385,7 @@ export function init(container: any) {
         getHintText: () => (hintStripTextEl ? hintStripTextEl.textContent : ''),
         openHelp: () => { _openHelpOverlay(); },
         getPointEditMode: () => pointEditStripIdx,
-        enterPointEditMode: (i: any) => {
+        enterPointEditMode: (i: number) => {
             if (typeof i !== 'number' || i < 0) return;
             const strips = stripStore.getStrips();
             if (i >= strips.length) return;
@@ -332,42 +395,42 @@ export function init(container: any) {
         },
         exitPointEditMode: () => { pointEditStripIdx = null; _updateHintStrip(); },
         // Get the per-LED screenmap coords of a strip (debug for group-drag tests)
-        getStripPoints: (i: any) => {
+        getStripPoints: (i: number) => {
             const strips = stripStore.getStrips();
             if (i < 0 || i >= strips.length) return null;
-            const s = strips[i];
+            const s = strips[i]!;
             const out = [];
             for (let k = s.offset; k < s.offset + s.count; k++) {
-                out.push([screenmap_pts[k][0], screenmap_pts[k][1]]);
+                out.push([screenmap_pts[k]![0], screenmap_pts[k]![1]]);
             }
             return out;
         },
         // Get a flat LED's transformed canvas coords (for synthetic drag tests).
-        getLedCanvasPos: (flatIdx: any) => {
+        getLedCanvasPos: (flatIdx: number) => {
             if (flatIdx < 0 || flatIdx >= lastTransformedPts.length) return null;
-            const [x, y] = lastTransformedPts[flatIdx];
+            const [x, y] = lastTransformedPts[flatIdx]!;
             const [cx, cy] = toCanvasCoords(x, y);
-            const rect = overlayCanvas.getBoundingClientRect();
+            const rect = overlayCanvas!.getBoundingClientRect();
             // Convert internal canvas px → client px
             const clientX = rect.left + (cx / canvasW) * rect.width;
             const clientY = rect.top + (cy / canvasH) * rect.height;
             return { clientX, clientY, canvasX: cx, canvasY: cy };
         },
         // Paste flow hooks (Phase 3)
-        pasteScreenmapText: (text: any) => _enterPasteFromText(text || ''),
+        pasteScreenmapText: (text: string) => _enterPasteFromText(text || ''),
         getPasteState: () => (pasteState
-            ? { count: pasteState.strips.length, names: pasteState.strips.map((s: any) => s.name) }
+            ? { count: pasteState.strips.length, names: pasteState.strips.map((s) => s.name) }
             : null),
-        commitPasteAt: (canvasX: any, canvasY: any) => _commitPasteAt(canvasX, canvasY),
+        commitPasteAt: (canvasX: number, canvasY: number) => _commitPasteAt(canvasX, canvasY),
         cancelPaste: () => _cancelPaste(),
         copySelectedStrip: () => _copySelectedStripToClipboard(),
         // Insert dialog hooks (Phase 4)
         openInsertDialog: () => _openInsertDialog(),
-        submitInsertDialog: (opts: any) => _submitInsertDialog(opts),
+        submitInsertDialog: (opts: Record<string, unknown>) => _submitInsertDialog(opts as unknown as InsertDialogOpts),
         // Touch (Phase 5) — synchronously execute the long-press action at
         // the given canvas-internal coords without waiting 600ms in tests.
-        simulateLongPress: (canvasX: any, canvasY: any) => {
-            const rect = overlayCanvas.getBoundingClientRect();
+        simulateLongPress: (canvasX: number, canvasY: number) => {
+            const rect = overlayCanvas!.getBoundingClientRect();
             const clientX = rect.left + (canvasX / canvasW) * rect.width;
             const clientY = rect.top + (canvasY / canvasH) * rect.height;
             _doLongPress(canvasX, canvasY, clientX, clientY);
@@ -376,14 +439,14 @@ export function init(container: any) {
         getCamZoom: () => camZoom,
         getCamPan: () => ({ x: camPanX, y: camPanY }),
         // Drive a synthetic L-drag from (flatIdx) by (dxClient, dyClient) client px.
-        simulateLedDrag: (flatIdx: any, dxClient: any, dyClient: any, opts: any) => {
-            const pos = window.__shapeeditorDebug.getLedCanvasPos(flatIdx);
+        simulateLedDrag: (flatIdx: number, dxClient: number, dyClient: number, opts: Record<string, unknown> | null | undefined) => {
+            const pos = window.__shapeeditorDebug?.getLedCanvasPos?.(flatIdx) ?? null;
             if (!pos) return false;
-            const altKey = !!(opts && opts.altKey);
-            const evtOpts = (x: any, y: any) => ({ clientX: x, clientY: y, button: 0, bubbles: true, altKey });
-            overlayCanvas.dispatchEvent(new MouseEvent('mousedown', evtOpts(pos.clientX, pos.clientY)));
-            overlayCanvas.dispatchEvent(new MouseEvent('mousemove', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
-            overlayCanvas.dispatchEvent(new MouseEvent('mouseup', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
+            const altKey = !!(opts && opts['altKey']);
+            const evtOpts = (x: number, y: number) => ({ clientX: x, clientY: y, button: 0, bubbles: true, altKey });
+            overlayCanvas!.dispatchEvent(new MouseEvent('mousedown', evtOpts(pos.clientX, pos.clientY)));
+            overlayCanvas!.dispatchEvent(new MouseEvent('mousemove', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
+            overlayCanvas!.dispatchEvent(new MouseEvent('mouseup', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
             return true;
         },
         // Pins / chain hooks (issue #24, Phases 1-2)
@@ -391,9 +454,9 @@ export function init(container: any) {
             const strips = stripStore.getStrips();
             const order = stripStore.getPinOrder();
             return order.map((pinId) => {
-                const stripIndices: any = [];
+                const stripIndices: number[] = [];
                 let totalCount = 0;
-                strips.forEach((s: any, i: any) => {
+                strips.forEach((s, i) => {
                     if (StripStore.pinOf(s) === pinId) {
                         stripIndices.push(i);
                         totalCount += s.count;
@@ -402,14 +465,14 @@ export function init(container: any) {
                 return { pinId, stripIndices, totalCount };
             });
         },
-        getStripPins: () => stripStore.getStrips().map((s: any) => StripStore.pinOf(s)),
-        getVideoOffsets: () => stripStore.getStrips().map((s: any) => ({
+        getStripPins: () => stripStore.getStrips().map((s) => StripStore.pinOf(s)),
+        getVideoOffsets: () => stripStore.getStrips().map((s) => ({
             video_offset: s.video_offset,
             override: !!s.videoOffsetOverride,
         })),
-        repinStrip: (stripIdx: any, newPinId: any) => doRepinStrip(stripIdx, newPinId),
-        getDerivedVideoOffset: (stripIdx: any) => stripStore.getDerivedVideoOffset(stripIdx),
-        setVideoOffsetOverride: (stripIdx: any, value: any) => {
+        repinStrip: (stripIdx: number, newPinId: string) => doRepinStrip(stripIdx, newPinId),
+        getDerivedVideoOffset: (stripIdx: number) => stripStore.getDerivedVideoOffset(stripIdx),
+        setVideoOffsetOverride: (stripIdx: number, value: boolean) => {
             const strips = stripStore.getStrips();
             const s = strips[stripIdx];
             if (!s) return false;
@@ -417,11 +480,11 @@ export function init(container: any) {
             return true;
         },
         addPin: () => doAddPin(),
-        renamePin: (oldId: any, newId: any) => doRenamePin(oldId, newId),
+        renamePin: (oldId: string, newId: string) => doRenamePin(oldId, newId),
         // Chain / Reorder modes (issue #24, Phase 3)
         getMode: () => editorMode,
-        setMode: (m: any) => { setEditorMode(m); return editorMode; },
-        simulateConnectorDrag: (stripIdx: any, targetStripIdx: any) => doConnectorRetarget(stripIdx, targetStripIdx),
+        setMode: (m: string | null) => { setEditorMode(m); return editorMode; },
+        simulateConnectorDrag: (stripIdx: number, targetStripIdx: number) => doConnectorRetarget(stripIdx, targetStripIdx),
         getCrossPinBadgeCount: () => _crossPinBadgeCount(),
         getChainGeom: () => ({
             connectors: _chainGeom.connectors.map((c) => ({ up: c.up, down: c.down, x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2 })),
@@ -429,14 +492,14 @@ export function init(container: any) {
             ends: _chainGeom.ends.map((s) => ({ strip: s.strip, x: s.x, y: s.y })),
             crossBadges: _chainGeom.crossBadges.map((b) => ({ up: b.up, down: b.down })),
         }),
-        getUndoStack: () => undoStack.map((a: any) => a.type),
+        getUndoStack: () => (undoStack as UndoAction[]).map((a) => a.type),
         // Dispatch a real contextmenu event at canvas-internal coords so the
         // connector right-click hit-test path is exercised end-to-end.
-        simulateCanvasContextMenu: (canvasX: any, canvasY: any) => {
-            const rect = overlayCanvas.getBoundingClientRect();
+        simulateCanvasContextMenu: (canvasX: number, canvasY: number) => {
+            const rect = overlayCanvas!.getBoundingClientRect();
             const clientX = rect.left + (canvasX / canvasW) * rect.width;
             const clientY = rect.top + (canvasY / canvasH) * rect.height;
-            overlayCanvas.dispatchEvent(new MouseEvent('contextmenu', {
+            overlayCanvas!.dispatchEvent(new MouseEvent('contextmenu', {
                 clientX, clientY, button: 2, bubbles: true, cancelable: true,
             }));
             return true;
@@ -446,7 +509,7 @@ export function init(container: any) {
     // ── Autosave / backup helpers ────────────────────────────────────────
 
     /** "just now", "5 min ago", "2 h ago", "3 d ago". */
-    function _relativeTime(savedAt: any) {
+    function _relativeTime(savedAt: number) {
         const ms = Math.max(0, Date.now() - savedAt);
         const sec = Math.floor(ms / 1000);
         if (sec < 45) return 'just now';
@@ -458,7 +521,7 @@ export function init(container: any) {
         return `${day} d ago`;
     }
 
-    async function _toast(opts: any) {
+    async function _toast(opts: Record<string, unknown>) {
         try {
             const Swal = (await import('sweetalert2')).default;
             if (signal.aborted) return null;
@@ -475,17 +538,17 @@ export function init(container: any) {
         } catch { return null; }
     }
 
-    function _toastInfo(text: any) {
+    function _toastInfo(text: string) {
         return _toast({ icon: 'info', title: text });
     }
 
-    function _toastSuccess(text: any) {
+    function _toastSuccess(text: string) {
         return _toast({ icon: 'success', title: text });
     }
 
     /** Show a non-blocking "looks like an empty edit" banner-toast with
      *  Restore + Dismiss buttons. */
-    async function _toastFreshDegenerate(backupMeta: any) {
+    async function _toastFreshDegenerate(backupMeta: BackupMeta | null | undefined) {
         const ledCount = (backupMeta && typeof backupMeta.ledCount === 'number')
             ? backupMeta.ledCount : 0;
         try {
@@ -518,7 +581,7 @@ export function init(container: any) {
 
     /** Show "restored your last good layout" toast with an [Undo] action that
      *  puts the degenerate copy back and reloads it. */
-    async function _toastSilentRestored(restoredMeta: any, degenerateJson: any) {
+    async function _toastSilentRestored(restoredMeta: BackupMeta | null | undefined, degenerateJson: string | null) {
         const ledCount = (restoredMeta && typeof restoredMeta.ledCount === 'number')
             ? restoredMeta.ledCount : 0;
         const when = (restoredMeta && typeof restoredMeta.savedAt === 'number')
@@ -608,14 +671,14 @@ export function init(container: any) {
     }
 
     /** Convert an HSL color string like "hsl(120, 80%, 60%)" to [r, g, b] floats 0-1. */
-    function hslStringToRgb(hslStr: any) {
+    function hslStringToRgb(hslStr: string) {
         const m = hslStr.match(/hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/);
         if (!m) return [1, 1, 1];
-        const h = parseFloat(m[1]) / 360;
-        const s = parseFloat(m[2]) / 100;
-        const l = parseFloat(m[3]) / 100;
+        const h = parseFloat(m[1]!) / 360;
+        const s = parseFloat(m[2]!) / 100;
+        const l = parseFloat(m[3]!) / 100;
         if (s === 0) return [l, l, l];
-        const hue2rgb = (p: any, q: any, t: any) => {
+        const hue2rgb = (p: number, q: number, t: number): number => {
             if (t < 0) t += 1;
             if (t > 1) t -= 1;
             if (t < 1 / 6) return p + (q - p) * 6 * t;
@@ -633,43 +696,49 @@ export function init(container: any) {
     let canvasW = 0, canvasH = 0;
 
     // Three.js objects
-    let renderer: any, scene: any, camera: any;
-    let wrapper: any;
-    let pointsMesh: any, pointsGeometry: any, pointsMaterial: any;
+    let renderer: WebGLRenderer | null = null;
+    let scene: Scene | null = null;
+    let camera: OrthographicCamera | null = null;
+    let wrapper: HTMLElement | null = null;
+    let pointsMesh: Points | null = null;
+    let pointsGeometry: BufferGeometry | null = null;
+    let pointsMaterial: import('three').PointsMaterial | null = null;
     const circleTexture = createCircleTexture(64);
 
     // Grid line objects
-    let gridLines: any;
+    let gridLines: LineSegments | null = null;
     // Background image
-    let bgImageMesh: any = null;
-    let bgImageTexture: any = null;
+    let bgImageMesh: Mesh | null = null;
+    let bgImageTexture: Texture | null = null;
     // Screenmap outline
-    let screenmapOutline: any;
+    let screenmapOutline: Line | null = null;
 
     // DOM-based labels
-    let infoDiv: any, placeholderDiv: any;
+    let infoDiv: HTMLElement | null = null;
+    let placeholderDiv: HTMLElement | null = null;
 
     // Overlay state
-    let overlayCanvas: any, overlayCtx: any;
+    let overlayCanvas: HTMLCanvasElement | null = null;
+    let overlayCtx: CanvasRenderingContext2D | null = null;
     let tooltipLedIdx = -1;
-    let tooltip: any;
-    let lastTransformedPts: any = [];
+    let tooltip: HTMLElement | null = null;
+    let lastTransformedPts: [number, number][] = [];
     let isHovering = false;
     let overlayAlpha = 1; // 0..1 for rainbow fade (1 = visible by default)
-    let ptsBBox: any = null;   // oriented bounding box { cx, cy, hw, hh, cos, sin } in canvas space
+    let ptsBBox: OBBox | null = null;   // oriented bounding box { cx, cy, hw, hh, cos, sin } in canvas space
 
     // ── Dirty flags (skip work when nothing changed) ─────────────────────
     let geometryDirty = true;  // transforms/points changed → rebuild buffers
     let frameDirty = true;     // anything visual changed → redraw overlay + render
     let lastBuiltPointCount = -1; // track point count for in-place vs full rebuild
-    let pointsColorAttr: any = null;   // cached ref to color attribute
+    let pointsColorAttr: BufferAttribute | null = null;   // cached ref to color attribute
 
     function setNeedsGeometryUpdate() { geometryDirty = true; frameDirty = true; }
     function setNeedsRender() { frameDirty = true; }
 
     // ── Editing state ─────────────────────────────────────────────────────
     let selectedIdx = -1;
-    function syncPointSelection(idx: any) {
+    function syncPointSelection(idx: number) {
         if (idx >= 0) {
             const sIdx = stripStore.findStripForIndex(idx);
             selection.selectPoint(idx, sIdx);
@@ -680,27 +749,35 @@ export function init(container: any) {
     }
     let isDragging = false;
     let dragStartCanvasX = 0, dragStartCanvasY = 0;
-    let dragStartScreenmapPt: any = null, dragStartRawPt: any = null;
+    let dragStartScreenmapPt: [number, number] | null = null;
+    let dragStartRawPt: [number, number] | null = null;
 
     // ── Point-edit mode + strip group-drag state ───────────────────────
     // pointEditMode tracks the strip the user double-clicked into; while
     // active, a plain LED drag moves only that single LED (per the plan).
-    let pointEditStripIdx: any = null;
+    let pointEditStripIdx: number | null = null;
     // Group drag for the selected strip (plain L-drag on an LED in non-point-edit mode)
     let stripDragActive = false;
     let stripDragIdx = -1;
-    let stripDragStartScreenmap: any = null; // array of [x,y] for that strip
-    let stripDragStartRaw: any = null;       // array of [x,y] for that strip
+    let stripDragStartScreenmap: StripDragPt[] | null = null; // array of [x,y] for that strip
+    let stripDragStartRaw: StripDragPt[] | null = null;       // array of [x,y] for that strip
     let stripDragLastSdx = 0, stripDragLastSdy = 0;
     // Alt-drag quasimode: force single-point move regardless of mode
     let altQuasimode = false;
-    let ctxMenu: any, ctxMenuIdx = -1;
-    let ctxBtnSave: any, ctxBtnLoadScreenmap: any, ctxLoadSubmenu: any;
-    let ctxLoadImageInput: any;
-    let ctxFileOps: any, ctxFileOpsSep: any;
-    let ctxBtnDelete: any, ctxBtnInsertBetween: any, ctxBtnInsertFwd: any, ctxBtnInsertBack: any;
-    let ctxBtnCopyStrip: any;
-    let hintStripTextEl: any, hintStripHelpBtn;
+    let ctxMenu: HTMLElement | null = null, ctxMenuIdx = -1;
+    let ctxBtnSave: HTMLButtonElement | null = null;
+    let ctxBtnLoadScreenmap: HTMLButtonElement | null = null;
+    let ctxLoadSubmenu: HTMLElement | null = null;
+    let ctxLoadImageInput: HTMLInputElement | null = null;
+    let ctxFileOps: HTMLElement | null = null;
+    let ctxFileOpsSep: HTMLElement | null = null;
+    let ctxBtnDelete: HTMLButtonElement | null = null;
+    let ctxBtnInsertBetween: HTMLButtonElement | null = null;
+    let ctxBtnInsertFwd: HTMLButtonElement | null = null;
+    let ctxBtnInsertBack: HTMLButtonElement | null = null;
+    let ctxBtnCopyStrip: HTMLButtonElement | null = null;
+    let hintStripTextEl: HTMLElement | null = null;
+    let hintStripHelpBtn: HTMLButtonElement | null = null;
     let _autoOpenHelpScheduled = false;
     let highlightedEdgeIdx = -1; // edge index highlighted for "insert between"
     let loadedPresets = []; // populated by manifest fetch
@@ -708,21 +785,21 @@ export function init(container: any) {
     const ctxBtnStyle =
         'display:block;width:100%;padding:8px 16px;background:none;border:none;' +
         'color:#eee;font:14px/1.4 "Outfit",system-ui,sans-serif;text-align:left;cursor:pointer;';
-    function makeCtxBtn(label: any, action: any, parent?: any) {
-        const container = parent || ctxMenu;
+    function makeCtxBtn(label: string, action: string, parent?: HTMLElement | null) {
+        const ctxContainer = parent ?? ctxMenu;
         const btn = document.createElement('button');
         btn.dataset.action = action;
         btn.textContent = label;
         btn.style.cssText = ctxBtnStyle;
         btn.addEventListener('mouseenter', () => { btn.style.background = '#3b82f6'; btn.style.color = '#fff'; });
         btn.addEventListener('mouseleave', () => { btn.style.background = 'none'; btn.style.color = '#eee'; });
-        container.appendChild(btn);
+        ctxContainer!.appendChild(btn);
         return btn;
     }
     function makeCtxSeparator() {
         const sep = document.createElement('div');
         sep.style.cssText = 'height:1px;background:#444;margin:4px 0;';
-        ctxMenu.appendChild(sep);
+        ctxMenu!.appendChild(sep);
         return sep;
     }
 
@@ -738,22 +815,22 @@ export function init(container: any) {
     let zoomStartLevel = 1;
 
     // ── Gizmo interaction state ────────────────────────────────────────
-    let gizmoActive: any = null;    // null | handle id string
-    let gizmoHover: any = null;     // null | handle id string
-    let gizmoDragStart: any = null; // snapshot of transform values at drag start
+    let gizmoActive: string | null = null;    // null | handle id string
+    let gizmoHover: string | null = null;     // null | handle id string
+    let gizmoDragStart: GizmoDragStart | null = null; // snapshot of transform values at drag start
     let shiftHeld = false;     // for rotation snapping
 
     // ── Image gizmo state ─────────────────────────────────────────────
     let bgImageFitW = 0, bgImageFitH = 0;
-    let bgImageBBox: any = null;
-    let bgGizmoActive: any = null;
-    let bgGizmoHover: any = null;
-    let bgGizmoDragStart: any = null;
+    let bgImageBBox: BgImageBBox | null = null;
+    let bgGizmoActive: string | null = null;
+    let bgGizmoHover: string | null = null;
+    let bgGizmoDragStart: BgGizmoDragStart | null = null;
 
     // ── Transform committed values (for undo tracking) ─────────────────
-    const committedTransform: any = { scale: 1, scaleX: 1, scaleY: 1, rotate: 0, translateX: 0, translateY: 0 };
+    const committedTransform: Record<string, number> = { scale: 1, scaleX: 1, scaleY: 1, rotate: 0, translateX: 0, translateY: 0 };
 
-    function getTransformValue(control: any) {
+    function getTransformValue(control: string) {
         switch (control) {
             case 'scale': return parseFloat(dom_txt_scale.value) || 1;
             case 'scaleX': return parseFloat(dom_txt_scale_x.value) || 1;
@@ -761,10 +838,11 @@ export function init(container: any) {
             case 'rotate': return parseInt(dom_txt_rotate.value) || 0;
             case 'translateX': return parseInt(dom_txt_translate_x.value) || 0;
             case 'translateY': return parseInt(dom_txt_translate_y.value) || 0;
+            default: return 0;
         }
     }
 
-    function setTransformValue(control: any, value: any) {
+    function setTransformValue(control: string, value: number) {
         switch (control) {
             case 'scale': writeScale(dom_txt_scale, value); break;
             case 'scaleX': writeScale(dom_txt_scale_x, value); break;
@@ -776,10 +854,10 @@ export function init(container: any) {
     }
 
     // ── Undo / Redo ───────────────────────────────────────────────────────
-    const undoStack: any = [];
-    const redoStack: any = [];
+    const undoStack: UndoAction[] = [];
+    const redoStack: UndoAction[] = [];
 
-    function pushUndo(action: any) {
+    function pushUndo(action: UndoAction) {
         undoStack.push(action);
         redoStack.length = 0;
         updateUndoRedoButtons();
@@ -787,13 +865,13 @@ export function init(container: any) {
     }
 
     function _persistMultiStrip() {
-        if (!stripInfo || stripInfo.strips.length === 0) return;
+        if (!stripInfo || stripInfo!.strips.length === 0) return;
         try {
             const fallbackDiameter = parseFloat(dom_txt_diameter.value) || 0.25;
-            const strips = stripInfo.strips.map((s: any) => {
-                const pts = [];
+            const strips = stripInfo!.strips.map((s) => {
+                const pts: [number, number][] = [];
                 for (let i = s.offset; i < s.offset + s.count; i++) {
-                    pts.push([rawPts[i][0], rawPts[i][1]]);
+                    pts.push([rawPts[i]![0], rawPts[i]![1]]);
                 }
                 return {
                     name: s.name,
@@ -811,27 +889,27 @@ export function init(container: any) {
         try { renderBackupRow(); } catch { /* render is best-effort */ }
     }
 
-    function _spliceArray(arr: any, idx: any, count: any) {
+    function _spliceArray<T>(arr: T[], idx: number, count: number): T[] {
         return arr.splice(idx, count);
     }
 
-    function _removeStripPoints(stripIdx: any) {
-        const strip = stripInfo.strips[stripIdx];
+    function _removeStripPoints(stripIdx: number) {
+        const strip = stripInfo!.strips[stripIdx]!;
         const removedScreenmap = _spliceArray(screenmap_pts, strip.offset, strip.count);
         const removedRaw = _spliceArray(rawPts, strip.offset, strip.count);
-        const removedStrip = { ...strip, points: strip.points ? strip.points.map((p: any) => [p[0], p[1]]) : null };
+        const removedStrip: StripEntry & { points: [number, number][] } = { ...strip, points: strip.points ? strip.points.map((p) => [p[0], p[1]] as [number, number]) : [] };
         stripStore.removeStrip(stripIdx);
         return { removedStrip, removedScreenmap, removedRaw };
     }
 
-    function _insertStripPoints(stripIdx: any, removed: any) {
+    function _insertStripPoints(stripIdx: number, removed: ReturnType<typeof _removeStripPoints>) {
         const { removedStrip, removedScreenmap, removedRaw } = removed;
         // Compute the flat insertion point for screenmap_pts/rawPts:
         // the strip will be placed at stripIdx; its starting offset equals
         // sum of counts of strips [0..stripIdx).
         let insertAt = 0;
-        for (let k = 0; k < stripIdx && k < stripInfo.strips.length; k++) {
-            insertAt += stripInfo.strips[k].count;
+        for (let k = 0; k < stripIdx && k < stripInfo!.strips.length; k++) {
+            insertAt += stripInfo!.strips[k]!.count;
         }
         screenmap_pts.splice(insertAt, 0, ...removedScreenmap);
         rawPts.splice(insertAt, 0, ...removedRaw);
@@ -847,39 +925,39 @@ export function init(container: any) {
             pin: typeof removedStrip.pin === 'string' ? removedStrip.pin : 'pin1',
             videoOffsetOverride: removedStrip.videoOffsetOverride === true,
         };
-        info.strips.splice(stripIdx, 0, stripObj);
+        info!.strips.splice(stripIdx, 0, stripObj as import('./strips-model').StripEntry);
         // Recompute offsets/allPoints
         stripStore._recomputeOffsetsAndAllPoints();
     }
 
-    function _reorderStripPoints(fromIdx: any, toIdx: any) {
+    function _reorderStripPoints(fromIdx: number, toIdx: number) {
         // Splice screenmap_pts/rawPts to mirror the strip move.
-        const fromStrip = stripInfo.strips[fromIdx];
+        const fromStrip = stripInfo!.strips[fromIdx]!;
         const fromOff = fromStrip.offset;
         const fromCnt = fromStrip.count;
         const movedScreenmap = screenmap_pts.splice(fromOff, fromCnt);
         const movedRaw = rawPts.splice(fromOff, fromCnt);
         stripStore.reorderStrip(fromIdx, toIdx);
         // After reorder, the moved strip is at toIdx; compute its new offset
-        const newOffset = stripInfo.strips[toIdx].offset;
+        const newOffset = stripInfo!.strips[toIdx]!.offset;
         screenmap_pts.splice(newOffset, 0, ...movedScreenmap);
         rawPts.splice(newOffset, 0, ...movedRaw);
     }
 
     // ── Pin helpers (issue #24) ──────────────────────────────────────────
 
-    function _pinOfStrip(s: any) {
+    function _pinOfStrip(s: StripEntry) {
         return StripStore.pinOf(s);
     }
 
     /** Zero-based position of stripIdx among the strips sharing its pin. */
-    function _withinPinIdx(stripIdx: any) {
+    function _withinPinIdx(stripIdx: number) {
         const strips = stripStore.getStrips();
         if (stripIdx < 0 || stripIdx >= strips.length) return -1;
-        const pin = _pinOfStrip(strips[stripIdx]);
+        const pin = _pinOfStrip(strips[stripIdx]!);
         let n = 0;
         for (let i = 0; i < stripIdx; i++) {
-            if (_pinOfStrip(strips[i]) === pin) n++;
+            if (_pinOfStrip(strips[i]!) === pin) n++;
         }
         return n;
     }
@@ -898,9 +976,9 @@ export function init(container: any) {
         const strips = stripStore.getStrips();
         const sIdx = selection.getStripIdx();
         if (sIdx !== null && sIdx >= 0 && sIdx < strips.length) {
-            return _pinOfStrip(strips[sIdx]);
+            return _pinOfStrip(strips[sIdx]!);
         }
-        if (strips.length > 0) return _pinOfStrip(strips[strips.length - 1]);
+        if (strips.length > 0) return _pinOfStrip(strips[strips.length - 1]!);
         return 'pin1';
     }
 
@@ -910,47 +988,49 @@ export function init(container: any) {
      * the end of the destination pin's block so pins stay contiguous.
      * Records `action.newStripIdx` for the inverse.
      */
-    function _applyRepin(action: any) {
+    function _applyRepin(action: UndoAction) {
+        const a = action as Record<string, unknown>;
         const strips = stripStore.getStrips();
-        const s = strips[action.stripIdx];
+        const s = strips[a['stripIdx'] as number];
         if (!s) return;
-        s.pin = action.newPin;
+        s.pin = a['newPin'] as string;
         s.videoOffsetOverride = false;
         // Target index: just after the last existing strip of newPin
         // (excluding the strip itself); append at end for a brand-new pin.
         let lastSame = -1;
         for (let i = 0; i < strips.length; i++) {
-            if (i === action.stripIdx) continue;
-            if (_pinOfStrip(strips[i]) === action.newPin) lastSame = i;
+            if (i === (a['stripIdx'] as number)) continue;
+            if (_pinOfStrip(strips[i]!) === (a['newPin'] as string)) lastSame = i;
         }
         let target;
         if (lastSame < 0) target = strips.length - 1;
-        else target = lastSame > action.stripIdx ? lastSame : lastSame + 1;
-        if (target !== action.stripIdx) {
-            _reorderStripPoints(action.stripIdx, target);
-            selection.onStripReorder(action.stripIdx, target);
+        else target = lastSame > (a['stripIdx'] as number) ? lastSame : lastSame + 1;
+        if (target !== (a['stripIdx'] as number)) {
+            _reorderStripPoints(a['stripIdx'] as number, target);
+            selection.onStripReorder(a['stripIdx'] as number, target);
         } else {
             stripStore.recomputeDerivedVideoOffsets();
         }
-        action.newStripIdx = target;
+        a['newStripIdx'] = target;
     }
 
     /** Inverse of _applyRepin: restore pin, position, override and value. */
-    function _revertRepin(action: any) {
+    function _revertRepin(action: UndoAction) {
+        const a = action as Record<string, unknown>;
         const strips = stripStore.getStrips();
-        const fromIdx = typeof action.newStripIdx === 'number' ? action.newStripIdx : action.stripIdx;
+        const fromIdx = typeof a['newStripIdx'] === 'number' ? (a['newStripIdx'] as number) : (a['stripIdx'] as number);
         const s = strips[fromIdx];
         if (!s) return;
-        s.pin = action.oldPin;
-        s.videoOffsetOverride = action.oldOverride === true;
-        if (fromIdx !== action.stripIdx) {
-            _reorderStripPoints(fromIdx, action.stripIdx);
-            selection.onStripReorder(fromIdx, action.stripIdx);
+        s.pin = a['oldPin'] as string;
+        s.videoOffsetOverride = a['oldOverride'] === true;
+        if (fromIdx !== (a['stripIdx'] as number)) {
+            _reorderStripPoints(fromIdx, a['stripIdx'] as number);
+            selection.onStripReorder(fromIdx, a['stripIdx'] as number);
         } else {
             stripStore.recomputeDerivedVideoOffsets();
         }
-        if (action.oldOverride === true && typeof action.oldVideoOffset === 'number') {
-            stripStore.updateStrip(action.stripIdx, { video_offset: action.oldVideoOffset });
+        if (a['oldOverride'] === true && typeof a['oldVideoOffset'] === 'number') {
+            stripStore.updateStrip(a['stripIdx'] as number, { video_offset: a['oldVideoOffset'] as number });
         }
     }
 
@@ -959,19 +1039,19 @@ export function init(container: any) {
      * `order`, preserving within-pin order. Pins missing from `order` are
      * appended in their current first-appearance order.
      */
-    function _applyPinOrder(order: any) {
+    function _applyPinOrder(order: string[]) {
         const info = stripStore.get();
         if (!info) return;
         const strips = info.strips;
         const selStrip = (() => {
             const i = selection.getStripIdx();
-            return (i !== null && i >= 0 && i < strips.length) ? strips[i] : null;
+            return (i !== null && i >= 0 && i < strips.length) ? (strips[i] ?? null) : null;
         })();
-        const groups = new Map();
+        const groups = new Map<string, number[]>();
         for (let i = 0; i < strips.length; i++) {
-            const p = _pinOfStrip(strips[i]);
+            const p = _pinOfStrip(strips[i]!);
             if (!groups.has(p)) groups.set(p, []);
-            groups.get(p).push(i);
+            groups.get(p)!.push(i);
         }
         const fullOrder = [...order];
         for (const p of groups.keys()) {
@@ -988,10 +1068,10 @@ export function init(container: any) {
         const newRaw = [];
         const newStrips = [];
         for (const idx of newIdxOrder) {
-            const st = strips[idx];
+            const st = strips[idx]!;
             for (let k = st.offset; k < st.offset + st.count; k++) {
-                newScreen.push(screenmap_pts[k]);
-                newRaw.push(rawPts[k]);
+                newScreen.push(screenmap_pts[k]!);
+                newRaw.push(rawPts[k]!);
             }
             newStrips.push(st);
         }
@@ -1000,7 +1080,7 @@ export function init(container: any) {
         rawPts.length = 0;
         rawPts.push(...newRaw);
         strips.length = 0;
-        strips.push(...newStrips);
+        strips.push(...(newStrips as import('./strips-model').StripEntry[]));
         stripStore._recomputeOffsetsAndAllPoints();
         // Re-select the same strip object at its new index.
         if (selStrip) {
@@ -1010,127 +1090,134 @@ export function init(container: any) {
     }
 
     /** Rename pin `fromId` to `toId` on every strip that uses it. */
-    function _applyPinRename(fromId: any, toId: any) {
+    function _applyPinRename(fromId: string, toId: string) {
         const strips = stripStore.getStrips();
         for (const s of strips) {
             if (_pinOfStrip(s) === fromId) s.pin = toId;
         }
     }
 
-    function applyAction(action: any) {
+    function applyAction(action: UndoAction) {
+        const a = action as Record<string, unknown>;
         if (action.type === 'move') {
-            screenmap_pts[action.idx] = [...action.newScreenmapPt];
-            rawPts[action.idx] = [...action.newRawPt];
+            screenmap_pts[a['idx'] as number] = [...(a['newScreenmapPt'] as [number, number])];
+            rawPts[a['idx'] as number] = [...(a['newRawPt'] as [number, number])];
         } else if (action.type === 'delete') {
-            screenmap_pts.splice(action.idx, 1);
-            rawPts.splice(action.idx, 1);
-            _stripInfoOnDelete(action.idx);
-            if (selectedIdx === action.idx) selectedIdx = -1;
-            else if (selectedIdx > action.idx) selectedIdx--;
+            const idx = a['idx'] as number;
+            screenmap_pts.splice(idx, 1);
+            rawPts.splice(idx, 1);
+            _stripInfoOnDelete(idx);
+            if (selectedIdx === idx) selectedIdx = -1;
+            else if (selectedIdx > idx) selectedIdx--;
         } else if (action.type === 'insert') {
-            screenmap_pts.splice(action.idx, 0, [...action.screenmapPt]);
-            rawPts.splice(action.idx, 0, [...action.rawPt]);
-            _stripInfoOnInsert(action.idx);
-            selectedIdx = action.idx;
+            const idx = a['idx'] as number;
+            screenmap_pts.splice(idx, 0, [...(a['screenmapPt'] as [number, number])]);
+            rawPts.splice(idx, 0, [...(a['rawPt'] as [number, number])]);
+            _stripInfoOnInsert(idx);
+            selectedIdx = idx;
         } else if (action.type === 'transform') {
-            setTransformValue(action.control, action.newValue);
-            committedTransform[action.control] = action.newValue;
+            setTransformValue(a['control'] as string, a['newValue'] as number);
+            committedTransform[a['control'] as string] = a['newValue'] as number;
         } else if (action.type === 'strip-rename') {
-            stripStore.renameStrip(action.stripIdx, action.newName);
+            stripStore.renameStrip(a['stripIdx'] as number, a['newName'] as string);
         } else if (action.type === 'strip-reorder') {
-            _reorderStripPoints(action.fromIdx, action.toIdx);
-            selection.onStripReorder(action.fromIdx, action.toIdx);
+            _reorderStripPoints(a['fromIdx'] as number, a['toIdx'] as number);
+            selection.onStripReorder(a['fromIdx'] as number, a['toIdx'] as number);
         } else if (action.type === 'strip-delete') {
-            const removed = _removeStripPoints(action.stripIdx);
-            action.removed = removed; // ensure restore data is captured
-            selection.onStripRemove(action.stripIdx);
+            const removed = _removeStripPoints(a['stripIdx'] as number);
+            a['removed'] = removed; // ensure restore data is captured
+            selection.onStripRemove(a['stripIdx'] as number);
             selectedIdx = -1;
         } else if (action.type === 'panel-place') {
             _redoPanelPlace(action);
         } else if (action.type === 'strip-reverse') {
-            _reverseStripInPlace(action.stripIdx);
+            _reverseStripInPlace(a['stripIdx'] as number);
         } else if (action.type === 'strip-offset') {
-            stripStore.updateStrip(action.stripIdx, { video_offset: action.newValue });
+            stripStore.updateStrip(a['stripIdx'] as number, { video_offset: a['newValue'] as number });
         } else if (action.type === 'strip-repin') {
             _applyRepin(action);
         } else if (action.type === 'connector-retarget') {
-            for (const sub of action.subActions) applyAction(sub);
+            for (const sub of (a['subActions'] as UndoAction[])) applyAction(sub);
         } else if (action.type === 'pin-reorder') {
-            _applyPinOrder(action.newOrder);
+            _applyPinOrder(a['newOrder'] as string[]);
         } else if (action.type === 'pin-rename') {
-            _applyPinRename(action.oldId, action.newId);
+            _applyPinRename(a['oldId'] as string, a['newId'] as string);
         } else if (action.type === 'vo-override-toggle') {
-            stripStore.updateStrip(action.stripIdx, {
-                videoOffsetOverride: action.newOverride,
-                video_offset: action.newValue,
+            stripStore.updateStrip(a['stripIdx'] as number, {
+                videoOffsetOverride: a['newOverride'] as boolean,
+                video_offset: a['newValue'] as number,
             });
         } else if (action.type === 'strip-translate') {
-            _applyStripTranslate(action.stripIdx, action.sdx, action.sdy);
+            _applyStripTranslate(a['stripIdx'] as number, a['sdx'] as number, a['sdy'] as number);
         } else if (action.type === 'paste-strips') {
             _doPasteStrips(action);
         } else if (action.type === 'restore-backup') {
-            if (typeof action.afterJson === 'string') {
-                load_screenmap_data(action.afterJson);
+            if (typeof a['afterJson'] === 'string') {
+                load_screenmap_data(a['afterJson']);
             }
         }
     }
 
-    function applyInverse(action: any) {
+    function applyInverse(action: UndoAction) {
+        const a = action as Record<string, unknown>;
         if (action.type === 'move') {
-            screenmap_pts[action.idx] = [...action.oldScreenmapPt];
-            rawPts[action.idx] = [...action.oldRawPt];
+            screenmap_pts[a['idx'] as number] = [...(a['oldScreenmapPt'] as [number, number])];
+            rawPts[a['idx'] as number] = [...(a['oldRawPt'] as [number, number])];
         } else if (action.type === 'delete') {
-            screenmap_pts.splice(action.idx, 0, action.screenmapPt);
-            rawPts.splice(action.idx, 0, action.rawPt);
+            const idx = a['idx'] as number;
+            screenmap_pts.splice(idx, 0, a['screenmapPt'] as [number, number]);
+            rawPts.splice(idx, 0, a['rawPt'] as [number, number]);
             // Restore stripInfo from snapshot taken before delete
-            _restoreStripInfo(action.stripSnapshot);
-            selectedIdx = action.idx;
+            _restoreStripInfo(a['stripSnapshot'] as StripSnapshot);
+            selectedIdx = idx;
         } else if (action.type === 'insert') {
-            screenmap_pts.splice(action.idx, 1);
-            rawPts.splice(action.idx, 1);
+            const idx = a['idx'] as number;
+            screenmap_pts.splice(idx, 1);
+            rawPts.splice(idx, 1);
             // Restore stripInfo from snapshot taken before insert
-            _restoreStripInfo(action.stripSnapshot);
-            if (selectedIdx === action.idx) selectedIdx = -1;
-            else if (selectedIdx > action.idx) selectedIdx--;
+            _restoreStripInfo(a['stripSnapshot'] as StripSnapshot);
+            if (selectedIdx === idx) selectedIdx = -1;
+            else if (selectedIdx > idx) selectedIdx--;
         } else if (action.type === 'transform') {
-            setTransformValue(action.control, action.oldValue);
-            committedTransform[action.control] = action.oldValue;
+            setTransformValue(a['control'] as string, a['oldValue'] as number);
+            committedTransform[a['control'] as string] = a['oldValue'] as number;
         } else if (action.type === 'strip-rename') {
-            stripStore.renameStrip(action.stripIdx, action.oldName);
+            stripStore.renameStrip(a['stripIdx'] as number, a['oldName'] as string);
         } else if (action.type === 'strip-reorder') {
-            _reorderStripPoints(action.toIdx, action.fromIdx);
-            selection.onStripReorder(action.toIdx, action.fromIdx);
+            _reorderStripPoints(a['toIdx'] as number, a['fromIdx'] as number);
+            selection.onStripReorder(a['toIdx'] as number, a['fromIdx'] as number);
         } else if (action.type === 'strip-delete') {
-            _insertStripPoints(action.stripIdx, action.removed);
+            _insertStripPoints(a['stripIdx'] as number, a['removed'] as ReturnType<typeof _removeStripPoints>);
         } else if (action.type === 'panel-place') {
             _undoPanelPlace(action);
         } else if (action.type === 'strip-reverse') {
             // self-inverse
-            _reverseStripInPlace(action.stripIdx);
+            _reverseStripInPlace(a['stripIdx'] as number);
         } else if (action.type === 'strip-offset') {
-            stripStore.updateStrip(action.stripIdx, { video_offset: action.oldValue });
+            stripStore.updateStrip(a['stripIdx'] as number, { video_offset: a['oldValue'] as number });
         } else if (action.type === 'strip-repin') {
             _revertRepin(action);
         } else if (action.type === 'connector-retarget') {
-            for (let i = action.subActions.length - 1; i >= 0; i--) {
-                applyInverse(action.subActions[i]);
+            const subs = a['subActions'] as UndoAction[];
+            for (let i = subs.length - 1; i >= 0; i--) {
+                applyInverse(subs[i]!);
             }
         } else if (action.type === 'pin-reorder') {
-            _applyPinOrder(action.oldOrder);
+            _applyPinOrder(a['oldOrder'] as string[]);
         } else if (action.type === 'pin-rename') {
-            _applyPinRename(action.newId, action.oldId);
+            _applyPinRename(a['newId'] as string, a['oldId'] as string);
         } else if (action.type === 'vo-override-toggle') {
-            stripStore.updateStrip(action.stripIdx, {
-                videoOffsetOverride: action.oldOverride,
-                video_offset: action.oldValue,
+            stripStore.updateStrip(a['stripIdx'] as number, {
+                videoOffsetOverride: a['oldOverride'] as boolean,
+                video_offset: a['oldValue'] as number,
             });
         } else if (action.type === 'strip-translate') {
-            _applyStripTranslate(action.stripIdx, -action.sdx, -action.sdy);
+            _applyStripTranslate(a['stripIdx'] as number, -(a['sdx'] as number), -(a['sdy'] as number));
         } else if (action.type === 'paste-strips') {
             _undoPasteStrips(action);
         } else if (action.type === 'restore-backup') {
-            if (typeof action.beforeJson === 'string' && action.beforeJson.length > 0) {
-                load_screenmap_data(action.beforeJson);
+            if (typeof a['beforeJson'] === 'string' && (a['beforeJson'] as string).length > 0) {
+                load_screenmap_data(a['beforeJson'] as string);
             } else {
                 // No prior working copy — clear back to a fresh empty state.
                 try {
@@ -1147,7 +1234,7 @@ export function init(container: any) {
         }
     }
 
-    function isStripAction(action: any) {
+    function isStripAction(action: UndoAction | null | undefined) {
         return action && (
             action.type === 'strip-rename'
             || action.type === 'strip-reorder'
@@ -1167,7 +1254,7 @@ export function init(container: any) {
 
     /** Actions whose undo/redo can legitimately change the distinct pin
      *  count — the persistence guard must be told before saving. */
-    function isPinMutationAction(action: any) {
+    function isPinMutationAction(action: UndoAction | null | undefined) {
         return action && (
             action.type === 'strip-repin'
             || action.type === 'connector-retarget'
@@ -1182,7 +1269,7 @@ export function init(container: any) {
 
     function performUndo() {
         if (undoStack.length === 0) return;
-        const action = undoStack.pop();
+        const action = undoStack.pop()!;
         applyInverse(action);
         redoStack.push(action);
         updateUndoRedoButtons();
@@ -1201,7 +1288,7 @@ export function init(container: any) {
 
     function performRedo() {
         if (redoStack.length === 0) return;
-        const action = redoStack.pop();
+        const action = redoStack.pop()!;
         applyAction(action);
         undoStack.push(action);
         updateUndoRedoButtons();
@@ -1226,17 +1313,17 @@ export function init(container: any) {
     // same as before. The store operates on whatever `stripInfo` is
     // currently loaded (kept in sync via stripStore.load(...) below).
     function _snapshotStripInfo() { return stripStore.snapshot(); }
-    function _restoreStripInfo(snap: any) { stripStore.restore(snap); }
-    function _stripInfoOnDelete(idx: any) { stripStore.onDelete(idx); }
-    function _stripInfoOnInsert(idx: any) { stripStore.onInsert(idx); }
+    function _restoreStripInfo(snap: StripSnapshot) { stripStore.restore(snap); }
+    function _stripInfoOnDelete(idx: number) { stripStore.onDelete(idx); }
+    function _stripInfoOnInsert(idx: number) { stripStore.onInsert(idx); }
 
-    function deletePoint(idx: any) {
+    function deletePoint(idx: number) {
         if (idx < 0 || idx >= screenmap_pts.length) return;
         pushUndo({
             type: 'delete',
             idx,
-            screenmapPt: [...screenmap_pts[idx]],
-            rawPt: [...rawPts[idx]],
+            screenmapPt: [...screenmap_pts[idx]!],
+            rawPt: [...rawPts[idx]!],
             stripSnapshot: _snapshotStripInfo(),
         });
         screenmap_pts.splice(idx, 1);
@@ -1248,7 +1335,7 @@ export function init(container: any) {
         setNeedsGeometryUpdate();
     }
 
-    function insertPointAt(insertIdx: any, screenmapPt: any, rawPt: any) {
+    function insertPointAt(insertIdx: number, screenmapPt: [number, number], rawPt: [number, number]) {
         pushUndo({
             type: 'insert',
             idx: insertIdx,
@@ -1265,45 +1352,45 @@ export function init(container: any) {
         setNeedsGeometryUpdate();
     }
 
-    function insertBetween(edgeIdx: any) {
+    function insertBetween(edgeIdx: number) {
         if (edgeIdx < 0 || edgeIdx >= screenmap_pts.length - 1) return;
         const a = edgeIdx, b = edgeIdx + 1;
-        const newScreenmap = [
-            (screenmap_pts[a][0] + screenmap_pts[b][0]) / 2,
-            (screenmap_pts[a][1] + screenmap_pts[b][1]) / 2,
-        ];
-        const newRaw = [
-            (rawPts[a][0] + rawPts[b][0]) / 2,
-            (rawPts[a][1] + rawPts[b][1]) / 2,
-        ];
+        const pa = screenmap_pts[a]!, pb = screenmap_pts[b]!;
+        const ra = rawPts[a]!, rb = rawPts[b]!;
+        const newScreenmap: [number, number] = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2];
+        const newRaw: [number, number] = [(ra[0] + rb[0]) / 2, (ra[1] + rb[1]) / 2];
         insertPointAt(a + 1, newScreenmap, newRaw);
     }
 
     function insertShiftForward() {
         const N = screenmap_pts.length;
         if (N < 2) return;
-        const dx = screenmap_pts[N - 1][0] - screenmap_pts[N - 2][0];
-        const dy = screenmap_pts[N - 1][1] - screenmap_pts[N - 2][1];
-        const newScreenmap = [screenmap_pts[N - 1][0] + dx, screenmap_pts[N - 1][1] + dy];
-        const rdx = rawPts[N - 1][0] - rawPts[N - 2][0];
-        const rdy = rawPts[N - 1][1] - rawPts[N - 2][1];
-        const newRaw = [rawPts[N - 1][0] + rdx, rawPts[N - 1][1] + rdy];
+        const sLast = screenmap_pts[N - 1]!, sPrev = screenmap_pts[N - 2]!;
+        const rLast = rawPts[N - 1]!, rPrev = rawPts[N - 2]!;
+        const dx = sLast[0] - sPrev[0];
+        const dy = sLast[1] - sPrev[1];
+        const newScreenmap: [number, number] = [sLast[0] + dx, sLast[1] + dy];
+        const rdx = rLast[0] - rPrev[0];
+        const rdy = rLast[1] - rPrev[1];
+        const newRaw: [number, number] = [rLast[0] + rdx, rLast[1] + rdy];
         insertPointAt(N, newScreenmap, newRaw);
     }
 
     function insertShiftBack() {
         const N = screenmap_pts.length;
         if (N < 2) return;
-        const dx = screenmap_pts[0][0] - screenmap_pts[1][0];
-        const dy = screenmap_pts[0][1] - screenmap_pts[1][1];
-        const newScreenmap = [screenmap_pts[0][0] + dx, screenmap_pts[0][1] + dy];
-        const rdx = rawPts[0][0] - rawPts[1][0];
-        const rdy = rawPts[0][1] - rawPts[1][1];
-        const newRaw = [rawPts[0][0] + rdx, rawPts[0][1] + rdy];
+        const sFirst = screenmap_pts[0]!, sSecond = screenmap_pts[1]!;
+        const rFirst = rawPts[0]!, rSecond = rawPts[1]!;
+        const dx = sFirst[0] - sSecond[0];
+        const dy = sFirst[1] - sSecond[1];
+        const newScreenmap: [number, number] = [sFirst[0] + dx, sFirst[1] + dy];
+        const rdx = rFirst[0] - rSecond[0];
+        const rdy = rFirst[1] - rSecond[1];
+        const newRaw: [number, number] = [rFirst[0] + rdx, rFirst[1] + rdy];
         insertPointAt(0, newScreenmap, newRaw);
     }
 
-    function canvasToScreenmapCoords(canvasX: any, canvasY: any) {
+    function canvasToScreenmapCoords(canvasX: number, canvasY: number): [number, number] {
         const { sX, sY, cosR, sinR, tx, ty } = getCurrentTransform();
         const wx = (canvasX - canvasW / 2) / camZoom - camPanX;
         const wy = (canvasY - canvasH / 2) / camZoom - camPanY;
@@ -1311,22 +1398,22 @@ export function init(container: any) {
         return [(dx * cosR + dy * sinR) / sX, (-dx * sinR + dy * cosR) / sY];
     }
 
-    function screenmapToRawCoords(sx: any, sy: any) {
+    function screenmapToRawCoords(sx: number, sy: number): [number, number] {
         return [
-            rawPts[0][0] + (sx - screenmap_pts[0][0]) / fitScale,
-            rawPts[0][1] + (sy - screenmap_pts[0][1]) / fitScale,
+            rawPts[0]![0] + (sx - screenmap_pts[0]![0]) / fitScale,
+            rawPts[0]![1] + (sy - screenmap_pts[0]![1]) / fitScale,
         ];
     }
 
-    function findNearestEdge(canvasX: any, canvasY: any) {
+    function findNearestEdge(canvasX: number, canvasY: number) {
         if (lastTransformedPts.length < 2) return null;
         let bestDist = Infinity;
         let bestIdx = -1;
         let bestT = 0;
 
         for (let i = 0; i < lastTransformedPts.length - 1; i++) {
-            const [ax, ay] = toCanvasCoords(lastTransformedPts[i][0], lastTransformedPts[i][1]);
-            const [bx, by] = toCanvasCoords(lastTransformedPts[i + 1][0], lastTransformedPts[i + 1][1]);
+            const [ax, ay] = toCanvasCoords(lastTransformedPts[i]![0], lastTransformedPts[i]![1]);
+            const [bx, by] = toCanvasCoords(lastTransformedPts[i + 1]![0], lastTransformedPts[i + 1]![1]);
 
             const dx = bx - ax, dy = by - ay;
             const lenSq = dx * dx + dy * dy;
@@ -1379,38 +1466,38 @@ export function init(container: any) {
         setNeedsGeometryUpdate();
     }
 
-    function showContextMenu(clientX: any, clientY: any, idx: any, edgeIdx: any, insideBBox?: any) {
+    function showContextMenu(clientX: number, clientY: number, idx: number, edgeIdx: number, insideBBox?: boolean) {
         ctxMenuIdx = idx;
         const onPointOrEdge = idx >= 0 || edgeIdx >= 0;
         // File ops: hide when on a point or edge
-        ctxFileOps.style.display = onPointOrEdge ? 'none' : '';
-        ctxFileOpsSep.style.display = onPointOrEdge ? 'none' : '';
+        ctxFileOps!.style.display = onPointOrEdge ? 'none' : '';
+        ctxFileOpsSep!.style.display = onPointOrEdge ? 'none' : '';
         // Save enabled when dirty
         const canSave = !dom_btn_save.disabled;
-        ctxBtnSave.disabled = !canSave;
-        ctxBtnSave.style.opacity = canSave ? '1' : '0.4';
+        ctxBtnSave!.disabled = !canSave;
+        ctxBtnSave!.style.opacity = canSave ? '1' : '0.4';
         // Show delete only when a point is targeted
-        ctxBtnDelete.style.display = idx >= 0 ? 'block' : 'none';
+        ctxBtnDelete!.style.display = idx >= 0 ? 'block' : 'none';
         // Show insert-between only when an edge is targeted
-        ctxBtnInsertBetween.style.display = edgeIdx >= 0 ? 'block' : 'none';
+        ctxBtnInsertBetween!.style.display = edgeIdx >= 0 ? 'block' : 'none';
         // Shift insert: only when on a point/edge or inside the bbox
         const showShiftInsert = onPointOrEdge || insideBBox;
         const canInsert = screenmap_pts.length >= 2;
-        ctxBtnInsertFwd.style.display = showShiftInsert ? 'block' : 'none';
-        ctxBtnInsertFwd.disabled = !canInsert;
-        ctxBtnInsertFwd.style.opacity = canInsert ? '1' : '0.4';
-        ctxBtnInsertBack.style.display = showShiftInsert ? 'block' : 'none';
-        ctxBtnInsertBack.disabled = !canInsert;
-        ctxBtnInsertBack.style.opacity = canInsert ? '1' : '0.4';
+        ctxBtnInsertFwd!.style.display = showShiftInsert ? 'block' : 'none';
+        ctxBtnInsertFwd!.disabled = !canInsert;
+        ctxBtnInsertFwd!.style.opacity = canInsert ? '1' : '0.4';
+        ctxBtnInsertBack!.style.display = showShiftInsert ? 'block' : 'none';
+        ctxBtnInsertBack!.disabled = !canInsert;
+        ctxBtnInsertBack!.style.opacity = canInsert ? '1' : '0.4';
         // Copy strip only when a strip is selected
         if (ctxBtnCopyStrip) {
             const sIdx = selection.getStripIdx();
             ctxBtnCopyStrip.style.display = (sIdx !== null && sIdx >= 0) ? 'block' : 'none';
         }
         // Position — keep on screen
-        ctxMenu.style.left = clientX + 'px';
-        ctxMenu.style.top = clientY + 'px';
-        ctxMenu.style.display = '';
+        ctxMenu!.style.left = clientX + 'px';
+        ctxMenu!.style.top = clientY + 'px';
+        ctxMenu!.style.display = '';
     }
 
     function hideContextMenu() {
@@ -1427,26 +1514,26 @@ export function init(container: any) {
     dom_btn_redo.addEventListener('click', performRedo, { signal });
 
     // ── Strips inspector panel ───────────────────────────────────────────
-    const dom_strips_panel = container.querySelector('#strips_panel');
-    const dom_strips_list = container.querySelector('#strips_list');
+    const dom_strips_panel = container.querySelector('#strips_panel') as HTMLElement | null;
+    const dom_strips_list = container.querySelector('#strips_list') as HTMLElement | null;
 
-    function hslAccentForStrip(s: any, total: any) {
+    function hslAccentForStrip(s: number, total: number): string {
         if (total <= 1) return '#3b82f6';
         const colors = getStripColors(total);
-        return colors[s];
+        return colors[s] ?? '#3b82f6';
     }
 
     // Pins the user has collapsed in the panel (survives re-renders).
     const collapsedPins = new Set();
 
     /** Previous / next strip index sharing the same pin, or -1. */
-    function _withinPinNeighbor(stripIdx: any, dir: any) {
+    function _withinPinNeighbor(stripIdx: number, dir: 1 | -1) {
         const strips = stripStore.getStrips();
         if (stripIdx < 0 || stripIdx >= strips.length) return -1;
-        const pin = _pinOfStrip(strips[stripIdx]);
+        const pin = _pinOfStrip(strips[stripIdx]!);
         let i = stripIdx + dir;
         while (i >= 0 && i < strips.length) {
-            if (_pinOfStrip(strips[i]) === pin) return i;
+            if (_pinOfStrip(strips[i]!) === pin) return i;
             i += dir;
         }
         return -1;
@@ -1461,11 +1548,11 @@ export function init(container: any) {
         // backup…" after pressing New.
         const haveBackup = !!getBackup();
         if (strips.length === 0) {
-            dom_strips_panel.style.display = haveBackup ? '' : 'none';
+            dom_strips_panel!.style.display = haveBackup ? '' : 'none';
             renderSelectedStripRow();
             return;
         }
-        dom_strips_panel.style.display = '';
+        dom_strips_panel!.style.display = '';
         dom_strips_list.classList.toggle('chain-mode', editorMode === 'chain');
         dom_strips_list.classList.toggle('reorder-mode', editorMode === 'reorder');
         const selStripIdx = selection.getStripIdx();
@@ -1475,13 +1562,13 @@ export function init(container: any) {
         const pinOrder = [];
         const groups = new Map();
         for (let i = 0; i < strips.length; i++) {
-            const p = _pinOfStrip(strips[i]);
+            const p = _pinOfStrip(strips[i]!);
             if (!groups.has(p)) { groups.set(p, []); pinOrder.push(p); }
             groups.get(p).push(i);
         }
 
-        const buildStripRow = (i: any) => {
-            const s = strips[i];
+        const buildStripRow = (i: number) => {
+            const s = strips[i]!;
             const row = document.createElement('div');
             row.className = 'strip-row' + (i === selStripIdx ? ' active' : '');
             row.dataset.stripIdx = String(i);
@@ -1510,7 +1597,7 @@ export function init(container: any) {
             count.textContent = `${s.count} LED${s.count === 1 ? '' : 's'}`;
             row.appendChild(count);
 
-            const mkBtn = (label: any, title: any, action: any, disabled: any) => {
+            const mkBtn = (label: string, title: string, action: string, disabled: boolean) => {
                 const b = document.createElement('button');
                 b.type = 'button';
                 b.className = 'strip-btn';
@@ -1563,7 +1650,7 @@ export function init(container: any) {
         let connectorN = 0;
         for (const pin of pinOrder) {
             const idxs = groups.get(pin);
-            const ledTotal = idxs.reduce((a: any, i: any) => a + strips[i].count, 0);
+            const ledTotal = idxs.reduce((a: number, i: number) => a + strips[i]!.count, 0);
             const det = document.createElement('details');
             det.className = 'pin-group';
             det.dataset.pinId = pin;
@@ -1627,9 +1714,9 @@ export function init(container: any) {
     }
 
     // ── Backup row inside #strips_panel ─────────────────────────────────
-    const dom_strips_backup_row = container.querySelector('#strips_backup_row');
-    const dom_strips_backup_summary = container.querySelector('#strips_backup_summary');
-    const dom_strips_btn_restore_backup = container.querySelector('#strips_btn_restore_backup');
+    const dom_strips_backup_row = container.querySelector('#strips_backup_row') as HTMLElement | null;
+    const dom_strips_backup_summary = container.querySelector('#strips_backup_summary') as HTMLElement | null;
+    const dom_strips_btn_restore_backup = container.querySelector('#strips_btn_restore_backup') as HTMLButtonElement | null;
 
     function renderBackupRow() {
         if (!dom_strips_backup_row) return;
@@ -1670,18 +1757,19 @@ export function init(container: any) {
     }
 
     if (dom_strips_list) {
-        dom_strips_list.addEventListener('click', async (e: any) => {
-            const btn = e.target.closest('button[data-action]');
+        dom_strips_list.addEventListener('click', async (e: MouseEvent) => {
+            const tgt = e.target as Element | null;
+            const btn = tgt?.closest('button[data-action]');
             if (btn) {
                 e.stopPropagation();
                 e.preventDefault();
-                const action = btn.dataset.action;
+                const action = (btn as HTMLElement).dataset.action;
                 if (action === 'add-strip') {
-                    pendingNewStripPin = btn.dataset.pinId || null;
+                    pendingNewStripPin = (btn as HTMLElement).dataset.pinId || null;
                     _openInsertDialog();
                     return;
                 }
-                const idx = parseInt(btn.dataset.stripIdx, 10);
+                const idx = parseInt((btn as HTMLElement).dataset.stripIdx ?? '', 10);
                 if (action === 'up') doReorderStrip(idx, _withinPinNeighbor(idx, -1));
                 else if (action === 'down') doReorderStrip(idx, _withinPinNeighbor(idx, +1));
                 else if (action === 'reverse') doReverseStrip(idx);
@@ -1691,35 +1779,35 @@ export function init(container: any) {
                 return;
             }
             // Pin name click → rename (don't toggle the <details>)
-            const pinName = e.target.closest('.pin-name');
+            const pinName = tgt?.closest('.pin-name');
             if (pinName) {
                 e.preventDefault();
                 e.stopPropagation();
-                await doRenamePinPrompt(pinName.dataset.pinId);
+                await doRenamePinPrompt((pinName as HTMLElement).dataset.pinId ?? '');
                 return;
             }
             // Connector row click → inline menu (Chain mode, §1.6)
-            const cRow = e.target.closest('.connector-row');
+            const cRow = tgt?.closest('.connector-row');
             if (cRow) {
                 e.preventDefault();
                 e.stopPropagation();
                 _openConnectorMenu(
-                    parseInt(cRow.dataset.upIdx, 10),
-                    parseInt(cRow.dataset.downIdx, 10),
+                    parseInt((cRow as HTMLElement).dataset.upIdx ?? '', 10),
+                    parseInt((cRow as HTMLElement).dataset.downIdx ?? '', 10),
                     e.clientX, e.clientY,
                 );
                 return;
             }
             // Ignore clicks that target inputs (so they keep focus)
-            if (e.target.closest('input')) return;
-            const row = e.target.closest('.strip-row');
+            if (tgt?.closest('input')) return;
+            const row = tgt?.closest('.strip-row');
             if (row) {
-                const idx = parseInt(row.dataset.stripIdx, 10);
+                const idx = parseInt((row as HTMLElement).dataset.stripIdx ?? '', 10);
                 selection.selectStrip(idx);
             }
         }, { signal });
 
-        dom_strips_list.addEventListener('change', (e: any) => {
+        dom_strips_list.addEventListener('change', (e: Event) => {
             const t = e.target;
             if (t instanceof HTMLInputElement && t.dataset.role === 'video-offset') {
                 if (t.readOnly) return; // derived value — LOCK not engaged
@@ -1730,7 +1818,7 @@ export function init(container: any) {
 
         // ── Drag & drop: grip drag (reorder / repin) + pin header drag ──
         /** @type {null | {kind:'strip', idx:number} | {kind:'pin', pinId:string}} */
-        let panelDragState: any = null;
+        let panelDragState: { kind: 'strip'; idx: number } | { kind: 'pin'; pinId: string } | null = null;
 
         const clearDragOver = () => {
             for (const el of dom_strips_list.querySelectorAll('.drag-over')) {
@@ -1738,25 +1826,25 @@ export function init(container: any) {
             }
         };
 
-        dom_strips_list.addEventListener('dragstart', (e: any) => {
-            const grip = e.target.closest ? e.target.closest('.strip-grip') : null;
+        dom_strips_list.addEventListener('dragstart', (e: DragEvent) => {
+            const ds_tgt = e.target as Element | null;
+            const grip = ds_tgt?.closest('.strip-grip') ?? null;
             if (grip) {
-                panelDragState = { kind: 'strip', idx: parseInt(grip.dataset.stripIdx, 10) };
+                panelDragState = { kind: 'strip', idx: parseInt((grip as HTMLElement).dataset.stripIdx ?? '', 10) };
                 if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
                 return;
             }
-            const header = e.target.closest ? e.target.closest('.pin-header') : null;
+            const header = ds_tgt?.closest('.pin-header') ?? null;
             if (header) {
-                panelDragState = { kind: 'pin', pinId: header.dataset.pinId };
+                panelDragState = { kind: 'pin', pinId: (header as HTMLElement).dataset.pinId ?? '' };
                 if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
             }
         }, { signal });
 
-        dom_strips_list.addEventListener('dragover', (e: any) => {
+        dom_strips_list.addEventListener('dragover', (e: DragEvent) => {
             if (!panelDragState) return;
-            const target = e.target.closest
-                ? (e.target.closest('.strip-row') || e.target.closest('.pin-header'))
-                : null;
+            const dov_tgt = e.target as Element | null;
+            const target = dov_tgt?.closest('.strip-row') ?? dov_tgt?.closest('.pin-header') ?? null;
             if (!target) return;
             e.preventDefault();
             if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
@@ -1764,29 +1852,31 @@ export function init(container: any) {
             target.classList.add('drag-over');
         }, { signal });
 
-        dom_strips_list.addEventListener('drop', (e: any) => {
+        dom_strips_list.addEventListener('drop', (e: DragEvent) => {
             if (!panelDragState) return;
             e.preventDefault();
             clearDragOver();
             const drag = panelDragState;
             panelDragState = null;
-            const rowTarget = e.target.closest ? e.target.closest('.strip-row') : null;
-            const headerTarget = e.target.closest ? e.target.closest('.pin-header') : null;
+            const drop_tgt = e.target as Element | null;
+            const rowTarget = drop_tgt?.closest('.strip-row') ?? null;
+            const headerTarget = drop_tgt?.closest('.pin-header') ?? null;
             if (drag.kind === 'strip') {
                 if (rowTarget) {
-                    const toIdx = parseInt(rowTarget.dataset.stripIdx, 10);
+                    const toIdx = parseInt((rowTarget as HTMLElement).dataset.stripIdx ?? '', 10);
                     if (toIdx === drag.idx) return;
                     const strips = stripStore.getStrips();
-                    const fromPin = strips[drag.idx] ? _pinOfStrip(strips[drag.idx]) : null;
-                    const toPin = rowTarget.dataset.pinId;
+                    const fromPin = strips[drag.idx] ? _pinOfStrip(strips[drag.idx]!) : null;
+                    const toPin = (rowTarget as HTMLElement).dataset.pinId;
                     if (fromPin === toPin) doReorderStrip(drag.idx, toIdx);
-                    else doRepinStrip(drag.idx, toPin);
+                    else if (toPin !== undefined) doRepinStrip(drag.idx, toPin);
                 } else if (headerTarget) {
-                    doRepinStrip(drag.idx, headerTarget.dataset.pinId);
+                    const htPinId = (headerTarget as HTMLElement).dataset.pinId;
+                    if (htPinId !== undefined) doRepinStrip(drag.idx, htPinId);
                 }
             } else if (drag.kind === 'pin' && headerTarget) {
                 const order = stripStore.getPinOrder();
-                const toIdx = order.indexOf(headerTarget.dataset.pinId);
+                const toIdx = order.indexOf((headerTarget as HTMLElement).dataset.pinId ?? '');
                 if (toIdx >= 0) doReorderPin(drag.pinId, toIdx);
             }
         }, { signal });
@@ -1804,18 +1894,18 @@ export function init(container: any) {
     }
 
     // ── [Chain] / [Reorder] toolbar modes (issue #24 §1.6, Phase 3) ─────
-    const dom_strips_btn_chain = container.querySelector('#strips_btn_chain');
-    const dom_strips_btn_reorder = container.querySelector('#strips_btn_reorder');
+    const dom_strips_btn_chain = container.querySelector('#strips_btn_chain') as HTMLElement | null;
+    const dom_strips_btn_reorder = container.querySelector('#strips_btn_reorder') as HTMLButtonElement | null;
 
     /** Switch the editor mode: 'chain' | 'reorder' | null (toggles are
      *  mutually exclusive). Cancels any in-flight connector drag. */
-    function setEditorMode(mode: any) {
+    function setEditorMode(mode: string | null) {
         const m = (mode === 'chain' || mode === 'reorder') ? mode : null;
         if (m === editorMode) return;
         editorMode = m;
         connectorDrag = null;
         startHandleDrag = null;
-        if (m && dom_strips_panel) dom_strips_panel.open = true;
+        if (m && dom_strips_panel) (dom_strips_panel as HTMLDetailsElement).open = true;
         if (dom_strips_btn_chain) {
             dom_strips_btn_chain.classList.toggle('active', m === 'chain');
             dom_strips_btn_chain.setAttribute('aria-pressed', m === 'chain' ? 'true' : 'false');
@@ -1850,9 +1940,9 @@ export function init(container: any) {
         }, { signal });
     }
 
-    const dom_strips_selected_row = container.querySelector('#strips_selected_row');
-    const dom_strips_selected_label = container.querySelector('#strips_selected_label');
-    const dom_strips_move_pin = container.querySelector('#strips_move_pin');
+    const dom_strips_selected_row = container.querySelector('#strips_selected_row') as HTMLElement | null;
+    const dom_strips_selected_label = container.querySelector('#strips_selected_label') as HTMLElement | null;
+    const dom_strips_move_pin = container.querySelector('#strips_move_pin') as HTMLSelectElement | null;
 
     function renderSelectedStripRow() {
         if (!dom_strips_selected_row) return;
@@ -1862,7 +1952,7 @@ export function init(container: any) {
             dom_strips_selected_row.style.display = 'none';
             return;
         }
-        const s = strips[sIdx];
+        const s = strips[sIdx]!;
         const pin = _pinOfStrip(s);
         dom_strips_selected_row.style.display = '';
         if (dom_strips_selected_label) {
@@ -1901,7 +1991,7 @@ export function init(container: any) {
     }
 
     // ── Show chain checkbox ──────────────────────────────────────────────
-    const dom_strips_show_chain = container.querySelector('#strips_show_chain');
+    const dom_strips_show_chain = container.querySelector('#strips_show_chain') as HTMLInputElement | null;
     let showChainArrows = dom_strips_show_chain ? !!dom_strips_show_chain.checked : true;
     if (dom_strips_show_chain) {
         dom_strips_show_chain.addEventListener('change', () => {
@@ -1910,7 +2000,7 @@ export function init(container: any) {
         }, { signal });
     }
 
-    function _reverseStripInPlace(stripIdx: any) {
+    function _reverseStripInPlace(stripIdx: number) {
         const info = stripStore.get();
         if (!info) return false;
         const strip = info.strips[stripIdx];
@@ -1920,17 +2010,17 @@ export function init(container: any) {
         const sm = screenmap_pts.slice(lo, hi).reverse();
         const rw = rawPts.slice(lo, hi).reverse();
         for (let i = 0; i < sm.length; i++) {
-            screenmap_pts[lo + i] = sm[i];
-            rawPts[lo + i] = rw[i];
+            screenmap_pts[lo + i] = sm[i]!;
+            rawPts[lo + i] = rw[i]!;
         }
         if (Array.isArray(strip.points)) strip.points.reverse();
         if (Array.isArray(info.allPoints)) {
-            for (let i = 0; i < sm.length; i++) info.allPoints[lo + i] = [sm[i][0], sm[i][1]];
+            for (let i = 0; i < sm.length; i++) info.allPoints![lo + i] = [sm[i]![0], sm[i]![1]];
         }
         return true;
     }
 
-    function doReverseStrip(stripIdx: any) {
+    function doReverseStrip(stripIdx: number) {
         if (!_reverseStripInPlace(stripIdx)) return;
         pushUndo({ type: 'strip-reverse', stripIdx });
         _persistMultiStrip();
@@ -1938,17 +2028,17 @@ export function init(container: any) {
         setNeedsGeometryUpdate();
     }
 
-    function doSetVideoOffset(stripIdx: any, rawValue: any) {
+    function doSetVideoOffset(stripIdx: number, rawValue: string | number) {
         const strips = stripStore.getStrips();
         if (stripIdx < 0 || stripIdx >= strips.length) return;
-        const v = parseInt(rawValue, 10);
+        const v = parseInt(String(rawValue), 10);
         if (!Number.isFinite(v) || v < 0) {
             renderStripsPanel();
             return;
         }
-        const oldValue = typeof strips[stripIdx].video_offset === 'number'
-            ? strips[stripIdx].video_offset
-            : strips[stripIdx].offset;
+        const oldValue = typeof strips[stripIdx]!.video_offset === 'number'
+            ? strips[stripIdx]!.video_offset
+            : strips[stripIdx]!.offset;
         if (oldValue === v) return;
         stripStore.updateStrip(stripIdx, { video_offset: v });
         pushUndo({ type: 'strip-offset', stripIdx, oldValue, newValue: v });
@@ -1960,7 +2050,7 @@ export function init(container: any) {
     // ── Pin operations (issue #24, Phase 2) ──────────────────────────────
 
     /** One-shot toast shown on the first cross-pin move (§1.10). */
-    function _maybeShowRepinToast(stripName: any, newPin: any) {
+    function _maybeShowRepinToast(stripName: string, newPin: string) {
         try {
             if (localStorage.getItem('lm:shapeeditor-repinToastShown')) return;
             localStorage.setItem('lm:shapeeditor-repinToastShown', '1');
@@ -1973,12 +2063,12 @@ export function init(container: any) {
      * re-derives video_offset (§1.4). Emits a `strip-repin` undo action.
      * Returns true when a move happened.
      */
-    function doRepinStrip(stripIdx: any, newPinRaw: any) {
+    function doRepinStrip(stripIdx: number, newPinRaw: string) {
         const strips = stripStore.getStrips();
         if (stripIdx < 0 || stripIdx >= strips.length) return false;
         const newPin = typeof newPinRaw === 'string' ? newPinRaw.trim() : '';
         if (!newPin) return false;
-        const s = strips[stripIdx];
+        const s = strips[stripIdx]!;
         const oldPin = _pinOfStrip(s);
         if (newPin === oldPin) return false;
         const action = {
@@ -1987,7 +2077,7 @@ export function init(container: any) {
             oldPin,
             newPin,
             oldWithinPinIdx: _withinPinIdx(stripIdx),
-            newWithinPinIdx: strips.filter((st: any) => _pinOfStrip(st) === newPin).length,
+            newWithinPinIdx: strips.filter((st) => _pinOfStrip(st) === newPin).length,
             oldVideoOffset: typeof s.video_offset === 'number' ? s.video_offset : s.offset,
             oldOverride: s.videoOffsetOverride === true,
         };
@@ -2006,10 +2096,10 @@ export function init(container: any) {
      * current value and makes vo: editable; unlocking re-derives.
      * Emits a `vo-override-toggle` undo action.
      */
-    function doToggleVoLock(stripIdx: any) {
+    function doToggleVoLock(stripIdx: number) {
         const strips = stripStore.getStrips();
         if (stripIdx < 0 || stripIdx >= strips.length) return;
-        const s = strips[stripIdx];
+        const s = strips[stripIdx]!;
         const oldOverride = s.videoOffsetOverride === true;
         const newOverride = !oldOverride;
         const oldValue = typeof s.video_offset === 'number' ? s.video_offset : s.offset;
@@ -2022,7 +2112,7 @@ export function init(container: any) {
     }
 
     /** Rename a pin (core, no prompt). Returns true when applied. */
-    function doRenamePin(oldId: any, newIdRaw: any) {
+    function doRenamePin(oldId: string, newIdRaw: string) {
         const newId = typeof newIdRaw === 'string' ? newIdRaw.trim() : '';
         if (!newId || newId === oldId) return false;
         const pins = stripStore.getPinOrder();
@@ -2036,7 +2126,7 @@ export function init(container: any) {
         return true;
     }
 
-    async function doRenamePinPrompt(pinId: any) {
+    async function doRenamePinPrompt(pinId: string) {
         const pins = stripStore.getPinOrder();
         if (!pins.includes(pinId)) return;
         const Swal = (await import('sweetalert2')).default;
@@ -2061,7 +2151,7 @@ export function init(container: any) {
     }
 
     /** Move pin `pinId` to position `toIdx` in the pin order. */
-    function doReorderPin(pinId: any, toIdx: any) {
+    function doReorderPin(pinId: string, toIdx: number) {
         const oldOrder = stripStore.getPinOrder();
         const fromIdx = oldOrder.indexOf(pinId);
         if (fromIdx < 0) return false;
@@ -2099,23 +2189,23 @@ export function init(container: any) {
     // ── Chain-mode connector operations (issue #24 §1.7, Phase 3) ───────
 
     /** Build a strip-repin action object for stripIdx → newPin (no apply). */
-    function _makeRepinAction(stripIdx: any, newPin: any) {
+    function _makeRepinAction(stripIdx: number, newPin: string) {
         const strips = stripStore.getStrips();
-        const s = strips[stripIdx];
+        const s = strips[stripIdx]!;
         return {
             type: 'strip-repin',
             stripIdx,
             oldPin: _pinOfStrip(s),
             newPin,
             oldWithinPinIdx: _withinPinIdx(stripIdx),
-            newWithinPinIdx: strips.filter((st: any) => _pinOfStrip(st) === newPin).length,
+            newWithinPinIdx: strips.filter((st) => _pinOfStrip(st) === newPin).length,
             oldVideoOffset: typeof s.video_offset === 'number' ? s.video_offset : s.offset,
             oldOverride: s.videoOffsetOverride === true,
         };
     }
 
     /** Finish a composite connector edit: push ONE undo entry + persist. */
-    function _commitComposite(subActions: any, crossPin: any, toastStripName: any, toastPin: any) {
+    function _commitComposite(subActions: UndoAction[], crossPin: boolean, toastStripName: string, toastPin: string) {
         if (subActions.length === 0) return false;
         pushUndo({ type: 'connector-retarget', subActions });
         notePinMutation();
@@ -2132,13 +2222,13 @@ export function init(container: any) {
      * the upstream strip's pin when they differ. Emits ONE composite
      * `connector-retarget` undo entry {subActions: [strip-repin?, strip-reorder?]}.
      */
-    function doConnectorRetarget(upIdx: any, tgtIdx: any) {
+    function doConnectorRetarget(upIdx: number, tgtIdx: number) {
         const strips = stripStore.getStrips();
         if (upIdx < 0 || upIdx >= strips.length) return false;
         if (tgtIdx < 0 || tgtIdx >= strips.length) return false;
         if (upIdx === tgtIdx) return false;
-        const upStrip = strips[upIdx];
-        const tgtStrip = strips[tgtIdx];
+        const upStrip = strips[upIdx]!;
+        const tgtStrip = strips[tgtIdx]!;
         const upPin = _pinOfStrip(upStrip);
         const tgtPin = _pinOfStrip(tgtStrip);
         const subActions = [];
@@ -2167,14 +2257,14 @@ export function init(container: any) {
      * following same-pin strip move onto a fresh pin, preserving order.
      * One composite undo entry.
      */
-    function doSplitPinAt(downIdx: any) {
+    function doSplitPinAt(downIdx: number) {
         const strips = stripStore.getStrips();
         const s = strips[downIdx];
         if (!s) return false;
         const pin = _pinOfStrip(s);
         const moving = [];
         for (let i = downIdx; i < strips.length; i++) {
-            if (_pinOfStrip(strips[i]) === pin) moving.push(strips[i]);
+            if (_pinOfStrip(strips[i]!) === pin) moving.push(strips[i]!);
             else break;
         }
         if (moving.length === 0) return false;
@@ -2191,12 +2281,12 @@ export function init(container: any) {
     }
 
     /** "Move downstream to pin…" prompt for the strip below a connector. */
-    async function _moveDownstreamToPinPrompt(downIdx: any) {
+    async function _moveDownstreamToPinPrompt(downIdx: number) {
         const strips = stripStore.getStrips();
         const s = strips[downIdx];
         if (!s) return;
         const curPin = _pinOfStrip(s);
-        const options: any = {};
+        const options: Record<string, unknown> = {};
         for (const p of stripStore.getPinOrder()) {
             if (p !== curPin) options[p] = p;
         }
@@ -2216,7 +2306,7 @@ export function init(container: any) {
     }
 
     // ── Inline connector menu (shared by panel rows + canvas right-click) ─
-    let connectorMenuEl: any = null;
+    let connectorMenuEl: HTMLDivElement | null = null;
 
     function _hideConnectorMenu() {
         if (connectorMenuEl) {
@@ -2225,11 +2315,11 @@ export function init(container: any) {
         }
     }
 
-    function _openConnectorMenu(upIdx: any, downIdx: any, clientX: any, clientY: any) {
+    function _openConnectorMenu(upIdx: number, downIdx: number, clientX: number, clientY: number) {
         _hideConnectorMenu();
         const menu = document.createElement('div');
         menu.className = 'connector-menu';
-        const mk = (label: any, fn: any) => {
+        const mk = (label: string, fn: () => void) => {
             const b = document.createElement('button');
             b.type = 'button';
             b.textContent = label;
@@ -2246,48 +2336,48 @@ export function init(container: any) {
     }
 
     window.addEventListener('mousedown', (e) => {
-        if (connectorMenuEl && !connectorMenuEl.contains(e.target)) {
+        if (connectorMenuEl && !connectorMenuEl.contains(e.target as Node | null)) {
             _hideConnectorMenu();
         }
     }, { signal });
 
     // ── Chain-mode canvas hit helpers (geometry from drawChainArrows) ────
 
-    function _hitChainArrowhead(cx: any, cy: any) {
+    function _hitChainArrowhead(cx: number, cy: number) {
         for (const c of _chainGeom.connectors) {
-            const dx = cx - c.hx, dy = cy - c.hy;
+            const dx = cx - c.hx!, dy = cy - c.hy!;
             if (dx * dx + dy * dy <= 14 * 14) return c;
         }
         return null;
     }
 
-    function _hitStartHandle(cx: any, cy: any, excludeIdx: any) {
+    function _hitStartHandle(cx: number, cy: number, excludeIdx: number): number | null {
         for (const st of _chainGeom.starts) {
             if (st.strip === excludeIdx) continue;
             const dx = cx - st.x, dy = cy - st.y;
-            if (dx * dx + dy * dy <= 12 * 12) return st.strip;
+            if (dx * dx + dy * dy <= 12 * 12) return st.strip ?? null;
         }
         return null;
     }
 
-    function _hitEndHandle(cx: any, cy: any, excludeIdx: any) {
+    function _hitEndHandle(cx: number, cy: number, excludeIdx: number): number | null {
         for (const st of _chainGeom.ends) {
             if (st.strip === excludeIdx) continue;
             const dx = cx - st.x, dy = cy - st.y;
-            if (dx * dx + dy * dy <= 12 * 12) return st.strip;
+            if (dx * dx + dy * dy <= 12 * 12) return st.strip ?? null;
         }
         return null;
     }
 
     /** Distance-to-segment hit test on connector arrow bodies. */
-    function _hitConnectorBody(cx: any, cy: any) {
+    function _hitConnectorBody(cx: number, cy: number) {
         for (const c of _chainGeom.connectors) {
-            const vx = c.x2 - c.x1, vy = c.y2 - c.y1;
+            const vx = c.x2! - c.x1!, vy = c.y2! - c.y1!;
             const lenSq = vx * vx + vy * vy;
             if (lenSq < 1) continue;
-            let t = ((cx - c.x1) * vx + (cy - c.y1) * vy) / lenSq;
+            let t = ((cx - c.x1!) * vx + (cy - c.y1!) * vy) / lenSq;
             t = Math.max(0, Math.min(1, t));
-            const px = c.x1 + t * vx, py = c.y1 + t * vy;
+            const px = c.x1! + t * vx, py = c.y1! + t * vy;
             const dx = cx - px, dy = cy - py;
             if (dx * dx + dy * dy <= 8 * 8) return c;
         }
@@ -2296,7 +2386,7 @@ export function init(container: any) {
 
     /** Live strips-panel row-order preview during a connector drag: move the
      *  target row to just after the upstream row (DOM-only, no state). */
-    function _previewConnectorTarget(upIdx: any, targetIdx: any) {
+    function _previewConnectorTarget(upIdx: number, targetIdx: number | null) {
         renderStripsPanel();
         if (targetIdx === null || targetIdx === undefined || upIdx === null) return;
         if (!dom_strips_list) return;
@@ -2316,7 +2406,7 @@ export function init(container: any) {
         setNeedsRender();
     }
 
-    function doReorderStrip(fromIdx: any, toIdx: any) {
+    function doReorderStrip(fromIdx: number, toIdx: number) {
         const strips = stripStore.getStrips();
         if (fromIdx < 0 || fromIdx >= strips.length) return;
         if (toIdx < 0 || toIdx >= strips.length) return;
@@ -2329,7 +2419,7 @@ export function init(container: any) {
         setNeedsGeometryUpdate();
     }
 
-    async function doRenameStripPrompt(stripIdx: any) {
+    async function doRenameStripPrompt(stripIdx: number) {
         const strips = stripStore.getStrips();
         const strip = strips[stripIdx];
         if (!strip) return;
@@ -2347,7 +2437,7 @@ export function init(container: any) {
                 if (!name) return 'Strip name cannot be empty';
                 if (name !== oldName) {
                     for (let i = 0; i < strips.length; i++) {
-                        if (i !== stripIdx && strips[i].name === name) {
+                        if (i !== stripIdx && strips[i]!.name === name) {
                             return `A strip named "${name}" already exists`;
                         }
                     }
@@ -2365,7 +2455,7 @@ export function init(container: any) {
         setNeedsGeometryUpdate();
     }
 
-    async function doDeleteStripPrompt(stripIdx: any) {
+    async function doDeleteStripPrompt(stripIdx: number) {
         const strips = stripStore.getStrips();
         if (strips.length <= 1) return;
         const strip = strips[stripIdx];
@@ -2391,7 +2481,7 @@ export function init(container: any) {
         setNeedsGeometryUpdate();
     }
 
-    let rafId: any = null;
+    let rafId: number | null = null;
 
     function getCanvasSize() {
         return {
@@ -2422,7 +2512,7 @@ export function init(container: any) {
         return { sX, sY, cosR: Math.cos(rotateRad), sinR: Math.sin(rotateRad), tx, ty };
     }
 
-    function canvasDeltaToScreenmapDelta(dx: any, dy: any) {
+    function canvasDeltaToScreenmapDelta(dx: number, dy: number): [number, number] {
         const { sX, sY, cosR, sinR } = getCurrentTransform();
         // Account for camera zoom, then inverse rotation and inverse scale
         const wdx = dx / camZoom;
@@ -2432,8 +2522,8 @@ export function init(container: any) {
         return [urx / sX, ury / sY];
     }
 
-    function getCanvasCoords(e: any) {
-        const rect = overlayCanvas.getBoundingClientRect();
+    function getCanvasCoords(e: { clientX: number; clientY: number }): [number, number] {
+        const rect = overlayCanvas!.getBoundingClientRect();
         return [
             (e.clientX - rect.left) * (canvasW / rect.width),
             (e.clientY - rect.top) * (canvasH / rect.height),
@@ -2446,37 +2536,37 @@ export function init(container: any) {
         canvasH = height;
 
         renderer = new WebGLRenderer({ antialias: false });
-        renderer.setSize(width, height);
-        renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.setClearColor(0x121212, 1);
+        renderer!.setSize(width, height);
+        renderer!.setPixelRatio(window.devicePixelRatio);
+        renderer!.setClearColor(0x121212, 1);
 
         scene = new Scene();
 
         const hw = width / 2, hh = height / 2;
         camera = new OrthographicCamera(-hw, hw, -hh, hh, -1, 1);
-        camera.position.z = 1;
+        camera!.position.z = 1;
 
         wrapper = document.createElement('div');
         wrapper.style.position = 'absolute';
         wrapper.style.inset = '0';
         mainEl.appendChild(wrapper);
 
-        renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;';
-        wrapper.appendChild(renderer.domElement);
+        renderer!.domElement.style.cssText = 'display:block;width:100%;height:100%;';
+        wrapper.appendChild(renderer!.domElement);
 
         // Overlay canvas for rainbow lines, arrows, and labels (always visible)
         overlayCanvas = document.createElement('canvas');
         const dpr = window.devicePixelRatio || 1;
-        overlayCanvas.width = width * dpr;
-        overlayCanvas.height = height * dpr;
-        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;touch-action:none;';
+        overlayCanvas!.width = width * dpr;
+        overlayCanvas!.height = height * dpr;
+        overlayCanvas!.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;touch-action:none;';
         wrapper.appendChild(overlayCanvas);
-        overlayCtx = overlayCanvas.getContext('2d');
-        overlayCtx.scale(dpr, dpr);
+        overlayCtx = overlayCanvas!.getContext('2d');
+        overlayCtx!.scale(dpr, dpr);
 
         // LED index tooltip
         tooltip = document.createElement('div');
-        tooltip.style.cssText =
+        tooltip!.style.cssText =
             'position:absolute;pointer-events:none;' +
             'background:rgba(0,0,0,0.85);color:#fff;' +
             'padding:4px 8px;border-radius:4px;font:12px monospace;white-space:nowrap;' +
@@ -2516,14 +2606,14 @@ export function init(container: any) {
         makeCtxBtn('Upload file\u2026', 'upload-screenmap', ctxLoadSubmenu);
 
         ctxLoadWrapper.addEventListener('mouseenter', () => {
-            ctxBtnLoadScreenmap.style.background = '#3b82f6';
-            ctxBtnLoadScreenmap.style.color = '#fff';
-            ctxLoadSubmenu.style.display = '';
+            ctxBtnLoadScreenmap!.style.background = '#3b82f6';
+            ctxBtnLoadScreenmap!.style.color = '#fff';
+            ctxLoadSubmenu!.style.display = '';
         });
         ctxLoadWrapper.addEventListener('mouseleave', () => {
-            ctxBtnLoadScreenmap.style.background = 'none';
-            ctxBtnLoadScreenmap.style.color = '#eee';
-            ctxLoadSubmenu.style.display = 'none';
+            ctxBtnLoadScreenmap!.style.background = 'none';
+            ctxBtnLoadScreenmap!.style.color = '#eee';
+            ctxLoadSubmenu!.style.display = 'none';
         });
 
         // Load Image (triggers file picker)
@@ -2562,19 +2652,20 @@ export function init(container: any) {
         ctxUploadInput.addEventListener('change', () => {
             if (ctxUploadInput.files && ctxUploadInput.files[0]) {
                 const reader = new FileReader();
-                reader.onload = (ev) => load_screenmap_data((ev.target as any).result);
+                reader.onload = (ev) => load_screenmap_data((ev.target as FileReader).result as string);
                 reader.readAsText(ctxUploadInput.files[0]);
             }
             ctxUploadInput.value = '';
         }, { signal });
 
-        ctxLoadImageInput.addEventListener('change', () => {
-            if (ctxLoadImageInput.files[0]) loadBackgroundImage(ctxLoadImageInput.files[0]);
-            ctxLoadImageInput.value = '';
+        ctxLoadImageInput!.addEventListener('change', () => {
+            if (ctxLoadImageInput!.files?.[0]) loadBackgroundImage(ctxLoadImageInput!.files[0]!);
+            ctxLoadImageInput!.value = '';
         }, { signal });
 
-        ctxMenu.addEventListener('click', (e: any) => {
-            const action = e.target.dataset.action;
+        ctxMenu.addEventListener('click', (e: MouseEvent) => {
+            const cm_tgt = e.target as HTMLElement | null;
+            const action = cm_tgt?.dataset.action ?? null;
             if (action === 'new') {
                 dom_btn_new.click();
             } else if (action === 'save') {
@@ -2586,7 +2677,7 @@ export function init(container: any) {
                 fetch(`/screenmaps/${file}`).then(r => r.text()).then(load_screenmap_data)
                     .catch(err => console.log('Failed to load preset:', err));
             } else if (action === 'load-image') {
-                ctxLoadImageInput.click();
+                ctxLoadImageInput!.click();
             } else if (action === 'delete' && ctxMenuIdx >= 0) {
                 deletePoint(ctxMenuIdx);
             } else if (action === 'insert-between' && highlightedEdgeIdx >= 0) {
@@ -2609,20 +2700,20 @@ export function init(container: any) {
 
         // Dismiss on any click outside
         window.addEventListener('mousedown', (e) => {
-            if (ctxMenu.style.display !== 'none' && !ctxMenu.contains(e.target)) {
+            if (ctxMenu!.style.display !== 'none' && !ctxMenu!.contains(e.target as Node | null)) {
                 hideContextMenu();
             }
         }, { signal });
 
         // ── Mouse interaction ─────────────────────────────────────────────
 
-        overlayCanvas.addEventListener('mousedown', onMouseDown, { signal });
-        overlayCanvas.addEventListener('mousemove', onMouseMove, { signal });
-        overlayCanvas.addEventListener('mouseup', onMouseUp, { signal });
-        overlayCanvas.addEventListener('mouseleave', onMouseLeave, { signal });
-        overlayCanvas.addEventListener('contextmenu', onContextMenu, { signal });
-        overlayCanvas.addEventListener('dblclick', onDoubleClick, { signal });
-        overlayCanvas.addEventListener('wheel', (e: any) => {
+        overlayCanvas!.addEventListener('mousedown', onMouseDown, { signal });
+        overlayCanvas!.addEventListener('mousemove', onMouseMove, { signal });
+        overlayCanvas!.addEventListener('mouseup', onMouseUp, { signal });
+        overlayCanvas!.addEventListener('mouseleave', onMouseLeave, { signal });
+        overlayCanvas!.addEventListener('contextmenu', onContextMenu, { signal });
+        overlayCanvas!.addEventListener('dblclick', onDoubleClick, { signal });
+        overlayCanvas!.addEventListener('wheel', (e: WheelEvent) => {
             e.preventDefault();
             const zoomFactor = Math.pow(2, -e.deltaY / 3000);
             camZoom = Math.max(0.1, Math.min(10, camZoom * zoomFactor));
@@ -2663,16 +2754,16 @@ export function init(container: any) {
         const strips = stripStore.getStrips();
         let selectedStripName = null;
         if (selStripIdx !== null && selStripIdx >= 0 && selStripIdx < strips.length) {
-            selectedStripName = strips[selStripIdx].name;
+            selectedStripName = strips[selStripIdx]!.name;
         }
         let pointEditStripName = '';
         if (pointEditStripIdx !== null && pointEditStripIdx >= 0 && pointEditStripIdx < strips.length) {
-            pointEditStripName = strips[pointEditStripIdx].name;
+            pointEditStripName = strips[pointEditStripIdx]!.name;
         }
         return {
-            empty: !stripInfo || stripInfo.strips.length === 0
-                || (stripInfo.strips.length === 1 && stripInfo.strips[0].count <= 1
-                    && stripInfo.totalCount <= 1),
+            empty: !stripInfo || stripInfo!.strips.length === 0
+                || (stripInfo!.strips.length === 1 && (stripInfo!.strips[0]?.count ?? 0) <= 1
+                    && stripInfo!.totalCount <= 1),
             placing: !!placingState,
             placingLabel: placingState && placingState.entry ? placingState.entry.label : '',
             pasting: !!pasteState,
@@ -2816,11 +2907,11 @@ export function init(container: any) {
         }, 250);
     }
 
-    function buildGrid(width: any, height: any) {
+    function buildGrid(width: number, height: number) {
         if (gridLines) {
-            scene.remove(gridLines);
+            scene!.remove(gridLines);
             gridLines.geometry.dispose();
-            gridLines.material.dispose();
+            ((gridLines.material as import('three').Material)).dispose();
         }
 
         const extent = Math.max(width, height) * 5; // Large enough for pan/zoom
@@ -2837,14 +2928,14 @@ export function init(container: any) {
         const geom = new BufferGeometry();
         geom.setAttribute('position', new Float32BufferAttribute(vertices, 3));
         gridLines = new LineSegments(geom, new LineBasicMaterial({ color: 0x323232, transparent: true }));
-        scene.add(gridLines);
+        scene!.add(gridLines);
     }
 
-    function center_and_fit(pts: any, canvasW: any, canvasH: any) {
+    function center_and_fit(pts: [number, number][], canvasW: number, canvasH: number) {
         return centerAndFitPoints(pts, canvasW, canvasH, { margin: 0.95, center: 'origin' });
     }
 
-    function load_screenmap_data(text: any) {
+    function load_screenmap_data(text: string) {
         clearEditingState();
 
         screenmap_pts = parse_screenmap_data(text);
@@ -2857,7 +2948,7 @@ export function init(container: any) {
 
         // Parse multi-strip metadata for color-coded visualization
         try {
-            stripInfo = parseScreenmapMultiStrip(text);
+            stripInfo = parseScreenmapMultiStrip(text) as unknown as StripInfo;
         } catch {
             stripInfo = null;
         }
@@ -2870,7 +2961,7 @@ export function init(container: any) {
         } else {
             origDiameter = 0.5;
         }
-        dom_txt_diameter.value = origDiameter;
+        dom_txt_diameter.value = String(origDiameter);
 
         rawPts = screenmap_pts.map(([x, y]: [any, any]) => [x, y]);
 
@@ -2909,7 +3000,7 @@ export function init(container: any) {
         stripStore.load(null);
         renderStripsPanel();
         origDiameter = 0.5;
-        dom_txt_diameter.value = origDiameter;
+        dom_txt_diameter.value = String(origDiameter);
         origWidth = 0;
         origHeight = 0;
         fitScale = 1;
@@ -2926,31 +3017,31 @@ export function init(container: any) {
         }
     }, { signal });
 
-    function loadScreenmapFile(file: any) {
+    function loadScreenmapFile(file: File | null | undefined) {
         if (!file) return;
         if (!fileHasExtension(file, ['.json'])) {
             alert('Please choose a .json screenmap file.');
             return;
         }
         dom_sel_preset.value = '';
-        file.text().then(load_screenmap_data).catch((error: any) => {
+        file.text().then(load_screenmap_data).catch((error: unknown) => {
             alert(`Error reading screenmap file: ${error}`);
         });
     }
 
     dom_btn_upload_screenmap.addEventListener('change', () => {
-        loadScreenmapFile(dom_btn_upload_screenmap.files[0]);
+        loadScreenmapFile(dom_btn_upload_screenmap.files?.[0] ?? null);
     }, { signal });
 
     wireFileDropTarget({
-        target: container.querySelector('#screenmap_drop_target'),
+        target: container.querySelector('#screenmap_drop_target') as Element,
         input: dom_btn_upload_screenmap,
         onFile: loadScreenmapFile,
         signal,
     });
 
     wireFileDropTarget({
-        target: container.querySelector('#image_drop_target'),
+        target: container.querySelector('#image_drop_target') as Element,
         input: dom_btn_upload_image,
         onFile: (file) => {
             if (!file) return;
@@ -3010,17 +3101,17 @@ export function init(container: any) {
 
     // ── Background image ───────────────────────────────────────────────
 
-    let bgImageObjectURL: any = null;
+    let bgImageObjectURL: string | null = null;
     const bgImageControls = [dom_txt_image_opacity, dom_txt_image_scale,
         dom_txt_image_rotate, dom_txt_image_tx, dom_txt_image_ty,
         dom_btn_remove_image];
 
-    function setBgControlsEnabled(enabled: any) {
+    function setBgControlsEnabled(enabled: boolean) {
         for (const el of bgImageControls) el.disabled = !enabled;
     }
 
     function resetBgControls() {
-        dom_txt_image_opacity.value = 50;
+        dom_txt_image_opacity.value = '50';
         dom_txt_image_scale.value = '1.00';
         dom_txt_image_rotate.value = '0.00';
         dom_txt_image_tx.value = '0';
@@ -3041,9 +3132,9 @@ export function init(container: any) {
 
     function clearBackgroundImage() {
         if (bgImageMesh) {
-            scene.remove(bgImageMesh);
+            scene!.remove(bgImageMesh);
             bgImageMesh.geometry.dispose();
-            bgImageMesh.material.dispose();
+            ((bgImageMesh.material as import('three').Material)).dispose();
             bgImageMesh = null;
         }
         if (bgImageTexture) {
@@ -3071,7 +3162,7 @@ export function init(container: any) {
         setNeedsRender();
     }
 
-    let deleteBgConfirmEl: any = null;
+    let deleteBgConfirmEl: HTMLElement | null = null;
     function showDeleteBgConfirm() {
         if (deleteBgConfirmEl) return; // already showing
         deleteBgConfirmEl = document.createElement('div');
@@ -3084,12 +3175,12 @@ export function init(container: any) {
             '<div style="margin-bottom:12px">Delete background image?</div>' +
             '<button data-bg-del="yes" style="padding:6px 16px;margin:0 6px;background:#ef4444;color:#fff;border:none;border-radius:4px;cursor:pointer;font:inherit">Delete</button>' +
             '<button data-bg-del="no" style="padding:6px 16px;margin:0 6px;background:#333;color:#eee;border:1px solid #555;border-radius:4px;cursor:pointer;font:inherit">Cancel</button>';
-        deleteBgConfirmEl.addEventListener('click', (e: any) => {
-            const val = e.target.dataset.bgDel;
+        deleteBgConfirmEl.addEventListener('click', (e: MouseEvent) => {
+            const val = (e.target as HTMLElement | null)?.dataset.bgDel;
             if (val === 'yes') removeBackgroundImage();
             if (val) dismissDeleteBgConfirm();
         });
-        wrapper.appendChild(deleteBgConfirmEl);
+        wrapper!.appendChild(deleteBgConfirmEl);
     }
     function dismissDeleteBgConfirm() {
         if (deleteBgConfirmEl) {
@@ -3098,7 +3189,7 @@ export function init(container: any) {
         }
     }
 
-    function loadBackgroundImage(file: any) {
+    function loadBackgroundImage(file: File) {
         clearBackgroundImage();
         resetBgControls();
 
@@ -3137,7 +3228,7 @@ export function init(container: any) {
             bgImageMesh = new Mesh(geometry, material);
             bgImageMesh.renderOrder = 1;
             bgImageMesh.scale.y = -1;
-            scene.add(bgImageMesh);
+            scene!.add(bgImageMesh);
 
             setBgControlsEnabled(true);
             dom_bg_accordion.setAttribute('open', '');
@@ -3147,17 +3238,17 @@ export function init(container: any) {
     // ── Background image event listeners ─────────────────────────────
 
     dom_btn_upload_image.addEventListener('change', () => {
-        const file = dom_btn_upload_image.files[0];
+        const file = dom_btn_upload_image.files?.[0];
         if (file) loadBackgroundImage(file);
     }, { signal });
 
     dom_txt_image_opacity.addEventListener('input', () => {
         const val = Math.max(0, Math.min(100, parseFloat(dom_txt_image_opacity.value) || 50));
-        if (bgImageMesh) { bgImageMesh.material.opacity = val / 100; setNeedsRender(); }
+        if (bgImageMesh) { ((bgImageMesh.material as import('three').Material)).opacity = val / 100; setNeedsRender(); }
     }, { signal });
     dom_txt_image_opacity.addEventListener('change', () => {
-        dom_txt_image_opacity.value = Math.max(0, Math.min(100, Math.round(parseFloat(dom_txt_image_opacity.value) || 50)));
-        if (bgImageMesh) { bgImageMesh.material.opacity = parseFloat(dom_txt_image_opacity.value) / 100; setNeedsRender(); }
+        dom_txt_image_opacity.value = String(Math.max(0, Math.min(100, Math.round(parseFloat(dom_txt_image_opacity.value) || 50))));
+        if (bgImageMesh) { ((bgImageMesh.material as import('three').Material)).opacity = parseFloat(dom_txt_image_opacity.value) / 100; setNeedsRender(); }
     }, { signal });
 
     dom_txt_image_scale.addEventListener('input', () => {
@@ -3182,7 +3273,7 @@ export function init(container: any) {
         applyBgImageTransform();
     }, { signal });
     dom_txt_image_tx.addEventListener('change', () => {
-        dom_txt_image_tx.value = parseInt(dom_txt_image_tx.value) || 0;
+        dom_txt_image_tx.value = String(parseInt(dom_txt_image_tx.value) || 0);
         applyBgImageTransform();
     }, { signal });
 
@@ -3190,14 +3281,14 @@ export function init(container: any) {
         applyBgImageTransform();
     }, { signal });
     dom_txt_image_ty.addEventListener('change', () => {
-        dom_txt_image_ty.value = parseInt(dom_txt_image_ty.value) || 0;
+        dom_txt_image_ty.value = String(parseInt(dom_txt_image_ty.value) || 0);
         applyBgImageTransform();
     }, { signal });
 
     dom_btn_remove_image.addEventListener('click', removeBackgroundImage, { signal });
 
     // --- Overlay drawing for LED connection visualization ---
-    function toCanvasCoords(x: any, y: any) {
+    function toCanvasCoords(x: number, y: number): [number, number] {
         return [
             (x + camPanX) * camZoom + canvasW / 2,
             (y + camPanY) * camZoom + canvasH / 2,
@@ -3209,8 +3300,8 @@ export function init(container: any) {
     // The ruler is always visible — drag either handle to reposition/expand.
     const rulerA = { x: -80, y: -80 };  // left handle  (world px)
     const rulerB = { x: 80, y: -80 };   // right handle (world px)
-    let rulerDrag: any = null;              // null | 'a' | 'b' | 'body'
-    let rulerDragStart: any = null;
+    let rulerDrag: 'a' | 'b' | 'body' | null = null;
+    let rulerDragStart: RulerDragStart | null = null;
     const RULER_HANDLE_R = 7;          // hit radius in canvas px
 
     /** Reposition ruler to sit 5% above the screenmap bounding box. */
@@ -3231,7 +3322,7 @@ export function init(container: any) {
         rulerB.y = ymin - gap;
     }
 
-    function hitTestRuler(cx: any, cy: any) {
+    function hitTestRuler(cx: number, cy: number) {
         const [ax, ay] = toCanvasCoords(rulerA.x, rulerA.y);
         const [bx, by] = toCanvasCoords(rulerB.x, rulerB.y);
         const r = RULER_HANDLE_R + 4;
@@ -3250,7 +3341,7 @@ export function init(container: any) {
 
     function drawRuler() {
         if (!overlayCtx || fitScale <= 0) return;
-        const ctx = overlayCtx;
+        const ctx = overlayCtx!;
         const pxPerCm = fitScale * camZoom;
         const [ax, ay] = toCanvasCoords(rulerA.x, rulerA.y);
         const [bx, by] = toCanvasCoords(rulerB.x, rulerB.y);
@@ -3340,7 +3431,7 @@ export function init(container: any) {
         ctx.restore();
 
         // ── Handle circles ──
-        for (const [hx, hy] of [[ax, ay], [bx, by]]) {
+        for (const [hx, hy] of [[ax, ay], [bx, by]] as [number, number][]) {
             ctx.beginPath();
             ctx.arc(hx, hy, RULER_HANDLE_R, 0, Math.PI * 2);
             ctx.fillStyle = 'rgba(59,130,246,0.85)';
@@ -3366,11 +3457,10 @@ export function init(container: any) {
 
     function _chainArrowCount() {
         if (!showChainArrows && editorMode !== 'chain') return 0;
-        if (!stripInfo || stripInfo.strips.length <= 1) return 0;
+        if (!stripInfo || stripInfo!.strips.length <= 1) return 0;
         let drawable = 0;
-        for (let s = 0; s < stripInfo.strips.length - 1; s++) {
-            const a = stripInfo.strips[s];
-            const b = stripInfo.strips[s + 1];
+        for (let s = 0; s < stripInfo!.strips.length - 1; s++) {
+            const a = stripInfo!.strips[s]!, b = stripInfo!.strips[s + 1]!;
             if (a.count > 0 && b.count > 0 && _pinOfStrip(a) === _pinOfStrip(b)) drawable++;
         }
         return drawable;
@@ -3379,22 +3469,21 @@ export function init(container: any) {
     /** Cross-pin boundaries get a pin-tinted badge instead of an arrow (§1.7). */
     function _crossPinBadgeCount() {
         if (!showChainArrows && editorMode !== 'chain') return 0;
-        if (!stripInfo || stripInfo.strips.length <= 1) return 0;
+        if (!stripInfo || stripInfo!.strips.length <= 1) return 0;
         let n = 0;
-        for (let s = 0; s < stripInfo.strips.length - 1; s++) {
-            const a = stripInfo.strips[s];
-            const b = stripInfo.strips[s + 1];
+        for (let s = 0; s < stripInfo!.strips.length - 1; s++) {
+            const a = stripInfo!.strips[s]!, b = stripInfo!.strips[s + 1]!;
             if (a.count > 0 && b.count > 0 && _pinOfStrip(a) !== _pinOfStrip(b)) n++;
         }
         return n;
     }
 
-    function drawChainArrows(pts: any) {
-        const strips = stripInfo.strips;
-        const ctx = overlayCtx;
+    function drawChainArrows(pts: [number, number][]) {
+        const strips = stripInfo!.strips;
+        const ctx = overlayCtx!;
         const pinOrder = stripStore.getPinOrder();
         const pinColors = getPinColors(pinOrder.length);
-        const pinColorOf = (strip: any) => {
+        const pinColorOf = (strip: StripEntry) => {
             const i = pinOrder.indexOf(_pinOfStrip(strip));
             return pinColors[i >= 0 ? i : 0] || '#3b82f6';
         };
@@ -3404,13 +3493,13 @@ export function init(container: any) {
         _chainGeom.ends.length = 0;
         _chainGeom.crossBadges.length = 0;
         for (let s = 0; s < strips.length; s++) {
-            const st = strips[s];
+            const st = strips[s]!;
             if (st.count <= 0) continue;
             const si = st.offset;
             const ei = st.offset + st.count - 1;
             if (si >= pts.length || ei >= pts.length) continue;
-            _chainGeom.starts.push({ strip: s, x: pts[si][0], y: pts[si][1] });
-            _chainGeom.ends.push({ strip: s, x: pts[ei][0], y: pts[ei][1] });
+            _chainGeom.starts.push({ strip: s, x: pts[si]![0], y: pts[si]![1] });
+            _chainGeom.ends.push({ strip: s, x: pts[ei]![0], y: pts[ei]![1] });
         }
         ctx.save();
         ctx.globalAlpha = 0.9;
@@ -3420,13 +3509,13 @@ export function init(container: any) {
         ctx.setLineDash([6, 4]);
         let badgeN = 1;
         for (let s = 0; s < strips.length - 1; s++) {
-            const a = strips[s], b = strips[s + 1];
+            const a = strips[s]!, b = strips[s + 1]!;
             if (a.count <= 0 || b.count <= 0) continue;
             const aLast = a.offset + a.count - 1;
             const bFirst = b.offset;
             if (aLast >= pts.length || bFirst >= pts.length) continue;
-            const [x1, y1] = pts[aLast];
-            const [x2, y2] = pts[bFirst];
+            const [x1, y1] = pts[aLast]!;
+            const [x2, y2] = pts[bFirst]!;
             if (_pinOfStrip(a) !== _pinOfStrip(b)) {
                 // Cross-pin boundary: no arrow — pin-tinted dot near the next
                 // strip's Start (§1.7).
@@ -3489,23 +3578,23 @@ export function init(container: any) {
             ctx.fillText(String(badgeN), mx, my);
             ctx.setLineDash([6, 4]);
             badgeN++;
-            _chainGeom.connectors.push({ up: s, down: s + 1, x1, y1, x2, y2, hx: x2, hy: y2 });
+            _chainGeom.connectors.push({ x: x1, y: y1, up: s, down: s + 1, x1, y1, x2, y2, hx: x2, hy: y2 });
         }
         ctx.restore();
     }
 
     /** Ghost arrow + drop-target highlight while a Chain-mode drag is live. */
     function _drawChainDragGhost() {
-        const ctx = overlayCtx;
+        const ctx = overlayCtx!;
         if (!ctx) return;
         const drag = connectorDrag || startHandleDrag;
         if (!drag) return;
         let ax = null, ay = null;
         if (connectorDrag) {
-            const end = _chainGeom.ends.find((e) => e.strip === connectorDrag.upIdx);
+            const end = _chainGeom.ends.find((e) => e.strip === connectorDrag!.upIdx);
             if (end) { ax = end.x; ay = end.y; }
         } else {
-            const start = _chainGeom.starts.find((e) => e.strip === startHandleDrag.stripIdx);
+            const start = _chainGeom.starts.find((e) => e.strip === startHandleDrag!.stripIdx);
             if (start) { ax = start.x; ay = start.y; }
         }
         if (ax === null) return;
@@ -3515,7 +3604,7 @@ export function init(container: any) {
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 4]);
         ctx.beginPath();
-        ctx.moveTo(ax, ay);
+        ctx.moveTo(ax!, ay!);
         ctx.lineTo(drag.x, drag.y);
         ctx.stroke();
         if (drag.targetIdx !== null && drag.targetIdx !== undefined) {
@@ -3535,7 +3624,7 @@ export function init(container: any) {
 
     function drawOverlay() {
         if (!overlayCtx) return;
-        overlayCtx.clearRect(0, 0, canvasW, canvasH);
+        overlayCtx!.clearRect(0, 0, canvasW, canvasH);
 
         // Lerp overlayAlpha: 1 = rainbow visible (default), 0 = faded out (hovering inside bbox)
         const target = isHovering ? 0 : 1;
@@ -3607,43 +3696,43 @@ export function init(container: any) {
 
         // Draw oriented bounding box outline
         if (gizmoHover === 'translate' || gizmoActive === 'translate') {
-            overlayCtx.globalAlpha = gizmoActive === 'translate' ? 0.8 : 0.5;
-            overlayCtx.strokeStyle = '#3b82f6';
+            overlayCtx!.globalAlpha = gizmoActive === 'translate' ? 0.8 : 0.5;
+            overlayCtx!.strokeStyle = '#3b82f6';
         } else {
-            overlayCtx.globalAlpha = 0.3;
-            overlayCtx.strokeStyle = '#888';
+            overlayCtx!.globalAlpha = 0.3;
+            overlayCtx!.strokeStyle = '#888';
         }
-        overlayCtx.lineWidth = 1;
-        overlayCtx.setLineDash([6, 4]);
-        overlayCtx.save();
-        overlayCtx.translate(ccx, ccy);
-        overlayCtx.rotate(rotateRad);
-        overlayCtx.strokeRect(-hw, -hh, hw * 2, hh * 2);
-        overlayCtx.restore();
-        overlayCtx.setLineDash([]);
+        overlayCtx!.lineWidth = 1;
+        overlayCtx!.setLineDash([6, 4]);
+        overlayCtx!.save();
+        overlayCtx!.translate(ccx, ccy);
+        overlayCtx!.rotate(rotateRad);
+        overlayCtx!.strokeRect(-hw, -hh, hw * 2, hh * 2);
+        overlayCtx!.restore();
+        overlayCtx!.setLineDash([]);
 
         // Draw gizmo handles (scale, rotate, translate affordances)
         drawGizmoHandles();
 
         // Rainbow lines and arrows fade with hover
         if (overlayAlpha > 0) {
-            overlayCtx.globalAlpha = overlayAlpha;
-            overlayCtx.lineWidth = 2;
-            const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
-            const stripColors = hasMultiStrip ? getStripColors(stripInfo.strips.length) : null;
+            overlayCtx!.globalAlpha = overlayAlpha;
+            overlayCtx!.lineWidth = 2;
+            const hasMultiStrip = stripInfo && stripInfo!.strips.length > 1;
+            const stripColors = hasMultiStrip ? getStripColors(stripInfo!.strips.length) : null;
             // Build a set of boundary indices (last point of each non-empty strip) to skip
             // cross-strip lines, plus a precomputed index→strip lookup table.
             const stripBoundaries = new Set();
             let idxToStrip = null;
             if (hasMultiStrip) {
-                for (const strip of stripInfo.strips) {
+                for (const strip of stripInfo!.strips) {
                     if (strip.count > 0) {
                         stripBoundaries.add(strip.offset + strip.count - 1);
                     }
                 }
                 idxToStrip = new Int32Array(pts.length).fill(-1);
-                for (let s = 0; s < stripInfo.strips.length; s++) {
-                    const st = stripInfo.strips[s];
+                for (let s = 0; s < stripInfo!.strips.length; s++) {
+                    const st = stripInfo!.strips[s]!;
                     const lo = Math.max(0, st.offset);
                     const hi = Math.min(pts.length, st.offset + st.count);
                     for (let i = lo; i < hi; i++) idxToStrip[i] = s;
@@ -3653,19 +3742,20 @@ export function init(container: any) {
                 // Skip line between last point of one strip and first point of the next
                 if (hasMultiStrip && stripBoundaries.has(i)) continue;
 
-                const [x1, y1] = pts[i];
-                const [x2, y2] = pts[i + 1];
+                const [x1, y1] = pts[i]!;
+                const [x2, y2] = pts[i + 1]!;
                 if (hasMultiStrip) {
-                    const stripIdx = idxToStrip![i] >= 0 ? idxToStrip![i] : 0;
-                    overlayCtx.strokeStyle = stripColors![stripIdx];
+                    const rawIdx = idxToStrip?.[i] ?? 0;
+                    const stripIdx = rawIdx >= 0 ? rawIdx : 0;
+                    overlayCtx!.strokeStyle = stripColors?.[stripIdx] ?? '#ffffff';
                 } else {
                     const hue = (120 + i * 2) % 360;
-                    overlayCtx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+                    overlayCtx!.strokeStyle = `hsl(${hue}, 100%, 50%)`;
                 }
-                overlayCtx.beginPath();
-                overlayCtx.moveTo(x1, y1);
-                overlayCtx.lineTo(x2, y2);
-                overlayCtx.stroke();
+                overlayCtx!.beginPath();
+                overlayCtx!.moveTo(x1, y1);
+                overlayCtx!.lineTo(x2, y2);
+                overlayCtx!.stroke();
 
                 if (i % 5 === 1 || i === pts.length - 2) {
                     const dx = x2 - x1, dy = y2 - y1;
@@ -3676,41 +3766,41 @@ export function init(container: any) {
                         const ax = x1 + dx * t, ay = y1 + dy * t;
                         const arrowLen = 12;
                         const arrowHalf = 0.45;
-                        overlayCtx.fillStyle = overlayCtx.strokeStyle;
-                        overlayCtx.beginPath();
-                        overlayCtx.moveTo(ax, ay);
-                        overlayCtx.lineTo(ax - arrowLen * Math.cos(angle - arrowHalf), ay - arrowLen * Math.sin(angle - arrowHalf));
-                        overlayCtx.lineTo(ax - arrowLen * Math.cos(angle + arrowHalf), ay - arrowLen * Math.sin(angle + arrowHalf));
-                        overlayCtx.closePath();
-                        overlayCtx.fill();
+                        overlayCtx!.fillStyle = overlayCtx!.strokeStyle;
+                        overlayCtx!.beginPath();
+                        overlayCtx!.moveTo(ax, ay);
+                        overlayCtx!.lineTo(ax - arrowLen * Math.cos(angle - arrowHalf), ay - arrowLen * Math.sin(angle - arrowHalf));
+                        overlayCtx!.lineTo(ax - arrowLen * Math.cos(angle + arrowHalf), ay - arrowLen * Math.sin(angle + arrowHalf));
+                        overlayCtx!.closePath();
+                        overlayCtx!.fill();
                     }
                 }
             }
             for (let i = 2; i < pts.length - 1; i++) {
-                fillCircle(pts[i][0], pts[i][1], 4, 'rgba(255,255,255,0.5)');
+                fillCircle(pts[i]![0], pts[i]![1], 4, 'rgba(255,255,255,0.5)');
             }
         }
 
         // Highlighted edge for "insert between"
         if (highlightedEdgeIdx >= 0 && highlightedEdgeIdx < pts.length - 1) {
-            overlayCtx.globalAlpha = 1;
-            overlayCtx.strokeStyle = '#00ffff';
-            overlayCtx.lineWidth = 4;
-            overlayCtx.beginPath();
-            overlayCtx.moveTo(pts[highlightedEdgeIdx][0], pts[highlightedEdgeIdx][1]);
-            overlayCtx.lineTo(pts[highlightedEdgeIdx + 1][0], pts[highlightedEdgeIdx + 1][1]);
-            overlayCtx.stroke();
+            overlayCtx!.globalAlpha = 1;
+            overlayCtx!.strokeStyle = '#00ffff';
+            overlayCtx!.lineWidth = 4;
+            overlayCtx!.beginPath();
+            overlayCtx!.moveTo(pts[highlightedEdgeIdx]![0], pts[highlightedEdgeIdx]![1]);
+            overlayCtx!.lineTo(pts[highlightedEdgeIdx + 1]![0], pts[highlightedEdgeIdx + 1]![1]);
+            overlayCtx!.stroke();
             // Midpoint marker
-            const mx = (pts[highlightedEdgeIdx][0] + pts[highlightedEdgeIdx + 1][0]) / 2;
-            const my = (pts[highlightedEdgeIdx][1] + pts[highlightedEdgeIdx + 1][1]) / 2;
-            overlayCtx.fillStyle = '#00ffff';
-            overlayCtx.beginPath();
-            overlayCtx.arc(mx, my, 5, 0, Math.PI * 2);
-            overlayCtx.fill();
+            const mx = (pts[highlightedEdgeIdx]![0] + pts[highlightedEdgeIdx + 1]![0]) / 2;
+            const my = (pts[highlightedEdgeIdx]![1] + pts[highlightedEdgeIdx + 1]![1]) / 2;
+            overlayCtx!.fillStyle = '#00ffff';
+            overlayCtx!.beginPath();
+            overlayCtx!.arc(mx, my, 5, 0, Math.PI * 2);
+            overlayCtx!.fill();
         }
 
         // Chain-order arrows: from each strip's LAST LED to next strip's FIRST LED.
-        if ((showChainArrows || editorMode === 'chain') && stripInfo && stripInfo.strips.length > 1) {
+        if ((showChainArrows || editorMode === 'chain') && stripInfo && stripInfo!.strips.length > 1) {
             drawChainArrows(pts);
         } else {
             _chainGeom.connectors.length = 0;
@@ -3723,33 +3813,33 @@ export function init(container: any) {
         // Start and end LEDs always visible (per strip when multi-strip).
         // Labels go through the layout engine so 16+ strip maps stay readable:
         // anchor dot at the LED, displaced label box, leader line when far.
-        overlayCtx.globalAlpha = 1;
-        const hasMultiStripLabels = stripInfo && stripInfo.strips.length > 1;
+        overlayCtx!.globalAlpha = 1;
+        const hasMultiStripLabels = stripInfo && stripInfo!.strips.length > 1;
         const labelItems = [];
         const START_COLOR = 'rgba(0,255,0,1)';
         const END_COLOR = 'rgba(255,0,0,1)';
         if (hasMultiStripLabels) {
-            for (let s = 0; s < stripInfo.strips.length; s++) {
-                const st = stripInfo.strips[s];
+            for (let s = 0; s < stripInfo!.strips.length; s++) {
+                const st = stripInfo!.strips[s]!;
                 if (st.count <= 0) continue;
                 const startIdx = st.offset;
                 const endIdx = st.offset + st.count - 1;
                 if (startIdx < 0 || endIdx >= pts.length) continue;
                 const labels = stripStartEndLabels(st, s);
-                labelItems.push({ id: 'start:' + s, text: labels.start, anchorX: pts[startIdx][0], anchorY: pts[startIdx][1], color: START_COLOR, dotRadius: 4 });
+                labelItems.push({ id: 'start:' + s, text: labels.start, anchorX: pts[startIdx]![0], anchorY: pts[startIdx]![1], color: START_COLOR, dotRadius: 4 });
                 if (labels.end !== null) {
-                    labelItems.push({ id: 'end:' + s, text: labels.end, anchorX: pts[endIdx][0], anchorY: pts[endIdx][1], color: END_COLOR, dotRadius: 4 });
+                    labelItems.push({ id: 'end:' + s, text: labels.end, anchorX: pts[endIdx]![0], anchorY: pts[endIdx]![1], color: END_COLOR, dotRadius: 4 });
                 }
             }
         } else {
-            if (pts.length > 1) fillCircle(pts[1][0], pts[1][1], 6, 'rgba(0,255,0,0.5)');
-            const singleStrip = (stripInfo && stripInfo.strips.length === 1)
-                ? { name: stripInfo.strips[0].name, count: pts.length }
+            if (pts.length > 1) fillCircle(pts[1]![0], pts[1]![1], 6, 'rgba(0,255,0,0.5)');
+            const singleStrip = (stripInfo && stripInfo!.strips.length === 1)
+                ? { name: stripInfo!.strips[0]?.name ?? '', count: pts.length }
                 : { name: '', count: pts.length };
             const labels = stripStartEndLabels(singleStrip, 0);
-            labelItems.push({ id: 'start:0', text: labels.start, anchorX: pts[0][0], anchorY: pts[0][1], color: START_COLOR, dotRadius: 4 });
+            labelItems.push({ id: 'start:0', text: labels.start, anchorX: pts[0]![0], anchorY: pts[0]![1], color: START_COLOR, dotRadius: 4 });
             if (labels.end !== null) {
-                labelItems.push({ id: 'end:0', text: labels.end, anchorX: pts[pts.length - 1][0], anchorY: pts[pts.length - 1][1], color: END_COLOR, dotRadius: 4 });
+                labelItems.push({ id: 'end:0', text: labels.end, anchorX: pts[pts.length - 1]![0], anchorY: pts[pts.length - 1]![1], color: END_COLOR, dotRadius: 4 });
             }
         }
         labelRenderer.draw(overlayCtx, labelItems, {
@@ -3761,14 +3851,14 @@ export function init(container: any) {
 
         // Strip selection bounding box (axis-aligned in canvas space)
         const selStripIdx = selection.getStripIdx();
-        if (selStripIdx !== null && stripInfo && selStripIdx < stripInfo.strips.length) {
-            const st = stripInfo.strips[selStripIdx];
+        if (selStripIdx !== null && stripInfo && selStripIdx < stripInfo!.strips.length) {
+            const st = stripInfo!.strips[selStripIdx]!;
             if (st.count > 0) {
                 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
                 const lo = Math.max(0, st.offset);
                 const hi = Math.min(pts.length, st.offset + st.count);
                 for (let i = lo; i < hi; i++) {
-                    const [px, py] = pts[i];
+                    const [px, py] = pts[i]!;
                     if (px < minX) minX = px;
                     if (py < minY) minY = py;
                     if (px > maxX) maxX = px;
@@ -3776,31 +3866,31 @@ export function init(container: any) {
                 }
                 if (isFinite(minX)) {
                     const pad = 10;
-                    overlayCtx.globalAlpha = 0.9;
-                    overlayCtx.strokeStyle = '#3b82f6';
-                    overlayCtx.lineWidth = 2;
-                    overlayCtx.setLineDash([6, 4]);
-                    overlayCtx.strokeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2);
-                    overlayCtx.setLineDash([]);
+                    overlayCtx!.globalAlpha = 0.9;
+                    overlayCtx!.strokeStyle = '#3b82f6';
+                    overlayCtx!.lineWidth = 2;
+                    overlayCtx!.setLineDash([6, 4]);
+                    overlayCtx!.strokeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2);
+                    overlayCtx!.setLineDash([]);
                 }
             }
         }
 
         // Selection indicator
         if (selectedIdx >= 0 && selectedIdx < pts.length) {
-            const [sx, sy] = pts[selectedIdx];
-            overlayCtx.globalAlpha = 1;
-            overlayCtx.strokeStyle = '#00ffff';
-            overlayCtx.lineWidth = 2;
-            overlayCtx.beginPath();
-            overlayCtx.arc(sx, sy, 10, 0, Math.PI * 2);
-            overlayCtx.stroke();
+            const [sx, sy] = pts[selectedIdx]!;
+            overlayCtx!.globalAlpha = 1;
+            overlayCtx!.strokeStyle = '#00ffff';
+            overlayCtx!.lineWidth = 2;
+            overlayCtx!.beginPath();
+            overlayCtx!.arc(sx, sy, 10, 0, Math.PI * 2);
+            overlayCtx!.stroke();
             // Pulsing inner glow
-            overlayCtx.strokeStyle = 'rgba(0,255,255,0.4)';
-            overlayCtx.lineWidth = 4;
-            overlayCtx.beginPath();
-            overlayCtx.arc(sx, sy, 14, 0, Math.PI * 2);
-            overlayCtx.stroke();
+            overlayCtx!.strokeStyle = 'rgba(0,255,255,0.4)';
+            overlayCtx!.lineWidth = 4;
+            overlayCtx!.beginPath();
+            overlayCtx!.arc(sx, sy, 14, 0, Math.PI * 2);
+            overlayCtx!.stroke();
         }
 
         drawBgGizmoHandles();
@@ -3809,22 +3899,22 @@ export function init(container: any) {
         _drawPasteGhost();
     }
 
-    function fillCircle(x: any, y: any, diameter: any, color: any) {
-        overlayCtx.fillStyle = color;
-        overlayCtx.beginPath();
-        overlayCtx.arc(x, y, diameter / 2, 0, Math.PI * 2);
-        overlayCtx.fill();
+    function fillCircle(x: number, y: number, diameter: number, color: string) {
+        overlayCtx!.fillStyle = color;
+        overlayCtx!.beginPath();
+        overlayCtx!.arc(x, y, diameter / 2, 0, Math.PI * 2);
+        overlayCtx!.fill();
     }
 
     // ── Gizmo: geometry, hit-testing, drawing ─────────────────────────
 
     // Rotate a local-space point (relative to bbox center) into canvas space
-    function obbToCanvas(bbox: any, lx: any, ly: any) {
+    function obbToCanvas(bbox: { cx: number; cy: number; cos: number; sin: number }, lx: number, ly: number) {
         const { cx, cy, cos, sin } = bbox;
         return { x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos };
     }
 
-    function computeGizmoHandles(bbox: any) {
+    function computeGizmoHandles(bbox: { cx: number; cy: number; cos: number; sin: number; hw: number; hh: number } | null | undefined) {
         if (!bbox) return null;
         let { hw, hh } = bbox;
         // Enforce minimum 60px bbox so handles don't overlap on tiny screenmaps
@@ -3853,7 +3943,7 @@ export function init(container: any) {
     }
 
     // Transform canvas coords into OBB local space (relative to bbox center, unrotated)
-    function canvasToObbLocal(bbox: any, canvasX: any, canvasY: any) {
+    function canvasToObbLocal(bbox: { cx: number; cy: number; cos: number; sin: number } | null | undefined, canvasX: number, canvasY: number): [number, number] {
         if (!bbox) return [0, 0];
         const dx = canvasX - bbox.cx;
         const dy = canvasY - bbox.cy;
@@ -3862,7 +3952,7 @@ export function init(container: any) {
                -dx * bbox.sin + dy * bbox.cos];
     }
 
-    function hitTestGizmo(canvasX: any, canvasY: any) {
+    function hitTestGizmo(canvasX: number, canvasY: number) {
         const handles = computeGizmoHandles(ptsBBox);
         if (!handles) return null;
         const threshold = 14;
@@ -3890,7 +3980,7 @@ export function init(container: any) {
         return null;
     }
 
-    function getCursorForGizmo(handleId: any) {
+    function getCursorForGizmo(handleId: string | null) {
         if (!handleId) return 'default';
         if (handleId === 'rotate') return 'grab';
         if (handleId === 'translate') return 'move';
@@ -3912,21 +4002,21 @@ export function init(container: any) {
         const gizmoAlpha = 1 - overlayAlpha;
         if (gizmoAlpha < 0.01) return;
 
-        const rotRad = Math.atan2(ptsBBox.sin, ptsBBox.cos);
+        const rotRad = Math.atan2(ptsBBox!.sin, ptsBBox!.cos);
 
-        overlayCtx.save();
-        overlayCtx.globalAlpha = gizmoAlpha;
+        overlayCtx!.save();
+        overlayCtx!.globalAlpha = gizmoAlpha;
 
         // Draw rotation connecting line (dashed)
         const topCenter = handles.edges.top;
-        overlayCtx.strokeStyle = '#3b82f6';
-        overlayCtx.lineWidth = 1;
-        overlayCtx.setLineDash([4, 3]);
-        overlayCtx.beginPath();
-        overlayCtx.moveTo(topCenter.x, topCenter.y);
-        overlayCtx.lineTo(handles.rotate.x, handles.rotate.y);
-        overlayCtx.stroke();
-        overlayCtx.setLineDash([]);
+        overlayCtx!.strokeStyle = '#3b82f6';
+        overlayCtx!.lineWidth = 1;
+        overlayCtx!.setLineDash([4, 3]);
+        overlayCtx!.beginPath();
+        overlayCtx!.moveTo(topCenter.x, topCenter.y);
+        overlayCtx!.lineTo(handles.rotate.x, handles.rotate.y);
+        overlayCtx!.stroke();
+        overlayCtx!.setLineDash([]);
 
         // Draw rotation handle (arc with arrowhead)
         const isRotHover = gizmoHover === 'rotate' || gizmoActive === 'rotate';
@@ -3938,11 +4028,11 @@ export function init(container: any) {
         const arcEnd = Math.PI * 0.05;
 
         // Arc stroke
-        overlayCtx.strokeStyle = rotColor;
-        overlayCtx.lineWidth = 2;
-        overlayCtx.beginPath();
-        overlayCtx.arc(rx, ry, arcR, arcStart, arcEnd);
-        overlayCtx.stroke();
+        overlayCtx!.strokeStyle = rotColor;
+        overlayCtx!.lineWidth = 2;
+        overlayCtx!.beginPath();
+        overlayCtx!.arc(rx, ry, arcR, arcStart, arcEnd);
+        overlayCtx!.stroke();
 
         // Arrowhead at arc end
         const ax = rx + arcR * Math.cos(arcEnd);
@@ -3950,25 +4040,25 @@ export function init(container: any) {
         const tangent = arcEnd + Math.PI / 2; // tangent direction (perpendicular to radius)
         const arrowLen = 5;
         const arrowHalf = 0.55;
-        overlayCtx.fillStyle = rotColor;
-        overlayCtx.beginPath();
-        overlayCtx.moveTo(ax, ay);
-        overlayCtx.lineTo(ax - arrowLen * Math.cos(tangent - arrowHalf), ay - arrowLen * Math.sin(tangent - arrowHalf));
-        overlayCtx.lineTo(ax - arrowLen * Math.cos(tangent + arrowHalf), ay - arrowLen * Math.sin(tangent + arrowHalf));
-        overlayCtx.closePath();
-        overlayCtx.fill();
+        overlayCtx!.fillStyle = rotColor;
+        overlayCtx!.beginPath();
+        overlayCtx!.moveTo(ax, ay);
+        overlayCtx!.lineTo(ax - arrowLen * Math.cos(tangent - arrowHalf), ay - arrowLen * Math.sin(tangent - arrowHalf));
+        overlayCtx!.lineTo(ax - arrowLen * Math.cos(tangent + arrowHalf), ay - arrowLen * Math.sin(tangent + arrowHalf));
+        overlayCtx!.closePath();
+        overlayCtx!.fill();
 
         // Helper: draw a rotated rect centered at (h.x, h.y)
-        function drawHandle(h: any, w: any, ht: any, color: any) {
-            overlayCtx.save();
-            overlayCtx.translate(h.x, h.y);
-            overlayCtx.rotate(rotRad);
-            overlayCtx.fillStyle = color;
-            overlayCtx.fillRect(-w / 2, -ht / 2, w, ht);
-            overlayCtx.strokeStyle = '#fff';
-            overlayCtx.lineWidth = 1;
-            overlayCtx.strokeRect(-w / 2, -ht / 2, w, ht);
-            overlayCtx.restore();
+        function drawHandle(h: GizmoHandle, w: number, ht: number, color: string) {
+            overlayCtx!.save();
+            overlayCtx!.translate(h.x, h.y);
+            overlayCtx!.rotate(rotRad);
+            overlayCtx!.fillStyle = color;
+            overlayCtx!.fillRect(-w / 2, -ht / 2, w, ht);
+            overlayCtx!.strokeStyle = '#fff';
+            overlayCtx!.lineWidth = 1;
+            overlayCtx!.strokeRect(-w / 2, -ht / 2, w, ht);
+            overlayCtx!.restore();
         }
 
         // Draw corner handles (squares)
@@ -3991,16 +4081,16 @@ export function init(container: any) {
             drawHandle(h, w, ht, color);
         }
 
-        overlayCtx.restore();
+        overlayCtx!.restore();
     }
 
-    function hitTestLED(canvasX: any, canvasY: any) {
+    function hitTestLED(canvasX: number, canvasY: number) {
         if (lastTransformedPts.length === 0) return -1;
         const threshold = 10;
         const threshSq = threshold * threshold;
         let bestIdx = -1, bestDist = threshSq;
         for (let i = 0; i < lastTransformedPts.length; i++) {
-            const [cx, cy] = toCanvasCoords(lastTransformedPts[i][0], lastTransformedPts[i][1]);
+            const [cx, cy] = toCanvasCoords(lastTransformedPts[i]![0], lastTransformedPts[i]![1]);
             const dx = canvasX - cx;
             const dy = canvasY - cy;
             const d = dx * dx + dy * dy;
@@ -4011,7 +4101,7 @@ export function init(container: any) {
 
     // ── Background image gizmo ────────────────────────────────────────
 
-    function hitTestBgGizmo(canvasX: any, canvasY: any) {
+    function hitTestBgGizmo(canvasX: number, canvasY: number) {
         if (!bgImageBBox) return null;
         const handles = computeGizmoHandles(bgImageBBox);
         if (!handles) return null;
@@ -4044,72 +4134,72 @@ export function init(container: any) {
 
         const rotRad = Math.atan2(bgImageBBox.sin, bgImageBBox.cos);
 
-        overlayCtx.save();
+        overlayCtx!.save();
 
         // Draw oriented bounding box outline
         const isTranslating = bgGizmoHover === 'translate' || bgGizmoActive === 'translate';
         if (isTranslating) {
-            overlayCtx.globalAlpha = bgGizmoActive === 'translate' ? 0.8 : 0.5;
-            overlayCtx.strokeStyle = '#f59e0b';
+            overlayCtx!.globalAlpha = bgGizmoActive === 'translate' ? 0.8 : 0.5;
+            overlayCtx!.strokeStyle = '#f59e0b';
         } else {
-            overlayCtx.globalAlpha = 0.3;
-            overlayCtx.strokeStyle = '#888';
+            overlayCtx!.globalAlpha = 0.3;
+            overlayCtx!.strokeStyle = '#888';
         }
-        overlayCtx.lineWidth = 1;
-        overlayCtx.setLineDash([6, 4]);
-        overlayCtx.save();
-        overlayCtx.translate(bgImageBBox.cx, bgImageBBox.cy);
-        overlayCtx.rotate(rotRad);
-        overlayCtx.strokeRect(-handles.hw, -handles.hh, handles.hw * 2, handles.hh * 2);
-        overlayCtx.restore();
-        overlayCtx.setLineDash([]);
+        overlayCtx!.lineWidth = 1;
+        overlayCtx!.setLineDash([6, 4]);
+        overlayCtx!.save();
+        overlayCtx!.translate(bgImageBBox.cx, bgImageBBox.cy);
+        overlayCtx!.rotate(rotRad);
+        overlayCtx!.strokeRect(-handles.hw, -handles.hh, handles.hw * 2, handles.hh * 2);
+        overlayCtx!.restore();
+        overlayCtx!.setLineDash([]);
 
-        overlayCtx.globalAlpha = 0.7;
+        overlayCtx!.globalAlpha = 0.7;
 
         // Rotation connecting line
         const topCenter = handles.edges.top;
-        overlayCtx.strokeStyle = '#f59e0b';
-        overlayCtx.lineWidth = 1;
-        overlayCtx.setLineDash([4, 3]);
-        overlayCtx.beginPath();
-        overlayCtx.moveTo(topCenter.x, topCenter.y);
-        overlayCtx.lineTo(handles.rotate.x, handles.rotate.y);
-        overlayCtx.stroke();
-        overlayCtx.setLineDash([]);
+        overlayCtx!.strokeStyle = '#f59e0b';
+        overlayCtx!.lineWidth = 1;
+        overlayCtx!.setLineDash([4, 3]);
+        overlayCtx!.beginPath();
+        overlayCtx!.moveTo(topCenter.x, topCenter.y);
+        overlayCtx!.lineTo(handles.rotate.x, handles.rotate.y);
+        overlayCtx!.stroke();
+        overlayCtx!.setLineDash([]);
 
         // Rotation handle
         const isRotHover = bgGizmoHover === 'rotate' || bgGizmoActive === 'rotate';
         const rotColor = isRotHover ? '#fbbf24' : '#f59e0b';
         const rx = handles.rotate.x, ry = handles.rotate.y;
         const arcR = isRotHover ? 9 : 7;
-        overlayCtx.strokeStyle = rotColor;
-        overlayCtx.lineWidth = 2;
-        overlayCtx.beginPath();
-        overlayCtx.arc(rx, ry, arcR, -Math.PI * 1.25, Math.PI * 0.05);
-        overlayCtx.stroke();
+        overlayCtx!.strokeStyle = rotColor;
+        overlayCtx!.lineWidth = 2;
+        overlayCtx!.beginPath();
+        overlayCtx!.arc(rx, ry, arcR, -Math.PI * 1.25, Math.PI * 0.05);
+        overlayCtx!.stroke();
 
         const ax = rx + arcR * Math.cos(Math.PI * 0.05);
         const ay = ry + arcR * Math.sin(Math.PI * 0.05);
         const tangent = Math.PI * 0.05 + Math.PI / 2;
-        overlayCtx.fillStyle = rotColor;
-        overlayCtx.beginPath();
-        overlayCtx.moveTo(ax, ay);
-        overlayCtx.lineTo(ax - 5 * Math.cos(tangent - 0.55), ay - 5 * Math.sin(tangent - 0.55));
-        overlayCtx.lineTo(ax - 5 * Math.cos(tangent + 0.55), ay - 5 * Math.sin(tangent + 0.55));
-        overlayCtx.closePath();
-        overlayCtx.fill();
+        overlayCtx!.fillStyle = rotColor;
+        overlayCtx!.beginPath();
+        overlayCtx!.moveTo(ax, ay);
+        overlayCtx!.lineTo(ax - 5 * Math.cos(tangent - 0.55), ay - 5 * Math.sin(tangent - 0.55));
+        overlayCtx!.lineTo(ax - 5 * Math.cos(tangent + 0.55), ay - 5 * Math.sin(tangent + 0.55));
+        overlayCtx!.closePath();
+        overlayCtx!.fill();
 
         // Corner and edge handles
-        function drawHandle(h: any, w: any, ht: any, color: any) {
-            overlayCtx.save();
-            overlayCtx.translate(h.x, h.y);
-            overlayCtx.rotate(rotRad);
-            overlayCtx.fillStyle = color;
-            overlayCtx.fillRect(-w / 2, -ht / 2, w, ht);
-            overlayCtx.strokeStyle = '#fff';
-            overlayCtx.lineWidth = 1;
-            overlayCtx.strokeRect(-w / 2, -ht / 2, w, ht);
-            overlayCtx.restore();
+        function drawHandle(h: GizmoHandle, w: number, ht: number, color: string) {
+            overlayCtx!.save();
+            overlayCtx!.translate(h.x, h.y);
+            overlayCtx!.rotate(rotRad);
+            overlayCtx!.fillStyle = color;
+            overlayCtx!.fillRect(-w / 2, -ht / 2, w, ht);
+            overlayCtx!.strokeStyle = '#fff';
+            overlayCtx!.lineWidth = 1;
+            overlayCtx!.strokeRect(-w / 2, -ht / 2, w, ht);
+            overlayCtx!.restore();
         }
 
         for (const [key, h] of Object.entries(handles.corners)) {
@@ -4128,33 +4218,33 @@ export function init(container: any) {
             drawHandle(h, w, ht, active ? '#fbbf24' : '#f59e0b');
         }
 
-        overlayCtx.restore();
+        overlayCtx!.restore();
     }
 
-    function handleBgGizmoDrag(cx: any, cy: any) {
-        const dx = cx - bgGizmoDragStart.canvasX;
-        const dy = cy - bgGizmoDragStart.canvasY;
+    function handleBgGizmoDrag(cx: number, cy: number) {
+        const dx = cx - bgGizmoDragStart!.canvasX;
+        const dy = cy - bgGizmoDragStart!.canvasY;
 
         if (bgGizmoActive === 'translate') {
             const wdx = dx / camZoom;
             const wdy = dy / camZoom;
-            const newTx = Math.round(bgGizmoDragStart.tx + wdx);
-            const newTy = Math.round(bgGizmoDragStart.ty + wdy);
-            dom_txt_image_tx.value = newTx;
-            dom_txt_image_ty.value = newTy;
+            const newTx = Math.round(bgGizmoDragStart!.tx + wdx);
+            const newTy = Math.round(bgGizmoDragStart!.ty + wdy);
+            dom_txt_image_tx.value = String(newTx);
+            dom_txt_image_ty.value = String(newTy);
             applyBgImageTransform();
             return;
         }
 
         if (bgGizmoActive === 'rotate') {
-            const center = bgGizmoDragStart.bboxCenter;
+            const center = bgGizmoDragStart!.bboxCenter!;
             const startAngle = Math.atan2(
-                bgGizmoDragStart.canvasY - center.y,
-                bgGizmoDragStart.canvasX - center.x
+                bgGizmoDragStart!.canvasY - center.y,
+                bgGizmoDragStart!.canvasX - center.x
             );
             const currentAngle = Math.atan2(cy - center.y, cx - center.x);
             const deltaDeg = (currentAngle - startAngle) * 180 / Math.PI;
-            let newRotate = bgGizmoDragStart.rotate + deltaDeg;
+            let newRotate = bgGizmoDragStart!.rotate + deltaDeg;
             if (shiftHeld) newRotate = Math.round(newRotate / 15) * 15;
             newRotate = Math.max(-180, Math.min(180, newRotate));
             dom_txt_image_rotate.value = newRotate.toFixed(2);
@@ -4163,16 +4253,16 @@ export function init(container: any) {
         }
 
         // Corner or edge: uniform scale (image has single scale)
-        if (bgGizmoActive.startsWith('corner-') || bgGizmoActive.startsWith('edge-')) {
-            const center = bgGizmoDragStart.bboxCenter;
+        if (bgGizmoActive!.startsWith('corner-') || bgGizmoActive!.startsWith('edge-')) {
+            const center = bgGizmoDragStart!.bboxCenter!;
             const startDist = Math.hypot(
-                bgGizmoDragStart.canvasX - center.x,
-                bgGizmoDragStart.canvasY - center.y
+                bgGizmoDragStart!.canvasX - center.x,
+                bgGizmoDragStart!.canvasY - center.y
             );
             const currentDist = Math.hypot(cx - center.x, cy - center.y);
             if (startDist > 1) {
                 const ratio = currentDist / startDist;
-                const newScale = Math.max(0.1, Math.min(5, bgGizmoDragStart.scale * ratio));
+                const newScale = Math.max(0.1, Math.min(5, bgGizmoDragStart!.scale * ratio));
                 dom_txt_image_scale.value = newScale.toFixed(2);
                 applyBgImageTransform();
             }
@@ -4180,7 +4270,7 @@ export function init(container: any) {
         }
     }
 
-    function startBgGizmoDrag(hit: any, cx: any, cy: any) {
+    function startBgGizmoDrag(hit: string, cx: number, cy: number) {
         bgGizmoActive = hit;
         const handles = computeGizmoHandles(bgImageBBox);
         bgGizmoDragStart = {
@@ -4189,33 +4279,33 @@ export function init(container: any) {
             rotate: parseFloat(dom_txt_image_rotate.value) || 0,
             tx: parseFloat(dom_txt_image_tx.value) || 0,
             ty: parseFloat(dom_txt_image_ty.value) || 0,
-            bboxCenter: handles ? handles.center : { x: bgImageBBox.cx, y: bgImageBBox.cy },
+            bboxCenter: handles ? handles.center : { x: bgImageBBox!.cx, y: bgImageBBox!.cy },
         };
     }
 
     // ── Gizmo drag logic ─────────────────────────────────────────────────
 
-    function handleGizmoDrag(cx: any, cy: any) {
-        const dx = cx - gizmoDragStart.canvasX;
-        const dy = cy - gizmoDragStart.canvasY;
+    function handleGizmoDrag(cx: number, cy: number) {
+        const dx = cx - gizmoDragStart!.canvasX;
+        const dy = cy - gizmoDragStart!.canvasY;
 
         if (gizmoActive === 'translate') {
             const wdx = dx / camZoom;
             const wdy = dy / camZoom;
-            setTranslate(gizmoDragStart.translateX + wdx, gizmoDragStart.translateY + wdy);
+            setTranslate(gizmoDragStart!.translateX + wdx, gizmoDragStart!.translateY + wdy);
             markDirtyAndGeometry();
             return;
         }
 
         if (gizmoActive === 'rotate') {
-            const center = gizmoDragStart.bboxCenter;
+            const center = gizmoDragStart!.bboxCenter!;
             const startAngle = Math.atan2(
-                gizmoDragStart.canvasY - center.y,
-                gizmoDragStart.canvasX - center.x
+                gizmoDragStart!.canvasY - center.y,
+                gizmoDragStart!.canvasX - center.x
             );
             const currentAngle = Math.atan2(cy - center.y, cx - center.x);
             const deltaDeg = (currentAngle - startAngle) * 180 / Math.PI;
-            let newRotate = gizmoDragStart.rotate + Math.round(deltaDeg);
+            let newRotate = gizmoDragStart!.rotate + Math.round(deltaDeg);
             // Snap to 15-degree increments when shift held
             if (shiftHeld) newRotate = Math.round(newRotate / 15) * 15;
             setRotate(clampRotate(newRotate));
@@ -4223,37 +4313,37 @@ export function init(container: any) {
             return;
         }
 
-        if (gizmoActive.startsWith('corner-')) {
-            const center = gizmoDragStart.bboxCenter;
+        if (gizmoActive!.startsWith('corner-')) {
+            const center = gizmoDragStart!.bboxCenter!;
             const startDist = Math.hypot(
-                gizmoDragStart.canvasX - center.x,
-                gizmoDragStart.canvasY - center.y
+                gizmoDragStart!.canvasX - center.x,
+                gizmoDragStart!.canvasY - center.y
             );
             const currentDist = Math.hypot(cx - center.x, cy - center.y);
             if (startDist > 1) {
                 const ratio = currentDist / startDist;
-                writeScale(dom_txt_scale, clampScale(gizmoDragStart.scale * ratio));
+                writeScale(dom_txt_scale, clampScale(gizmoDragStart!.scale * ratio));
                 markDirtyAndGeometry();
             }
             return;
         }
 
-        if (gizmoActive.startsWith('edge-')) {
-            const edge = gizmoActive.split('-')[1];
+        if (gizmoActive!.startsWith('edge-')) {
+            const edge = gizmoActive!.split('-')[1] ?? '';
             // Project mouse positions onto OBB local axes for signed distance
-            const [startLx, startLy] = canvasToObbLocal(ptsBBox, gizmoDragStart.canvasX, gizmoDragStart.canvasY);
+            const [startLx, startLy] = canvasToObbLocal(ptsBBox, gizmoDragStart!.canvasX, gizmoDragStart!.canvasY);
             const [curLx, curLy] = canvasToObbLocal(ptsBBox, cx, cy);
 
             if (edge === 'left' || edge === 'right') {
                 if (Math.abs(startLx) > 1) {
                     const ratio = curLx / startLx; // signed: crossing center negates
-                    writeScale(dom_txt_scale_x, clampScale(gizmoDragStart.scaleX * ratio));
+                    writeScale(dom_txt_scale_x, clampScale(gizmoDragStart!.scaleX * ratio));
                     markDirtyAndGeometry();
                 }
             } else {
                 if (Math.abs(startLy) > 1) {
                     const ratio = curLy / startLy; // signed: crossing center negates
-                    writeScale(dom_txt_scale_y, clampScale(gizmoDragStart.scaleY * ratio));
+                    writeScale(dom_txt_scale_y, clampScale(gizmoDragStart!.scaleY * ratio));
                     markDirtyAndGeometry();
                 }
             }
@@ -4264,24 +4354,24 @@ export function init(container: any) {
     function commitGizmoDrag() {
         if (!gizmoDragStart) return;
         const checks = [
-            ['scale', gizmoDragStart.scale, getTransformValue('scale')],
-            ['scaleX', gizmoDragStart.scaleX, getTransformValue('scaleX')],
-            ['scaleY', gizmoDragStart.scaleY, getTransformValue('scaleY')],
-            ['rotate', gizmoDragStart.rotate, getTransformValue('rotate')],
-            ['translateX', gizmoDragStart.translateX, getTransformValue('translateX')],
-            ['translateY', gizmoDragStart.translateY, getTransformValue('translateY')],
+            ['scale', gizmoDragStart!.scale, getTransformValue('scale')],
+            ['scaleX', gizmoDragStart!.scaleX, getTransformValue('scaleX')],
+            ['scaleY', gizmoDragStart!.scaleY, getTransformValue('scaleY')],
+            ['rotate', gizmoDragStart!.rotate, getTransformValue('rotate')],
+            ['translateX', gizmoDragStart!.translateX, getTransformValue('translateX')],
+            ['translateY', gizmoDragStart!.translateY, getTransformValue('translateY')],
         ];
         for (const [control, oldVal, newVal] of checks) {
             if (oldVal !== newVal) {
                 pushUndo({ type: 'transform', control, oldValue: oldVal, newValue: newVal });
-                committedTransform[control] = newVal;
+                committedTransform[control as string] = newVal as number;
             }
         }
     }
 
     // ── Mouse / pointer handlers ──────────────────────────────────────────
 
-    function onContextMenu(e: any) {
+    function onContextMenu(e: MouseEvent) {
         e.preventDefault();
         // Cancel panel placement on right-click
         if (placingState) {
@@ -4302,7 +4392,7 @@ export function init(container: any) {
         if (editorMode === 'chain') {
             const conn = _hitConnectorBody(cx, cy);
             if (conn) {
-                _openConnectorMenu(conn.up, conn.down, e.clientX, e.clientY);
+                _openConnectorMenu(conn.up!, conn.down!, e.clientX, e.clientY);
                 return;
             }
         }
@@ -4327,12 +4417,12 @@ export function init(container: any) {
         let insideBBox = false;
         if (ptsBBox) {
             const [lx, ly] = canvasToObbLocal(ptsBBox, cx, cy);
-            insideBBox = Math.abs(lx) <= ptsBBox.hw && Math.abs(ly) <= ptsBBox.hh;
+            insideBBox = Math.abs(lx) <= ptsBBox!.hw && Math.abs(ly) <= ptsBBox!.hh;
         }
         showContextMenu(e.clientX, e.clientY, -1, -1, insideBBox);
     }
 
-    function onMouseDown(e: any) {
+    function onMouseDown(e: MouseEvent) {
         // Dismiss context menu on any click
         hideContextMenu();
 
@@ -4388,15 +4478,15 @@ export function init(container: any) {
         if (editorMode === 'chain') {
             const conn = _hitChainArrowhead(cx, cy);
             if (conn) {
-                connectorDrag = { upIdx: conn.up, x: cx, y: cy, targetIdx: null };
-                overlayCanvas.style.cursor = 'grabbing';
+                connectorDrag = { upIdx: conn.up!, x: cx, y: cy, targetIdx: null };
+                overlayCanvas!.style.cursor = 'grabbing';
                 setNeedsRender();
                 return;
             }
             const startIdx = _hitStartHandle(cx, cy, -1);
             if (startIdx !== null) {
                 startHandleDrag = { stripIdx: startIdx, x: cx, y: cy, targetIdx: null };
-                overlayCanvas.style.cursor = 'grabbing';
+                overlayCanvas!.style.cursor = 'grabbing';
                 setNeedsRender();
                 return;
             }
@@ -4408,7 +4498,7 @@ export function init(container: any) {
             panStartY = cy;
             panStartCamX = camPanX;
             panStartCamY = camPanY;
-            overlayCanvas.style.cursor = 'move';
+            overlayCanvas!.style.cursor = 'move';
             return;
         }
 
@@ -4417,13 +4507,15 @@ export function init(container: any) {
             const edge = findNearestEdge(cx, cy);
             if (edge) {
                 const { idx, t } = edge;
-                const newScreenmapPt = [
-                    screenmap_pts[idx][0] + t * (screenmap_pts[idx + 1][0] - screenmap_pts[idx][0]),
-                    screenmap_pts[idx][1] + t * (screenmap_pts[idx + 1][1] - screenmap_pts[idx][1]),
+                const si = screenmap_pts[idx]!, si1 = screenmap_pts[idx + 1]!;
+                const ri = rawPts[idx]!, ri1 = rawPts[idx + 1]!;
+                const newScreenmapPt: [number, number] = [
+                    si[0] + t * (si1[0] - si[0]),
+                    si[1] + t * (si1[1] - si[1]),
                 ];
-                const newRawPt = [
-                    rawPts[idx][0] + t * (rawPts[idx + 1][0] - rawPts[idx][0]),
-                    rawPts[idx][1] + t * (rawPts[idx + 1][1] - rawPts[idx][1]),
+                const newRawPt: [number, number] = [
+                    ri[0] + t * (ri1[0] - ri[0]),
+                    ri[1] + t * (ri1[1] - ri[1]),
                 ];
                 insertPointAt(idx + 1, newScreenmapPt, newRawPt);
                 return;
@@ -4447,7 +4539,7 @@ export function init(container: any) {
                 ax: rulerA.x, ay: rulerA.y,
                 bx: rulerB.x, by: rulerB.y,
             };
-            overlayCanvas.style.cursor = rulerHit === 'body' ? 'move' : 'grab';
+            overlayCanvas!.style.cursor = rulerHit === 'body' ? 'move' : 'grab';
             return;
         }
 
@@ -4466,7 +4558,7 @@ export function init(container: any) {
                 translateY: parseInt(dom_txt_translate_y.value) || 0,
                 bboxCenter: handles!.center,
             };
-            overlayCanvas.style.cursor = gizmoHit === 'rotate' ? 'grabbing' : getCursorForGizmo(gizmoHit);
+            overlayCanvas!.style.cursor = gizmoHit === 'rotate' ? 'grabbing' : getCursorForGizmo(gizmoHit);
             return;
         }
 
@@ -4479,8 +4571,8 @@ export function init(container: any) {
             setNeedsGeometryUpdate(); // color update for selection
             dragStartCanvasX = cx;
             dragStartCanvasY = cy;
-            dragStartScreenmapPt = [...screenmap_pts[idx]];
-            dragStartRawPt = [...rawPts[idx]];
+            dragStartScreenmapPt = [...screenmap_pts[idx]!] as [number, number];
+            dragStartRawPt = [...rawPts[idx]!] as [number, number];
 
             // Alt quasimode = single-point move regardless of mode.
             altQuasimode = !!e.altKey;
@@ -4490,21 +4582,21 @@ export function init(container: any) {
             if (altQuasimode || inPointEdit) {
                 // Single-point drag (existing behavior)
                 isDragging = true;
-                overlayCanvas.style.cursor = 'grabbing';
+                overlayCanvas!.style.cursor = 'grabbing';
             } else {
                 // Group drag for the whole strip
                 stripDragActive = true;
                 stripDragIdx = hitStripIdx;
-                const strip = stripInfo.strips[hitStripIdx];
+                const strip = stripInfo!.strips[hitStripIdx]!;
                 stripDragStartScreenmap = [];
                 stripDragStartRaw = [];
                 for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-                    stripDragStartScreenmap.push([screenmap_pts[k][0], screenmap_pts[k][1]]);
-                    stripDragStartRaw.push([rawPts[k][0], rawPts[k][1]]);
+                    stripDragStartScreenmap.push([screenmap_pts[k]![0], screenmap_pts[k]![1]]);
+                    stripDragStartRaw.push([rawPts[k]![0], rawPts[k]![1]]);
                 }
                 stripDragLastSdx = 0;
                 stripDragLastSdy = 0;
-                overlayCanvas.style.cursor = 'grabbing';
+                overlayCanvas!.style.cursor = 'grabbing';
             }
             return;
         }
@@ -4535,7 +4627,7 @@ export function init(container: any) {
                 translateY: parseInt(dom_txt_translate_y.value) || 0,
                 bboxCenter: null,
             };
-            overlayCanvas.style.cursor = 'move';
+            overlayCanvas!.style.cursor = 'move';
             return;
         }
 
@@ -4544,12 +4636,12 @@ export function init(container: any) {
             const bgHit = hitTestBgGizmo(cx, cy);
             if (bgHit && bgHit !== 'translate') {
                 startBgGizmoDrag(bgHit, cx, cy);
-                overlayCanvas.style.cursor = bgHit === 'rotate' ? 'grabbing' : getCursorForGizmo(bgHit);
+                overlayCanvas!.style.cursor = bgHit === 'rotate' ? 'grabbing' : getCursorForGizmo(bgHit);
                 return;
             }
             if (bgHit === 'translate') {
                 startBgGizmoDrag('translate', cx, cy);
-                overlayCanvas.style.cursor = 'move';
+                overlayCanvas!.style.cursor = 'move';
                 return;
             }
         }
@@ -4563,20 +4655,20 @@ export function init(container: any) {
         panStartY = cy;
         panStartCamX = camPanX;
         panStartCamY = camPanY;
-        overlayCanvas.style.cursor = 'move';
+        overlayCanvas!.style.cursor = 'move';
     }
 
-    function onMouseMove(e: any) {
+    function onMouseMove(e: MouseEvent) {
         if (placingState) {
             const [cx, cy] = getCanvasCoords(e);
             _updateGhostFromCanvas(cx, cy);
-            overlayCanvas.style.cursor = 'crosshair';
+            overlayCanvas!.style.cursor = 'crosshair';
             return;
         }
         if (pasteState) {
             const [cx, cy] = getCanvasCoords(e);
             _updatePasteGhostFromCanvas(cx, cy);
-            overlayCanvas.style.cursor = 'crosshair';
+            overlayCanvas!.style.cursor = 'crosshair';
             return;
         }
         if (screenmap_pts.length === 0 && !bgImageMesh) return;
@@ -4591,7 +4683,7 @@ export function init(container: any) {
             if (Math.abs(dy) > 3) rightClickMoved = true;
             if (rightClickMoved) {
                 camZoom = Math.max(0.1, Math.min(10, zoomStartLevel * Math.pow(2, -dy / 200)));
-                overlayCanvas.style.cursor = 'ns-resize';
+                overlayCanvas!.style.cursor = 'ns-resize';
                 setNeedsRender();
             }
             return;
@@ -4633,20 +4725,20 @@ export function init(container: any) {
 
         // Ruler drag in progress
         if (rulerDrag) {
-            const wdx = (cx - rulerDragStart.cx) / camZoom;
-            const wdy = (cy - rulerDragStart.cy) / camZoom;
+            const wdx = (cx - rulerDragStart!.cx) / camZoom;
+            const wdy = (cy - rulerDragStart!.cy) / camZoom;
             if (rulerDrag === 'a') {
-                rulerA.x = rulerDragStart.ax + wdx;
-                rulerA.y = rulerDragStart.ay + wdy;
+                rulerA.x = rulerDragStart!.ax + wdx;
+                rulerA.y = rulerDragStart!.ay + wdy;
             } else if (rulerDrag === 'b') {
-                rulerB.x = rulerDragStart.bx + wdx;
-                rulerB.y = rulerDragStart.by + wdy;
+                rulerB.x = rulerDragStart!.bx + wdx;
+                rulerB.y = rulerDragStart!.by + wdy;
             } else {
                 // body — move both handles
-                rulerA.x = rulerDragStart.ax + wdx;
-                rulerA.y = rulerDragStart.ay + wdy;
-                rulerB.x = rulerDragStart.bx + wdx;
-                rulerB.y = rulerDragStart.by + wdy;
+                rulerA.x = rulerDragStart!.ax + wdx;
+                rulerA.y = rulerDragStart!.ay + wdy;
+                rulerB.x = rulerDragStart!.bx + wdx;
+                rulerB.y = rulerDragStart!.by + wdy;
             }
             setNeedsRender();
             return;
@@ -4680,12 +4772,12 @@ export function init(container: any) {
             const dy = cy - dragStartCanvasY;
             const [sdx, sdy] = canvasDeltaToScreenmapDelta(dx, dy);
             screenmap_pts[selectedIdx] = [
-                dragStartScreenmapPt[0] + sdx,
-                dragStartScreenmapPt[1] + sdy,
+                dragStartScreenmapPt![0] + sdx,
+                dragStartScreenmapPt![1] + sdy,
             ];
             rawPts[selectedIdx] = [
-                dragStartRawPt[0] + sdx / fitScale,
-                dragStartRawPt[1] + sdy / fitScale,
+                dragStartRawPt![0] + sdx / fitScale,
+                dragStartRawPt![1] + sdy / fitScale,
             ];
             setNeedsGeometryUpdate();
             return;
@@ -4695,16 +4787,16 @@ export function init(container: any) {
             const dx = cx - dragStartCanvasX;
             const dy = cy - dragStartCanvasY;
             const [sdx, sdy] = canvasDeltaToScreenmapDelta(dx, dy);
-            const strip = stripInfo.strips[stripDragIdx];
+            const strip = stripInfo!.strips[stripDragIdx]!;
             for (let k = 0; k < strip.count; k++) {
                 const base = strip.offset + k;
                 screenmap_pts[base] = [
-                    stripDragStartScreenmap[k][0] + sdx,
-                    stripDragStartScreenmap[k][1] + sdy,
+                    stripDragStartScreenmap![k]![0] + sdx,
+                    stripDragStartScreenmap![k]![1] + sdy,
                 ];
                 rawPts[base] = [
-                    stripDragStartRaw[k][0] + sdx / fitScale,
-                    stripDragStartRaw[k][1] + sdy / fitScale,
+                    stripDragStartRaw![k]![0] + sdx / fitScale,
+                    stripDragStartRaw![k]![1] + sdy / fitScale,
                 ];
             }
             stripDragLastSdx = sdx;
@@ -4716,9 +4808,9 @@ export function init(container: any) {
         // Ruler hover cursor
         const rulerHoverHit = hitTestRuler(cx, cy);
         if (rulerHoverHit) {
-            overlayCanvas.style.cursor = rulerHoverHit === 'body' ? 'move' : 'grab';
+            overlayCanvas!.style.cursor = rulerHoverHit === 'body' ? 'move' : 'grab';
             tooltipLedIdx = -1;
-            tooltip.style.opacity = '0';
+            tooltip!.style.opacity = '0';
             // still update gizmo/bbox hover state below so rendering stays correct
         }
 
@@ -4731,7 +4823,7 @@ export function init(container: any) {
         const wasHovering = isHovering;
         if (ptsBBox) {
             const [lx, ly] = canvasToObbLocal(ptsBBox, cx, cy);
-            const inObb = Math.abs(lx) <= ptsBBox.hw && Math.abs(ly) <= ptsBBox.hh;
+            const inObb = Math.abs(lx) <= ptsBBox!.hw && Math.abs(ly) <= ptsBBox!.hh;
             isHovering = inObb || !!gizmoHover;
         } else {
             isHovering = false;
@@ -4752,58 +4844,58 @@ export function init(container: any) {
 
         // Gizmo handle hover takes cursor priority
         if (gizmoHover && gizmoHover !== 'translate') {
-            overlayCanvas.style.cursor = getCursorForGizmo(gizmoHover);
+            overlayCanvas!.style.cursor = getCursorForGizmo(gizmoHover);
             tooltipLedIdx = -1;
-            tooltip.style.opacity = '0';
+            tooltip!.style.opacity = '0';
             return;
         }
 
         // Shift held: crosshair (insert between)
         // Ctrl held: copy cursor (extend/append)
         if (screenmap_pts.length > 0 && (e.shiftKey || e.ctrlKey || e.metaKey)) {
-            overlayCanvas.style.cursor = e.shiftKey ? 'crosshair' : 'copy';
+            overlayCanvas!.style.cursor = e.shiftKey ? 'crosshair' : 'copy';
             tooltipLedIdx = -1;
-            tooltip.style.opacity = '0';
+            tooltip!.style.opacity = '0';
             return;
         }
 
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
-            overlayCanvas.style.cursor = 'grab';
+            overlayCanvas!.style.cursor = 'grab';
             if (idx !== tooltipLedIdx) {
                 tooltipLedIdx = idx;
-                const [ox, oy] = rawPts[idx];
-                tooltip.textContent = `LED #${idx}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
+                const [ox, oy] = rawPts[idx]!;
+                tooltip!.textContent = `LED #${idx}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
             }
-            const tx = Math.min(cx + 14, canvasW - tooltip.offsetWidth - 4);
+            const tx = Math.min(cx + 14, canvasW - tooltip!.offsetWidth - 4);
             const ty = Math.max(cy - 28, 4);
-            tooltip.style.left = tx + 'px';
-            tooltip.style.top = ty + 'px';
-            tooltip.style.opacity = '1';
+            tooltip!.style.left = tx + 'px';
+            tooltip!.style.top = ty + 'px';
+            tooltip!.style.opacity = '1';
         } else if (gizmoHover === 'translate') {
-            overlayCanvas.style.cursor = 'move';
+            overlayCanvas!.style.cursor = 'move';
             tooltipLedIdx = -1;
-            tooltip.style.opacity = '0';
+            tooltip!.style.opacity = '0';
         } else if (bgGizmoHover && bgGizmoHover !== 'translate') {
-            overlayCanvas.style.cursor = getCursorForGizmo(bgGizmoHover);
+            overlayCanvas!.style.cursor = getCursorForGizmo(bgGizmoHover);
             tooltipLedIdx = -1;
-            tooltip.style.opacity = '0';
+            tooltip!.style.opacity = '0';
         } else if (bgGizmoHover === 'translate') {
-            overlayCanvas.style.cursor = 'move';
+            overlayCanvas!.style.cursor = 'move';
             tooltipLedIdx = -1;
-            tooltip.style.opacity = '0';
+            tooltip!.style.opacity = '0';
         } else {
-            overlayCanvas.style.cursor = 'default';
+            overlayCanvas!.style.cursor = 'default';
             tooltipLedIdx = -1;
-            tooltip.style.opacity = '0';
+            tooltip!.style.opacity = '0';
         }
     }
 
-    function onMouseUp(e: any) {
+    function onMouseUp(e: MouseEvent) {
         if (e && e.button === 2) {
             rightButtonDown = false;
             // rightClickMoved is consumed by onContextMenu
-            overlayCanvas.style.cursor = 'default';
+            overlayCanvas!.style.cursor = 'default';
             return;
         }
 
@@ -4811,7 +4903,7 @@ export function init(container: any) {
         if (connectorDrag) {
             const { upIdx, targetIdx } = connectorDrag;
             connectorDrag = null;
-            overlayCanvas.style.cursor = 'default';
+            overlayCanvas!.style.cursor = 'default';
             if (targetIdx !== null && targetIdx !== undefined) {
                 doConnectorRetarget(upIdx, targetIdx);
             } else {
@@ -4823,7 +4915,7 @@ export function init(container: any) {
         if (startHandleDrag) {
             const { stripIdx, targetIdx } = startHandleDrag;
             startHandleDrag = null;
-            overlayCanvas.style.cursor = 'default';
+            overlayCanvas!.style.cursor = 'default';
             if (targetIdx !== null && targetIdx !== undefined) {
                 // Dropping a strip's Start on another strip's End wires that
                 // strip downstream of the target: target ──▶ stripIdx.
@@ -4838,7 +4930,7 @@ export function init(container: any) {
         if (rulerDrag) {
             rulerDrag = null;
             rulerDragStart = null;
-            overlayCanvas.style.cursor = 'default';
+            overlayCanvas!.style.cursor = 'default';
             return;
         }
 
@@ -4846,29 +4938,29 @@ export function init(container: any) {
             commitGizmoDrag();
             gizmoActive = null;
             gizmoDragStart = null;
-            overlayCanvas.style.cursor = 'default';
+            overlayCanvas!.style.cursor = 'default';
             return;
         }
 
         if (bgGizmoActive) {
             bgGizmoActive = null;
             bgGizmoDragStart = null;
-            overlayCanvas.style.cursor = 'default';
+            overlayCanvas!.style.cursor = 'default';
             return;
         }
 
         if (isPanning) {
             isPanning = false;
-            overlayCanvas.style.cursor = 'default';
+            overlayCanvas!.style.cursor = 'default';
             return;
         }
 
         if (isDragging && selectedIdx >= 0) {
-            const newScreenmapPt = [...screenmap_pts[selectedIdx]];
-            const newRawPt = [...rawPts[selectedIdx]];
+            const newScreenmapPt = [...screenmap_pts[selectedIdx]!];
+            const newRawPt = [...rawPts[selectedIdx]!];
             // Only record undo if the point actually moved
-            if (newScreenmapPt[0] !== dragStartScreenmapPt[0] ||
-                newScreenmapPt[1] !== dragStartScreenmapPt[1]) {
+            if (newScreenmapPt[0] !== dragStartScreenmapPt![0] ||
+                newScreenmapPt[1] !== dragStartScreenmapPt![1]) {
                 pushUndo({
                     type: 'move',
                     idx: selectedIdx,
@@ -4880,13 +4972,13 @@ export function init(container: any) {
             }
             isDragging = false;
             altQuasimode = false;
-            overlayCanvas.style.cursor = 'grab';
+            overlayCanvas!.style.cursor = 'grab';
             return;
         }
 
         if (stripDragActive) {
             _finalizeStripDrag();
-            overlayCanvas.style.cursor = 'grab';
+            overlayCanvas!.style.cursor = 'grab';
             return;
         }
     }
@@ -4912,16 +5004,16 @@ export function init(container: any) {
         stripDragLastSdy = 0;
     }
 
-    function _applyStripTranslate(stripIdx: any, sdx: any, sdy: any) {
-        if (!stripInfo || stripIdx < 0 || stripIdx >= stripInfo.strips.length) return;
-        const strip = stripInfo.strips[stripIdx];
+    function _applyStripTranslate(stripIdx: number, sdx: number, sdy: number) {
+        if (!stripInfo || stripIdx < 0 || stripIdx >= stripInfo!.strips.length) return;
+        const strip = stripInfo!.strips[stripIdx]!;
         for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-            screenmap_pts[k] = [screenmap_pts[k][0] + sdx, screenmap_pts[k][1] + sdy];
-            rawPts[k] = [rawPts[k][0] + sdx / fitScale, rawPts[k][1] + sdy / fitScale];
+            screenmap_pts[k] = [screenmap_pts[k]![0] + sdx, screenmap_pts[k]![1] + sdy];
+            rawPts[k] = [rawPts[k]![0] + sdx / fitScale, rawPts[k]![1] + sdy / fitScale];
         }
     }
 
-    function onDoubleClick(e: any) {
+    function onDoubleClick(e: MouseEvent) {
         if (placingState) return;
         if (e.button !== 0) return;
         if (screenmap_pts.length === 0) return;
@@ -4952,10 +5044,10 @@ export function init(container: any) {
     let touchMode = 'idle'; // 'idle' | 'single' | 'multi' | 'longpress-fired'
     let touchStartClientX = 0, touchStartClientY = 0;
     let touchStartCanvasX = 0, touchStartCanvasY = 0;
-    let longPressTimer: any = null;
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
     let multiPanStartCamPanX = 0, multiPanStartCamPanY = 0;
     let multiPinchStartZoom = 1;
-    let multiStartCentroid: any = null; // [clientX, clientY]
+    let multiStartCentroid: [number, number] | null = null; // [clientX, clientY]
     let multiStartDist = 0;
 
     function _clearLongPress() {
@@ -4965,8 +5057,8 @@ export function init(container: any) {
         }
     }
 
-    function _synth(type: any, clientX: any, clientY: any, opts: any = {}) {
-        const init = { clientX, clientY, button: opts.button || 0, bubbles: true };
+    function _synth(type: string, clientX: number, clientY: number, opts: Record<string, unknown> = {}) {
+        const init = { clientX, clientY, button: (typeof opts.button === 'number' ? opts.button : 0), bubbles: true };
         const evt = new MouseEvent(type, init);
         if (type === 'mousedown') onMouseDown(evt);
         else if (type === 'mousemove') onMouseMove(evt);
@@ -4998,10 +5090,10 @@ export function init(container: any) {
             rulerDrag = null;
             rulerDragStart = null;
         }
-        overlayCanvas.style.cursor = 'default';
+        overlayCanvas!.style.cursor = 'default';
     }
 
-    function _doLongPress(canvasX: any, canvasY: any, clientX: any, clientY: any) {
+    function _doLongPress(canvasX: number, canvasY: number, clientX: number, clientY: number) {
         // Cancel the pending single-touch synth gesture so it does not also
         // commit a drag.
         _cancelSingleTouchGesture();
@@ -5019,7 +5111,7 @@ export function init(container: any) {
                 pointEditStripIdx = sIdx;
                 _updateHintStrip();
                 setNeedsGeometryUpdate();
-                _toastInfo(`Editing points in "${stripStore.getStrips()[sIdx].name}"`);
+                _toastInfo(`Editing points in "${stripStore.getStrips()[sIdx]!.name}"`);
             }
         } else {
             showContextMenu(clientX || 0, clientY || 0, -1, -1, false);
@@ -5027,12 +5119,12 @@ export function init(container: any) {
         touchMode = 'longpress-fired';
     }
 
-    function _wireTouchHandlers(signal: any) {
-        overlayCanvas.addEventListener('touchstart', (e: any) => {
+    function _wireTouchHandlers(signal: AbortSignal) {
+        overlayCanvas!.addEventListener('touchstart', (e: TouchEvent) => {
             // Cancel scrolling/zooming on the page during canvas touches
             e.preventDefault();
             if (e.touches.length === 1) {
-                const t = e.touches[0];
+                const t = e.touches[0]!;
                 touchMode = 'single';
                 touchStartClientX = t.clientX;
                 touchStartClientY = t.clientY;
@@ -5055,7 +5147,7 @@ export function init(container: any) {
                     _cancelSingleTouchGesture();
                 }
                 touchMode = 'multi';
-                const t0 = e.touches[0], t1 = e.touches[1];
+                const t0 = e.touches[0]!, t1 = e.touches[1]!;
                 multiStartCentroid = [(t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2];
                 const dxs = t0.clientX - t1.clientX;
                 const dys = t0.clientY - t1.clientY;
@@ -5066,11 +5158,11 @@ export function init(container: any) {
             }
         }, { passive: false, signal });
 
-        overlayCanvas.addEventListener('touchmove', (e: any) => {
+        overlayCanvas!.addEventListener('touchmove', (e: TouchEvent) => {
             e.preventDefault();
             if (touchMode === 'longpress-fired') return;
             if (touchMode === 'single' && e.touches.length === 1) {
-                const t = e.touches[0];
+                const t = e.touches[0]!;
                 const ddx = t.clientX - touchStartClientX;
                 const ddy = t.clientY - touchStartClientY;
                 if (Math.hypot(ddx, ddy) > LONG_PRESS_MOVE_TOL) _clearLongPress();
@@ -5078,13 +5170,13 @@ export function init(container: any) {
                 return;
             }
             if (touchMode === 'multi' && e.touches.length >= 2) {
-                const t0 = e.touches[0], t1 = e.touches[1];
+                const t0 = e.touches[0]!, t1 = e.touches[1]!;
                 const cx = (t0.clientX + t1.clientX) / 2;
                 const cy = (t0.clientY + t1.clientY) / 2;
-                const dx = cx - multiStartCentroid[0];
-                const dy = cy - multiStartCentroid[1];
+                const dx = cx - multiStartCentroid![0];
+                const dy = cy - multiStartCentroid![1];
                 // Pan: centroid delta in client px -> canvas px -> world px
-                const rect = overlayCanvas.getBoundingClientRect();
+                const rect = overlayCanvas!.getBoundingClientRect();
                 const sx = canvasW / rect.width;
                 const sy = canvasH / rect.height;
                 camPanX = multiPanStartCamPanX + (dx * sx) / camZoom;
@@ -5099,7 +5191,7 @@ export function init(container: any) {
             }
         }, { passive: false, signal });
 
-        overlayCanvas.addEventListener('touchend', (e: any) => {
+        overlayCanvas!.addEventListener('touchend', (e: TouchEvent) => {
             e.preventDefault();
             _clearLongPress();
             if (touchMode === 'longpress-fired') {
@@ -5111,7 +5203,7 @@ export function init(container: any) {
             }
             if (touchMode === 'single') {
                 // Forward as mouseup to commit / select
-                const t = (e.changedTouches && e.changedTouches[0]);
+                const t = (e.changedTouches && e.changedTouches[0]) || null;
                 if (t) {
                     _synth('mouseup', t.clientX, t.clientY);
                 }
@@ -5129,7 +5221,7 @@ export function init(container: any) {
             }
         }, { passive: false, signal });
 
-        overlayCanvas.addEventListener('touchcancel', () => {
+        overlayCanvas!.addEventListener('touchcancel', () => {
             _clearLongPress();
             _cancelSingleTouchGesture();
             touchMode = 'idle';
@@ -5157,10 +5249,10 @@ export function init(container: any) {
         }
         if (isDragging && selectedIdx >= 0) {
             // Finalize drag on leave
-            const newScreenmapPt = [...screenmap_pts[selectedIdx]];
-            const newRawPt = [...rawPts[selectedIdx]];
-            if (newScreenmapPt[0] !== dragStartScreenmapPt[0] ||
-                newScreenmapPt[1] !== dragStartScreenmapPt[1]) {
+            const newScreenmapPt = [...screenmap_pts[selectedIdx]!];
+            const newRawPt = [...rawPts[selectedIdx]!];
+            if (newScreenmapPt[0] !== dragStartScreenmapPt![0] ||
+                newScreenmapPt[1] !== dragStartScreenmapPt![1]) {
                 pushUndo({
                     type: 'move',
                     idx: selectedIdx,
@@ -5178,8 +5270,8 @@ export function init(container: any) {
         }
         isHovering = false;
         tooltipLedIdx = -1;
-        tooltip.style.opacity = '0';
-        overlayCanvas.style.cursor = 'default';
+        tooltip!.style.opacity = '0';
+        overlayCanvas!.style.cursor = 'default';
     }
 
     // ── Keyboard shortcuts ────────────────────────────────────────────────
@@ -5229,7 +5321,7 @@ export function init(container: any) {
             _updateHintStrip();
         }
         // Discoverability shortcuts — skip when typing in an input/textarea
-        const isTyping = e.target && ((e.target as any).tagName === 'INPUT' || (e.target as any).tagName === 'TEXTAREA' || (e.target as any).isContentEditable);
+        const isTyping = e.target && ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable);
         if (isTyping) return;
         // ? or F1 → help
         if (e.key === '?' || e.key === 'F1') {
@@ -5262,39 +5354,39 @@ export function init(container: any) {
         }
     }, { signal });
 
-    function buildScreenmap(transformedPts: any) {
+    function buildScreenmap(transformedPts: [number, number][]) {
         const count = transformedPts.length;
 
         if (count !== lastBuiltPointCount) {
             // Point count changed — full rebuild required
             if (screenmapOutline) {
-                scene.remove(screenmapOutline);
+                scene!.remove(screenmapOutline);
                 screenmapOutline.geometry.dispose();
-                screenmapOutline.material.dispose();
+                ((screenmapOutline.material as import('three').Material)).dispose();
             }
             if (pointsMesh) {
-                scene.remove(pointsMesh);
-                pointsGeometry.dispose();
-                pointsMaterial.dispose();
+                scene!.remove(pointsMesh);
+                pointsGeometry!.dispose();
+                pointsMaterial!.dispose();
             }
 
-            const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
+            const hasMultiStrip = stripInfo && stripInfo!.strips.length > 1;
 
             if (hasMultiStrip) {
                 // Build LineSegments pairs, skipping cross-strip boundaries.
                 // Skip empty strips (count <= 0) so we don't introduce bogus boundaries.
-                const stripColors = getStripColors(stripInfo.strips.length);
+                const stripColors = getStripColors(stripInfo!.strips.length);
                 const stripRgbs = stripColors.map(hslStringToRgb);
                 const stripBoundaries = new Set();
-                for (const strip of stripInfo.strips) {
+                for (const strip of stripInfo!.strips) {
                     if (strip.count > 0) {
                         stripBoundaries.add(strip.offset + strip.count - 1);
                     }
                 }
                 // Per-index strip lookup table — O(N) once, instead of O(N*S) inside the loop.
                 const idxToStrip = new Int32Array(count).fill(-1);
-                for (let s = 0; s < stripInfo.strips.length; s++) {
-                    const st = stripInfo.strips[s];
+                for (let s = 0; s < stripInfo!.strips.length; s++) {
+                    const st = stripInfo!.strips[s]!;
                     const lo = Math.max(0, st.offset);
                     const hi = Math.min(count, st.offset + st.count);
                     for (let i = lo; i < hi; i++) idxToStrip[i] = s;
@@ -5309,11 +5401,14 @@ export function init(container: any) {
                 let seg = 0;
                 for (let i = 0; i < count - 1; i++) {
                     if (stripBoundaries.has(i)) continue;
-                    const stripIdx = idxToStrip[i] >= 0 ? idxToStrip[i] : 0;
-                    const [sr, sg, sb] = stripRgbs[stripIdx];
+                    const rawStripIdx = idxToStrip[i] ?? 0;
+                    const stripIdx = rawStripIdx >= 0 ? rawStripIdx : 0;
+                    const rgb = stripRgbs[stripIdx]!;
+                    const sr = rgb[0]!, sg = rgb[1]!, sb = rgb[2]!;
+                    const pti = transformedPts[i]!, pti1 = transformedPts[i + 1]!;
                     const v = seg * 6;
-                    lineVerts[v] = transformedPts[i][0]; lineVerts[v + 1] = transformedPts[i][1]; lineVerts[v + 2] = 0;
-                    lineVerts[v + 3] = transformedPts[i + 1][0]; lineVerts[v + 4] = transformedPts[i + 1][1]; lineVerts[v + 5] = 0;
+                    lineVerts[v] = pti[0]; lineVerts[v + 1] = pti[1]; lineVerts[v + 2] = 0;
+                    lineVerts[v + 3] = pti1[0]; lineVerts[v + 4] = pti1[1]; lineVerts[v + 5] = 0;
                     lineColors[v] = sr; lineColors[v + 1] = sg; lineColors[v + 2] = sb;
                     lineColors[v + 3] = sr; lineColors[v + 4] = sg; lineColors[v + 5] = sb;
                     seg++;
@@ -5325,8 +5420,9 @@ export function init(container: any) {
             } else {
                 const lineVerts = new Float32Array(count * 3);
                 for (let i = 0; i < count; i++) {
-                    lineVerts[i * 3] = transformedPts[i][0];
-                    lineVerts[i * 3 + 1] = transformedPts[i][1];
+                    const tp = transformedPts[i]!;
+                    lineVerts[i * 3] = tp[0];
+                    lineVerts[i * 3 + 1] = tp[1];
                     lineVerts[i * 3 + 2] = 0;
                 }
                 const lineGeom = new BufferGeometry();
@@ -5336,7 +5432,7 @@ export function init(container: any) {
                 screenmapOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3, transparent: true }));
             }
             screenmapOutline.renderOrder = 2;
-            scene.add(screenmapOutline);
+            scene!.add(screenmapOutline);
 
             const diameterCm = parseFloat(dom_txt_diameter.value) || 0.5;
             const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
@@ -5348,27 +5444,27 @@ export function init(container: any) {
                 diameter: pixelDiameter,
                 defaultColor: [244 / 255, 67 / 255, 54 / 255],
             });
-            (result.geometry.getAttribute('position') as any).setUsage(DynamicDrawUsage);
+            (result.geometry.getAttribute('position') as import('three').BufferAttribute).setUsage(DynamicDrawUsage);
 
             pointsGeometry = result.geometry;
             pointsMaterial = result.material;
             pointsMesh = result.mesh;
             pointsColorAttr = result.colorAttribute;
-            pointsMesh.renderOrder = 3;
-            scene.add(pointsMesh);
+            pointsMesh!.renderOrder = 3;
+            scene!.add(pointsMesh);
 
             lastBuiltPointCount = count;
         } else {
             // Same point count — update buffers in place (no allocation)
-            const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
-            const outlinePos = screenmapOutline.geometry.getAttribute('position');
-            const pointsPos = pointsGeometry.getAttribute('position');
+            const hasMultiStrip = stripInfo && stripInfo!.strips.length > 1;
+            const outlinePos = screenmapOutline!.geometry.getAttribute('position');
+            const pointsPos = pointsGeometry!.getAttribute('position');
 
             if (hasMultiStrip) {
                 // LineSegments layout: pairs of vertices, skipping cross-strip boundaries.
                 // Skip empty strips so we don't introduce bogus boundary indices.
                 const stripBoundaries = new Set();
-                for (const strip of stripInfo.strips) {
+                for (const strip of stripInfo!.strips) {
                     if (strip.count > 0) {
                         stripBoundaries.add(strip.offset + strip.count - 1);
                     }
@@ -5377,17 +5473,20 @@ export function init(container: any) {
                 for (let i = 0; i < count - 1; i++) {
                     if (stripBoundaries.has(i)) continue;
                     const v = seg * 2;
-                    outlinePos.setXY(v, transformedPts[i][0], transformedPts[i][1]);
-                    outlinePos.setXY(v + 1, transformedPts[i + 1][0], transformedPts[i + 1][1]);
+                    const pti = transformedPts[i]!, pti1 = transformedPts[i + 1]!;
+                    outlinePos.setXY(v, pti[0], pti[1]);
+                    outlinePos.setXY(v + 1, pti1[0], pti1[1]);
                     seg++;
                 }
             } else {
                 for (let i = 0; i < count; i++) {
-                    outlinePos.setXY(i, transformedPts[i][0], transformedPts[i][1]);
+                    const tp = transformedPts[i]!;
+                    outlinePos.setXY(i, tp[0], tp[1]);
                 }
             }
             for (let i = 0; i < count; i++) {
-                pointsPos.setXY(i, transformedPts[i][0], transformedPts[i][1]);
+                const tp = transformedPts[i]!;
+                pointsPos.setXY(i, tp[0], tp[1]);
             }
             outlinePos.needsUpdate = true;
             pointsPos.needsUpdate = true;
@@ -5395,23 +5494,24 @@ export function init(container: any) {
             // Update point size
             const diameterCm = parseFloat(dom_txt_diameter.value) || 0.5;
             const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
-            pointsMaterial.size = Math.max(2, diameterCm * fitScale * scaleGlobal);
+            pointsMaterial!.size = Math.max(2, diameterCm * fitScale * scaleGlobal);
         }
 
         // Update colors (selection highlight, first/last LED markers)
         if (pointsColorAttr) {
             const colors = pointsColorAttr.array;
-            const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
+            const hasMultiStrip = stripInfo && stripInfo!.strips.length > 1;
 
             if (hasMultiStrip) {
                 // Per-strip coloring (dim non-selected strips when one is selected)
-                const stripColors = getStripColors(stripInfo.strips.length);
+                const stripColors = getStripColors(stripInfo!.strips.length);
                 const stripRgbs = stripColors.map(hslStringToRgb);
                 const selStrip = selection.getStripIdx();
                 const dim = 0.35;
-                for (let s = 0; s < stripInfo.strips.length; s++) {
-                    const strip = stripInfo.strips[s];
-                    let [sr, sg, sb] = stripRgbs[s];
+                for (let s = 0; s < stripInfo!.strips.length; s++) {
+                    const strip = stripInfo!.strips[s]!;
+                    const rgb = stripRgbs[s]!;
+                    let sr = rgb[0]!, sg = rgb[1]!, sb = rgb[2]!;
                     if (selStrip !== null && s !== selStrip) {
                         sr *= dim; sg *= dim; sb *= dim;
                     }
@@ -5439,14 +5539,14 @@ export function init(container: any) {
         }
     }
 
-    function updateLabels(transformedPts: any) {
+    function updateLabels(transformedPts: [number, number][]) {
         if (transformedPts.length === 0) {
-            placeholderDiv.style.display = '';
-            infoDiv.textContent = '';
+            placeholderDiv!.style.display = '';
+            infoDiv!.textContent = '';
             return;
         }
 
-        placeholderDiv.style.display = 'none';
+        placeholderDiv!.style.display = 'none';
 
         const scaleG = parseFloat(dom_txt_scale.value) || 1;
         const sX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleG;
@@ -5454,7 +5554,7 @@ export function init(container: any) {
         const physW = (origWidth * sX).toFixed(2);
         const physH = (origHeight * sY).toFixed(2);
 
-        infoDiv.innerHTML =
+        infoDiv!.innerHTML =
             `Points: ${screenmap_pts.length}<br>Size: ${physW} &times; ${physH} cm` +
             `<br><span style="opacity:0.5;font-size:12px">Shift+click: insert between &nbsp; Ctrl+click: extend end</span>`;
     }
@@ -5463,20 +5563,20 @@ export function init(container: any) {
         const { width, height } = getCanvasSize();
         canvasW = width;
         canvasH = height;
-        renderer.setSize(width, height);
+        renderer!.setSize(width, height);
 
         const hw = width / 2, hh = height / 2;
-        camera.left = -hw;
-        camera.right = hw;
-        camera.top = -hh;
-        camera.bottom = hh;
-        camera.zoom = camZoom;
-        camera.updateProjectionMatrix();
+        camera!.left = -hw;
+        camera!.right = hw;
+        camera!.top = -hh;
+        camera!.bottom = hh;
+        camera!.zoom = camZoom;
+        camera!.updateProjectionMatrix();
 
         const dpr = window.devicePixelRatio || 1;
-        overlayCanvas.width = width * dpr;
-        overlayCanvas.height = height * dpr;
-        overlayCtx.scale(dpr, dpr);
+        overlayCanvas!.width = width * dpr;
+        overlayCanvas!.height = height * dpr;
+        overlayCtx!.scale(dpr, dpr);
 
         buildGrid(width, height);
         drawOverlay();
@@ -5514,13 +5614,13 @@ export function init(container: any) {
                 const tx = parseFloat(dom_txt_translate_x.value) || 0;
                 const ty = parseFloat(dom_txt_translate_y.value) || 0;
 
-                const transformedPts = screenmap_pts.map(([x, y]: [any, any]) => {
+                const transformedPts: [number, number][] = screenmap_pts.map(([x, y]: [number, number]) => {
                     const sx = x * scaleX;
                     const sy = y * scaleY;
                     return [
                         sx * cosR - sy * sinR + tx,
                         sx * sinR + sy * cosR + ty,
-                    ];
+                    ] as [number, number];
                 });
                 lastTransformedPts = transformedPts;
                 buildScreenmap(transformedPts);
@@ -5529,15 +5629,15 @@ export function init(container: any) {
             drawOverlay();
         } else {
             if (screenmapOutline) {
-                scene.remove(screenmapOutline);
+                scene!.remove(screenmapOutline);
                 screenmapOutline.geometry.dispose();
-                screenmapOutline.material.dispose();
+                ((screenmapOutline.material as import('three').Material)).dispose();
                 screenmapOutline = null;
             }
             if (pointsMesh) {
-                scene.remove(pointsMesh);
-                pointsGeometry.dispose();
-                pointsMaterial.dispose();
+                scene!.remove(pointsMesh);
+                pointsGeometry!.dispose();
+                pointsMaterial!.dispose();
                 pointsMesh = null;
                 lastBuiltPointCount = -1;
             }
@@ -5547,12 +5647,12 @@ export function init(container: any) {
         }
 
         // Apply camera pan/zoom (view-only, not an edit)
-        camera.position.x = -camPanX;
-        camera.position.y = -camPanY;
-        camera.zoom = camZoom;
-        camera.updateProjectionMatrix();
+        camera!.position.x = -camPanX;
+        camera!.position.y = -camPanY;
+        camera!.zoom = camZoom;
+        camera!.updateProjectionMatrix();
 
-        renderer.render(scene, camera);
+        renderer!.render(scene!, camera!);
 
         geometryDirty = false;
         frameDirty = false;
@@ -5563,28 +5663,27 @@ export function init(container: any) {
     // follows the cursor on the overlay canvas, snapped to the grid when
     // enabled. Clicking on canvas commits the placement as a new strip.
     /** @type {null | { entry:object, opts:object, localPts:Array<[number,number]>, ghostWorld:[number,number] | null }} */
-    let placingState: any = null;
+    let placingState: PlacingState | null = null;
 
     // Pin id requested by a per-pin [+ strip] button; consumed by the next
     // placement commit (or cleared on cancel). Null = use default pin.
     /** @type {string|null} */
-    let pendingNewStripPin: any = null;
+    let pendingNewStripPin: string | null = null;
 
     // Paste-pending state: parsed strips ghost together around their centroid
     // following the cursor; L-click commits, Esc/R-click cancels.
-    /** @type {null | { strips:Array<{name:string,points:Array<[number,number]>,diameter?:number,video_offset:number,offsetsLocal:Array<[number,number]>}>, ghostWorld:[number,number]|null, totalCount:number }} */
-    let pasteState: any = null;
+    let pasteState: PasteStateActive | null = null;
 
     const dom_panel_buttons = container.querySelector('#panel_catalog_buttons');
-    const dom_pp_wiring = container.querySelector('#pp_wiring');
-    const dom_pp_corner = container.querySelector('#pp_corner');
-    const dom_pp_rotation = container.querySelector('#pp_rotation');
-    const dom_pp_flipH = container.querySelector('#pp_flipH');
-    const dom_pp_flipV = container.querySelector('#pp_flipV');
-    const dom_pp_spacing = container.querySelector('#pp_spacing');
-    const dom_pp_snap = container.querySelector('#pp_snap');
-    const dom_pp_grid = container.querySelector('#pp_grid');
-    const dom_pp_status = container.querySelector('#pp_status');
+    const dom_pp_wiring = container.querySelector('#pp_wiring') as HTMLSelectElement | null;
+    const dom_pp_corner = container.querySelector('#pp_corner') as HTMLSelectElement | null;
+    const dom_pp_rotation = container.querySelector('#pp_rotation') as HTMLSelectElement | null;
+    const dom_pp_flipH = container.querySelector('#pp_flipH') as HTMLInputElement | null;
+    const dom_pp_flipV = container.querySelector('#pp_flipV') as HTMLInputElement | null;
+    const dom_pp_spacing = container.querySelector('#pp_spacing') as HTMLInputElement | null;
+    const dom_pp_snap = container.querySelector('#pp_snap') as HTMLInputElement | null;
+    const dom_pp_grid = container.querySelector('#pp_grid') as HTMLInputElement | null;
+    const dom_pp_status = container.querySelector('#pp_status') as HTMLElement | null;
 
     const dom_pp_open_dialog = container.querySelector('#pp_open_dialog');
     if (dom_pp_open_dialog) {
@@ -5603,18 +5702,24 @@ export function init(container: any) {
         }
     }
 
-    function _readPanelOpts() {
+    function _readPanelOpts(): import('./panel-catalog').PanelOpts {
+        const rot = dom_pp_rotation ? parseInt(dom_pp_rotation.value, 10) || 0 : 0;
+        // Clamp to the valid RotationDeg union
+        const validRots: import('./panel-catalog').RotationDeg[] = [0, 90, 180, 270];
+        const rotation = (validRots.includes(rot as import('./panel-catalog').RotationDeg)
+            ? rot
+            : 0) as import('./panel-catalog').RotationDeg;
         return {
-            wiring: dom_pp_wiring ? dom_pp_wiring.value : 'serpentine',
-            dataInCorner: dom_pp_corner ? dom_pp_corner.value : 'TL',
-            rotation: dom_pp_rotation ? parseInt(dom_pp_rotation.value, 10) || 0 : 0,
+            wiring: (dom_pp_wiring ? dom_pp_wiring.value : 'serpentine') as import('./panel-catalog').WiringStyle,
+            dataInCorner: (dom_pp_corner ? dom_pp_corner.value : 'TL') as import('./panel-catalog').DataInCorner,
+            rotation,
             flipH: dom_pp_flipH ? !!dom_pp_flipH.checked : false,
             flipV: dom_pp_flipV ? !!dom_pp_flipV.checked : false,
             spacing: dom_pp_spacing ? (parseFloat(dom_pp_spacing.value) || 1) : 1,
         };
     }
 
-    function _enterPlacing(catalogId: any) {
+    function _enterPlacing(catalogId: string) {
         const entry = getCatalogEntry(catalogId);
         if (!entry) return;
         const opts = _readPanelOpts();
@@ -5622,7 +5727,7 @@ export function init(container: any) {
         placingState = { entry, opts, localPts, ghostWorld: null };
         _updateHintStrip();
         if (dom_pp_status) dom_pp_status.textContent = `Placing ${entry.label} — click canvas (Esc to cancel)`;
-        overlayCanvas.style.cursor = 'crosshair';
+        overlayCanvas!.style.cursor = 'crosshair';
         setNeedsRender();
     }
 
@@ -5630,12 +5735,12 @@ export function init(container: any) {
         placingState = null;
         pendingNewStripPin = null;
         if (dom_pp_status) dom_pp_status.textContent = '';
-        overlayCanvas.style.cursor = 'default';
+        overlayCanvas!.style.cursor = 'default';
         setNeedsRender();
         _updateHintStrip();
     }
 
-    function _canvasToWorldPx(cx: any, cy: any) {
+    function _canvasToWorldPx(cx: number, cy: number): [number, number] {
         return [
             (cx - canvasW / 2) / camZoom - camPanX,
             (cy - canvasH / 2) / camZoom - camPanY,
@@ -5648,7 +5753,7 @@ export function init(container: any) {
         return grid * fs;
     }
 
-    function _updateGhostFromCanvas(cx: any, cy: any) {
+    function _updateGhostFromCanvas(cx: number, cy: number) {
         if (!placingState) return;
         let [wx, wy] = _canvasToWorldPx(cx, cy);
         if (dom_pp_snap && dom_pp_snap.checked) {
@@ -5661,7 +5766,7 @@ export function init(container: any) {
 
     function _drawPlacingGhost() {
         if (!placingState || !placingState.ghostWorld) return;
-        const ctx = overlayCtx;
+        const ctx = overlayCtx!;
         const [wx, wy] = placingState.ghostWorld;
         const fs = fitScale > 0 ? fitScale : 1;
         const pts = placingState.localPts;
@@ -5673,7 +5778,7 @@ export function init(container: any) {
         // Connecting polyline (wiring order)
         ctx.beginPath();
         for (let i = 0; i < pts.length; i++) {
-            const [px, py] = pts[i];
+            const [px, py] = pts[i]!;
             const [cx, cy] = toCanvasCoords(wx + px * fs, wy + py * fs);
             if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
         }
@@ -5695,7 +5800,7 @@ export function init(container: any) {
         ctx.restore();
     }
 
-    function _uniqueStripName(base: any) {
+    function _uniqueStripName(base: string) {
         const used = new Set();
         const strips = stripStore.getStrips();
         for (const s of strips) used.add(s.name);
@@ -5705,9 +5810,9 @@ export function init(container: any) {
     }
 
     function _isEmptyScreenmap() {
-        return !stripInfo || stripInfo.strips.length === 0
-            || (stripInfo.strips.length === 1 && stripInfo.strips[0].count <= 1
-                && stripInfo.totalCount <= 1);
+        return !stripInfo || stripInfo!.strips.length === 0
+            || (stripInfo!.strips.length === 1 && (stripInfo!.strips[0]?.count ?? 0) <= 1
+                && stripInfo!.totalCount <= 1);
     }
 
     function _initFreshScreenmapForPanel() {
@@ -5718,7 +5823,7 @@ export function init(container: any) {
         stripInfo = null;
         stripStore.load(null);
         origDiameter = 0.5;
-        dom_txt_diameter.value = origDiameter;
+        dom_txt_diameter.value = String(origDiameter);
         origWidth = 0;
         origHeight = 0;
         // Choose a fitScale that gives a reasonable initial pixel pitch.
@@ -5728,7 +5833,7 @@ export function init(container: any) {
         resetTransforms();
     }
 
-    function _commitPlacingAt(cx: any, cy: any) {
+    function _commitPlacingAt(cx: number, cy: number) {
         if (!placingState) return;
         const entry = placingState.entry;
         const opts = placingState.opts;
@@ -5759,46 +5864,48 @@ export function init(container: any) {
         setNeedsGeometryUpdate();
         placingState = null;
         if (dom_pp_status) dom_pp_status.textContent = `Placed ${entry.label} as ${name}`;
-        overlayCanvas.style.cursor = 'default';
+        overlayCanvas!.style.cursor = 'default';
         _updateHintStrip();
     }
 
-    function _doPanelPlace(action: any) {
-        const entry = getCatalogEntry(action.catalogId);
+    function _doPanelPlace(action: UndoAction) {
+        const entry = getCatalogEntry(action['catalogId'] as string);
         if (!entry) return;
-        const localPts = generatePanelPoints(entry, action.opts);
+        const localPts = generatePanelPoints(entry, (action['opts'] as PanelOpts | undefined) ?? {});
         const fs = fitScale > 0 ? fitScale : 1;
         // rawPts (cm-units): use worldX/worldY divided by fitScale to place
         // the panel origin at the click point. screenmap_pts = rawPts * fs
         // - offset (keeps consistency with existing screenmap_pts coords).
         // For a fresh map (rawPts empty) we set rawPts directly so
         // rawPts[i]*fitScale == screenmap_pts[i].
-        const screenmapPts = [];
-        const rawPtsAdd = [];
+        const screenmapPts: [number, number][] = [];
+        const rawPtsAdd: [number, number][] = [];
         // Determine current "raw->screenmap" offset using existing point 0
         let offX = 0, offY = 0;
         if (rawPts.length > 0) {
-            offX = rawPts[0][0] * fs - screenmap_pts[0][0];
-            offY = rawPts[0][1] * fs - screenmap_pts[0][1];
+            offX = rawPts[0]![0] * fs - screenmap_pts[0]![0];
+            offY = rawPts[0]![1] * fs - screenmap_pts[0]![1];
         }
+        const actionWorldX = action['worldX'] as number;
+        const actionWorldY = action['worldY'] as number;
         for (const [px, py] of localPts) {
-            const sx = action.worldX + px * fs;
-            const sy = action.worldY + py * fs;
+            const sx = actionWorldX + px * fs;
+            const sy = actionWorldY + py * fs;
             screenmapPts.push([sx, sy]);
             rawPtsAdd.push([(sx + offX) / fs, (sy + offY) / fs]);
         }
         // Append to flat arrays
         const insertAt = screenmap_pts.length;
         for (let i = 0; i < screenmapPts.length; i++) {
-            screenmap_pts.push(screenmapPts[i]);
-            rawPts.push(rawPtsAdd[i]);
+            screenmap_pts.push(screenmapPts[i]!);
+            rawPts.push(rawPtsAdd[i]!);
         }
         const newIdx = stripStore.addStrip({
-            name: action.name,
+            name: action['name'] as string,
             points: rawPtsAdd,
             diameter: typeof origDiameter === 'number' ? origDiameter : 0.5,
             video_offset: insertAt,
-            pin: (typeof action.pin === 'string' && action.pin) ? action.pin : 'pin1',
+            pin: (typeof action['pin'] === 'string' && action['pin']) ? (action['pin'] as string) : 'pin1',
             videoOffsetOverride: false,
         });
         stripInfo = stripStore.get();
@@ -5818,20 +5925,20 @@ export function init(container: any) {
         action._count = screenmapPts.length;
     }
 
-    function _redoPanelPlace(action: any) {
+    function _redoPanelPlace(action: UndoAction) {
         _doPanelPlace(action);
     }
 
-    function _undoPanelPlace(action: any) {
+    function _undoPanelPlace(action: UndoAction) {
         if (!stripInfo) return;
         // Find the strip we added by name (most reliable after reordering).
         let stripIdx = -1;
-        const strips = stripInfo.strips;
+        const strips = stripInfo!.strips;
         for (let i = strips.length - 1; i >= 0; i--) {
-            if (strips[i].name === action.name) { stripIdx = i; break; }
+            if (strips[i]?.name === action['name']) { stripIdx = i; break; }
         }
         if (stripIdx < 0) return;
-        const strip = strips[stripIdx];
+        const strip = strips[stripIdx]!;
         screenmap_pts.splice(strip.offset, strip.count);
         rawPts.splice(strip.offset, strip.count);
         stripStore.removeStrip(stripIdx);
@@ -5840,7 +5947,7 @@ export function init(container: any) {
         stripInfo = stripStore.get();
     }
 
-    function _debugPlacePanel(catalogId: any, worldX: any, worldY: any, opts: any) {
+    function _debugPlacePanel(catalogId: string, worldX: number, worldY: number, opts: PanelOpts) {
         const entry = getCatalogEntry(catalogId);
         if (!entry) return null;
         const mergedOpts = { ..._readPanelOpts(), ...opts };
@@ -5869,7 +5976,7 @@ export function init(container: any) {
 
     // ── Paste-pending flow ────────────────────────────────────────────────
 
-    function _enterPasteFromText(text: any) {
+    function _enterPasteFromText(text: string) {
         const parsed = parsePastedScreenmap(text);
         if (!parsed) {
             _toastInfo("Clipboard didn't look like a screenmap");
@@ -5878,7 +5985,7 @@ export function init(container: any) {
         // Cancel any in-flight placing so the modes don't overlap
         if (placingState) _cancelPlacing();
 
-        const existingNames = new Set(stripStore.getStrips().map((s: any) => s.name));
+        const existingNames = new Set(stripStore.getStrips().map((s: StripEntry) => s.name));
         const merged = planPasteMerge(parsed, existingNames, stripStore.getTotalCount());
 
         // Compute centroid of the source points (in raw cm space).
@@ -5897,13 +6004,13 @@ export function init(container: any) {
         // For an empty editor, defer; we'll initialise fitScale on commit.
         const fs = (rawPts.length > 0 && fitScale > 0) ? fitScale : 1;
         // Offsets in screenmap-pixel space, centred around (0,0)
-        const strips = merged.map((s) => {
-            const offsetsLocal = s.points.map((p: any) => [(p[0] - cxRaw) * fs, (p[1] - cyRaw) * fs]);
+        const strips: PasteStateItem[] = merged.map((s) => {
+            const offsetsLocal: [number, number][] = s.points.map((p: [number, number]) => [(p[0] - cxRaw) * fs, (p[1] - cyRaw) * fs] as [number, number]);
             return { ...s, offsetsLocal };
         });
         const totalCount = merged.reduce((a, s) => a + s.points.length, 0);
         pasteState = { strips, ghostWorld: null, totalCount };
-        overlayCanvas.style.cursor = 'crosshair';
+        overlayCanvas!.style.cursor = 'crosshair';
         _updateHintStrip();
         setNeedsRender();
         return true;
@@ -5912,12 +6019,12 @@ export function init(container: any) {
     function _cancelPaste() {
         if (!pasteState) return;
         pasteState = null;
-        overlayCanvas.style.cursor = 'default';
+        overlayCanvas!.style.cursor = 'default';
         _updateHintStrip();
         setNeedsRender();
     }
 
-    function _updatePasteGhostFromCanvas(cx: any, cy: any) {
+    function _updatePasteGhostFromCanvas(cx: number, cy: number) {
         if (!pasteState) return;
         let [wx, wy] = _canvasToWorldPx(cx, cy);
         if (dom_pp_snap && dom_pp_snap.checked) {
@@ -5930,7 +6037,7 @@ export function init(container: any) {
 
     function _drawPasteGhost() {
         if (!pasteState || !pasteState.ghostWorld) return;
-        const ctx = overlayCtx;
+        const ctx = overlayCtx!;
         const [wx, wy] = pasteState.ghostWorld;
         ctx.save();
         ctx.lineWidth = 1;
@@ -5939,14 +6046,14 @@ export function init(container: any) {
         for (const strip of pasteState.strips) {
             // Polyline of this strip
             ctx.beginPath();
-            for (let i = 0; i < strip.offsetsLocal.length; i++) {
-                const [ox, oy] = strip.offsetsLocal[i];
+            for (let i = 0; i < strip.offsetsLocal!.length; i++) {
+                const [ox, oy] = strip.offsetsLocal![i]!;
                 const [px, py] = toCanvasCoords(wx + ox, wy + oy);
                 if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
             }
             ctx.stroke();
             const r = Math.max(2, 0.25 * (fitScale > 0 ? fitScale : 1) * camZoom);
-            for (const [ox, oy] of strip.offsetsLocal) {
+            for (const [ox, oy] of strip.offsetsLocal!) {
                 const [px, py] = toCanvasCoords(wx + ox, wy + oy);
                 ctx.beginPath();
                 ctx.arc(px, py, r, 0, Math.PI * 2);
@@ -5963,7 +6070,7 @@ export function init(container: any) {
         ctx.restore();
     }
 
-    function _commitPasteAt(cx: any, cy: any) {
+    function _commitPasteAt(cx: number, cy: number) {
         if (!pasteState) return;
         let [wx, wy] = _canvasToWorldPx(cx, cy);
         if (dom_pp_snap && dom_pp_snap.checked) {
@@ -5984,7 +6091,7 @@ export function init(container: any) {
             const cxRaw = n ? sxR / n : 0;
             const cyRaw = n ? syR / n : 0;
             for (const s of pasteState.strips) {
-                s.offsetsLocal = s.points.map((p: any) => [(p[0] - cxRaw) * fs, (p[1] - cyRaw) * fs]);
+                s.offsetsLocal = s.points.map((p: [number, number]) => [(p[0] - cxRaw) * fs, (p[1] - cyRaw) * fs] as [number, number]);
             }
         }
 
@@ -5992,15 +6099,15 @@ export function init(container: any) {
         // raw -> screenmap conversion offset (matches _doPanelPlace's logic)
         let offX = 0, offY = 0;
         if (rawPts.length > 0) {
-            offX = rawPts[0][0] * fs - screenmap_pts[0][0];
-            offY = rawPts[0][1] * fs - screenmap_pts[0][1];
+            offX = rawPts[0]![0] * fs - screenmap_pts[0]![0];
+            offY = rawPts[0]![1] * fs - screenmap_pts[0]![1];
         }
 
         // Rebuild the "addedStrips" descriptor with screenmap-coord points.
         // Re-resolve unique names AGAIN here in case the editor changed
         // between parse-time and commit-time (e.g. an undo happened while
         // paste was pending).
-        const existingNames = new Set(stripStore.getStrips().map((s: any) => s.name));
+        const existingNames = new Set(stripStore.getStrips().map((s: StripEntry) => s.name));
         const addedDescriptors = [];
         const base = stripStore.getTotalCount();
         let running = 0;
@@ -6008,7 +6115,7 @@ export function init(container: any) {
         for (const s of pasteState.strips) {
             const name = _uniqueNameAgainst(s.name, existingNames);
             existingNames.add(name);
-            const sm = s.offsetsLocal.map(([ox, oy]: [any, any]) => [wx + ox, wy + oy]);
+            const sm = s.offsetsLocal!.map(([ox, oy]: [number, number]) => [wx + ox, wy + oy] as [number, number]);
             const raw = sm.map(([smx, smy]: [any, any]) => [(smx + offX) / fs, (smy + offY) / fs]);
             addedDescriptors.push({
                 name,
@@ -6030,13 +6137,13 @@ export function init(container: any) {
         setNeedsGeometryUpdate();
         const pastedCount = action.strips.length;
         pasteState = null;
-        overlayCanvas.style.cursor = 'default';
+        overlayCanvas!.style.cursor = 'default';
         _updateHintStrip();
         _toastSuccess(`Pasted ${pastedCount} strip${pastedCount === 1 ? '' : 's'}`);
         // Select the first pasted strip for discoverability
         if (action.strips.length > 0 && stripInfo) {
-            for (let i = stripInfo.strips.length - 1; i >= 0; i--) {
-                if (stripInfo.strips[i].name === action.strips[0].name) {
+            for (let i = stripInfo!.strips.length - 1; i >= 0; i--) {
+                if (stripInfo!.strips[i]?.name === action.strips[0]?.name) {
                     selection.selectStrip(i);
                     break;
                 }
@@ -6044,21 +6151,22 @@ export function init(container: any) {
         }
     }
 
-    function _uniqueNameAgainst(baseName: any, used: any) {
+    function _uniqueNameAgainst(baseName: string, used: Set<string>) {
         if (!used.has(baseName)) return baseName;
         let n = 2;
         while (used.has(`${baseName} (${n})`)) n++;
         return `${baseName} (${n})`;
     }
 
-    function _doPasteStrips(action: any) {
+    function _doPasteStrips(action: UndoAction) {
         // Append every strip atomically. Identical scheme to _doPanelPlace
         // (append to flat arrays + stripStore.addStrip), but for many at once.
-        for (const desc of action.strips) {
+        const actionStrips = action['strips'] as Array<{ name: string; screenmapPts: [number, number][]; rawPts: [number, number][]; diameter?: number; video_offset: number; pin?: string; _insertAt?: number; _count?: number }>;
+        for (const desc of actionStrips) {
             const insertAt = screenmap_pts.length;
             for (let i = 0; i < desc.screenmapPts.length; i++) {
-                screenmap_pts.push([desc.screenmapPts[i][0], desc.screenmapPts[i][1]]);
-                rawPts.push([desc.rawPts[i][0], desc.rawPts[i][1]]);
+                screenmap_pts.push([desc.screenmapPts[i]![0], desc.screenmapPts[i]![1]]);
+                rawPts.push([desc.rawPts[i]![0], desc.rawPts[i]![1]]);
             }
             stripStore.addStrip({
                 name: desc.name,
@@ -6083,19 +6191,20 @@ export function init(container: any) {
         }
     }
 
-    function _undoPasteStrips(action: any) {
+    function _undoPasteStrips(action: UndoAction) {
         if (!stripInfo) return;
         // Walk added strips in reverse order; locate each by name (most recent
         // additions are at the end) and remove from both flat arrays + store.
-        for (let i = action.strips.length - 1; i >= 0; i--) {
-            const desc = action.strips[i];
-            const strips = stripInfo.strips;
+        const undoStrips = action['strips'] as Array<{ name: string }>;
+        for (let i = undoStrips.length - 1; i >= 0; i--) {
+            const desc = undoStrips[i]!;
+            const strips = stripInfo!.strips;
             let stripIdx = -1;
             for (let k = strips.length - 1; k >= 0; k--) {
-                if (strips[k].name === desc.name) { stripIdx = k; break; }
+                if (strips[k]?.name === desc.name) { stripIdx = k; break; }
             }
             if (stripIdx < 0) continue;
-            const strip = strips[stripIdx];
+            const strip = strips[stripIdx]!;
             screenmap_pts.splice(strip.offset, strip.count);
             rawPts.splice(strip.offset, strip.count);
             stripStore.removeStrip(stripIdx);
@@ -6123,11 +6232,11 @@ export function init(container: any) {
         if (sIdx === null || sIdx < 0) return;
         const strips = stripStore.getStrips();
         if (sIdx >= strips.length) return;
-        const s = strips[sIdx];
+        const s = strips[sIdx]!;
         const x = [], y = [];
         for (let i = s.offset; i < s.offset + s.count; i++) {
-            x.push(+rawPts[i][0].toFixed(4));
-            y.push(+rawPts[i][1].toFixed(4));
+            x.push(+rawPts[i]![0].toFixed(4));
+            y.push(+rawPts[i]![1].toFixed(4));
         }
         const d = typeof s.diameter === 'number' ? s.diameter : (parseFloat(dom_txt_diameter.value) || 0.25);
         const json = JSON.stringify({ map: { [s.name]: { x, y, diameter: d } } }, null, 2);
@@ -6150,7 +6259,7 @@ export function init(container: any) {
     // navigator.clipboard permission gate.
     document.addEventListener('paste', (e) => {
         const t = e.target;
-        if (t && ((t as any).tagName === 'INPUT' || (t as any).tagName === 'TEXTAREA' || (t as any).isContentEditable)) return;
+        if (t && ((t as HTMLElement).tagName === 'INPUT' || (t as HTMLElement).tagName === 'TEXTAREA' || (t as HTMLElement).isContentEditable)) return;
         const txt = (e.clipboardData && e.clipboardData.getData('text')) || '';
         if (!txt) return;
         if (_enterPasteFromText(txt)) {
@@ -6229,17 +6338,19 @@ export function init(container: any) {
                 confirmButtonText: 'Insert at center',
                 focusConfirm: false,
                 didOpen: () => {
-                    const $ = (id: any): any => document.getElementById(id);
-                    const catalog = $('ins_catalog');
-                    const wiring = $('ins_wiring');
-                    const corner = $('ins_corner');
-                    const rotation = $('ins_rotation');
-                    const flipH = $('ins_flipH');
-                    const flipV = $('ins_flipV');
-                    const spacing = $('ins_spacing');
-                    const snap = $('ins_snap');
-                    const grid = $('ins_grid');
-                    const preview = $('ins_preview');
+                    const $inp = (id: string) => document.getElementById(id) as HTMLInputElement | null;
+                    const $sel = (id: string) => document.getElementById(id) as HTMLSelectElement | null;
+                    const $cvs = (id: string) => document.getElementById(id) as HTMLCanvasElement | null;
+                    const catalog = $sel('ins_catalog');
+                    const wiring = $sel('ins_wiring');
+                    const corner = $sel('ins_corner');
+                    const rotation = $inp('ins_rotation');
+                    const flipH = $inp('ins_flipH');
+                    const flipV = $inp('ins_flipV');
+                    const spacing = $inp('ins_spacing');
+                    const snap = $inp('ins_snap');
+                    const grid = $inp('ins_grid');
+                    const preview = $cvs('ins_preview');
 
                     if (catalog) catalog.value = initial.catalogId;
                     if (wiring) wiring.value = initial.wiring;
@@ -6247,9 +6358,9 @@ export function init(container: any) {
                     if (rotation) rotation.value = String(initial.rotation);
                     if (flipH) flipH.checked = initial.flipH;
                     if (flipV) flipV.checked = initial.flipV;
-                    if (spacing) spacing.value = initial.spacing;
+                    if (spacing) spacing.value = String(initial.spacing);
                     if (snap) snap.checked = initial.snap;
-                    if (grid) grid.value = initial.grid;
+                    if (grid) grid.value = String(initial.grid);
 
                     function readForm() {
                         return {
@@ -6268,14 +6379,15 @@ export function init(container: any) {
                     function redrawPreview() {
                         if (!preview) return;
                         const ctx = preview.getContext('2d');
+                        if (!ctx) return;
                         ctx.clearRect(0, 0, preview.width, preview.height);
                         const opts = readForm();
                         const entry = getCatalogEntry(opts.catalogId);
                         if (!entry) return;
                         const pts = generatePanelPoints(entry, {
-                            wiring: opts.wiring,
-                            dataInCorner: opts.corner,
-                            rotation: opts.rotation,
+                            wiring: opts.wiring as import('./panel-catalog').WiringStyle,
+                            dataInCorner: opts.corner as import('./panel-catalog').DataInCorner,
+                            rotation: opts.rotation as import('./panel-catalog').RotationDeg,
                             flipH: opts.flipH,
                             flipV: opts.flipV,
                             spacing: opts.spacing,
@@ -6297,8 +6409,8 @@ export function init(container: any) {
                         ctx.lineWidth = 1;
                         ctx.beginPath();
                         for (let i = 0; i < pts.length; i++) {
-                            const x = pts[i][0] * sc + cxOff;
-                            const y = pts[i][1] * sc + cyOff;
+                            const x = pts[i]![0] * sc + cxOff;
+                            const y = pts[i]![1] * sc + cyOff;
                             if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
                         }
                         ctx.stroke();
@@ -6314,7 +6426,7 @@ export function init(container: any) {
                         if (pts.length > 0) {
                             ctx.fillStyle = '#4caf50';
                             ctx.beginPath();
-                            ctx.arc(pts[0][0] * sc + cxOff, pts[0][1] * sc + cyOff, 3, 0, Math.PI * 2);
+                            ctx.arc(pts[0]![0] * sc + cxOff, pts[0]![1] * sc + cyOff, 3, 0, Math.PI * 2);
                             ctx.fill();
                         }
                     }
@@ -6341,22 +6453,23 @@ export function init(container: any) {
         }
     }
 
-    function _readInsertDialog() {
-        const $ = (id: any): any => document.getElementById(id);
+    function _readInsertDialog(): InsertDialogOpts {
+        const $inp = (id: string) => document.getElementById(id) as HTMLInputElement | null;
+        const $sel = (id: string) => document.getElementById(id) as HTMLSelectElement | null;
         return {
-            catalogId: $('ins_catalog') ? $('ins_catalog').value : '',
-            wiring: $('ins_wiring') ? $('ins_wiring').value : 'serpentine',
-            corner: $('ins_corner') ? $('ins_corner').value : 'TL',
-            rotation: $('ins_rotation') ? parseInt($('ins_rotation').value, 10) || 0 : 0,
-            flipH: $('ins_flipH') ? !!$('ins_flipH').checked : false,
-            flipV: $('ins_flipV') ? !!$('ins_flipV').checked : false,
-            spacing: $('ins_spacing') ? (parseFloat($('ins_spacing').value) || 1) : 1,
-            snap: $('ins_snap') ? !!$('ins_snap').checked : true,
-            grid: $('ins_grid') ? (parseFloat($('ins_grid').value) || 1) : 1,
+            catalogId: $sel('ins_catalog') ? $sel('ins_catalog')!.value : '',
+            wiring: $sel('ins_wiring') ? $sel('ins_wiring')!.value : 'serpentine',
+            corner: $sel('ins_corner') ? $sel('ins_corner')!.value : 'TL',
+            rotation: $inp('ins_rotation') ? parseInt($inp('ins_rotation')!.value, 10) || 0 : 0,
+            flipH: $inp('ins_flipH') ? !!$inp('ins_flipH')!.checked : false,
+            flipV: $inp('ins_flipV') ? !!$inp('ins_flipV')!.checked : false,
+            spacing: $inp('ins_spacing') ? (parseFloat($inp('ins_spacing')!.value) || 1) : 1,
+            snap: $inp('ins_snap') ? !!$inp('ins_snap')!.checked : true,
+            grid: $inp('ins_grid') ? (parseFloat($inp('ins_grid')!.value) || 1) : 1,
         };
     }
 
-    function _writeAccordionFromDialog(opts: any) {
+    function _writeAccordionFromDialog(opts: InsertDialogOpts) {
         if (dom_pp_wiring && opts.wiring) dom_pp_wiring.value = opts.wiring;
         if (dom_pp_corner && opts.corner) dom_pp_corner.value = opts.corner;
         if (dom_pp_rotation && (opts.rotation || opts.rotation === 0)) dom_pp_rotation.value = String(opts.rotation);
@@ -6367,7 +6480,7 @@ export function init(container: any) {
         if (dom_pp_grid && (opts.grid || opts.grid === 0)) dom_pp_grid.value = String(opts.grid);
     }
 
-    function _submitInsertDialog(opts: any) {
+    function _submitInsertDialog(opts: InsertDialogOpts) {
         if (!opts || !opts.catalogId) return null;
         const entry = getCatalogEntry(opts.catalogId);
         if (!entry) return null;
@@ -6398,23 +6511,23 @@ export function init(container: any) {
         ac.abort();
         if (rafId) cancelAnimationFrame(rafId);
         if (screenmapOutline) {
-            scene.remove(screenmapOutline);
+            scene!.remove(screenmapOutline);
             screenmapOutline.geometry.dispose();
-            screenmapOutline.material.dispose();
+            ((screenmapOutline.material as import('three').Material)).dispose();
         }
         if (pointsMesh) {
-            scene.remove(pointsMesh);
-            pointsGeometry.dispose();
-            pointsMaterial.dispose();
+            scene!.remove(pointsMesh);
+            pointsGeometry!.dispose();
+            pointsMaterial!.dispose();
         }
         if (gridLines) {
-            scene.remove(gridLines);
+            scene!.remove(gridLines);
             gridLines.geometry.dispose();
-            gridLines.material.dispose();
+            ((gridLines.material as import('three').Material)).dispose();
         }
         removeBackgroundImage();
         circleTexture.dispose();
-        renderer.dispose();
+        renderer!.dispose();
         if (ctxMenu && ctxMenu.parentNode) ctxMenu.parentNode.removeChild(ctxMenu);
         // Clean up container layout styles
         container.style.display = '';

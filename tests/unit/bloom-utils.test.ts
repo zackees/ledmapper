@@ -171,7 +171,7 @@ describe('computeFitScale', () => {
 
     it('uses the max extent (matches min-scale fitting of the larger axis)', () => {
         const raw = [[0, 0], [10, 2]];
-        const fitted = raw.map(([x, y]) => [x * 3, y * 3]);
+        const fitted = (raw as [number, number][]).map(([x, y]) => [x * 3, y * 3]);
         assert.ok(Math.abs(computeFitScale(raw, fitted) - 3) < 1e-9);
     });
 

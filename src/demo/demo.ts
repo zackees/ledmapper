@@ -14,45 +14,48 @@ import {
     BLOOM_MIN_STRENGTH,
 } from '../bloom-utils';
 import { estimateLedSize } from '../moviemaker/transforms';
+import type { MultiStripParseResult, StripPoint, ScreenmapJson } from '../types/domain';
 import templateHtml from './template.html?raw';
 export { default as css } from './demo.css?url';
 
-export function init(container: any) {
+export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
 
     // Global variables
-    let videoReader: any = null;
+    let videoReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     let videoBuffer = new Uint8Array();
 
     // DOM elements
-    const dom_btn_upload_screenmap = container.querySelector("#btn_upload_screenmap");
-    const dom_btn_load_movie = container.querySelector("#btn_load_movie");
-    const dom_btn_play = container.querySelector("#btn_play");
-    const dom_rng_diameter = container.querySelector("#rng_diameter");
-    const dom_txt_curr_diameter = container.querySelector("#txt_curr_diameter");
-    const dom_btn_download_screenmap = container.querySelector("#btn_download_screenmap");
-    const dom_btn_download_video = container.querySelector("#btn_download_video");
-    const dom_sel_framerate = container.querySelector("#sel_framerate");
-    const dom_btn_download_screenmap_16x16_serpentine = container.querySelector("#btn_download_screenmap_16x16_serpentine");
-    const dom_chk_auto_bloom        = container.querySelector('#chk_auto_bloom');
-    const dom_bloom_strength_slider = container.querySelector('#bloom_strength_slider');
-    const dom_rng_bloom_strength    = container.querySelector('#rng_bloom_strength');
-    const dom_txt_bloom_strength    = container.querySelector('#txt_curr_bloom_strength');
+    const dom_btn_upload_screenmap = container.querySelector('#btn_upload_screenmap') as HTMLInputElement;
+    const dom_btn_load_movie = container.querySelector('#btn_load_movie') as HTMLInputElement;
+    const dom_btn_play = container.querySelector('#btn_play') as HTMLInputElement;
+    const dom_rng_diameter = container.querySelector('#rng_diameter') as HTMLInputElement;
+    const dom_txt_curr_diameter = container.querySelector('#txt_curr_diameter') as HTMLElement;
+    const dom_btn_download_screenmap = container.querySelector('#btn_download_screenmap') as HTMLButtonElement;
+    const dom_btn_download_video = container.querySelector('#btn_download_video') as HTMLButtonElement;
+    const dom_sel_framerate = container.querySelector('#sel_framerate') as HTMLSelectElement;
+    const dom_btn_download_screenmap_16x16_serpentine = container.querySelector('#btn_download_screenmap_16x16_serpentine') as HTMLButtonElement;
+    const dom_chk_auto_bloom        = container.querySelector('#chk_auto_bloom') as HTMLInputElement;
+    const dom_bloom_strength_slider = container.querySelector('#bloom_strength_slider') as HTMLElement;
+    const dom_rng_bloom_strength    = container.querySelector('#rng_bloom_strength') as HTMLInputElement;
+    const dom_txt_bloom_strength    = container.querySelector('#txt_curr_bloom_strength') as HTMLElement;
 
     dom_btn_play.disabled = true;
 
     const CANVAS_SIZE = 800;
-    let screenmap_pts: any = [];
-    let screenmap_pts_original: any = [];
-    let stripInfo: any = null;
-    const movie_frames: any = [];
+    let screenmap_pts: StripPoint[] = [];
+    let screenmap_pts_original: StripPoint[] = [];
+    let stripInfo: MultiStripParseResult | null = null;
+    const movie_frames: Uint8Array[] = [];
     let playing = false;
     let curr_frame_idx = 0;
-    let curr_frame;
+    let curr_frame: Uint8Array | null = null;
 
     // Three.js objects
-    let pointsGeometry: any, pointsMaterial: any, pointsMesh: any;
-    let colorAttribute: any;
+    let pointsGeometry: import('three').BufferGeometry | undefined;
+    let pointsMaterial: import('three').PointsMaterial | undefined;
+    let pointsMesh: import('three').Points | undefined;
+    let colorAttribute: import('three').Float32BufferAttribute | undefined;
 
     // Overlay state
     let showLines = false;
@@ -70,9 +73,9 @@ export function init(container: any) {
     const { renderer, scene, camera, wrapper, overlayCanvas, overlayCtx } = createRendererAndScene({
         width: CANVAS_SIZE,
         height: CANVAS_SIZE,
-        parent: main,
+        parent: main as HTMLElement,
         enableOverlay: true,
-    });
+    }) as import('../types/domain').RendererContextWithOverlay;
 
     // FastLED-style bloom: UnrealBloomPass with auto-bloom iris.
     const bloom = createBloomComposer({
@@ -100,7 +103,7 @@ export function init(container: any) {
     const DEMO_PROFILE = { floor: DEMO_AUTO_FLOOR, maxDense: DEMO_AUTO_MAX_DENSE, maxSparse: DEMO_AUTO_MAX_SPARSE };
     let demoBloomRange = { min: Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5), max: DEMO_AUTO_MAX_DENSE };
     let demoAutoBloomEnabled = true;
-    let demoManualBloomStrength: any = null;
+    let demoManualBloomStrength: number | null = null;
 
     /** Recompute bloom envelope from the current screenmap geometry. */
     function _recomputeDemoBloomRange() {
@@ -118,14 +121,14 @@ export function init(container: any) {
 
     const DEMO_BLOOM_LS_KEY = 'ledmapper.demo.autoBloom';
 
-    function _sliderToDemoBloomStrength(rngVal: any) {
+    function _sliderToDemoBloomStrength(rngVal: number): number {
         const t = (rngVal / 100) ** 2;
         const S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
         const S_MAX = DEMO_AUTO_MAX_SPARSE * 1.5;
         return S_MIN + (S_MAX - S_MIN) * t;
     }
 
-    function _applyDemoBloomAutoState(enabled: any) {
+    function _applyDemoBloomAutoState(enabled: boolean) {
         dom_rng_bloom_strength.disabled = enabled;
         if (enabled) {
             dom_bloom_strength_slider.classList.add('opacity-50', 'pointer-events-none');
@@ -154,7 +157,7 @@ export function init(container: any) {
             const S_MAX = DEMO_AUTO_MAX_SPARSE * 1.5;
             const raw = (curr - S_MIN) / (S_MAX - S_MIN);
             const rngVal = Math.round(Math.sqrt(Math.max(raw, 0)) * 100);
-            dom_rng_bloom_strength.value = Math.min(Math.max(rngVal, 0), 100);
+            dom_rng_bloom_strength.value = String(Math.min(Math.max(rngVal, 0), 100));
             demoManualBloomStrength = _sliderToDemoBloomStrength(parseInt(dom_rng_bloom_strength.value));
             dom_txt_bloom_strength.innerText = demoManualBloomStrength.toFixed(2);
         }
@@ -194,21 +197,21 @@ export function init(container: any) {
 
     let tooltipLedIdx = -1;
 
-    function hitTestLED(canvasX: any, canvasY: any) {
+    function hitTestLED(canvasX: number, canvasY: number): number {
         if (screenmap_pts.length === 0) return -1;
         const threshold = Math.max(getDiameter(), 10);
         const threshSq = threshold * threshold;
         let bestIdx = -1, bestDist = threshSq;
         for (let i = 0; i < screenmap_pts.length; i++) {
-            const dx = canvasX - screenmap_pts[i][0];
-            const dy = canvasY - screenmap_pts[i][1];
+            const dx = canvasX - screenmap_pts[i]![0];
+            const dy = canvasY - screenmap_pts[i]![1];
             const d = dx * dx + dy * dy;
             if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
         return bestIdx;
     }
 
-    function onPointerMove(e: any) {
+    function onPointerMove(e: MouseEvent) {
         const rect = overlayCanvas.getBoundingClientRect();
         const scaleX = CANVAS_SIZE / rect.width;
         const scaleY = CANVAS_SIZE / rect.height;
@@ -218,7 +221,7 @@ export function init(container: any) {
         if (idx >= 0) {
             if (idx !== tooltipLedIdx) {
                 tooltipLedIdx = idx;
-                const [ox, oy] = screenmap_pts_original[idx];
+                const [ox, oy] = screenmap_pts_original[idx]!;
                 tooltip.textContent = `LED #${idx}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
             }
             const tx = Math.min(cx + 14, CANVAS_SIZE - tooltip.offsetWidth - 4);
@@ -239,15 +242,15 @@ export function init(container: any) {
 
     overlayCanvas.addEventListener('mousemove', onPointerMove, { signal });
     overlayCanvas.addEventListener('mouseleave', onPointerLeave, { signal });
-    overlayCanvas.addEventListener('touchmove', (e: any) => {
-        if (e.touches.length) onPointerMove(e.touches[0]);
+    overlayCanvas.addEventListener('touchmove', (e: TouchEvent) => {
+        if (e.touches.length) onPointerMove(e.touches[0] as unknown as MouseEvent);
     }, { passive: true, signal });
     overlayCanvas.addEventListener('touchend', onPointerLeave, { passive: true, signal });
     overlayCanvas.addEventListener('touchcancel', onPointerLeave, { passive: true, signal });
 
     // --- Build Three.js Points from screenmap data ---
     function buildPoints() {
-        const previous = pointsMesh ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial } : null;
+        const previous = (pointsMesh && pointsGeometry && pointsMaterial && colorAttribute) ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial, colorAttribute } : null;
         const result = rebuildPointsMesh({
             scene, previous,
             points: screenmap_pts,
@@ -262,15 +265,15 @@ export function init(container: any) {
     }
 
     // --- Screenmap data loading ---
-    function load_screenmap_data(jsonBlob: any) {
-        screenmap_pts = parse_screenmap_data_json(jsonBlob);
+    function load_screenmap_data(jsonBlob: Record<string, unknown>) {
+        screenmap_pts = parse_screenmap_data_json(jsonBlob as unknown as ScreenmapJson);
         if (screenmap_pts.length === 0) {
-            console.error("Failed to load screenmap data");
+            console.error('Failed to load screenmap data');
             return;
         }
-        screenmap_pts_original = screenmap_pts.map(([x, y]: [any, any]) => [x, y]);
+        screenmap_pts_original = screenmap_pts.map(([x, y]) => [x, y] as StripPoint);
         screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
-        stripInfo = parseScreenmapMultiStrip(jsonBlob);
+        stripInfo = parseScreenmapMultiStrip(jsonBlob as unknown as ScreenmapJson);
         buildPoints();
         _recomputeDemoBloomRange();
         applyScreenmapDiameter();
@@ -284,7 +287,7 @@ export function init(container: any) {
     // slider with it. The user can still override via the slider. Maps that
     // declare no diameter keep the slider's current value.
     function applyScreenmapDiameter() {
-        const declared = resolveLedDiameter(stripInfo ? stripInfo.strips : null);
+        const declared = resolveLedDiameter(stripInfo ? (stripInfo.strips as unknown as Array<Record<string, unknown>>) : null);
         if (declared === null) return;
         // Canvas world units map 1:1 to CSS pixels (and PointsMaterial.size
         // is in CSS pixels), so no pixelRatio term here.
@@ -292,7 +295,7 @@ export function init(container: any) {
         const px = Math.round(declared * scale);
         const min = parseInt(dom_rng_diameter.min) || 1;
         const max = parseInt(dom_rng_diameter.max) || 64;
-        dom_rng_diameter.value = Math.min(Math.max(px, min), max);
+        dom_rng_diameter.value = String(Math.min(Math.max(px, min), max));
         dom_rng_diameter.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
@@ -304,44 +307,44 @@ export function init(container: any) {
         videoBuffer = new Uint8Array();
     }
 
-    function loadScreenmapFile(file: any) {
+    function loadScreenmapFile(file: File | null | undefined) {
         if (!file) return;
         if (!fileHasExtension(file, ['.json'])) {
             alert('Please choose a .json screenmap file.');
             return;
         }
-        file.text().then((text: any) => {
+        file.text().then((text: string) => {
             // A new screenmap invalidates frames sized for the old LED count
             stopVideoStream();
             movie_frames.length = 0;
             curr_frame_idx = 0;
             set_dom_btn_play(false);
-            load_screenmap_data(JSON.parse(text));
-        }).catch((error: any) => {
+            load_screenmap_data(JSON.parse(text) as Record<string, unknown>);
+        }).catch((error: unknown) => {
             alert(`Error reading screenmap file: ${error}`);
         });
     }
 
-    function loadMovieFile(file: any) {
+    function loadMovieFile(file: File | null | undefined) {
         if (!file) return;
         if (!fileHasExtension(file, ['.rgb'])) {
             alert('Please choose a .rgb video file.');
             return;
         }
-        file.arrayBuffer().then(load_movie_data).catch((error: any) => {
+        file.arrayBuffer().then(load_movie_data).catch((error: unknown) => {
             alert(`Error reading video file: ${error}`);
         });
     }
 
-    function load_movie_data(arrayBuffer: any) {
+    function load_movie_data(arrayBuffer: ArrayBuffer) {
         if (screenmap_pts.length === 0) {
-            alert("No screenmap is loaded!");
+            alert('No screenmap is loaded!');
             return;
         }
         const uint8_array = new Uint8Array(arrayBuffer);
         const num_pixels = uint8_array.length / 3;
         if (num_pixels % screenmap_pts.length !== 0) {
-            alert("Frame size should be a multiple of the number of screenmap points!");
+            alert('Frame size should be a multiple of the number of screenmap points!');
             return;
         }
         stopVideoStream();
@@ -357,15 +360,15 @@ export function init(container: any) {
     }
 
     dom_btn_upload_screenmap.addEventListener('change', () => {
-        loadScreenmapFile(dom_btn_upload_screenmap.files[0]);
+        loadScreenmapFile(dom_btn_upload_screenmap.files?.[0]);
     }, { signal });
 
     dom_btn_load_movie.addEventListener('change', () => {
-        loadMovieFile(dom_btn_load_movie.files[0]);
+        loadMovieFile(dom_btn_load_movie.files?.[0]);
     }, { signal });
 
     wireFileDropTarget({
-        target: main,
+        target: main as HTMLElement,
         onFile: (file) => {
             if (!file) return;
             if (fileHasExtension(file, ['.json'])) {
@@ -385,12 +388,12 @@ export function init(container: any) {
                 if (!response.ok) throw new Error('Network response was not ok');
                 return response.json();
             })
-            .then(jsonBlob => {
-                console.log("Screenmap data loaded successfully");
+            .then((jsonBlob: Record<string, unknown>) => {
+                console.log('Screenmap data loaded successfully');
                 load_screenmap_data(jsonBlob);
                 fetchAndLoadVideo();
             })
-            .catch(error => console.error("Error loading JSON:", error));
+            .catch((error: unknown) => console.error('Error loading JSON:', error));
     }
 
     // --- Video streaming ---
@@ -399,19 +402,19 @@ export function init(container: any) {
             const response = await fetch('/demo/video.rgb');
             if (!response.ok) throw new Error('Network response was not ok');
             if (!response.body) throw new Error('ReadableStream not supported');
-            videoReader = response.body.getReader();
+            videoReader = response.body.getReader() as ReadableStreamDefaultReader<Uint8Array>;
             streamVideoData();
         } catch (error) {
-            console.error("Error loading video:", error);
+            console.error('Error loading video:', error);
         }
     }
 
     async function streamVideoData() {
         try {
             for (;;) {
-                const { done, value } = await videoReader.read();
+                const { done, value } = await videoReader!.read();
                 if (done) {
-                    console.log("Finished streaming video data");
+                    console.log('Finished streaming video data');
                     break;
                 }
                 const newBuffer = new Uint8Array(videoBuffer.length + value.length);
@@ -428,11 +431,11 @@ export function init(container: any) {
                 }
             }
         } catch (error) {
-            console.error("Error streaming video:", error);
+            console.error('Error streaming video:', error);
         }
     }
 
-    function processNewFrames(frameData: any) {
+    function processNewFrames(frameData: Uint8Array) {
         const frameSize = screenmap_pts.length * 3;
         const numNewFrames = frameData.length / frameSize;
         for (let i = 0; i < numNewFrames; i++) {
@@ -447,9 +450,9 @@ export function init(container: any) {
     }
 
     // --- Play/Pause ---
-    function set_dom_btn_play(on: any) {
+    function set_dom_btn_play(on: boolean) {
         playing = on;
-        dom_btn_play.value = playing ? "Pause" : "Play";
+        dom_btn_play.value = playing ? 'Pause' : 'Play';
     }
 
     dom_btn_play.addEventListener('click', () => set_dom_btn_play(!playing), { signal });
@@ -458,7 +461,7 @@ export function init(container: any) {
     const getDiameter = wireDiameterSlider({
         slider: dom_rng_diameter,
         label: dom_txt_curr_diameter,
-        getMaterial: () => pointsMaterial,
+        getMaterial: () => pointsMaterial ?? null,
         signal,
     });
     // Re-proportion the bloom after wireDiameterSlider applies the new size.
@@ -474,17 +477,17 @@ export function init(container: any) {
     // --- Download handlers ---
     dom_btn_download_screenmap.addEventListener('click', () => {
         if (!screenmap_pts || screenmap_pts.length === 0) {
-            alert("No screenmap data available to download!");
+            alert('No screenmap data available to download!');
             return;
         }
         const screenmap = {
             map: {
                 strip1: {
-                    x: screenmap_pts.map((pt: any) => pt[0]),
-                    y: screenmap_pts.map((pt: any) => pt[1]),
-                    diameter: 0.25
-                }
-            }
+                    x: screenmap_pts.map(pt => pt[0]),
+                    y: screenmap_pts.map(pt => pt[1]),
+                    diameter: 0.25,
+                },
+            },
         };
         const blob = new Blob([JSON.stringify(screenmap, null)], { type: 'application/json' });
         download_blob_as_file(blob, 'screenmap.json');
@@ -492,13 +495,13 @@ export function init(container: any) {
 
     dom_btn_download_video.addEventListener('click', () => {
         if (!movie_frames || movie_frames.length === 0) {
-            alert("No video data available to download!");
+            alert('No video data available to download!');
             return;
         }
-        const totalLength = movie_frames.reduce((sum: any, frame: any) => sum + frame.length, 0);
+        const totalLength = movie_frames.reduce((sum, frame) => sum + frame.length, 0);
         const videoData = new Uint8Array(totalLength);
         let offset = 0;
-        movie_frames.forEach((frame: any) => {
+        movie_frames.forEach((frame) => {
             videoData.set(frame, offset);
             offset += frame.length;
         });
@@ -512,15 +515,15 @@ export function init(container: any) {
                 if (!response.ok) throw new Error('Network response was not ok');
                 return response.json();
             })
-            .then(jsonData => {
+            .then((jsonData: unknown) => {
                 const blob = new Blob([JSON.stringify(jsonData, null)], { type: 'application/json' });
                 download_blob_as_file(blob, '16x16_serpentine.json');
             })
-            .catch(error => console.error("Error loading 16x16 serpentine JSON:", error));
+            .catch((error: unknown) => console.error('Error loading 16x16 serpentine JSON:', error));
     }, { signal });
 
     // Initialize diameter to 16 on load
-    dom_rng_diameter.value = 16;
+    dom_rng_diameter.value = '16';
     dom_rng_diameter.dispatchEvent(new Event('input', { bubbles: true }));
 
     // --- Overlay drawing for LED connection visualization ---
@@ -539,12 +542,12 @@ export function init(container: any) {
         }
     }
 
-    function drawOverlaySingleStrip(pts: any) {
+    function drawOverlaySingleStrip(pts: StripPoint[]) {
         // Connecting lines with rainbow colors
         overlayCtx.lineWidth = 2;
         for (let i = 0; i < pts.length - 1; i++) {
-            const [x1, y1] = pts[i];
-            const [x2, y2] = pts[i + 1];
+            const [x1, y1] = pts[i]!;
+            const [x2, y2] = pts[i + 1]!;
             const hue = (120 + i * 2) % 360;
             overlayCtx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
             overlayCtx.beginPath();
@@ -557,34 +560,35 @@ export function init(container: any) {
             }
         }
 
-        fillCircle(pts[0][0], pts[0][1], 8, 'rgba(0,255,0,1)');
-        if (pts.length > 1) fillCircle(pts[1][0], pts[1][1], 6, 'rgba(0,255,0,0.5)');
-        fillCircle(pts[pts.length - 1][0], pts[pts.length - 1][1], 8, 'rgba(255,0,0,1)');
+        fillCircle(pts[0]![0], pts[0]![1], 8, 'rgba(0,255,0,1)');
+        if (pts.length > 1) fillCircle(pts[1]![0], pts[1]![1], 6, 'rgba(0,255,0,0.5)');
+        fillCircle(pts[pts.length - 1]![0], pts[pts.length - 1]![1], 8, 'rgba(255,0,0,1)');
         for (let i = 2; i < pts.length - 1; i++) {
-            fillCircle(pts[i][0], pts[i][1], 4, 'rgba(255,255,255,0.5)');
+            fillCircle(pts[i]![0], pts[i]![1], 4, 'rgba(255,255,255,0.5)');
         }
 
         const strip = (stripInfo && stripInfo.strips[0]) || { name: '', count: pts.length };
         const labels = stripStartEndLabels(strip, 0);
-        const items = [{ id: 'start:0', text: labels.start, anchorX: pts[0][0], anchorY: pts[0][1], color: 'rgba(0,255,0,1)', dotRadius: 4 }];
+        const items = [{ id: 'start:0', text: labels.start, anchorX: pts[0]![0], anchorY: pts[0]![1], color: 'rgba(0,255,0,1)', dotRadius: 4 }];
         if (labels.end) {
-            items.push({ id: 'end:0', text: labels.end, anchorX: pts[pts.length - 1][0], anchorY: pts[pts.length - 1][1], color: 'rgba(255,0,0,1)', dotRadius: 4 });
+            items.push({ id: 'end:0', text: labels.end, anchorX: pts[pts.length - 1]![0], anchorY: pts[pts.length - 1]![1], color: 'rgba(255,0,0,1)', dotRadius: 4 });
         }
         drawLabelItems(items, pts);
     }
 
-    function drawOverlayMultiStrip(pts: any) {
+    function drawOverlayMultiStrip(pts: StripPoint[]) {
+        if (!stripInfo) return;
         const strips = stripInfo.strips;
         const colors = getStripColors(strips.length);
-        const labelItems = [];
+        const labelItems: Array<{ id: string; text: string; anchorX: number; anchorY: number; color: string; dotRadius: number }> = [];
 
         overlayCtx.lineWidth = 2;
         for (let s = 0; s < strips.length; s++) {
-            const strip = strips[s];
+            const strip = strips[s]!;
             // Skip empty strips and strips that fall outside the available points
             if (strip.count <= 0) continue;
             if (strip.offset >= pts.length) continue;
-            const color = colors[s];
+            const color = colors[s] ?? '#ffffff';
             overlayCtx.strokeStyle = color;
 
             const startIdx = strip.offset;
@@ -592,8 +596,8 @@ export function init(container: any) {
 
             // Draw connection lines within this strip
             for (let i = startIdx; i < endIdx; i++) {
-                const [x1, y1] = pts[i];
-                const [x2, y2] = pts[i + 1];
+                const [x1, y1] = pts[i]!;
+                const [x2, y2] = pts[i + 1]!;
                 overlayCtx.beginPath();
                 overlayCtx.moveTo(x1, y1);
                 overlayCtx.lineTo(x2, y2);
@@ -606,22 +610,22 @@ export function init(container: any) {
             }
 
             // Draw LED circles for this strip
-            fillCircle(pts[startIdx][0], pts[startIdx][1], 8, color);
+            fillCircle(pts[startIdx]![0], pts[startIdx]![1], 8, color);
             if (endIdx > startIdx) {
                 if (endIdx > startIdx + 1) {
-                    fillCircle(pts[startIdx + 1][0], pts[startIdx + 1][1], 6, color);
+                    fillCircle(pts[startIdx + 1]![0], pts[startIdx + 1]![1], 6, color);
                 }
-                fillCircle(pts[endIdx][0], pts[endIdx][1], 8, color);
+                fillCircle(pts[endIdx]![0], pts[endIdx]![1], 8, color);
             }
             for (let i = startIdx + 2; i < endIdx; i++) {
-                fillCircle(pts[i][0], pts[i][1], 4, color);
+                fillCircle(pts[i]![0], pts[i]![1], 4, color);
             }
 
             // Label start/end of each strip (single label for 1-LED strips)
             const labels = stripStartEndLabels({ name: strip.name, count: endIdx - startIdx + 1 }, s);
-            labelItems.push({ id: 'start:' + s, text: labels.start, anchorX: pts[startIdx][0], anchorY: pts[startIdx][1], color, dotRadius: 4 });
+            labelItems.push({ id: 'start:' + s, text: labels.start, anchorX: pts[startIdx]![0], anchorY: pts[startIdx]![1], color, dotRadius: 4 });
             if (labels.end) {
-                labelItems.push({ id: 'end:' + s, text: labels.end, anchorX: pts[endIdx][0], anchorY: pts[endIdx][1], color, dotRadius: 4 });
+                labelItems.push({ id: 'end:' + s, text: labels.end, anchorX: pts[endIdx]![0], anchorY: pts[endIdx]![1], color, dotRadius: 4 });
             }
         }
         drawLabelItems(labelItems, pts);
@@ -629,16 +633,16 @@ export function init(container: any) {
 
     const labelRenderer = createLabelRenderer();
 
-    function drawLabelItems(items: any, pts: any) {
+    function drawLabelItems(items: Array<{ id: string; text: string; anchorX: number; anchorY: number; color: string; dotRadius?: number }>, pts: StripPoint[]) {
         labelRenderer.draw(overlayCtx, items, {
             font: '12px sans-serif',
             textColor: 'white',
             bounds: { x: 0, y: 0, w: CANVAS_SIZE, h: CANVAS_SIZE },
-            obstacles: () => pts.map(([x, y]: [any, any]) => ({ x: x - 3, y: y - 3, w: 6, h: 6 })),
+            obstacles: () => pts.map(([x, y]) => ({ x: x - 3, y: y - 3, w: 6, h: 6 })),
         });
     }
 
-    function drawArrowHead(x1: any, y1: any, x2: any, y2: any) {
+    function drawArrowHead(x1: number, y1: number, x2: number, y2: number) {
         const dx = x2 - x1, dy = y2 - y1;
         const angle = Math.atan2(dy, dx);
         const t = 0.2;
@@ -651,7 +655,7 @@ export function init(container: any) {
         overlayCtx.stroke();
     }
 
-    function fillCircle(x: any, y: any, diameter: any, color: any) {
+    function fillCircle(x: number, y: number, diameter: number, color: string) {
         overlayCtx.fillStyle = color;
         overlayCtx.beginPath();
         overlayCtx.arc(x, y, diameter / 2, 0, Math.PI * 2);
@@ -666,19 +670,19 @@ export function init(container: any) {
 
             if (movie_frames.length && playing) {
                 if (curr_frame_idx >= movie_frames.length) curr_frame_idx = 0;
-                curr_frame = movie_frames[curr_frame_idx++];
+                curr_frame = movie_frames[curr_frame_idx++] ?? null;
             } else {
                 curr_frame = null;
             }
 
             if (curr_frame && colorAttribute) {
-                const arr = colorAttribute.array;
+                const arr = colorAttribute.array as Float32Array;
                 const count = screenmap_pts.length;
                 for (let i = 0; i < count; i++) {
                     const i3 = i * 3;
-                    arr[i3    ] = curr_frame[i3    ] * INV_255;
-                    arr[i3 + 1] = curr_frame[i3 + 1] * INV_255;
-                    arr[i3 + 2] = curr_frame[i3 + 2] * INV_255;
+                    arr[i3    ] = (curr_frame[i3    ] ?? 0) * INV_255;
+                    arr[i3 + 1] = (curr_frame[i3 + 1] ?? 0) * INV_255;
+                    arr[i3 + 2] = (curr_frame[i3 + 2] ?? 0) * INV_255;
                 }
                 colorAttribute.needsUpdate = true;
             }
@@ -693,7 +697,7 @@ export function init(container: any) {
                 updateBloomIris(bloom.bloomPass, irisState, curr_frame, { min: effMin, max: effMax }, override);
             }
             bloom.render();
-        }
+        },
     });
 
     // --- Initialize ---
@@ -707,8 +711,8 @@ export function init(container: any) {
         }
         if (pointsMesh) {
             scene.remove(pointsMesh);
-            pointsGeometry.dispose();
-            pointsMaterial.dispose();
+            pointsGeometry?.dispose();
+            pointsMaterial?.dispose();
         }
         circleTexture.dispose();
         bloom.dispose();

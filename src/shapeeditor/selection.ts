@@ -15,7 +15,7 @@ export class Selection {
     }
 
     /** Register a callback fired after any change. */
-    setOnChange(fn: any) {
+    setOnChange(fn: (() => void) | null | undefined) {
         this._onChange = typeof fn === 'function' ? fn : null;
     }
 
@@ -32,7 +32,7 @@ export class Selection {
      * (used when clicking an LED — selecting the point also selects
      * its owning strip). Pass `null` to clear the point.
      */
-    selectPoint(pointIdx: any, stripIdx: any) {
+    selectPoint(pointIdx: number | null, stripIdx: number | null) {
         const newPoint = (typeof pointIdx === 'number' && pointIdx >= 0) ? pointIdx : null;
         const newStrip = (typeof stripIdx === 'number' && stripIdx >= 0) ? stripIdx : this._stripIdx;
         if (newPoint === this._pointIdx && newStrip === this._stripIdx) return;
@@ -42,7 +42,7 @@ export class Selection {
     }
 
     /** Select a strip; clears point selection. */
-    selectStrip(stripIdx: any) {
+    selectStrip(stripIdx: number | null) {
         const newStrip = (typeof stripIdx === 'number' && stripIdx >= 0) ? stripIdx : null;
         if (newStrip === this._stripIdx && this._pointIdx === null) return;
         this._stripIdx = newStrip;
@@ -62,7 +62,7 @@ export class Selection {
      * Adjust selection after a point is inserted at `idx`. Mirrors
      * Array.prototype.splice semantics for the selected index.
      */
-    onPointInsert(idx: any) {
+    onPointInsert(idx: number) {
         if (this._pointIdx !== null && this._pointIdx >= idx) {
             this._pointIdx++;
             this._emit();
@@ -74,7 +74,7 @@ export class Selection {
      * selected point was removed, selection is cleared (but the
      * stripIdx is kept).
      */
-    onPointDelete(idx: any) {
+    onPointDelete(idx: number) {
         if (this._pointIdx === null) return;
         if (this._pointIdx === idx) {
             this._pointIdx = null;
@@ -89,7 +89,7 @@ export class Selection {
      * Adjust strip selection after `removeStrip(stripIdx)`. If the
      * removed strip was selected, clears strip selection.
      */
-    onStripRemove(stripIdx: any) {
+    onStripRemove(stripIdx: number) {
         if (this._stripIdx === null) return;
         if (this._stripIdx === stripIdx) {
             this._stripIdx = null;
@@ -104,7 +104,7 @@ export class Selection {
     /**
      * Adjust strip selection after `reorderStrip(fromIdx, toIdx)`.
      */
-    onStripReorder(fromIdx: any, toIdx: any) {
+    onStripReorder(fromIdx: number, toIdx: number) {
         if (this._stripIdx === null) return;
         let s = this._stripIdx;
         if (s === fromIdx) s = toIdx;

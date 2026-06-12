@@ -1,0 +1,344 @@
+/**
+ * Shared domain types for the ledmapper application.
+ * Phase 2 of the TypeScript migration.
+ */
+
+// ---------------------------------------------------------------------------
+// Screenmap JSON interchange format
+// ---------------------------------------------------------------------------
+
+/** A single strip in the screenmap JSON format. */
+export interface ScreenmapStrip {
+    x: number[];
+    y: number[];
+    diameter?: number;
+    pin?: string;
+    video_offset?: number;
+    video_offset_override?: boolean;
+}
+
+/** Top-level screenmap JSON object. */
+export interface ScreenmapJson {
+    map: Record<string, ScreenmapStrip>;
+}
+
+// ---------------------------------------------------------------------------
+// Multi-strip parse results
+// ---------------------------------------------------------------------------
+
+/** A single LED point from a parsed strip (flat [x, y] tuple). */
+export type StripPoint = [number, number];
+
+/** A parsed strip entry from parseScreenmapMultiStrip(). */
+export interface ParsedStrip {
+    name: string;
+    points: StripPoint[];
+    diameter: number | undefined;
+    offset: number;
+    count: number;
+    video_offset: number;
+    pin: string;
+    videoOffsetOverride: boolean;
+}
+
+/** Return value of parseScreenmapMultiStrip(). */
+export interface MultiStripParseResult {
+    strips: ParsedStrip[];
+    allPoints: StripPoint[];
+    totalCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// RGB video format
+// ---------------------------------------------------------------------------
+
+/** Header metadata for a .rgb video file. */
+export interface RgbVideoHeader {
+    ledCount: number;
+    frameCount: number;
+    byteLength: number;
+}
+
+// ---------------------------------------------------------------------------
+// Label layout engine
+// ---------------------------------------------------------------------------
+
+/** An input label anchor for the layout engine. */
+export interface LabelAnchorInput {
+    id: string;
+    anchorX: number;
+    anchorY: number;
+    w: number;
+    h: number;
+    priority?: number;
+}
+
+/** A resolved label placement from the layout engine. */
+export interface LabelPlacement {
+    id: string;
+    anchorX: number;
+    anchorY: number;
+    labelX: number;
+    labelY: number;
+    w: number;
+    h: number;
+    needsLeader: boolean;
+    leaderX0: number;
+    leaderY0: number;
+    leaderX1: number;
+    leaderY1: number;
+    hidden: boolean;
+    demoted: boolean;
+}
+
+/** Canvas bounding box for layout constraint. */
+export interface CanvasBounds {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+}
+
+/** An obstacle box (soft blocker) for the layout engine. */
+export interface ObstacleBox {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+}
+
+/** Options for the label layout engine. */
+export interface LabelLayoutOptions {
+    padding?: number;
+    ringSlots?: number;
+    ringSteps?: number;
+    baseRadius?: number;
+    radiusStep?: number;
+    leaderThreshold?: number | null;
+    canvasBounds?: CanvasBounds | null;
+    obstacles?: ObstacleBox[] | (() => ObstacleBox[]) | null;
+    seedSlots?: boolean;
+}
+
+/** Debug dump from the layout engine. */
+export interface LabelLayoutDebugDump {
+    placements: LabelPlacement[];
+    counters: { layoutRuns: number; translations: number; cacheHits: number };
+}
+
+/** The stateful label layout engine API. */
+export interface LabelLayoutEngine {
+    layout(labels: LabelAnchorInput[], callOptions?: LabelLayoutOptions): LabelPlacement[];
+    invalidate(): void;
+    debugDump(): LabelLayoutDebugDump;
+}
+
+// ---------------------------------------------------------------------------
+// Bloom profiles and ranges
+// ---------------------------------------------------------------------------
+
+/** Auto-bloom density profile constants. */
+export interface BloomProfile {
+    floor: number;
+    maxDense: number;
+    maxSparse: number;
+}
+
+/** Input to computeAutoBloomRange(). */
+export interface BloomAutoRangeInput {
+    ledSpacing: number;
+    sceneExtent: number;
+    profile?: Partial<BloomProfile>;
+}
+
+/** Output of computeAutoBloomRange() and bloomParamsForLedSize(). */
+export interface BloomRange {
+    min: number;
+    max: number;
+}
+
+/** Output of bloomParamsForLedSize(). */
+export interface BloomParams {
+    radius: number;
+    minStrength: number;
+    maxStrength: number;
+}
+
+/** Iris state for updateBloomIris() — mutated in place. */
+export interface IrisState {
+    currentBrightness: number;
+    lastTimeMs?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Three.js render context (createRendererAndScene return value)
+// ---------------------------------------------------------------------------
+
+import type {
+    WebGLRenderer,
+    Scene,
+    OrthographicCamera,
+} from 'three';
+
+/** Return type of createRendererAndScene() without overlay. */
+export interface RendererContext {
+    renderer: WebGLRenderer;
+    scene: Scene;
+    camera: OrthographicCamera;
+    wrapper: HTMLDivElement;
+}
+
+/** Return type of createRendererAndScene() with overlay enabled. */
+export interface RendererContextWithOverlay extends RendererContext {
+    overlayCanvas: HTMLCanvasElement;
+    overlayCtx: CanvasRenderingContext2D;
+}
+
+// ---------------------------------------------------------------------------
+// Points mesh (buildPointsMesh / rebuildPointsMesh)
+// ---------------------------------------------------------------------------
+
+import type { Points, BufferGeometry, PointsMaterial, Float32BufferAttribute } from 'three';
+
+/** Return value of buildPointsMesh() / rebuildPointsMesh(). */
+export interface PointsMeshResult {
+    mesh: Points;
+    geometry: BufferGeometry;
+    material: PointsMaterial;
+    colorAttribute: Float32BufferAttribute;
+}
+
+// ---------------------------------------------------------------------------
+// Screenmap meta / backup sidecar
+// ---------------------------------------------------------------------------
+
+/** The screenmap meta sidecar stored in localStorage. */
+export interface ScreenmapMeta {
+    savedAt: number;
+    source: string;
+    ledCount: number;
+    stripCount: number;
+    pinCount: number;
+}
+
+/** The backup meta sidecar (extends ScreenmapMeta with optional presetFile). */
+export interface BackupMeta extends ScreenmapMeta {
+    presetFile?: string | null;
+}
+
+/** Return value of getBackup(). */
+export interface ScreenmapBackup {
+    json: string;
+    meta: BackupMeta | null;
+}
+
+/** Internal map counts returned by _countMap(). */
+export interface MapCounts {
+    stripCount: number;
+    ledCount: number;
+    pinCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Preset manifest
+// ---------------------------------------------------------------------------
+
+/** A single entry in the preset manifest. */
+export interface ScreenmapPresetManifestEntry {
+    file: string;
+    name: string;
+}
+
+// ---------------------------------------------------------------------------
+// Tool init function type
+// ---------------------------------------------------------------------------
+
+/** Common signature for all tool entry points. */
+export type ToolInitFn = (container: HTMLElement) => (() => void) | void;
+
+// ---------------------------------------------------------------------------
+// Debug globals interfaces
+// ---------------------------------------------------------------------------
+
+/** Perf counters exposed on window.__perf */
+export interface PerfCounters {
+    [key: string]: number;
+}
+
+/** Moviemaker debug hooks exposed on window.__mmDebug */
+export interface MoviemakerDebugHooks {
+    getState?: () => unknown;
+    forceFrame?: () => void;
+    [key: string]: unknown;
+}
+
+/** Label layout debug function exposed on window.__labelLayoutDebug */
+export type LabelLayoutDebugHooks = (() => LabelLayoutDebugDump);
+
+/** Shapeeditor debug hooks exposed on window.__shapeeditorDebug */
+export interface ShapeeditorDebugHooks {
+    getStripCount?: () => number;
+    getStripLabels?: () => unknown;
+    getSelectedStrip?: () => number | null;
+    getStripNames?: () => string[];
+    getLedCanvasPos?: (flatIdx: number) => { clientX: number; clientY: number; canvasX: number; canvasY: number } | null;
+    simulateLedDrag?: (flatIdx: number, dxClient: number, dyClient: number, opts?: Record<string, unknown> | null) => boolean;
+    [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Blur pipeline uniforms
+// ---------------------------------------------------------------------------
+
+/** Shader uniform values accepted by updateUniforms() in blur-pipeline. */
+export interface BlurUniforms {
+    blurRadius: number;
+    sigma: number;
+    brightness: number;
+    maxBrightness: number;
+    gamma: number;
+}
+
+/** Gather sample result from the GPU readback. */
+export interface GatherSample {
+    buffer: Uint8Array;
+    numPts: number;
+}
+
+// ---------------------------------------------------------------------------
+// Strip palette types
+// ---------------------------------------------------------------------------
+
+/** Per-strip color palette entry (index + HSL color string). */
+export interface StripPaletteEntry {
+    index: number;
+    color: string;
+}
+
+/** Pin color entry. */
+export interface PinColor {
+    index: number;
+    color: string;
+}
+
+// ---------------------------------------------------------------------------
+// Video channel map
+// ---------------------------------------------------------------------------
+
+/** Input strip descriptor for buildVideoChannelMap(). */
+export interface VideoChannelStrip {
+    offset: number;
+    count: number;
+    video_offset: number;
+}
+
+// ---------------------------------------------------------------------------
+// Frame brightness result
+// ---------------------------------------------------------------------------
+
+/** Return value of computeFrameBrightness(). */
+export interface FrameBrightnessResult {
+    avgBrightness: number;
+    litCount: number;
+    totalCount: number;
+}

@@ -32,23 +32,23 @@ describe('transformToCenter', () => {
         // BUG: single point → w=0, h=0 → scale=Infinity → 0*Infinity=NaN
         const result = transformToCenter([[5, 5]], 640, 480);
         assert.strictEqual(result.length, 1);
-        assert.ok(!Number.isNaN(result[0][0]), `x should not be NaN, got ${result[0][0]}`);
-        assert.ok(!Number.isNaN(result[0][1]), `y should not be NaN, got ${result[0][1]}`);
+        assert.ok(!Number.isNaN(result[0]![0]), `x should not be NaN, got ${result[0]![0]}`);
+        assert.ok(!Number.isNaN(result[0]![1]), `y should not be NaN, got ${result[0]![1]}`);
     });
 
     it('does NOT produce NaN for all-identical points', () => {
         // BUG: all points at same location → w=0, h=0 → NaN
         const result = transformToCenter([[3, 7], [3, 7], [3, 7]], 640, 480);
         for (let i = 0; i < result.length; i++) {
-            assert.ok(!Number.isNaN(result[i][0]), `pt[${i}].x should not be NaN`);
-            assert.ok(!Number.isNaN(result[i][1]), `pt[${i}].y should not be NaN`);
+            assert.ok(!Number.isNaN(result[i]![0]), `pt[${i}].x should not be NaN`);
+            assert.ok(!Number.isNaN(result[i]![1]), `pt[${i}].y should not be NaN`);
         }
     });
 
     it('does NOT produce Infinity for a single point', () => {
         const result = transformToCenter([[5, 5]], 640, 480);
-        assert.ok(Number.isFinite(result[0][0]), `x should be finite, got ${result[0][0]}`);
-        assert.ok(Number.isFinite(result[0][1]), `y should be finite, got ${result[0][1]}`);
+        assert.ok(Number.isFinite(result[0]![0]), `x should be finite, got ${result[0]![0]}`);
+        assert.ok(Number.isFinite(result[0]![1]), `y should be finite, got ${result[0]![1]}`);
     });
 
     it('handles collinear horizontal points (same y)', () => {
@@ -88,25 +88,25 @@ describe('createTransformedScreenmap', () => {
     it('applies translation without rotation or zoom', () => {
         const pts = [[0, 0], [10, 0]];
         const result = createTransformedScreenmap(pts, 0, 1, [100, 200]);
-        assert.ok(Math.abs(result[0][0] - 100) < 0.001);
-        assert.ok(Math.abs(result[0][1] - 200) < 0.001);
-        assert.ok(Math.abs(result[1][0] - 110) < 0.001);
-        assert.ok(Math.abs(result[1][1] - 200) < 0.001);
+        assert.ok(Math.abs(result[0]![0] - 100) < 0.001);
+        assert.ok(Math.abs(result[0]![1] - 200) < 0.001);
+        assert.ok(Math.abs(result[1]![0] - 110) < 0.001);
+        assert.ok(Math.abs(result[1]![1] - 200) < 0.001);
     });
 
     it('applies zoom correctly', () => {
         const pts = [[10, 0]];
         const result = createTransformedScreenmap(pts, 0, 2, [0, 0]);
-        assert.ok(Math.abs(result[0][0] - 20) < 0.001);
-        assert.ok(Math.abs(result[0][1] - 0) < 0.001);
+        assert.ok(Math.abs(result[0]![0] - 20) < 0.001);
+        assert.ok(Math.abs(result[0]![1] - 0) < 0.001);
     });
 
     it('applies 90-degree rotation correctly', () => {
         const pts = [[10, 0]];
         const result = createTransformedScreenmap(pts, 90, 1, [0, 0]);
         // (10,0) rotated 90° → (0, 10)
-        assert.ok(Math.abs(result[0][0]) < 0.001, `x should be ~0, got ${result[0][0]}`);
-        assert.ok(Math.abs(result[0][1] - 10) < 0.001, `y should be ~10, got ${result[0][1]}`);
+        assert.ok(Math.abs(result[0]![0]) < 0.001, `x should be ~0, got ${result[0]![0]}`);
+        assert.ok(Math.abs(result[0]![1] - 10) < 0.001, `y should be ~10, got ${result[0]![1]}`);
     });
 
     it('does not mutate the input array', () => {
@@ -162,7 +162,7 @@ describe('flattenColorFrames', () => {
 
     it('preserves exact byte values', () => {
         const frame = new Uint8Array([0, 127, 255]);
-        const result = flattenColorFrames([frame]) as any;
+        const result = flattenColorFrames([frame])!;
         assert.strictEqual(result[0], 0);
         assert.strictEqual(result[1], 127);
         assert.strictEqual(result[2], 255);
@@ -224,7 +224,7 @@ describe('computePreviewFactor', () => {
 
 describe('samplePixels', () => {
     // Create a 4x4 RGBA buffer (all white = 255,255,255,255)
-    function makeBuffer(w: any, h: any, r: any, g: any, b: any) {
+    function makeBuffer(w: number, h: number, r: number, g: number, b: number) {
         const buf = new Uint8Array(w * h * 4);
         for (let i = 0; i < w * h; i++) {
             buf[i * 4]     = r;

@@ -13,11 +13,11 @@ describe('parsePastedScreenmap', () => {
         const out = parsePastedScreenmap(json);
         assert.ok(out);
         assert.equal(out.strips.length, 2);
-        assert.equal(out.strips[0].name, 'stripA');
-        assert.deepEqual(out.strips[0].points, [[0, 0], [1, 1], [2, 2]]);
-        assert.equal(out.strips[0].diameter, 0.5);
-        assert.equal(out.strips[1].name, 'stripB');
-        assert.equal(out.strips[1].points.length, 2);
+        assert.equal(out.strips[0]!.name, 'stripA');
+        assert.deepEqual(out.strips[0]!.points, [[0, 0], [1, 1], [2, 2]]);
+        assert.equal(out.strips[0]!.diameter, 0.5);
+        assert.equal(out.strips[1]!.name, 'stripB');
+        assert.equal(out.strips[1]!.points.length, 2);
     });
 
     it('parses single strip {name, points, diameter}', () => {
@@ -25,16 +25,16 @@ describe('parsePastedScreenmap', () => {
         const out = parsePastedScreenmap(json);
         assert.ok(out);
         assert.equal(out.strips.length, 1);
-        assert.equal(out.strips[0].name, 'panel99');
-        assert.deepEqual(out.strips[0].points, [[1, 2], [3, 4]]);
-        assert.equal(out.strips[0].diameter, 0.3);
+        assert.equal(out.strips[0]!.name, 'panel99');
+        assert.deepEqual(out.strips[0]!.points, [[1, 2], [3, 4]]);
+        assert.equal(out.strips[0]!.diameter, 0.3);
     });
 
     it('parses single strip without name → "pasted1"', () => {
         const json = JSON.stringify({ points: [[1, 2]] });
         const out = parsePastedScreenmap(json);
         assert.ok(out);
-        assert.equal(out.strips[0].name, 'pasted1');
+        assert.equal(out.strips[0]!.name, 'pasted1');
     });
 
     it('parses bare points array → "pasted1"', () => {
@@ -42,9 +42,9 @@ describe('parsePastedScreenmap', () => {
         const out = parsePastedScreenmap(json);
         assert.ok(out);
         assert.equal(out.strips.length, 1);
-        assert.equal(out.strips[0].name, 'pasted1');
-        assert.equal(out.strips[0].points.length, 3);
-        assert.equal(out.strips[0].diameter, undefined);
+        assert.equal(out.strips[0]!.name, 'pasted1');
+        assert.equal(out.strips[0]!.points.length, 3);
+        assert.equal(out.strips[0]!.diameter, undefined);
     });
 
     it('rejects invalid JSON', () => {
@@ -80,9 +80,9 @@ describe('planPasteMerge', () => {
     it('renames colliding strip names with " (2)", " (3)"', () => {
         const parsed = {
             strips: [
-                { name: 'panel1', points: [[0, 0]] },
-                { name: 'panel1', points: [[1, 1]] },
-                { name: 'panel1', points: [[2, 2]] },
+                { name: 'panel1', points: [[0, 0]] as [number, number][] },
+                { name: 'panel1', points: [[1, 1]] as [number, number][] },
+                { name: 'panel1', points: [[2, 2]] as [number, number][] },
             ],
         };
         const merged = planPasteMerge(parsed, new Set(['panel1']), 0);
@@ -92,24 +92,24 @@ describe('planPasteMerge', () => {
     it('re-indexes video_offset to append after currentTotalCount', () => {
         const parsed = {
             strips: [
-                { name: 'a', points: [[0, 0], [1, 1]] },
-                { name: 'b', points: [[2, 2], [3, 3], [4, 4]] },
+                { name: 'a', points: [[0, 0], [1, 1]] as [number, number][] },
+                { name: 'b', points: [[2, 2], [3, 3], [4, 4]] as [number, number][] },
             ],
         };
         const merged = planPasteMerge(parsed, new Set(), 100);
-        assert.equal(merged[0].video_offset, 100);
-        assert.equal(merged[1].video_offset, 102);
+        assert.equal(merged[0]!.video_offset, 100);
+        assert.equal(merged[1]!.video_offset, 102);
     });
 
     it('preserves diameter when present', () => {
-        const parsed = { strips: [{ name: 'x', points: [[0, 0]], diameter: 0.42 }] };
+        const parsed = { strips: [{ name: 'x', points: [[0, 0]] as [number, number][], diameter: 0.42 }] };
         const merged = planPasteMerge(parsed, [], 0);
-        assert.equal(merged[0].diameter, 0.42);
+        assert.equal(merged[0]!.diameter, 0.42);
     });
 
     it('omits diameter when not provided', () => {
-        const parsed = { strips: [{ name: 'x', points: [[0, 0]] }] };
+        const parsed = { strips: [{ name: 'x', points: [[0, 0]] as [number, number][] }] };
         const merged = planPasteMerge(parsed, [], 0);
-        assert.ok(!('diameter' in merged[0]));
+        assert.ok(!('diameter' in merged[0]!));
     });
 });

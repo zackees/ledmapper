@@ -6,20 +6,31 @@ import { getStripColors, stripStartEndLabels } from '../common';
 import { createLabelRenderer } from '../label-render';
 import { estimateLedSize } from './transforms';
 import { perfCount } from './perf';
+import type { ParsedStrip, StripPoint } from '../types/domain';
 
 // Stroking thousands of LED rings every frame is the single biggest
 // main-thread/raster cost at 64x64 (4096 LEDs). The ring layer is rendered
 // in translation-invariant space (rotate/zoom baked, both rare slider
 // changes) into an offscreen canvas and blitted at the current translation
 // offset, so dragging the shape never redraws the rings.
-const ringLayerCache = new WeakMap();
+interface RingLayerEntry {
+    pts: StripPoint[];
+    rotate: number;
+    zoom: number;
+    strips: ParsedStrip[] | null;
+    layer: HTMLCanvasElement;
+    ox: number;
+    oy: number;
+}
+const ringLayerCache = new WeakMap<CanvasRenderingContext2D, RingLayerEntry>();
 
-function strokeRings(lctx: any, transformedPts: any, start: any, end: any, r: any, color: any) {
+function strokeRings(lctx: CanvasRenderingContext2D, transformedPts: StripPoint[], start: number, end: number, r: number, color: string) {
     lctx.strokeStyle = color;
     lctx.lineWidth = 1;
     lctx.beginPath();
     for (let i = start; i < end; i++) {
-        const [x, y] = transformedPts[i];
+        const pt = transformedPts[i]!;
+        const [x, y] = pt;
         lctx.moveTo(x + r, y);
         lctx.arc(x, y, r, 0, Math.PI * 2);
     }
@@ -31,26 +42,26 @@ function strokeRings(lctx: any, transformedPts: any, start: any, end: any, r: an
 // rebuilds (rotate/zoom/strips changes), never per frame.
 const labelRenderer = createLabelRenderer();
 
-function drawStripLabels(lctx: any, transformedPts: any, strips: any, r: any, colors: any) {
-    const items = [];
+function drawStripLabels(lctx: CanvasRenderingContext2D, transformedPts: StripPoint[], strips: ParsedStrip[], r: number, colors: string[]) {
+    const items: { id: string; text: string; anchorX: number; anchorY: number; color: string }[] = [];
     for (let si = 0; si < strips.length; si++) {
-        const strip = strips[si];
+        const strip = strips[si]!;
         const first = strip.offset;
         const last = strip.offset + strip.count - 1;
         if (first < 0 || last >= transformedPts.length || strip.count === 0) continue;
         const { start, end } = stripStartEndLabels(strip, si);
-        items.push({ id: 'start:' + si, text: start, anchorX: transformedPts[first][0], anchorY: transformedPts[first][1], color: colors[si] });
+        items.push({ id: 'start:' + si, text: start, anchorX: transformedPts[first]![0], anchorY: transformedPts[first]![1], color: colors[si] ?? 'white' });
         if (end !== null) {
-            items.push({ id: 'end:' + si, text: end, anchorX: transformedPts[last][0], anchorY: transformedPts[last][1], color: colors[si] });
+            items.push({ id: 'end:' + si, text: end, anchorX: transformedPts[last]![0], anchorY: transformedPts[last]![1], color: colors[si] ?? 'white' });
         }
     }
     labelRenderer.draw(lctx, items, {
         font: 'bold 12px monospace',
-        obstacles: () => transformedPts.map(([x, y]: [any, any]) => ({ x: x - r, y: y - r, w: r * 2, h: r * 2 })),
+        obstacles: () => transformedPts.map(([x, y]) => ({ x: x - r, y: y - r, w: r * 2, h: r * 2 })),
     });
 }
 
-function getRingLayer(ctx: any, localPts: any, rotate: any, zoom: any, strips: any) {
+function getRingLayer(ctx: CanvasRenderingContext2D, localPts: StripPoint[], rotate: number, zoom: number, strips: ParsedStrip[] | null): RingLayerEntry {
     const cached = ringLayerCache.get(ctx);
     if (cached && cached.pts === localPts && cached.rotate === rotate &&
         cached.zoom === zoom && cached.strips === strips) {
@@ -60,7 +71,7 @@ function getRingLayer(ctx: any, localPts: any, rotate: any, zoom: any, strips: a
 
     const rad = rotate * Math.PI / 180;
     const cos_r = Math.cos(rad), sin_r = Math.sin(rad);
-    const pts = localPts.map(([x, y]: [any, any]) => [
+    const pts: StripPoint[] = localPts.map(([x, y]) => [
         (x * cos_r - y * sin_r) * zoom,
         (x * sin_r + y * cos_r) * zoom,
     ]);
@@ -81,51 +92,48 @@ function getRingLayer(ctx: any, localPts: any, rotate: any, zoom: any, strips: a
     const oy = Math.floor(ymin) - pad;
 
     const layer = cached ? cached.layer : document.createElement('canvas');
-    layer.width = Math.ceil(xmax) - Math.floor(xmin) + pad * 2;  // resizing also clears the layer
+    layer.width = Math.ceil(xmax) - Math.floor(xmin) + pad * 2;
     layer.height = Math.ceil(ymax) - Math.floor(ymin) + pad * 2;
 
-    const lctx = layer.getContext('2d');
+    const lctx = layer.getContext('2d')!;
     lctx.translate(-ox, -oy);
     const multiStrip = Array.isArray(strips) && strips.length > 1;
 
-    if (multiStrip) {
+    if (multiStrip && strips) {
         // Tint rings per strip so the physical wiring order is visible.
         const colors = getStripColors(strips.length);
         for (let si = 0; si < strips.length; si++) {
-            const strip = strips[si];
+            const strip = strips[si]!;
             const end = Math.min(strip.offset + strip.count, pts.length);
-            strokeRings(lctx, pts, strip.offset, end, r, colors[si]);
+            strokeRings(lctx, pts, strip.offset, end, r, colors[si] ?? 'white');
         }
         drawStripLabels(lctx, pts, strips, r, colors);
     } else {
         strokeRings(lctx, pts, 0, pts.length, r, 'white');
-        if (Array.isArray(strips) && strips.length === 1) {
+        if (Array.isArray(strips) && strips.length === 1 && strips[0]) {
             drawStripLabels(lctx, pts, strips, r, ['white']);
         }
     }
 
-    const entry = { pts: localPts, rotate, zoom, strips, layer, ox, oy };
+    const entry: RingLayerEntry = { pts: localPts, rotate, zoom, strips, layer, ox, oy };
     ringLayerCache.set(ctx, entry);
     return entry;
 }
 
-/**
- * Draw the moviemaker overlay: LED position circles, mini preview, and status text.
- *
- * @param {CanvasRenderingContext2D} ctx
- * @param {Array<[number,number]>} localPts - LED positions in screenmap-local coords.
- * @param {number} rotate - rotation in degrees
- * @param {number} zoom - zoom factor
- * @param {number} translateX - translation x in video coords
- * @param {number} translateY - translation y in video coords
- * @param {{ rgbPts: Uint8Array, avgBri: number }|null} lastSample - Most recent sampled data, or null.
- * @param {number} videoWidth
- * @param {number} videoHeight
- * @param {number} fps - Current frames per second.
- * @param {boolean} [showLeds=true] - Whether to draw the LED ring layer.
- * @param {Array<{name:string, offset:number, count:number}>} [strips] - Strip metadata for tinting/labels.
- */
-export function drawMoviemakerOverlay(ctx: any, localPts: any, rotate: any, zoom: any, translateX: any, translateY: any, lastSample: any, videoWidth: any, videoHeight: any, fps: any, showLeds = true, strips = null) {
+export function drawMoviemakerOverlay(
+    ctx: CanvasRenderingContext2D,
+    localPts: StripPoint[],
+    rotate: number,
+    zoom: number,
+    translateX: number,
+    translateY: number,
+    lastSample: { rgbPts: Uint8Array; avgBri: number } | null,
+    videoWidth: number,
+    videoHeight: number,
+    fps: number,
+    showLeds = true,
+    strips: ParsedStrip[] | null = null,
+): void {
     ctx.clearRect(0, 0, videoWidth, videoHeight);
     if (localPts.length === 0) return;
 

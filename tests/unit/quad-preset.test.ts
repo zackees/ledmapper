@@ -30,11 +30,11 @@ describe('64x64 quad serpentine preset', () => {
                 expected.push(`q${q}_p${p}`);
             }
         }
-        assert.deepEqual(parsed.strips.map((s: any) => s.name), expected);
+        assert.deepEqual(parsed.strips.map((s) => s.name), expected);
     });
 
     it('has contiguous video_offsets of 256 in key order', () => {
-        parsed.strips.forEach((strip: any, i: any) => {
+        parsed.strips.forEach((strip, i) => {
             assert.equal(strip.video_offset, i * 256, `strip ${strip.name}`);
         });
     });
@@ -53,11 +53,11 @@ describe('64x64 quad serpentine preset', () => {
         for (let q = 0; q < 4; q++) {
             const pts = parsed.strips
                 .slice(q * 4, q * 4 + 4)
-                .flatMap((s: any) => s.points);
-            const cx = pts.reduce((a: any, [x]: [any]) => a + x, 0) / pts.length;
-            const cy = pts.reduce((a: any, p: any) => a + p[1], 0) / pts.length;
-            assert.ok(Math.abs(cx - centers[q][0]) < 1e-9, `quadrant ${q} cx=${cx}`);
-            assert.ok(Math.abs(cy - centers[q][1]) < 1e-9, `quadrant ${q} cy=${cy}`);
+                .flatMap((s) => s.points);
+            const cx = pts.reduce((a: number, [x]: [number, number]) => a + x, 0) / pts.length;
+            const cy = pts.reduce((a: number, p: [number, number]) => a + p[1], 0) / pts.length;
+            assert.ok(Math.abs(cx - centers[q]![0]!) < 1e-9, `quadrant ${q} cx=${cx}`);
+            assert.ok(Math.abs(cy - centers[q]![1]!) < 1e-9, `quadrant ${q} cy=${cy}`);
         }
     });
 
@@ -67,7 +67,7 @@ describe('64x64 quad serpentine preset', () => {
         assert.equal(reparsed.totalCount, parsed.totalCount);
         assert.equal(reparsed.strips.length, parsed.strips.length);
         for (let i = 0; i < parsed.strips.length; i++) {
-            const a = parsed.strips[i], b = reparsed.strips[i];
+            const a = parsed.strips[i]!, b = reparsed.strips[i]!;
             assert.equal(b.name, a.name);
             assert.equal(b.count, a.count);
             assert.equal(b.diameter, a.diameter);
@@ -83,8 +83,8 @@ describe('22x22 serpentine preset', () => {
 
     it('is a single strip named strip1 with 484 LEDs', () => {
         assert.equal(parsed.strips.length, 1);
-        assert.equal(parsed.strips[0].name, 'strip1');
-        assert.equal(parsed.strips[0].count, 484);
+        assert.equal(parsed.strips[0]!.name, 'strip1');
+        assert.equal(parsed.strips[0]!.count, 484);
         assert.equal(parsed.totalCount, 484);
     });
 
@@ -100,7 +100,7 @@ describe('22x22 serpentine preset', () => {
     it('is serpentine: each step moves exactly one cell', () => {
         const pts = parsed.allPoints;
         for (let i = 0; i < pts.length - 1; i++) {
-            const d = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+            const d = Math.hypot(pts[i + 1]![0] - pts[i]![0], pts[i + 1]![1] - pts[i]![1]);
             assert.equal(d, 1, `step ${i} has distance ${d}`);
         }
     });
@@ -108,8 +108,8 @@ describe('22x22 serpentine preset', () => {
     it('round-trips through buildScreenmapMultiStripJson', () => {
         const reparsed = parseScreenmapMultiStrip(buildScreenmapMultiStripJson(parsed.strips));
         assert.equal(reparsed.totalCount, 484);
-        assert.deepEqual(reparsed.strips[0].points, parsed.strips[0].points);
-        assert.equal(reparsed.strips[0].diameter, parsed.strips[0].diameter);
+        assert.deepEqual(reparsed.strips[0]!.points, parsed.strips[0]!.points);
+        assert.equal(reparsed.strips[0]!.diameter, parsed.strips[0]!.diameter);
     });
 });
 
@@ -118,7 +118,7 @@ describe('44x44 quad pinwheel preset', () => {
     const parsed = parseScreenmapMultiStrip(text);
 
     it('has 4 strips q0..q3 of 484 LEDs (1936 total)', () => {
-        assert.deepEqual(parsed.strips.map((s: any) => s.name), ['q0', 'q1', 'q2', 'q3']);
+        assert.deepEqual(parsed.strips.map((s) => s.name), ['q0', 'q1', 'q2', 'q3']);
         for (const strip of parsed.strips) {
             assert.equal(strip.count, 484, `strip ${strip.name}`);
         }
@@ -127,7 +127,7 @@ describe('44x44 quad pinwheel preset', () => {
 
     it('every strip starts at the inner corner beside the center MCU', () => {
         for (const strip of parsed.strips) {
-            const [x, y] = strip.points[0];
+            const [x, y] = strip.points[0]!;
             assert.equal(Math.abs(x), 0.5, `strip ${strip.name} start x=${x}`);
             assert.equal(Math.abs(y), 0.5, `strip ${strip.name} start y=${y}`);
         }
@@ -145,7 +145,7 @@ describe('44x44 quad pinwheel preset', () => {
     });
 
     it('has sequential video offsets of 484 in key order', () => {
-        parsed.strips.forEach((strip: any, i: any) => {
+        parsed.strips.forEach((strip, i) => {
             assert.equal(strip.video_offset, i * 484, `strip ${strip.name}`);
         });
     });
@@ -154,8 +154,8 @@ describe('44x44 quad pinwheel preset', () => {
         const reparsed = parseScreenmapMultiStrip(buildScreenmapMultiStripJson(parsed.strips));
         assert.equal(reparsed.totalCount, parsed.totalCount);
         for (let i = 0; i < 4; i++) {
-            assert.equal(reparsed.strips[i].name, parsed.strips[i].name);
-            assert.deepEqual(reparsed.strips[i].points, parsed.strips[i].points);
+            assert.equal(reparsed.strips[i]!.name, parsed.strips[i]!.name);
+            assert.deepEqual(reparsed.strips[i]!.points, parsed.strips[i]!.points);
         }
     });
 });

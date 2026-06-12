@@ -1,23 +1,24 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutLabels, createLabelLayoutEngine } from '../../src/label-layout';
+import type { LabelPlacement } from '../../src/types/domain';
 
 const BOUNDS = { x: 0, y: 0, w: 800, h: 800 };
 
-function box(p: any) {
+function box(p: LabelPlacement) {
     return { x: p.labelX, y: p.labelY, w: p.w, h: p.h };
 }
 
-function overlap(a: any, b: any) {
+function overlap(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-function assertNoOverlaps(placements: any) {
-    const visible = placements.filter((p: any) => !p.hidden && !p.demoted);
+function assertNoOverlaps(placements: LabelPlacement[]) {
+    const visible = placements.filter((p) => !p.hidden && !p.demoted);
     for (let i = 0; i < visible.length; i++) {
         for (let j = i + 1; j < visible.length; j++) {
-            assert.ok(!overlap(box(visible[i]), box(visible[j])),
-                `labels ${visible[i].id} and ${visible[j].id} overlap`);
+            assert.ok(!overlap(box(visible[i]!), box(visible[j]!)),
+                `labels ${visible[i]!.id} and ${visible[j]!.id} overlap`);
         }
     }
 }
@@ -43,7 +44,7 @@ describe('layoutLabels', () => {
         const placements = layoutLabels(sixteenPanelFixture(), { canvasBounds: BOUNDS });
         assert.equal(placements.length, 32);
         assertNoOverlaps(placements);
-        assert.ok(placements.every((p: any) => !p.hidden), 'no label should be hidden at this density');
+        assert.ok(placements.every((p) => !p.hidden), 'no label should be hidden at this density');
     });
 
     it('is deterministic: identical input gives identical output', () => {
@@ -55,7 +56,7 @@ describe('layoutLabels', () => {
     it('returns placements in input order', () => {
         const labels = sixteenPanelFixture();
         const placements = layoutLabels(labels, { canvasBounds: BOUNDS });
-        assert.deepEqual(placements.map((p: any) => p.id), labels.map((l) => l.id));
+        assert.deepEqual(placements.map((p) => p.id), labels.map((l) => l.id));
     });
 
     it('keeps every non-hidden label inside canvasBounds', () => {
@@ -76,9 +77,9 @@ describe('layoutLabels', () => {
         const placements = layoutLabels(labels, { canvasBounds: BOUNDS });
         assert.equal(placements.length, 200);
         assertNoOverlaps(placements);
-        const placed = placements.filter((p: any) => !p.hidden && !p.demoted).length;
-        const demoted = placements.filter((p: any) => p.demoted).length;
-        const hidden = placements.filter((p: any) => p.hidden).length;
+        const placed = placements.filter((p) => !p.hidden && !p.demoted).length;
+        const demoted = placements.filter((p) => p.demoted).length;
+        const hidden = placements.filter((p) => p.hidden).length;
         assert.equal(placed + demoted + hidden, 200);
         assert.ok(demoted + hidden > 0, 'extreme contention must degrade some labels');
     });
@@ -87,7 +88,7 @@ describe('layoutLabels', () => {
         const near = layoutLabels(
             [{ id: 'solo', anchorX: 400, anchorY: 400, w: 40, h: 14 }],
             { canvasBounds: BOUNDS });
-        assert.equal(near[0].needsLeader, false, 'undisplaced label needs no leader');
+        assert.equal(near[0]!.needsLeader, false, 'undisplaced label needs no leader');
 
         // Crowd the anchor so the label is pushed to an outer ring.
         const obstacles = [];
@@ -103,7 +104,7 @@ describe('layoutLabels', () => {
             { id: 'dd', anchorX: 398, anchorY: 402, w: 40, h: 14 },
         ];
         const far = layoutLabels(crowded, { canvasBounds: BOUNDS, obstacles });
-        assert.ok(far.some((p: any) => p.needsLeader), 'displaced labels gain leader lines');
+        assert.ok(far.some((p) => p.needsLeader), 'displaced labels gain leader lines');
         for (const p of far) {
             if (!p.needsLeader) continue;
             assert.equal(p.leaderX0, p.anchorX);
@@ -129,8 +130,8 @@ describe('createLabelLayoutEngine', () => {
         assert.equal(counters.layoutRuns, 1, 'pan must not re-run the layout');
         assert.equal(counters.translations, 1);
         for (let i = 0; i < first.length; i++) {
-            assert.equal(second[i].labelX, first[i].labelX + 37);
-            assert.equal(second[i].labelY, first[i].labelY - 12);
+            assert.equal(second[i]!.labelX, first[i]!.labelX + 37);
+            assert.equal(second[i]!.labelY, first[i]!.labelY - 12);
         }
     });
 
@@ -155,8 +156,8 @@ describe('createLabelLayoutEngine', () => {
         assert.equal(engine.debugDump().counters.layoutRuns, 2);
 
         for (let i = 0; i < labels.length; i++) {
-            if (labels[i].id === 'start-5') continue;
-            const a = first[i], b = second[i];
+            if (labels[i]!.id === 'start-5') continue;
+            const a = first[i]!, b = second[i]!;
             assert.equal(b.labelX - b.anchorX, a.labelX - a.anchorX, `${a.id} shifted slots`);
             assert.equal(b.labelY - b.anchorY, a.labelY - a.anchorY, `${a.id} shifted slots`);
         }
