@@ -25,6 +25,7 @@ import {
     FloatType,
 } from 'three';
 import { BLUR_VERT, BLUR_FRAG, COPY_FRAG, GATHER_FRAG } from './shaders.js';
+import { perfCount } from './perf.js';
 
 /**
  * Create a blur pipeline bound to the given canvas and video element.
@@ -70,8 +71,12 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }) {
     });
     const gatherMaterial = new ShaderMaterial({
         uniforms: {
-            tPositions: { value: null },
-            tSource:    { value: null },
+            tPositions:  { value: null },
+            tSource:     { value: null },
+            uResolution: { value: new Vector2(640, 480) },
+            uTranslate:  { value: new Vector2(0, 0) },
+            uZoom:       { value: 1 },
+            uRotate:     { value: 0 },
         },
         vertexShader: BLUR_VERT,
         fragmentShader: GATHER_FRAG,
@@ -143,7 +148,8 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }) {
         camera.updateProjectionMatrix();
         mesh.scale.set(1, 1 / aspect, 1);
 
-        // Position UVs depend on resolution — force a re-upload on next set.
+        // The gather uResolution uniform depends on resolution — force the
+        // next setSamplePoints to run (its guard also keys on w/h).
         lastPtsRef = null;
         latestSample = null;
     }
@@ -201,11 +207,14 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }) {
     }
 
     /**
-     * Upload LED sample positions into the gather position texture.
+     * Upload LED positions in screenmap-local coordinates into the gather
+     * position texture. Rotate/zoom/translate are NOT baked in — they are
+     * applied per LED in the gather shader (see setSampleTransform), so this
+     * upload only happens on screenmap or resolution change.
      * No-ops when the same points array (by reference) and resolution were
      * already uploaded, so callers can invoke this every frame cheaply.
      *
-     * @param {Array<[number,number]>} pts - LED positions in video coords (Y down)
+     * @param {Array<[number,number]>} pts - LED positions in screenmap-local coords (Y down)
      * @param {number} w - Video width
      * @param {number} h - Video height
      */
@@ -220,6 +229,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }) {
             disposeGatherResources();
             return;
         }
+        perfCount('positionUploads');
 
         if (numPts !== gatherNumPts) {
             disposeGatherResources();
@@ -245,20 +255,34 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }) {
             }
         }
 
+        gatherMaterial.uniforms.uResolution.value.set(w, h);
+
         // Texel i (readPixels order: row 0 = bottom) maps to LED i.
         const data = positionTexture.image.data;
         for (let i = 0; i < numPts; i++) {
-            const x = Math.round(pts[i][0]);
-            const y = Math.round(pts[i][1]);
-            const inBounds = x >= 0 && x < w && y >= 0 && y < h;
             const o = i * 4;
-            data[o]     = (x + 0.5) / w;
-            data[o + 1] = ((h - 1 - y) + 0.5) / h;
+            data[o]     = pts[i][0];
+            data[o + 1] = pts[i][1];
             data[o + 2] = 0;
-            data[o + 3] = inBounds ? 1 : 0;
+            data[o + 3] = 1;
         }
         data.fill(0, numPts * 4);
         positionTexture.needsUpdate = true;
+    }
+
+    /**
+     * Update the gather pass transform uniforms. Cheap — call every frame.
+     *
+     * @param {number} rotateDeg - rotation in degrees (about the screenmap origin)
+     * @param {number} zoom - zoom factor
+     * @param {number} translateX - translation x in video coords
+     * @param {number} translateY - translation y in video coords
+     */
+    function setSampleTransform(rotateDeg, zoom, translateX, translateY) {
+        const u = gatherMaterial.uniforms;
+        u.uRotate.value = rotateDeg * Math.PI / 180;
+        u.uZoom.value = zoom;
+        u.uTranslate.value.set(translateX, translateY);
     }
 
     /**
@@ -322,6 +346,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }) {
         updateUniforms,
         renderFrame,
         setSamplePoints,
+        setSampleTransform,
         requestSample,
         getLatestSample,
         dispose,

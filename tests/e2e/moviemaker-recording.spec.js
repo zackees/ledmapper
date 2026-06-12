@@ -57,6 +57,22 @@ async function recordAndDownload(page, durationMs = 2000) {
 // WebGL recording doesn't work in headless CI Chromium (no GPU)
 test.describe('Moviemaker Recording Workflow', () => {
     test.skip(!!process.env.CI, 'WebGL recording tests require GPU, skipped in CI');
+
+    // The worker shares one browser context; earlier specs can leave a stored
+    // screenmap via screenmap-store (e.g. the shapeeditor autosaves its default
+    // shape when console-errors.spec visits it), which would suppress the
+    // default 16x16 preset these tests assert. Clear it before each load.
+    test.beforeEach(async ({ page }) => {
+        await page.addInitScript(() => {
+            try {
+                localStorage.removeItem('lm:screenmap');
+                localStorage.removeItem('lm:screenmap-preset');
+                localStorage.removeItem('lm:screenmap-meta');
+                localStorage.removeItem('lm:screenmap-backup');
+                localStorage.removeItem('lm:screenmap-backup-meta');
+            } catch { /* ignore */ }
+        });
+    });
     test.describe('Video file loading and recording', () => {
         test('loads video via file chooser, records, and downloads .rgb', async ({ page }) => {
             test.setTimeout(60000);

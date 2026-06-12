@@ -9,6 +9,7 @@ import { createBlurPipeline } from './blur-pipeline.js';
 import { createVideoSource } from './video-source.js';
 import { createRecording } from './recording.js';
 import { drawMoviemakerOverlay, drawPreview } from './overlay.js';
+import { perfEnabled } from './perf.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './moviemaker.css?url';
 
@@ -281,35 +282,6 @@ export function init(container) {
         }
     }
 
-    // Memoized: the smooth interpolation converges to exact target values,
-    // so at rest this returns the same array reference every frame — no
-    // per-frame allocations, and downstream consumers can cheap-compare.
-    let memoTransformedPts = null;
-    let memoTransformKey = '';
-    let memoSourcePts = null;
-
-    function create_transformed_screenmap() {
-        if (screenmap_pts.length === 0) return [];
-        const key = `${curr_rotate}|${curr_zoom}|${curr_translate[0]}|${curr_translate[1]}`;
-        if (memoTransformedPts && memoSourcePts === screenmap_pts && memoTransformKey === key) {
-            return memoTransformedPts;
-        }
-        let pts = screenmap_pts.map(([x, y]) => [x, y]);
-        if (curr_rotate !== 0) {
-            const r = curr_rotate * Math.PI / 180;
-            const cos_r = Math.cos(r), sin_r = Math.sin(r);
-            pts = pts.map(([x, y]) => [x * cos_r - y * sin_r, x * sin_r + y * cos_r]);
-        }
-        pts = pts.map(([x, y]) => [
-            x * curr_zoom + curr_translate[0],
-            y * curr_zoom + curr_translate[1]
-        ]);
-        memoTransformedPts = pts;
-        memoTransformKey = key;
-        memoSourcePts = screenmap_pts;
-        return pts;
-    }
-
     function mouseInCanvas(mx, my) {
         return mx >= 0 && mx <= videoWidth && my >= 0 && my <= videoHeight;
     }
@@ -580,6 +552,22 @@ export function init(container) {
     let sampleRgbPts = null;
     let recordRgbPts = null;
 
+    if (perfEnabled) {
+        // Debug hook for e2e correctness tests: exposes the exact transform
+        // state and latest GPU-gathered sample for CPU-reference comparison.
+        window.__mmDebug = {
+            getState: () => ({
+                localPts: screenmap_pts.map(([x, y]) => [x, y]),
+                rotate: curr_rotate,
+                zoom: curr_zoom,
+                translate: [curr_translate[0], curr_translate[1]],
+                videoWidth,
+                videoHeight,
+                sample: lastSample ? Array.from(lastSample.rgbPts) : null,
+            }),
+        };
+    }
+
     // The .rgb stream is channel-ordered. When a screenmap declares explicit
     // video_offset values that differ from flat point order, remap the flat
     // sample into channel order for recording (overlay/preview stay flat).
@@ -619,18 +607,20 @@ export function init(container) {
         });
 
         update_screenmap_parameters();
-        const transformedPts = create_transformed_screenmap();
 
         blurPipeline.renderFrame();
 
-        const needSample = screenmapValid && transformedPts.length > 0;
+        const needSample = screenmapValid && screenmap_pts.length > 0;
 
         if (needSample) {
-            blurPipeline.setSamplePoints(transformedPts, videoWidth, videoHeight);
+            // Positions upload once per screenmap/resolution; the transform
+            // is a per-frame uniform update, so dragging stays cheap.
+            blurPipeline.setSamplePoints(screenmap_pts, videoWidth, videoHeight);
+            blurPipeline.setSampleTransform(curr_rotate, curr_zoom, curr_translate[0], curr_translate[1]);
             blurPipeline.requestSample();
             // Consume the latest resolved async readback (1-2 frames behind)
             const gather = blurPipeline.getLatestSample();
-            if (gather && gather.numPts === transformedPts.length) {
+            if (gather && gather.numPts === screenmap_pts.length) {
                 if (!sampleRgbPts || sampleRgbPts.length !== gather.numPts * 3) {
                     sampleRgbPts = new Uint8Array(gather.numPts * 3);
                 }
@@ -641,8 +631,8 @@ export function init(container) {
             recording.resetCapture();
         }
 
-        drawMoviemakerOverlay(overlayCtx, transformedPts, lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips);
-        drawPreview(previewCtx, transformedPts, lastSample, 200);
+        drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips);
+        drawPreview(previewCtx, screenmap_pts, curr_rotate, lastSample, 200);
 
         // Update progress bar for video sources
         if (videoSource.sourceType === 'video' && !isScrubbing) {
@@ -660,6 +650,7 @@ export function init(container) {
     rafId = requestAnimationFrame(animationLoop);
 
     return function destroy() {
+        if (perfEnabled) delete window.__mmDebug;
         ac.abort();
         if (rafId) cancelAnimationFrame(rafId);
         videoSource.dispose();
