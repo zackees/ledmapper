@@ -18,6 +18,16 @@ function makeMap(stripLeds) {
     return JSON.stringify({ map });
 }
 
+function makeMultiPinMap(stripSpecs) {
+    const map = {};
+    for (const [name, spec] of Object.entries(stripSpecs)) {
+        const x = [], y = [];
+        for (let i = 0; i < spec.count; i++) { x.push(i); y.push(0); }
+        map[name] = { x, y, diameter: 0.5, pin: spec.pin };
+    }
+    return JSON.stringify({ map });
+}
+
 const GOOD_MAP_16 = makeMap({ strip1: 16 });
 const GOOD_BACKUP_64 = makeMap({ strip1: 32, strip2: 32 });
 const DEGENERATE_1 = makeMap({ strip1: 1 });
@@ -120,6 +130,79 @@ test.describe('Shapeeditor autosave + backup restore', () => {
             () => page.evaluate(() => window.__shapeeditorDebug.getStripCount()),
             { timeout: 10000 },
         ).toBe(2);
+    });
+
+    test('multi-pin map autosaves with pins preserved across mutation + reload', async ({ page }) => {
+        const MULTI_PIN = makeMultiPinMap({
+            strip1: { count: 8, pin: 'pin1' },
+            strip2: { count: 8, pin: 'pin2' },
+        });
+        await seed(page, {
+            'lm:screenmap': MULTI_PIN,
+            'lm:screenmap-meta': JSON.stringify({
+                savedAt: Date.now(),
+                source: 'save',
+                ledCount: 16,
+                stripCount: 2,
+                pinCount: 2,
+            }),
+        });
+        await page.goto('/shapeeditor/');
+        await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
+        await page.waitForFunction(() => !!window.__shapeeditorDebug, null, { timeout: 10000 });
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripPins()))
+            .toEqual(['pin1', 'pin2']);
+
+        // Mutate NON-pin state: drag strip1 — triggers autosave through the
+        // same buildScreenmapMultiStripJson path that used to drop `pin`.
+        await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(0, 40, 40));
+        await expect.poll(async () => {
+            const stored = await page.evaluate(() => localStorage.getItem('lm:screenmap'));
+            const parsed = JSON.parse(stored);
+            return [parsed.map.strip1.pin, parsed.map.strip2.pin];
+        }).toEqual(['pin1', 'pin2']);
+        const meta = await page.evaluate(() => JSON.parse(localStorage.getItem('lm:screenmap-meta')));
+        expect(meta.pinCount).toBe(2);
+
+        // Pins survive a full reload.
+        await page.reload();
+        await page.waitForFunction(() => !!window.__shapeeditorDebug, null, { timeout: 10000 });
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripPins()))
+            .toEqual(['pin1', 'pin2']);
+    });
+
+    test('intentional repin (pin merge) writes through the pin-count guard', async ({ page }) => {
+        const MULTI_PIN = makeMultiPinMap({
+            strip1: { count: 8, pin: 'pin1' },
+            strip2: { count: 8, pin: 'pin2' },
+        });
+        await seed(page, {
+            'lm:screenmap': MULTI_PIN,
+            'lm:screenmap-meta': JSON.stringify({
+                savedAt: Date.now(),
+                source: 'save',
+                ledCount: 16,
+                stripCount: 2,
+                pinCount: 2,
+            }),
+        });
+        await page.goto('/shapeeditor/');
+        await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
+        await page.waitForFunction(() => !!window.__shapeeditorDebug, null, { timeout: 10000 });
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripPins()))
+            .toEqual(['pin1', 'pin2']);
+
+        // User-initiated merge pin2 → pin1: the pin count drops 2 → 1, and the
+        // repin path calls notePinMutation() so the guard lets the write through.
+        await page.evaluate(() => window.__shapeeditorDebug.repinStrip(1, 'pin1'));
+        await expect.poll(async () => {
+            const meta = await page.evaluate(() => JSON.parse(localStorage.getItem('lm:screenmap-meta')));
+            return meta.pinCount;
+        }).toBe(1);
+        // All-pin1 maps omit the pin field entirely (§1.3).
+        const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('lm:screenmap')));
+        expect(stored.map.strip1.pin).toBeUndefined();
+        expect(stored.map.strip2.pin).toBeUndefined();
     });
 
     test('New button does not persist [[0,0]] and backup row restores', async ({ page }) => {

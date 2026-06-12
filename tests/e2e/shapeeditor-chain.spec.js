@@ -110,15 +110,20 @@ test.describe('Shapeeditor chain assembly', () => {
         expect(baseline.map[names[0]].video_offset).toBeUndefined();
         expect(baseline.map[names[1]].video_offset).toBeUndefined();
 
-        // Edit second strip's video_offset to a non-sequential value.
+        // Engage LOCK (videoOffsetOverride) so vo: becomes editable, then
+        // edit the second strip's video_offset to a non-sequential value.
+        await page.locator('#strips_list .strip-row[data-strip-idx="1"] button[data-action="lock"]').click();
         const input = page.locator('#strips_list input[data-role="video-offset"][data-strip-idx="1"]');
+        await expect(input).toHaveJSProperty('readOnly', false);
         await input.fill('999');
         await input.dispatchEvent('change');
 
         const edited = await downloadSavedJson(page);
         expect(edited.map[names[1]].video_offset).toBe(999);
+        expect(edited.map[names[1]].video_offset_override).toBe(true);
 
-        // Undo restores omission.
+        // Undo the edit, then undo the lock — omission restored.
+        await page.locator('#btn_undo').click();
         await page.locator('#btn_undo').click();
         const undone = await downloadSavedJson(page);
         expect(undone.map[names[1]].video_offset).toBeUndefined();

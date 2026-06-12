@@ -185,6 +185,156 @@
     border-color: #ef4444;
 }
 
+.strip-row .strip-offset.derived {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.strip-row .strip-grip {
+    @apply shrink-0 select-none text-lm-text-muted;
+    cursor: grab;
+    font-size: 11px;
+    line-height: 1;
+    padding: 2px 2px;
+}
+
+.strip-row .strip-grip:active {
+    cursor: grabbing;
+}
+
+.strip-row .strip-lock {
+    @apply shrink-0 py-0.5 px-1 bg-lm-surface-1 border border-lm-border rounded cursor-pointer text-xs;
+    opacity: 0.6;
+}
+
+.strip-row .strip-lock.engaged {
+    opacity: 1;
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.18);
+}
+
+.strip-row.drag-over,
+.pin-header.drag-over {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.12);
+}
+
+/* ── Pin groups (issue #24) ─────────────────────────────────── */
+
+.pin-group {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 2px;
+}
+
+.pin-header {
+    @apply flex items-center gap-2 px-2 py-1 rounded cursor-pointer select-none text-xs text-lm-text;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid transparent;
+    list-style: none;
+}
+
+.pin-header::-webkit-details-marker {
+    display: none;
+}
+
+.pin-header::before {
+    content: '▸';
+    color: #9ca3af;
+    font-size: 10px;
+}
+
+.pin-group[open] > .pin-header::before {
+    content: '▾';
+}
+
+.pin-header .pin-name {
+    @apply font-medium truncate;
+    cursor: text;
+}
+
+.pin-header .pin-name:hover {
+    color: #3b82f6;
+}
+
+.pin-header .pin-meta {
+    @apply flex-1 text-lm-text-muted truncate;
+}
+
+.pin-header .pin-add-strip {
+    @apply shrink-0 py-0.5 px-1.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs;
+}
+
+/* ── Toolbar modes: [Chain] / [Reorder] (issue #24 Phase 3) ─── */
+
+.mode-btn.active {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.22);
+    color: #fff;
+}
+
+/* Reorder mode dims the canvas wrapper (renderer + overlay) */
+.canvas-dim {
+    opacity: 0.35;
+    transition: opacity 0.2s ease;
+}
+
+/* Reorder mode: make the per-row Move Up/Down arrows prominent */
+#strips_list.reorder-mode .strip-btn[data-action="up"],
+#strips_list.reorder-mode .strip-btn[data-action="down"] {
+    font-size: 14px;
+    padding: 2px 8px;
+    border-color: #3b82f6;
+    color: #93c5fd;
+}
+
+/* Connector rows between same-pin strips (visible in Chain mode) */
+.connector-row {
+    @apply select-none;
+    font: 10px "IBM Plex Mono", monospace;
+    color: #3b82f6;
+    padding: 1px 0 1px 28px;
+    cursor: pointer;
+}
+
+.connector-row:hover {
+    color: #93c5fd;
+}
+
+/* Live row-order preview during a connector drag */
+.strip-row.preview-move {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.28);
+}
+
+/* Inline connector menu (Swap / Split / Move downstream) */
+.connector-menu {
+    position: fixed;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    min-width: 190px;
+    overflow: hidden;
+    background: #1a1a1a;
+    border: 1px solid #3b82f6;
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.connector-menu button {
+    background: transparent;
+    border: none;
+    color: #e5e7eb;
+    text-align: left;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.connector-menu button:hover {
+    background: rgba(59, 130, 246, 0.28);
+}
+
 /* ── Desktop: hide file-ops row (available via right-click) ── */
 
 @media (hover: hover) and (pointer: fine) {

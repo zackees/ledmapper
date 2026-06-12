@@ -87,11 +87,22 @@
         <details id="strips_panel" class="accordion">
             <summary class="cursor-pointer select-none text-sm font-medium text-lm-text py-1">Strips</summary>
             <div class="pt-2 flex flex-col gap-2">
-                <label class="flex items-center gap-1 text-xs text-lm-text-muted">
-                    <input id="strips_show_chain" type="checkbox" checked>
-                    Show chain
-                </label>
+                <div class="flex items-center justify-between gap-2">
+                    <label class="flex items-center gap-1 text-xs text-lm-text-muted">
+                        <input id="strips_show_chain" type="checkbox" checked>
+                        Show chain
+                    </label>
+                    <div class="flex items-center gap-1">
+                        <button id="strips_btn_chain" type="button" aria-pressed="false" title="Chain edit mode — rewire connectors on the canvas (Esc to exit)" class="mode-btn py-0.5 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs">Chain</button>
+                        <button id="strips_btn_reorder" type="button" aria-pressed="false" title="Reorder mode — move strips with the ▲/▼ arrows (Esc to exit)" class="mode-btn py-0.5 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs">Reorder</button>
+                        <button id="strips_btn_add_pin" type="button" title="Move the selected strip onto a new pin" class="py-0.5 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs">+ Pin</button>
+                    </div>
+                </div>
                 <div id="strips_list" class="flex flex-col gap-1 max-h-64 overflow-y-auto"></div>
+                <div id="strips_selected_row" class="flex items-center justify-between gap-2 text-xs text-lm-text-muted" style="display:none;">
+                    <span id="strips_selected_label"></span>
+                    <select id="strips_move_pin" class="text-xs bg-lm-surface-1 text-lm-text border border-lm-border rounded py-0.5 px-1"></select>
+                </div>
                 <div id="strips_backup_row" class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-lm-border text-xs text-lm-text-muted" style="display:none;">
                     <span id="strips_backup_summary">No backup</span>
                     <button id="strips_btn_restore_backup" type="button" class="py-1 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed">Restore backup…</button>

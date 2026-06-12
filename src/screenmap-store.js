@@ -20,6 +20,32 @@ const BACKUP_META_KEY = 'lm:screenmap-backup-meta';
  *  is treated as a degenerate placeholder and refused for autosave. */
 export const MIN_AUTOSAVE_LEDS = 4;
 
+/** Window after a user-initiated pin mutation during which a pin-count drop
+ *  is allowed to write through (issue #24 §1.8). */
+export const PIN_MUTATION_GRACE_MS = 2000;
+
+// Timestamp of the last user-initiated pin mutation (strip-repin, pin-delete,
+// explicit file load, ...). The editor calls notePinMutation() right before
+// persisting such a change so the pin-count regression guard lets it through.
+let _lastPinMutationAt = 0;
+let _pinGuardWarned = false;
+
+/**
+ * Record that a user-initiated action legitimately changed pin assignments
+ * (repin, strip/pin delete, explicit load of a different map, undo/redo of
+ * those). Must be called before the corresponding save for the pin-count
+ * regression guard in saveScreenmapWithMeta() to allow the write.
+ */
+export function notePinMutation() {
+    _lastPinMutationAt = Date.now();
+}
+
+/** Test-only: reset the pin-mutation guard state. */
+export function _resetPinMutationGuardForTests() {
+    _lastPinMutationAt = 0;
+    _pinGuardWarned = false;
+}
+
 function _safeGet(key) {
     try { return localStorage.getItem(key); } catch { return null; }
 }
@@ -46,13 +72,15 @@ function _countMap(jsonText) {
     if (!map || typeof map !== 'object') return null;
     const stripNames = Object.keys(map);
     let ledCount = 0;
+    const pinSet = new Set();
     for (const name of stripNames) {
         const s = map[name];
         if (!s) continue;
         if (Array.isArray(s.x)) ledCount += s.x.length;
         else if (Array.isArray(s.points)) ledCount += s.points.length;
+        pinSet.add((typeof s.pin === 'string' && s.pin.trim() !== '') ? s.pin : 'pin1');
     }
-    return { stripCount: stripNames.length, ledCount };
+    return { stripCount: stripNames.length, ledCount, pinCount: pinSet.size };
 }
 
 /**
@@ -119,18 +147,25 @@ export function getPresetSelection() {
 
 /**
  * Build a screenmap JSON string from a multi-strip structured result.
- * Produces the canonical {map: {stripName: {x:[], y:[], diameter, video_offset?}}} format.
- * Omits video_offset when it matches the sequential (default) offset for cleaner output.
+ * Produces the canonical {map: {stripName: {x:[], y:[], diameter, pin?, video_offset?, video_offset_override?}}} format.
  *
- * @param {Array<{name:string, points:Array<[number,number]>, diameter:number|undefined, offset:number, count:number, video_offset:number}>} strips
+ * `pin` is emitted whenever any strip has a pin other than 'pin1' OR the
+ * distinct pin count is >= 2 (issue #24 §1.3). `video_offset` (plus
+ * `video_offset_override: true`) is emitted ONLY when the strip's
+ * `videoOffsetOverride` flag is true — the old "omit when sequential"
+ * heuristic is removed; the override flag is the sole gate.
+ *
+ * @param {Array<{name:string, points:Array<[number,number]>, diameter:number|undefined, offset:number, count:number, video_offset:number, pin?:string, videoOffsetOverride?:boolean}>} strips
  * @returns {string} JSON string
  */
 export function buildScreenmapMultiStripJson(strips) {
     if (!Array.isArray(strips) || strips.length === 0) {
         throw new Error('strips must be a non-empty array');
     }
+    const pinOf = (s) => (typeof s.pin === 'string' && s.pin.trim() !== '') ? s.pin : 'pin1';
+    const distinctPins = new Set(strips.map(pinOf));
+    const emitPin = distinctPins.size >= 2 || strips.some((s) => pinOf(s) !== 'pin1');
     const map = {};
-    let seqOffset = 0;
     for (const s of strips) {
         if (!Array.isArray(s.points)) {
             throw new Error(`Strip "${s.name}" has no points array`);
@@ -145,12 +180,14 @@ export function buildScreenmapMultiStripJson(strips) {
         if (typeof s.diameter === 'number') {
             entry.diameter = s.diameter;
         }
-        // Only include video_offset when it differs from the default sequential position
-        if (typeof s.video_offset === 'number' && s.video_offset !== seqOffset) {
+        if (emitPin) {
+            entry.pin = pinOf(s);
+        }
+        if (s.videoOffsetOverride === true && typeof s.video_offset === 'number') {
             entry.video_offset = s.video_offset;
+            entry.video_offset_override = true;
         }
         map[s.name] = entry;
-        seqOffset += s.points.length;
     }
     return JSON.stringify({ map }, null, 2);
 }
@@ -219,6 +256,9 @@ export function promoteToBackup() {
         stripCount: (existingMeta && typeof existingMeta.stripCount === 'number')
             ? existingMeta.stripCount
             : counts.stripCount,
+        pinCount: (existingMeta && typeof existingMeta.pinCount === 'number')
+            ? existingMeta.pinCount
+            : counts.pinCount,
         presetFile: _safeGet(PRESET_KEY),
     };
     _safeSet(BACKUP_KEY, current);
@@ -243,6 +283,7 @@ export function restoreBackup() {
         source: 'restore',
         ledCount: (meta && typeof meta.ledCount === 'number') ? meta.ledCount : counts.ledCount,
         stripCount: (meta && typeof meta.stripCount === 'number') ? meta.stripCount : counts.stripCount,
+        pinCount: (meta && typeof meta.pinCount === 'number') ? meta.pinCount : counts.pinCount,
     };
     _safeSet(KEY, json);
     _safeSet(META_KEY, JSON.stringify(newMeta));
@@ -270,6 +311,7 @@ export function backfillMeta() {
         source: 'backfill',
         ledCount: counts.ledCount,
         stripCount: counts.stripCount,
+        pinCount: counts.pinCount,
     };
     _safeSet(META_KEY, JSON.stringify(meta));
 }
@@ -289,8 +331,27 @@ export function backfillMeta() {
 export function saveScreenmapWithMeta(jsonText, opts = {}) {
     if (isDegenerate(jsonText)) return false;
     const source = (opts && typeof opts.source === 'string') ? opts.source : 'save';
-    const counts = _countMap(jsonText) || { ledCount: 0, stripCount: 0 };
+    const counts = _countMap(jsonText) || { ledCount: 0, stripCount: 0, pinCount: 0 };
     const prev = _safeGet(KEY);
+    // Pin-count regression guard (issue #24 §1.8): refuse a write whose
+    // distinct pin count dropped vs. the stored working copy unless a
+    // user-initiated pin mutation was recorded recently. Protects against
+    // code paths that forget to plumb `pin` and against foreign-tool
+    // flattening on import.
+    if (prev && prev !== jsonText && !isDegenerate(prev)) {
+        const prevCounts = _countMap(prev);
+        if (prevCounts && typeof prevCounts.pinCount === 'number'
+            && counts.pinCount < prevCounts.pinCount
+            && (Date.now() - _lastPinMutationAt) > PIN_MUTATION_GRACE_MS) {
+            if (!_pinGuardWarned) {
+                console.warn(
+                    `screenmap-store: refused write — distinct pin count dropped from ${prevCounts.pinCount} to ${counts.pinCount} without a recent user-initiated pin mutation`,
+                );
+                _pinGuardWarned = true;
+            }
+            return false;
+        }
+    }
     if (prev && prev !== jsonText && !isDegenerate(prev)) {
         promoteToBackup();
     }
@@ -301,6 +362,7 @@ export function saveScreenmapWithMeta(jsonText, opts = {}) {
         source,
         ledCount: counts.ledCount,
         stripCount: counts.stripCount,
+        pinCount: counts.pinCount,
     };
     _safeSet(META_KEY, JSON.stringify(meta));
     return true;

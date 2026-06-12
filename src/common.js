@@ -82,7 +82,11 @@ export function parseScreenmapMultiStrip(text) {
     // CSV fallback — wrap in single strip
     const pts = parse_screenmap_data_csv(text);
     return {
-        strips: [{ name: 'strip1', points: pts, diameter: undefined, offset: 0, count: pts.length, video_offset: 0 }],
+        strips: [{
+            name: 'strip1', points: pts, diameter: undefined, offset: 0,
+            count: pts.length, video_offset: 0,
+            pin: 'pin1', videoOffsetOverride: false,
+        }],
         allPoints: pts,
         totalCount: pts.length,
     };
@@ -115,7 +119,19 @@ function _parseMultiStripJson(obj) {
         }
         const diameter = typeof strip["diameter"] === "number" ? strip["diameter"] : undefined;
         const video_offset = typeof strip["video_offset"] === "number" ? strip["video_offset"] : offset;
-        strips.push({ name: key, points, diameter, offset, count: points.length, video_offset });
+        // Pin grouping (issue #24): free-form string, default 'pin1'.
+        const rawPin = strip["pin"];
+        const pin = (typeof rawPin === "string" && rawPin.trim() !== "") ? rawPin : "pin1";
+        // videoOffsetOverride: explicit flag wins; legacy migration — a map
+        // saved before the override flag existed marks any manually-authored
+        // (non-sequential) video_offset as overridden so it survives resave.
+        const videoOffsetOverride = typeof strip["video_offset_override"] === "boolean"
+            ? strip["video_offset_override"]
+            : (typeof strip["video_offset"] === "number" && strip["video_offset"] !== offset);
+        strips.push({
+            name: key, points, diameter, offset, count: points.length,
+            video_offset, pin, videoOffsetOverride,
+        });
         offset += points.length;
     }
     return { strips, allPoints, totalCount: allPoints.length };
@@ -131,6 +147,23 @@ export function getStripColors(n) {
     for (let i = 0; i < n; i++) {
         const hue = (i * 360 / n) % 360;
         colors.push(`hsl(${hue}, 80%, 60%)`);
+    }
+    return colors;
+}
+
+/**
+ * Generate N distinct pin tint colors (issue #24 §1.7). Mirrors
+ * getStripColors but offset in hue and softer in saturation so a pin badge
+ * reads as a different "layer" than the per-strip rainbow.
+ * @param {number} n - Number of colors needed
+ * @returns {string[]} Array of HSL color strings
+ */
+export function getPinColors(n) {
+    const colors = [];
+    const count = Math.max(1, n);
+    for (let i = 0; i < n; i++) {
+        const hue = (210 + i * 360 / count) % 360;
+        colors.push(`hsl(${hue}, 65%, 55%)`);
     }
     return colors;
 }

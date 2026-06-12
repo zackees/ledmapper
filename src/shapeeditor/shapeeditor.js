@@ -15,7 +15,7 @@ import {
     SRGBColorSpace,
     DoubleSide,
 } from 'three';
-import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, stripStartEndLabels } from '../common.js';
+import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, getPinColors, stripStartEndLabels } from '../common.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import {
     saveScreenmap,
@@ -28,6 +28,7 @@ import {
     restoreBackup,
     backfillMeta,
     isDegenerate,
+    notePinMutation,
 } from '../screenmap-store.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
 import { StripStore } from './strips-model.js';
@@ -164,6 +165,8 @@ export function init(container) {
                     offset: strip.offset,
                     count: strip.count,
                     video_offset: typeof strip.video_offset === 'number' ? strip.video_offset : strip.offset,
+                    pin: typeof strip.pin === 'string' ? strip.pin : 'pin1',
+                    videoOffsetOverride: strip.videoOffsetOverride === true,
                 };
             });
             json = buildScreenmapMultiStripJson(stripsOut);
@@ -281,6 +284,16 @@ export function init(container) {
         _maybeShowGestureNotice();
     });
 
+    // ── Toolbar modes (issue #24 §1.6): null | 'chain' | 'reorder' ──────
+    let editorMode = null;
+    // In-flight canvas connector drag (Chain mode):
+    //   { upIdx, x, y, targetIdx } — arrowhead drag, drop on a Start handle
+    let connectorDrag = null;
+    //   { stripIdx, x, y, targetIdx } — Start-handle drag, drop on an End handle
+    let startHandleDrag = null;
+    // Canvas-space geometry captured by drawChainArrows for hit-testing.
+    const _chainGeom = { connectors: [], starts: [], ends: [], crossBadges: [] };
+
     // Test/debug hook: expose strip state and computed Start/End labels so
     // E2E tests can assert on canvas-drawn labels that have no DOM presence.
     window.__shapeeditorDebug = {
@@ -366,6 +379,61 @@ export function init(container) {
             overlayCanvas.dispatchEvent(new MouseEvent('mousedown', evtOpts(pos.clientX, pos.clientY)));
             overlayCanvas.dispatchEvent(new MouseEvent('mousemove', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
             overlayCanvas.dispatchEvent(new MouseEvent('mouseup', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
+            return true;
+        },
+        // Pins / chain hooks (issue #24, Phases 1-2)
+        getPinSummary: () => {
+            const strips = stripStore.getStrips();
+            const order = stripStore.getPinOrder();
+            return order.map((pinId) => {
+                const stripIndices = [];
+                let totalCount = 0;
+                strips.forEach((s, i) => {
+                    if (StripStore.pinOf(s) === pinId) {
+                        stripIndices.push(i);
+                        totalCount += s.count;
+                    }
+                });
+                return { pinId, stripIndices, totalCount };
+            });
+        },
+        getStripPins: () => stripStore.getStrips().map((s) => StripStore.pinOf(s)),
+        getVideoOffsets: () => stripStore.getStrips().map((s) => ({
+            video_offset: s.video_offset,
+            override: !!s.videoOffsetOverride,
+        })),
+        repinStrip: (stripIdx, newPinId) => doRepinStrip(stripIdx, newPinId),
+        getDerivedVideoOffset: (stripIdx) => stripStore.getDerivedVideoOffset(stripIdx),
+        setVideoOffsetOverride: (stripIdx, value) => {
+            const strips = stripStore.getStrips();
+            const s = strips[stripIdx];
+            if (!s) return false;
+            if (!!s.videoOffsetOverride !== !!value) doToggleVoLock(stripIdx);
+            return true;
+        },
+        addPin: () => doAddPin(),
+        renamePin: (oldId, newId) => doRenamePin(oldId, newId),
+        // Chain / Reorder modes (issue #24, Phase 3)
+        getMode: () => editorMode,
+        setMode: (m) => { setEditorMode(m); return editorMode; },
+        simulateConnectorDrag: (stripIdx, targetStripIdx) => doConnectorRetarget(stripIdx, targetStripIdx),
+        getCrossPinBadgeCount: () => _crossPinBadgeCount(),
+        getChainGeom: () => ({
+            connectors: _chainGeom.connectors.map((c) => ({ up: c.up, down: c.down, x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2 })),
+            starts: _chainGeom.starts.map((s) => ({ strip: s.strip, x: s.x, y: s.y })),
+            ends: _chainGeom.ends.map((s) => ({ strip: s.strip, x: s.x, y: s.y })),
+            crossBadges: _chainGeom.crossBadges.map((b) => ({ up: b.up, down: b.down })),
+        }),
+        getUndoStack: () => undoStack.map((a) => a.type),
+        // Dispatch a real contextmenu event at canvas-internal coords so the
+        // connector right-click hit-test path is exercised end-to-end.
+        simulateCanvasContextMenu: (canvasX, canvasY) => {
+            const rect = overlayCanvas.getBoundingClientRect();
+            const clientX = rect.left + (canvasX / canvasW) * rect.width;
+            const clientY = rect.top + (canvasY / canvasH) * rect.height;
+            overlayCanvas.dispatchEvent(new MouseEvent('contextmenu', {
+                clientX, clientY, button: 2, bubbles: true, cancelable: true,
+            }));
             return true;
         },
     };
@@ -729,6 +797,8 @@ export function init(container) {
                     offset: s.offset,
                     count: s.count,
                     video_offset: typeof s.video_offset === 'number' ? s.video_offset : s.offset,
+                    pin: typeof s.pin === 'string' ? s.pin : 'pin1',
+                    videoOffsetOverride: s.videoOffsetOverride === true,
                 };
             });
             saveScreenmapMultiStrip(strips);
@@ -769,6 +839,8 @@ export function init(container) {
             offset: 0, // recomputed
             count: removedStrip.count,
             video_offset: typeof removedStrip.video_offset === 'number' ? removedStrip.video_offset : 0,
+            pin: typeof removedStrip.pin === 'string' ? removedStrip.pin : 'pin1',
+            videoOffsetOverride: removedStrip.videoOffsetOverride === true,
         };
         info.strips.splice(stripIdx, 0, stripObj);
         // Recompute offsets/allPoints
@@ -787,6 +859,157 @@ export function init(container) {
         const newOffset = stripInfo.strips[toIdx].offset;
         screenmap_pts.splice(newOffset, 0, ...movedScreenmap);
         rawPts.splice(newOffset, 0, ...movedRaw);
+    }
+
+    // ── Pin helpers (issue #24) ──────────────────────────────────────────
+
+    function _pinOfStrip(s) {
+        return StripStore.pinOf(s);
+    }
+
+    /** Zero-based position of stripIdx among the strips sharing its pin. */
+    function _withinPinIdx(stripIdx) {
+        const strips = stripStore.getStrips();
+        if (stripIdx < 0 || stripIdx >= strips.length) return -1;
+        const pin = _pinOfStrip(strips[stripIdx]);
+        let n = 0;
+        for (let i = 0; i < stripIdx; i++) {
+            if (_pinOfStrip(strips[i]) === pin) n++;
+        }
+        return n;
+    }
+
+    /** Next free auto pin id: pin1, pin2, ... */
+    function _nextFreePinId() {
+        const used = new Set(stripStore.getStrips().map(_pinOfStrip));
+        let n = 1;
+        while (used.has(`pin${n}`)) n++;
+        return `pin${n}`;
+    }
+
+    /** Pin a newly created strip should default to (B8: focused pin →
+     *  last pin → pin1). */
+    function _defaultNewStripPin() {
+        const strips = stripStore.getStrips();
+        const sIdx = selection.getStripIdx();
+        if (sIdx !== null && sIdx >= 0 && sIdx < strips.length) {
+            return _pinOfStrip(strips[sIdx]);
+        }
+        if (strips.length > 0) return _pinOfStrip(strips[strips.length - 1]);
+        return 'pin1';
+    }
+
+    /**
+     * Apply a strip-repin action: set the strip's pin, clear the
+     * videoOffsetOverride (§1.4 — repin re-derives), and move the strip to
+     * the end of the destination pin's block so pins stay contiguous.
+     * Records `action.newStripIdx` for the inverse.
+     */
+    function _applyRepin(action) {
+        const strips = stripStore.getStrips();
+        const s = strips[action.stripIdx];
+        if (!s) return;
+        s.pin = action.newPin;
+        s.videoOffsetOverride = false;
+        // Target index: just after the last existing strip of newPin
+        // (excluding the strip itself); append at end for a brand-new pin.
+        let lastSame = -1;
+        for (let i = 0; i < strips.length; i++) {
+            if (i === action.stripIdx) continue;
+            if (_pinOfStrip(strips[i]) === action.newPin) lastSame = i;
+        }
+        let target;
+        if (lastSame < 0) target = strips.length - 1;
+        else target = lastSame > action.stripIdx ? lastSame : lastSame + 1;
+        if (target !== action.stripIdx) {
+            _reorderStripPoints(action.stripIdx, target);
+            selection.onStripReorder(action.stripIdx, target);
+        } else {
+            stripStore.recomputeDerivedVideoOffsets();
+        }
+        action.newStripIdx = target;
+    }
+
+    /** Inverse of _applyRepin: restore pin, position, override and value. */
+    function _revertRepin(action) {
+        const strips = stripStore.getStrips();
+        const fromIdx = typeof action.newStripIdx === 'number' ? action.newStripIdx : action.stripIdx;
+        const s = strips[fromIdx];
+        if (!s) return;
+        s.pin = action.oldPin;
+        s.videoOffsetOverride = action.oldOverride === true;
+        if (fromIdx !== action.stripIdx) {
+            _reorderStripPoints(fromIdx, action.stripIdx);
+            selection.onStripReorder(fromIdx, action.stripIdx);
+        } else {
+            stripStore.recomputeDerivedVideoOffsets();
+        }
+        if (action.oldOverride === true && typeof action.oldVideoOffset === 'number') {
+            stripStore.updateStrip(action.stripIdx, { video_offset: action.oldVideoOffset });
+        }
+    }
+
+    /**
+     * Rearrange strips[] (and the flat point arrays) so pins appear in
+     * `order`, preserving within-pin order. Pins missing from `order` are
+     * appended in their current first-appearance order.
+     */
+    function _applyPinOrder(order) {
+        const info = stripStore.get();
+        if (!info) return;
+        const strips = info.strips;
+        const selStrip = (() => {
+            const i = selection.getStripIdx();
+            return (i !== null && i >= 0 && i < strips.length) ? strips[i] : null;
+        })();
+        const groups = new Map();
+        for (let i = 0; i < strips.length; i++) {
+            const p = _pinOfStrip(strips[i]);
+            if (!groups.has(p)) groups.set(p, []);
+            groups.get(p).push(i);
+        }
+        const fullOrder = [...order];
+        for (const p of groups.keys()) {
+            if (!fullOrder.includes(p)) fullOrder.push(p);
+        }
+        const newIdxOrder = [];
+        for (const p of fullOrder) {
+            const g = groups.get(p);
+            if (g) newIdxOrder.push(...g);
+        }
+        if (newIdxOrder.length !== strips.length) return;
+        // Rebuild flat arrays + strips array in the new order.
+        const newScreen = [];
+        const newRaw = [];
+        const newStrips = [];
+        for (const idx of newIdxOrder) {
+            const st = strips[idx];
+            for (let k = st.offset; k < st.offset + st.count; k++) {
+                newScreen.push(screenmap_pts[k]);
+                newRaw.push(rawPts[k]);
+            }
+            newStrips.push(st);
+        }
+        screenmap_pts.length = 0;
+        screenmap_pts.push(...newScreen);
+        rawPts.length = 0;
+        rawPts.push(...newRaw);
+        strips.length = 0;
+        strips.push(...newStrips);
+        stripStore._recomputeOffsetsAndAllPoints();
+        // Re-select the same strip object at its new index.
+        if (selStrip) {
+            const newIdx = strips.indexOf(selStrip);
+            if (newIdx >= 0) selection.selectStrip(newIdx);
+        }
+    }
+
+    /** Rename pin `fromId` to `toId` on every strip that uses it. */
+    function _applyPinRename(fromId, toId) {
+        const strips = stripStore.getStrips();
+        for (const s of strips) {
+            if (_pinOfStrip(s) === fromId) s.pin = toId;
+        }
     }
 
     function applyAction(action) {
@@ -823,6 +1046,19 @@ export function init(container) {
             _reverseStripInPlace(action.stripIdx);
         } else if (action.type === 'strip-offset') {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.newValue });
+        } else if (action.type === 'strip-repin') {
+            _applyRepin(action);
+        } else if (action.type === 'connector-retarget') {
+            for (const sub of action.subActions) applyAction(sub);
+        } else if (action.type === 'pin-reorder') {
+            _applyPinOrder(action.newOrder);
+        } else if (action.type === 'pin-rename') {
+            _applyPinRename(action.oldId, action.newId);
+        } else if (action.type === 'vo-override-toggle') {
+            stripStore.updateStrip(action.stripIdx, {
+                videoOffsetOverride: action.newOverride,
+                video_offset: action.newValue,
+            });
         } else if (action.type === 'strip-translate') {
             _applyStripTranslate(action.stripIdx, action.sdx, action.sdy);
         } else if (action.type === 'paste-strips') {
@@ -868,6 +1104,21 @@ export function init(container) {
             _reverseStripInPlace(action.stripIdx);
         } else if (action.type === 'strip-offset') {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.oldValue });
+        } else if (action.type === 'strip-repin') {
+            _revertRepin(action);
+        } else if (action.type === 'connector-retarget') {
+            for (let i = action.subActions.length - 1; i >= 0; i--) {
+                applyInverse(action.subActions[i]);
+            }
+        } else if (action.type === 'pin-reorder') {
+            _applyPinOrder(action.oldOrder);
+        } else if (action.type === 'pin-rename') {
+            _applyPinRename(action.newId, action.oldId);
+        } else if (action.type === 'vo-override-toggle') {
+            stripStore.updateStrip(action.stripIdx, {
+                videoOffsetOverride: action.oldOverride,
+                video_offset: action.oldValue,
+            });
         } else if (action.type === 'strip-translate') {
             _applyStripTranslate(action.stripIdx, -action.sdx, -action.sdy);
         } else if (action.type === 'paste-strips') {
@@ -899,8 +1150,28 @@ export function init(container) {
             || action.type === 'panel-place'
             || action.type === 'strip-reverse'
             || action.type === 'strip-offset'
+            || action.type === 'strip-repin'
+            || action.type === 'connector-retarget'
+            || action.type === 'pin-reorder'
+            || action.type === 'pin-rename'
+            || action.type === 'vo-override-toggle'
             || action.type === 'strip-translate'
             || action.type === 'paste-strips'
+        );
+    }
+
+    /** Actions whose undo/redo can legitimately change the distinct pin
+     *  count — the persistence guard must be told before saving. */
+    function isPinMutationAction(action) {
+        return action && (
+            action.type === 'strip-repin'
+            || action.type === 'connector-retarget'
+            || action.type === 'strip-delete'
+            || action.type === 'pin-reorder'
+            || action.type === 'pin-rename'
+            || action.type === 'panel-place'
+            || action.type === 'paste-strips'
+            || action.type === 'restore-backup'
         );
     }
 
@@ -911,6 +1182,7 @@ export function init(container) {
         redoStack.push(action);
         updateUndoRedoButtons();
         setNeedsGeometryUpdate();
+        if (isPinMutationAction(action)) notePinMutation();
         if (isStripAction(action)) {
             _persistMultiStrip();
             renderStripsPanel();
@@ -929,6 +1201,7 @@ export function init(container) {
         undoStack.push(action);
         updateUndoRedoButtons();
         setNeedsGeometryUpdate();
+        if (isPinMutationAction(action)) notePinMutation();
         if (isStripAction(action)) {
             _persistMultiStrip();
             renderStripsPanel();
@@ -1158,6 +1431,22 @@ export function init(container) {
         return colors[s];
     }
 
+    // Pins the user has collapsed in the panel (survives re-renders).
+    const collapsedPins = new Set();
+
+    /** Previous / next strip index sharing the same pin, or -1. */
+    function _withinPinNeighbor(stripIdx, dir) {
+        const strips = stripStore.getStrips();
+        if (stripIdx < 0 || stripIdx >= strips.length) return -1;
+        const pin = _pinOfStrip(strips[stripIdx]);
+        let i = stripIdx + dir;
+        while (i >= 0 && i < strips.length) {
+            if (_pinOfStrip(strips[i]) === pin) return i;
+            i += dir;
+        }
+        return -1;
+    }
+
     function renderStripsPanel() {
         if (!dom_strips_list) return;
         const strips = stripStore.getStrips();
@@ -1168,16 +1457,38 @@ export function init(container) {
         const haveBackup = !!getBackup();
         if (strips.length === 0) {
             dom_strips_panel.style.display = haveBackup ? '' : 'none';
+            renderSelectedStripRow();
             return;
         }
         dom_strips_panel.style.display = '';
+        dom_strips_list.classList.toggle('chain-mode', editorMode === 'chain');
+        dom_strips_list.classList.toggle('reorder-mode', editorMode === 'reorder');
         const selStripIdx = selection.getStripIdx();
         const total = strips.length;
+
+        // Group strip indices under pins in first-appearance order (§1.1).
+        const pinOrder = [];
+        const groups = new Map();
         for (let i = 0; i < strips.length; i++) {
+            const p = _pinOfStrip(strips[i]);
+            if (!groups.has(p)) { groups.set(p, []); pinOrder.push(p); }
+            groups.get(p).push(i);
+        }
+
+        const buildStripRow = (i) => {
             const s = strips[i];
             const row = document.createElement('div');
             row.className = 'strip-row' + (i === selStripIdx ? ' active' : '');
             row.dataset.stripIdx = String(i);
+            row.dataset.pinId = _pinOfStrip(s);
+
+            const grip = document.createElement('span');
+            grip.className = 'strip-grip';
+            grip.textContent = '⠿';
+            grip.title = 'Drag within pin to reorder | drag onto a pin header to repin';
+            grip.draggable = true;
+            grip.dataset.stripIdx = String(i);
+            row.appendChild(grip);
 
             const swatch = document.createElement('span');
             swatch.className = 'strip-swatch';
@@ -1206,26 +1517,108 @@ export function init(container) {
                 return b;
             };
 
-            row.appendChild(mkBtn('▲', 'Move up', 'up', i === 0));
-            row.appendChild(mkBtn('▼', 'Move down', 'down', i === strips.length - 1));
+            row.appendChild(mkBtn('▲', 'Move up within pin', 'up', _withinPinNeighbor(i, -1) < 0));
+            row.appendChild(mkBtn('▼', 'Move down within pin', 'down', _withinPinNeighbor(i, +1) < 0));
             row.appendChild(mkBtn('Rev', 'Reverse LED order', 'reverse', s.count < 2));
             row.appendChild(mkBtn('Rename', 'Rename strip', 'rename', false));
             row.appendChild(mkBtn('×', 'Delete strip', 'delete', strips.length <= 1));
 
-            // video_offset numeric input (small, last)
+            // video_offset display: read-only unless this strip's LOCK
+            // (videoOffsetOverride) is engaged (§1.4).
+            const overridden = s.videoOffsetOverride === true;
             const off = document.createElement('input');
             off.type = 'number';
-            off.className = 'strip-offset';
+            off.className = 'strip-offset' + (overridden ? '' : ' derived');
             off.min = '0';
             off.step = '1';
-            off.title = 'video_offset (frame index)';
+            off.title = overridden
+                ? 'video_offset (manual override)'
+                : 'video_offset (derived from pin order — engage LOCK to edit)';
             off.value = String(typeof s.video_offset === 'number' ? s.video_offset : s.offset);
             off.dataset.stripIdx = String(i);
             off.dataset.role = 'video-offset';
+            off.readOnly = !overridden;
             row.appendChild(off);
 
-            dom_strips_list.appendChild(row);
+            const lock = document.createElement('button');
+            lock.type = 'button';
+            lock.className = 'strip-btn strip-lock' + (overridden ? ' engaged' : '');
+            lock.textContent = overridden ? '🔒' : '🔓';
+            lock.title = overridden
+                ? 'Unlock: re-derive video_offset from pin order'
+                : 'Lock: override video_offset manually';
+            lock.dataset.action = 'lock';
+            lock.dataset.stripIdx = String(i);
+            lock.setAttribute('aria-pressed', overridden ? 'true' : 'false');
+            row.appendChild(lock);
+
+            return row;
+        };
+
+        let connectorN = 0;
+        for (const pin of pinOrder) {
+            const idxs = groups.get(pin);
+            const ledTotal = idxs.reduce((a, i) => a + strips[i].count, 0);
+            const det = document.createElement('details');
+            det.className = 'pin-group';
+            det.dataset.pinId = pin;
+            det.open = !collapsedPins.has(pin);
+            det.addEventListener('toggle', () => {
+                if (det.open) collapsedPins.delete(pin);
+                else collapsedPins.add(pin);
+            }, { signal });
+
+            const sum = document.createElement('summary');
+            sum.className = 'pin-header';
+            sum.dataset.pinId = pin;
+            sum.draggable = true;
+            sum.title = 'Drag to reorder pins | click name to rename';
+
+            const pinName = document.createElement('span');
+            pinName.className = 'pin-name';
+            pinName.textContent = pin;
+            pinName.dataset.pinId = pin;
+            pinName.title = 'Click to rename pin';
+            sum.appendChild(pinName);
+
+            const pinMeta = document.createElement('span');
+            pinMeta.className = 'pin-meta';
+            pinMeta.textContent = `${idxs.length} strip${idxs.length === 1 ? '' : 's'} · ${ledTotal} LED${ledTotal === 1 ? '' : 's'}`;
+            sum.appendChild(pinMeta);
+
+            const addStrip = document.createElement('button');
+            addStrip.type = 'button';
+            addStrip.className = 'strip-btn pin-add-strip';
+            addStrip.textContent = '+ strip';
+            addStrip.title = `Insert a new strip on ${pin}`;
+            addStrip.dataset.action = 'add-strip';
+            addStrip.dataset.pinId = pin;
+            sum.appendChild(addStrip);
+
+            det.appendChild(sum);
+
+            const body = document.createElement('div');
+            body.className = 'pin-strips';
+            for (let k = 0; k < idxs.length; k++) {
+                body.appendChild(buildStripRow(idxs[k]));
+                // Connector rows between same-pin strips — visible only in
+                // Chain mode (§1.6); click opens the inline connector menu.
+                if (editorMode === 'chain' && k < idxs.length - 1) {
+                    connectorN++;
+                    const cr = document.createElement('div');
+                    cr.className = 'connector-row';
+                    cr.dataset.upIdx = String(idxs[k]);
+                    cr.dataset.downIdx = String(idxs[k + 1]);
+                    cr.textContent = `──(${connectorN})──▶`;
+                    cr.title = 'Connector — click for Swap / Split / Move options';
+                    body.appendChild(cr);
+                }
+            }
+            det.appendChild(body);
+
+            dom_strips_list.appendChild(det);
         }
+        renderSelectedStripRow();
     }
 
     // ── Backup row inside #strips_panel ─────────────────────────────────
@@ -1276,13 +1669,40 @@ export function init(container) {
             const btn = e.target.closest('button[data-action]');
             if (btn) {
                 e.stopPropagation();
-                const idx = parseInt(btn.dataset.stripIdx, 10);
+                e.preventDefault();
                 const action = btn.dataset.action;
-                if (action === 'up') doReorderStrip(idx, idx - 1);
-                else if (action === 'down') doReorderStrip(idx, idx + 1);
+                if (action === 'add-strip') {
+                    pendingNewStripPin = btn.dataset.pinId || null;
+                    _openInsertDialog();
+                    return;
+                }
+                const idx = parseInt(btn.dataset.stripIdx, 10);
+                if (action === 'up') doReorderStrip(idx, _withinPinNeighbor(idx, -1));
+                else if (action === 'down') doReorderStrip(idx, _withinPinNeighbor(idx, +1));
                 else if (action === 'reverse') doReverseStrip(idx);
                 else if (action === 'rename') await doRenameStripPrompt(idx);
                 else if (action === 'delete') await doDeleteStripPrompt(idx);
+                else if (action === 'lock') doToggleVoLock(idx);
+                return;
+            }
+            // Pin name click → rename (don't toggle the <details>)
+            const pinName = e.target.closest('.pin-name');
+            if (pinName) {
+                e.preventDefault();
+                e.stopPropagation();
+                await doRenamePinPrompt(pinName.dataset.pinId);
+                return;
+            }
+            // Connector row click → inline menu (Chain mode, §1.6)
+            const cRow = e.target.closest('.connector-row');
+            if (cRow) {
+                e.preventDefault();
+                e.stopPropagation();
+                _openConnectorMenu(
+                    parseInt(cRow.dataset.upIdx, 10),
+                    parseInt(cRow.dataset.downIdx, 10),
+                    e.clientX, e.clientY,
+                );
                 return;
             }
             // Ignore clicks that target inputs (so they keep focus)
@@ -1297,9 +1717,181 @@ export function init(container) {
         dom_strips_list.addEventListener('change', (e) => {
             const t = e.target;
             if (t instanceof HTMLInputElement && t.dataset.role === 'video-offset') {
+                if (t.readOnly) return; // derived value — LOCK not engaged
                 const idx = parseInt(t.dataset.stripIdx, 10);
                 doSetVideoOffset(idx, t.value);
             }
+        }, { signal });
+
+        // ── Drag & drop: grip drag (reorder / repin) + pin header drag ──
+        /** @type {null | {kind:'strip', idx:number} | {kind:'pin', pinId:string}} */
+        let panelDragState = null;
+
+        const clearDragOver = () => {
+            for (const el of dom_strips_list.querySelectorAll('.drag-over')) {
+                el.classList.remove('drag-over');
+            }
+        };
+
+        dom_strips_list.addEventListener('dragstart', (e) => {
+            const grip = e.target.closest ? e.target.closest('.strip-grip') : null;
+            if (grip) {
+                panelDragState = { kind: 'strip', idx: parseInt(grip.dataset.stripIdx, 10) };
+                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+                return;
+            }
+            const header = e.target.closest ? e.target.closest('.pin-header') : null;
+            if (header) {
+                panelDragState = { kind: 'pin', pinId: header.dataset.pinId };
+                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+            }
+        }, { signal });
+
+        dom_strips_list.addEventListener('dragover', (e) => {
+            if (!panelDragState) return;
+            const target = e.target.closest
+                ? (e.target.closest('.strip-row') || e.target.closest('.pin-header'))
+                : null;
+            if (!target) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+            clearDragOver();
+            target.classList.add('drag-over');
+        }, { signal });
+
+        dom_strips_list.addEventListener('drop', (e) => {
+            if (!panelDragState) return;
+            e.preventDefault();
+            clearDragOver();
+            const drag = panelDragState;
+            panelDragState = null;
+            const rowTarget = e.target.closest ? e.target.closest('.strip-row') : null;
+            const headerTarget = e.target.closest ? e.target.closest('.pin-header') : null;
+            if (drag.kind === 'strip') {
+                if (rowTarget) {
+                    const toIdx = parseInt(rowTarget.dataset.stripIdx, 10);
+                    if (toIdx === drag.idx) return;
+                    const strips = stripStore.getStrips();
+                    const fromPin = strips[drag.idx] ? _pinOfStrip(strips[drag.idx]) : null;
+                    const toPin = rowTarget.dataset.pinId;
+                    if (fromPin === toPin) doReorderStrip(drag.idx, toIdx);
+                    else doRepinStrip(drag.idx, toPin);
+                } else if (headerTarget) {
+                    doRepinStrip(drag.idx, headerTarget.dataset.pinId);
+                }
+            } else if (drag.kind === 'pin' && headerTarget) {
+                const order = stripStore.getPinOrder();
+                const toIdx = order.indexOf(headerTarget.dataset.pinId);
+                if (toIdx >= 0) doReorderPin(drag.pinId, toIdx);
+            }
+        }, { signal });
+
+        dom_strips_list.addEventListener('dragend', () => {
+            panelDragState = null;
+            clearDragOver();
+        }, { signal });
+    }
+
+    // ── [+ Pin] button + selected-strip "Move to pin…" row ──────────────
+    const dom_strips_btn_add_pin = container.querySelector('#strips_btn_add_pin');
+    if (dom_strips_btn_add_pin) {
+        dom_strips_btn_add_pin.addEventListener('click', () => { doAddPin(); }, { signal });
+    }
+
+    // ── [Chain] / [Reorder] toolbar modes (issue #24 §1.6, Phase 3) ─────
+    const dom_strips_btn_chain = container.querySelector('#strips_btn_chain');
+    const dom_strips_btn_reorder = container.querySelector('#strips_btn_reorder');
+
+    /** Switch the editor mode: 'chain' | 'reorder' | null (toggles are
+     *  mutually exclusive). Cancels any in-flight connector drag. */
+    function setEditorMode(mode) {
+        const m = (mode === 'chain' || mode === 'reorder') ? mode : null;
+        if (m === editorMode) return;
+        editorMode = m;
+        connectorDrag = null;
+        startHandleDrag = null;
+        if (m && dom_strips_panel) dom_strips_panel.open = true;
+        if (dom_strips_btn_chain) {
+            dom_strips_btn_chain.classList.toggle('active', m === 'chain');
+            dom_strips_btn_chain.setAttribute('aria-pressed', m === 'chain' ? 'true' : 'false');
+        }
+        if (dom_strips_btn_reorder) {
+            dom_strips_btn_reorder.classList.toggle('active', m === 'reorder');
+            dom_strips_btn_reorder.setAttribute('aria-pressed', m === 'reorder' ? 'true' : 'false');
+        }
+        // Reorder mode dims the canvas (§1.6); wrapper exists post-initRenderer.
+        if (wrapper) wrapper.classList.toggle('canvas-dim', m === 'reorder');
+        _hideConnectorMenu();
+        renderStripsPanel();
+        _updateHintStrip();
+        setNeedsRender();
+    }
+
+    if (dom_strips_btn_chain) {
+        dom_strips_btn_chain.addEventListener('click', () => {
+            setEditorMode(editorMode === 'chain' ? null : 'chain');
+        }, { signal });
+        // Canvas Chain-mode interactions are desktop-only (§1.11): hide the
+        // button on touch-only devices.
+        try {
+            if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
+                dom_strips_btn_chain.style.display = 'none';
+            }
+        } catch { /* matchMedia unavailable */ }
+    }
+    if (dom_strips_btn_reorder) {
+        dom_strips_btn_reorder.addEventListener('click', () => {
+            setEditorMode(editorMode === 'reorder' ? null : 'reorder');
+        }, { signal });
+    }
+
+    const dom_strips_selected_row = container.querySelector('#strips_selected_row');
+    const dom_strips_selected_label = container.querySelector('#strips_selected_label');
+    const dom_strips_move_pin = container.querySelector('#strips_move_pin');
+
+    function renderSelectedStripRow() {
+        if (!dom_strips_selected_row) return;
+        const strips = stripStore.getStrips();
+        const sIdx = selection.getStripIdx();
+        if (sIdx === null || sIdx < 0 || sIdx >= strips.length) {
+            dom_strips_selected_row.style.display = 'none';
+            return;
+        }
+        const s = strips[sIdx];
+        const pin = _pinOfStrip(s);
+        dom_strips_selected_row.style.display = '';
+        if (dom_strips_selected_label) {
+            dom_strips_selected_label.textContent = `Selected: ${s.name} (${pin})`;
+        }
+        if (dom_strips_move_pin) {
+            dom_strips_move_pin.innerHTML = '';
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Move to pin…';
+            placeholder.selected = true;
+            placeholder.disabled = true;
+            dom_strips_move_pin.appendChild(placeholder);
+            for (const p of stripStore.getPinOrder()) {
+                if (p === pin) continue;
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = p;
+                dom_strips_move_pin.appendChild(opt);
+            }
+            const newOpt = document.createElement('option');
+            newOpt.value = '__new__';
+            newOpt.textContent = 'New pin…';
+            dom_strips_move_pin.appendChild(newOpt);
+        }
+    }
+
+    if (dom_strips_move_pin) {
+        dom_strips_move_pin.addEventListener('change', () => {
+            const sIdx = selection.getStripIdx();
+            const value = dom_strips_move_pin.value;
+            if (sIdx === null || sIdx < 0 || !value) return;
+            if (value === '__new__') doRepinStrip(sIdx, _nextFreePinId());
+            else doRepinStrip(sIdx, value);
         }, { signal });
     }
 
@@ -1356,6 +1948,365 @@ export function init(container) {
         stripStore.updateStrip(stripIdx, { video_offset: v });
         pushUndo({ type: 'strip-offset', stripIdx, oldValue, newValue: v });
         _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsRender();
+    }
+
+    // ── Pin operations (issue #24, Phase 2) ──────────────────────────────
+
+    /** One-shot toast shown on the first cross-pin move (§1.10). */
+    function _maybeShowRepinToast(stripName, newPin) {
+        try {
+            if (localStorage.getItem('lm:shapeeditor-repinToastShown')) return;
+            localStorage.setItem('lm:shapeeditor-repinToastShown', '1');
+        } catch { /* private mode */ }
+        _toastInfo(`Moved "${stripName}" to ${newPin}. vo: was reset; Undo to restore.`);
+    }
+
+    /**
+     * Move a strip to another pin. Clears its videoOffsetOverride and
+     * re-derives video_offset (§1.4). Emits a `strip-repin` undo action.
+     * Returns true when a move happened.
+     */
+    function doRepinStrip(stripIdx, newPinRaw) {
+        const strips = stripStore.getStrips();
+        if (stripIdx < 0 || stripIdx >= strips.length) return false;
+        const newPin = typeof newPinRaw === 'string' ? newPinRaw.trim() : '';
+        if (!newPin) return false;
+        const s = strips[stripIdx];
+        const oldPin = _pinOfStrip(s);
+        if (newPin === oldPin) return false;
+        const action = {
+            type: 'strip-repin',
+            stripIdx,
+            oldPin,
+            newPin,
+            oldWithinPinIdx: _withinPinIdx(stripIdx),
+            newWithinPinIdx: strips.filter((st) => _pinOfStrip(st) === newPin).length,
+            oldVideoOffset: typeof s.video_offset === 'number' ? s.video_offset : s.offset,
+            oldOverride: s.videoOffsetOverride === true,
+        };
+        _applyRepin(action);
+        pushUndo(action);
+        notePinMutation();
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+        _maybeShowRepinToast(s.name, newPin);
+        return true;
+    }
+
+    /**
+     * Toggle the per-strip [LOCK] (videoOffsetOverride). Locking keeps the
+     * current value and makes vo: editable; unlocking re-derives.
+     * Emits a `vo-override-toggle` undo action.
+     */
+    function doToggleVoLock(stripIdx) {
+        const strips = stripStore.getStrips();
+        if (stripIdx < 0 || stripIdx >= strips.length) return;
+        const s = strips[stripIdx];
+        const oldOverride = s.videoOffsetOverride === true;
+        const newOverride = !oldOverride;
+        const oldValue = typeof s.video_offset === 'number' ? s.video_offset : s.offset;
+        const newValue = newOverride ? oldValue : stripStore.getDerivedVideoOffset(stripIdx);
+        stripStore.updateStrip(stripIdx, { videoOffsetOverride: newOverride, video_offset: newValue });
+        pushUndo({ type: 'vo-override-toggle', stripIdx, oldOverride, newOverride, oldValue, newValue });
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsRender();
+    }
+
+    /** Rename a pin (core, no prompt). Returns true when applied. */
+    function doRenamePin(oldId, newIdRaw) {
+        const newId = typeof newIdRaw === 'string' ? newIdRaw.trim() : '';
+        if (!newId || newId === oldId) return false;
+        const pins = stripStore.getPinOrder();
+        if (!pins.includes(oldId)) return false;
+        if (pins.includes(newId)) return false;
+        _applyPinRename(oldId, newId);
+        pushUndo({ type: 'pin-rename', oldId, newId });
+        notePinMutation();
+        _persistMultiStrip();
+        renderStripsPanel();
+        return true;
+    }
+
+    async function doRenamePinPrompt(pinId) {
+        const pins = stripStore.getPinOrder();
+        if (!pins.includes(pinId)) return;
+        const Swal = (await import('sweetalert2')).default;
+        if (signal.aborted) return;
+        const { value } = await Swal.fire({
+            title: 'Rename Pin',
+            input: 'text',
+            inputValue: pinId,
+            inputLabel: `New name for "${pinId}" (labels only — export order determines addLeds order)`,
+            showCancelButton: true,
+            inputValidator: (v) => {
+                const name = (v || '').trim();
+                if (!name) return 'Pin name cannot be empty';
+                if (name !== pinId && pins.includes(name)) {
+                    return `A pin named "${name}" already exists`;
+                }
+                return null;
+            },
+        });
+        if (signal.aborted || typeof value !== 'string') return;
+        doRenamePin(pinId, value);
+    }
+
+    /** Move pin `pinId` to position `toIdx` in the pin order. */
+    function doReorderPin(pinId, toIdx) {
+        const oldOrder = stripStore.getPinOrder();
+        const fromIdx = oldOrder.indexOf(pinId);
+        if (fromIdx < 0) return false;
+        const clamped = Math.max(0, Math.min(oldOrder.length - 1, toIdx));
+        if (clamped === fromIdx) return false;
+        const newOrder = [...oldOrder];
+        newOrder.splice(fromIdx, 1);
+        newOrder.splice(clamped, 0, pinId);
+        _applyPinOrder(newOrder);
+        pushUndo({ type: 'pin-reorder', oldOrder, newOrder });
+        notePinMutation();
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+        return true;
+    }
+
+    /**
+     * [+ Pin]: pins exist only through strips (§1.1), so creating a pin
+     * moves the SELECTED strip onto a fresh pinN. Returns the new pin id,
+     * or null when no strip is selected.
+     */
+    function doAddPin() {
+        const sIdx = selection.getStripIdx();
+        const strips = stripStore.getStrips();
+        if (sIdx === null || sIdx < 0 || sIdx >= strips.length) {
+            _toastInfo('Select a strip first — [+ Pin] moves it to a new pin');
+            return null;
+        }
+        const newPin = _nextFreePinId();
+        doRepinStrip(sIdx, newPin);
+        return newPin;
+    }
+
+    // ── Chain-mode connector operations (issue #24 §1.7, Phase 3) ───────
+
+    /** Build a strip-repin action object for stripIdx → newPin (no apply). */
+    function _makeRepinAction(stripIdx, newPin) {
+        const strips = stripStore.getStrips();
+        const s = strips[stripIdx];
+        return {
+            type: 'strip-repin',
+            stripIdx,
+            oldPin: _pinOfStrip(s),
+            newPin,
+            oldWithinPinIdx: _withinPinIdx(stripIdx),
+            newWithinPinIdx: strips.filter((st) => _pinOfStrip(st) === newPin).length,
+            oldVideoOffset: typeof s.video_offset === 'number' ? s.video_offset : s.offset,
+            oldOverride: s.videoOffsetOverride === true,
+        };
+    }
+
+    /** Finish a composite connector edit: push ONE undo entry + persist. */
+    function _commitComposite(subActions, crossPin, toastStripName, toastPin) {
+        if (subActions.length === 0) return false;
+        pushUndo({ type: 'connector-retarget', subActions });
+        notePinMutation();
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+        if (crossPin) _maybeShowRepinToast(toastStripName, toastPin);
+        return true;
+    }
+
+    /**
+     * Retarget the connector leaving `upIdx` so that strip feeds `tgtIdx`:
+     * the target strip moves to immediately after the upstream strip, taking
+     * the upstream strip's pin when they differ. Emits ONE composite
+     * `connector-retarget` undo entry {subActions: [strip-repin?, strip-reorder?]}.
+     */
+    function doConnectorRetarget(upIdx, tgtIdx) {
+        const strips = stripStore.getStrips();
+        if (upIdx < 0 || upIdx >= strips.length) return false;
+        if (tgtIdx < 0 || tgtIdx >= strips.length) return false;
+        if (upIdx === tgtIdx) return false;
+        const upStrip = strips[upIdx];
+        const tgtStrip = strips[tgtIdx];
+        const upPin = _pinOfStrip(upStrip);
+        const tgtPin = _pinOfStrip(tgtStrip);
+        const subActions = [];
+        let crossPin = false;
+        if (tgtPin !== upPin) {
+            const repin = _makeRepinAction(tgtIdx, upPin);
+            applyAction(repin);
+            subActions.push(repin);
+            crossPin = true;
+        }
+        // Indices may have shifted after the repin — locate by object.
+        const curIdx = strips.indexOf(tgtStrip);
+        const upIdxNow = strips.indexOf(upStrip);
+        if (curIdx < 0 || upIdxNow < 0) return false;
+        const toIdx = curIdx < upIdxNow ? upIdxNow : upIdxNow + 1;
+        if (toIdx !== curIdx) {
+            const reorder = { type: 'strip-reorder', fromIdx: curIdx, toIdx };
+            applyAction(reorder);
+            subActions.push(reorder);
+        }
+        return _commitComposite(subActions, crossPin, tgtStrip.name, upPin);
+    }
+
+    /**
+     * Split a pin at the connector ABOVE `downIdx`: that strip and every
+     * following same-pin strip move onto a fresh pin, preserving order.
+     * One composite undo entry.
+     */
+    function doSplitPinAt(downIdx) {
+        const strips = stripStore.getStrips();
+        const s = strips[downIdx];
+        if (!s) return false;
+        const pin = _pinOfStrip(s);
+        const moving = [];
+        for (let i = downIdx; i < strips.length; i++) {
+            if (_pinOfStrip(strips[i]) === pin) moving.push(strips[i]);
+            else break;
+        }
+        if (moving.length === 0) return false;
+        const newPin = _nextFreePinId();
+        const subActions = [];
+        for (const obj of moving) {
+            const idx = strips.indexOf(obj);
+            if (idx < 0) continue;
+            const repin = _makeRepinAction(idx, newPin);
+            applyAction(repin);
+            subActions.push(repin);
+        }
+        return _commitComposite(subActions, true, s.name, newPin);
+    }
+
+    /** "Move downstream to pin…" prompt for the strip below a connector. */
+    async function _moveDownstreamToPinPrompt(downIdx) {
+        const strips = stripStore.getStrips();
+        const s = strips[downIdx];
+        if (!s) return;
+        const curPin = _pinOfStrip(s);
+        const options = {};
+        for (const p of stripStore.getPinOrder()) {
+            if (p !== curPin) options[p] = p;
+        }
+        options.__new__ = 'New pin…';
+        const Swal = (await import('sweetalert2')).default;
+        if (signal.aborted) return;
+        const { value } = await Swal.fire({
+            title: `Move "${s.name}" to pin`,
+            input: 'select',
+            inputOptions: options,
+            showCancelButton: true,
+            background: '#1a1a1a',
+            color: '#e5e7eb',
+        });
+        if (signal.aborted || typeof value !== 'string' || !value) return;
+        doRepinStrip(downIdx, value === '__new__' ? _nextFreePinId() : value);
+    }
+
+    // ── Inline connector menu (shared by panel rows + canvas right-click) ─
+    let connectorMenuEl = null;
+
+    function _hideConnectorMenu() {
+        if (connectorMenuEl) {
+            connectorMenuEl.remove();
+            connectorMenuEl = null;
+        }
+    }
+
+    function _openConnectorMenu(upIdx, downIdx, clientX, clientY) {
+        _hideConnectorMenu();
+        const menu = document.createElement('div');
+        menu.className = 'connector-menu';
+        const mk = (label, fn) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = label;
+            b.addEventListener('click', () => { _hideConnectorMenu(); fn(); }, { signal });
+            menu.appendChild(b);
+        };
+        mk('Swap upstream', () => { doReorderStrip(downIdx, upIdx); });
+        mk('Split pin here', () => { doSplitPinAt(downIdx); });
+        mk('Move downstream to pin…', () => { _moveDownstreamToPinPrompt(downIdx); });
+        menu.style.left = `${Math.min(clientX, window.innerWidth - 200)}px`;
+        menu.style.top = `${Math.min(clientY, window.innerHeight - 110)}px`;
+        document.body.appendChild(menu);
+        connectorMenuEl = menu;
+    }
+
+    window.addEventListener('mousedown', (e) => {
+        if (connectorMenuEl && !connectorMenuEl.contains(e.target)) {
+            _hideConnectorMenu();
+        }
+    }, { signal });
+
+    // ── Chain-mode canvas hit helpers (geometry from drawChainArrows) ────
+
+    function _hitChainArrowhead(cx, cy) {
+        for (const c of _chainGeom.connectors) {
+            const dx = cx - c.hx, dy = cy - c.hy;
+            if (dx * dx + dy * dy <= 14 * 14) return c;
+        }
+        return null;
+    }
+
+    function _hitStartHandle(cx, cy, excludeIdx) {
+        for (const st of _chainGeom.starts) {
+            if (st.strip === excludeIdx) continue;
+            const dx = cx - st.x, dy = cy - st.y;
+            if (dx * dx + dy * dy <= 12 * 12) return st.strip;
+        }
+        return null;
+    }
+
+    function _hitEndHandle(cx, cy, excludeIdx) {
+        for (const st of _chainGeom.ends) {
+            if (st.strip === excludeIdx) continue;
+            const dx = cx - st.x, dy = cy - st.y;
+            if (dx * dx + dy * dy <= 12 * 12) return st.strip;
+        }
+        return null;
+    }
+
+    /** Distance-to-segment hit test on connector arrow bodies. */
+    function _hitConnectorBody(cx, cy) {
+        for (const c of _chainGeom.connectors) {
+            const vx = c.x2 - c.x1, vy = c.y2 - c.y1;
+            const lenSq = vx * vx + vy * vy;
+            if (lenSq < 1) continue;
+            let t = ((cx - c.x1) * vx + (cy - c.y1) * vy) / lenSq;
+            t = Math.max(0, Math.min(1, t));
+            const px = c.x1 + t * vx, py = c.y1 + t * vy;
+            const dx = cx - px, dy = cy - py;
+            if (dx * dx + dy * dy <= 8 * 8) return c;
+        }
+        return null;
+    }
+
+    /** Live strips-panel row-order preview during a connector drag: move the
+     *  target row to just after the upstream row (DOM-only, no state). */
+    function _previewConnectorTarget(upIdx, targetIdx) {
+        renderStripsPanel();
+        if (targetIdx === null || targetIdx === undefined || upIdx === null) return;
+        if (!dom_strips_list) return;
+        const upRow = dom_strips_list.querySelector(`.strip-row[data-strip-idx="${upIdx}"]`);
+        const tgtRow = dom_strips_list.querySelector(`.strip-row[data-strip-idx="${targetIdx}"]`);
+        if (upRow && tgtRow && upRow !== tgtRow) {
+            upRow.after(tgtRow);
+            tgtRow.classList.add('preview-move');
+        }
+    }
+
+    function _cancelConnectorDrag() {
+        if (!connectorDrag && !startHandleDrag) return;
+        connectorDrag = null;
+        startHandleDrag = null;
         renderStripsPanel();
         setNeedsRender();
     }
@@ -1429,6 +2380,7 @@ export function init(container) {
         selection.onStripRemove(stripIdx);
         selectedIdx = -1;
         pushUndo({ type: 'strip-delete', stripIdx, removed });
+        notePinMutation();
         _persistMultiStrip();
         renderStripsPanel();
         setNeedsGeometryUpdate();
@@ -1723,6 +2675,8 @@ export function init(container) {
             pointEditMode: pointEditStripIdx !== null,
             pointEditStripName,
             selectedStripName,
+            chainMode: editorMode === 'chain',
+            reorderMode: editorMode === 'reorder',
         };
     }
 
@@ -1775,6 +2729,16 @@ export function init(container) {
                             <li>Pinch: zoom</li>
                         </ul>
                     </div>
+                </div>
+                <div id="help_chains_pins" style="margin-top:14px;text-align:left;font:13px/1.45 'Outfit',system-ui,sans-serif;color:#e5e7eb;">
+                    <h3 style="margin:0 0 6px 0;font-size:14px;color:#93c5fd;">Chains and Pins</h3>
+                    <ul style="margin:0;padding-left:18px;">
+                        <li><b>Chain</b> mode: drag a connector arrowhead to rewire strips; right-click an arrow for Swap / Split / Move options</li>
+                        <li><b>Reorder</b> mode: move strips within a pin with the ▲/▼ arrows; drag a grip across pin headers to repin</li>
+                        <li><b>+ Pin</b>: move the selected strip onto a fresh pin</li>
+                        <li><b>LOCK</b> (🔓/🔒) overrides a strip's <code>video_offset</code>; unlocked values re-derive from pin order</li>
+                        <li>Pin names are labels; export order, not name, determines FastLED <code>addLeds</code> call order</li>
+                    </ul>
                 </div>
                 <div style="margin-top:14px;text-align:left;">
                     <label style="font-size:12px;color:#9ca3af;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
@@ -1880,6 +2844,9 @@ export function init(container) {
 
         screenmap_pts = parse_screenmap_data(text);
         if (screenmap_pts.length === 0) return;
+        // Loading a new file is a user-initiated pin change — even if it has
+        // fewer pins than the previous working copy (guard grace window).
+        notePinMutation();
         saveScreenmap(text);
         try { renderBackupRow(); } catch { /* render is best-effort */ }
 
@@ -2393,20 +3360,53 @@ export function init(container) {
     }
 
     function _chainArrowCount() {
-        if (!showChainArrows) return 0;
+        if (!showChainArrows && editorMode !== 'chain') return 0;
         if (!stripInfo || stripInfo.strips.length <= 1) return 0;
         let drawable = 0;
         for (let s = 0; s < stripInfo.strips.length - 1; s++) {
             const a = stripInfo.strips[s];
             const b = stripInfo.strips[s + 1];
-            if (a.count > 0 && b.count > 0) drawable++;
+            if (a.count > 0 && b.count > 0 && _pinOfStrip(a) === _pinOfStrip(b)) drawable++;
         }
         return drawable;
+    }
+
+    /** Cross-pin boundaries get a pin-tinted badge instead of an arrow (§1.7). */
+    function _crossPinBadgeCount() {
+        if (!showChainArrows && editorMode !== 'chain') return 0;
+        if (!stripInfo || stripInfo.strips.length <= 1) return 0;
+        let n = 0;
+        for (let s = 0; s < stripInfo.strips.length - 1; s++) {
+            const a = stripInfo.strips[s];
+            const b = stripInfo.strips[s + 1];
+            if (a.count > 0 && b.count > 0 && _pinOfStrip(a) !== _pinOfStrip(b)) n++;
+        }
+        return n;
     }
 
     function drawChainArrows(pts) {
         const strips = stripInfo.strips;
         const ctx = overlayCtx;
+        const pinOrder = stripStore.getPinOrder();
+        const pinColors = getPinColors(pinOrder.length);
+        const pinColorOf = (strip) => {
+            const i = pinOrder.indexOf(_pinOfStrip(strip));
+            return pinColors[i >= 0 ? i : 0] || '#3b82f6';
+        };
+        // Refresh canvas-space geometry used by Chain-mode hit-tests.
+        _chainGeom.connectors.length = 0;
+        _chainGeom.starts.length = 0;
+        _chainGeom.ends.length = 0;
+        _chainGeom.crossBadges.length = 0;
+        for (let s = 0; s < strips.length; s++) {
+            const st = strips[s];
+            if (st.count <= 0) continue;
+            const si = st.offset;
+            const ei = st.offset + st.count - 1;
+            if (si >= pts.length || ei >= pts.length) continue;
+            _chainGeom.starts.push({ strip: s, x: pts[si][0], y: pts[si][1] });
+            _chainGeom.ends.push({ strip: s, x: pts[ei][0], y: pts[ei][1] });
+        }
         ctx.save();
         ctx.globalAlpha = 0.9;
         ctx.strokeStyle = '#3b82f6';
@@ -2422,6 +3422,32 @@ export function init(container) {
             if (aLast >= pts.length || bFirst >= pts.length) continue;
             const [x1, y1] = pts[aLast];
             const [x2, y2] = pts[bFirst];
+            if (_pinOfStrip(a) !== _pinOfStrip(b)) {
+                // Cross-pin boundary: no arrow — pin-tinted dot near the next
+                // strip's Start (§1.7).
+                const tint = pinColorOf(b);
+                ctx.setLineDash([]);
+                ctx.fillStyle = tint;
+                ctx.beginPath();
+                ctx.arc(x2 + 12, y2 - 12, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(x2 + 12, y2 - 12, 6, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = tint;
+                ctx.font = '9px "IBM Plex Mono", monospace';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(_pinOfStrip(b), x2 + 21, y2 - 12);
+                ctx.strokeStyle = '#3b82f6';
+                ctx.fillStyle = '#3b82f6';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([6, 4]);
+                _chainGeom.crossBadges.push({ up: s, down: s + 1, x: x2 + 12, y: y2 - 12 });
+                continue;
+            }
             ctx.beginPath();
             ctx.moveTo(x1, y1);
             ctx.lineTo(x2, y2);
@@ -2458,6 +3484,46 @@ export function init(container) {
             ctx.fillText(String(badgeN), mx, my);
             ctx.setLineDash([6, 4]);
             badgeN++;
+            _chainGeom.connectors.push({ up: s, down: s + 1, x1, y1, x2, y2, hx: x2, hy: y2 });
+        }
+        ctx.restore();
+    }
+
+    /** Ghost arrow + drop-target highlight while a Chain-mode drag is live. */
+    function _drawChainDragGhost() {
+        const ctx = overlayCtx;
+        if (!ctx) return;
+        const drag = connectorDrag || startHandleDrag;
+        if (!drag) return;
+        let ax = null, ay = null;
+        if (connectorDrag) {
+            const end = _chainGeom.ends.find((e) => e.strip === connectorDrag.upIdx);
+            if (end) { ax = end.x; ay = end.y; }
+        } else {
+            const start = _chainGeom.starts.find((e) => e.strip === startHandleDrag.stripIdx);
+            if (start) { ax = start.x; ay = start.y; }
+        }
+        if (ax === null) return;
+        ctx.save();
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(drag.x, drag.y);
+        ctx.stroke();
+        if (drag.targetIdx !== null && drag.targetIdx !== undefined) {
+            const handles = connectorDrag ? _chainGeom.starts : _chainGeom.ends;
+            const h = handles.find((e) => e.strip === drag.targetIdx);
+            if (h) {
+                ctx.setLineDash([]);
+                ctx.strokeStyle = '#22d3ee';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, 13, 0, Math.PI * 2);
+                ctx.stroke();
+            }
         }
         ctx.restore();
     }
@@ -2639,9 +3705,15 @@ export function init(container) {
         }
 
         // Chain-order arrows: from each strip's LAST LED to next strip's FIRST LED.
-        if (showChainArrows && stripInfo && stripInfo.strips.length > 1) {
+        if ((showChainArrows || editorMode === 'chain') && stripInfo && stripInfo.strips.length > 1) {
             drawChainArrows(pts);
+        } else {
+            _chainGeom.connectors.length = 0;
+            _chainGeom.starts.length = 0;
+            _chainGeom.ends.length = 0;
+            _chainGeom.crossBadges.length = 0;
         }
+        _drawChainDragGhost();
 
         // Start and end LEDs always visible (per strip when multi-strip)
         overlayCtx.globalAlpha = 1;
@@ -3225,6 +4297,14 @@ export function init(container) {
         if (wasMoved) return;
         if (screenmap_pts.length === 0) return;
         const [cx, cy] = getCanvasCoords(e);
+        // Chain mode: right-click on a connector arrow opens the connector menu
+        if (editorMode === 'chain') {
+            const conn = _hitConnectorBody(cx, cy);
+            if (conn) {
+                _openConnectorMenu(conn.up, conn.down, e.clientX, e.clientY);
+                return;
+            }
+        }
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
             selectedIdx = idx;
@@ -3301,6 +4381,35 @@ export function init(container) {
 
         if (e.button !== 0) return;
         const [cx, cy] = getCanvasCoords(e);
+
+        // Chain mode: arrowhead / Start-handle drags only; LED hit-test and
+        // group-drag are suppressed (issue #24 §1.7). Everything else pans.
+        if (editorMode === 'chain') {
+            const conn = _hitChainArrowhead(cx, cy);
+            if (conn) {
+                connectorDrag = { upIdx: conn.up, x: cx, y: cy, targetIdx: null };
+                overlayCanvas.style.cursor = 'grabbing';
+                setNeedsRender();
+                return;
+            }
+            const startIdx = _hitStartHandle(cx, cy, -1);
+            if (startIdx !== null) {
+                startHandleDrag = { stripIdx: startIdx, x: cx, y: cy, targetIdx: null };
+                overlayCanvas.style.cursor = 'grabbing';
+                setNeedsRender();
+                return;
+            }
+            // Fall through to pan
+            if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
+            selection.clear();
+            isPanning = true;
+            panStartX = cx;
+            panStartY = cy;
+            panStartCamX = camPanX;
+            panStartCamY = camPanY;
+            overlayCanvas.style.cursor = 'move';
+            return;
+        }
 
         // Shift+Left-click: insert a new point between two existing points
         if (e.shiftKey && screenmap_pts.length >= 2) {
@@ -3487,6 +4596,40 @@ export function init(container) {
             return;
         }
 
+        // Chain-mode connector drag (arrowhead → new downstream target)
+        if (connectorDrag) {
+            connectorDrag.x = cx;
+            connectorDrag.y = cy;
+            const target = _hitStartHandle(cx, cy, connectorDrag.upIdx);
+            if (target !== connectorDrag.targetIdx) {
+                connectorDrag.targetIdx = target;
+                if (target !== null) {
+                    _previewConnectorTarget(connectorDrag.upIdx, target);
+                } else {
+                    renderStripsPanel();
+                }
+            }
+            setNeedsRender();
+            return;
+        }
+
+        // Chain-mode Start-handle drag (strip Start → upstream End target)
+        if (startHandleDrag) {
+            startHandleDrag.x = cx;
+            startHandleDrag.y = cy;
+            const target = _hitEndHandle(cx, cy, startHandleDrag.stripIdx);
+            if (target !== startHandleDrag.targetIdx) {
+                startHandleDrag.targetIdx = target;
+                if (target !== null) {
+                    _previewConnectorTarget(target, startHandleDrag.stripIdx);
+                } else {
+                    renderStripsPanel();
+                }
+            }
+            setNeedsRender();
+            return;
+        }
+
         // Ruler drag in progress
         if (rulerDrag) {
             const wdx = (cx - rulerDragStart.cx) / camZoom;
@@ -3660,6 +4803,34 @@ export function init(container) {
             rightButtonDown = false;
             // rightClickMoved is consumed by onContextMenu
             overlayCanvas.style.cursor = 'default';
+            return;
+        }
+
+        // Chain-mode drags: commit on a valid drop target, else cancel.
+        if (connectorDrag) {
+            const { upIdx, targetIdx } = connectorDrag;
+            connectorDrag = null;
+            overlayCanvas.style.cursor = 'default';
+            if (targetIdx !== null && targetIdx !== undefined) {
+                doConnectorRetarget(upIdx, targetIdx);
+            } else {
+                renderStripsPanel();
+            }
+            setNeedsRender();
+            return;
+        }
+        if (startHandleDrag) {
+            const { stripIdx, targetIdx } = startHandleDrag;
+            startHandleDrag = null;
+            overlayCanvas.style.cursor = 'default';
+            if (targetIdx !== null && targetIdx !== undefined) {
+                // Dropping a strip's Start on another strip's End wires that
+                // strip downstream of the target: target ──▶ stripIdx.
+                doConnectorRetarget(targetIdx, stripIdx);
+            } else {
+                renderStripsPanel();
+            }
+            setNeedsRender();
             return;
         }
 
@@ -4040,6 +5211,9 @@ export function init(container) {
         }
         // Escape: cancel panel placement, dismiss bg delete confirm, exit point-edit, or deselect
         if (e.key === 'Escape') {
+            if (connectorDrag || startHandleDrag) { _cancelConnectorDrag(); e.preventDefault(); return; }
+            if (connectorMenuEl) { _hideConnectorMenu(); e.preventDefault(); return; }
+            if (editorMode) { setEditorMode(null); e.preventDefault(); return; }
             if (placingState) { _cancelPlacing(); e.preventDefault(); return; }
             if (pasteState) { _cancelPaste(); e.preventDefault(); return; }
             if (deleteBgConfirmEl) { dismissDeleteBgConfirm(); e.preventDefault(); return; }
@@ -4390,6 +5564,11 @@ export function init(container) {
     /** @type {null | { entry:object, opts:object, localPts:Array<[number,number]>, ghostWorld:[number,number] | null }} */
     let placingState = null;
 
+    // Pin id requested by a per-pin [+ strip] button; consumed by the next
+    // placement commit (or cleared on cancel). Null = use default pin.
+    /** @type {string|null} */
+    let pendingNewStripPin = null;
+
     // Paste-pending state: parsed strips ghost together around their centroid
     // following the cursor; L-click commits, Esc/R-click cancels.
     /** @type {null | { strips:Array<{name:string,points:Array<[number,number]>,diameter?:number,video_offset:number,offsetsLocal:Array<[number,number]>}>, ghostWorld:[number,number]|null, totalCount:number }} */
@@ -4448,6 +5627,7 @@ export function init(container) {
 
     function _cancelPlacing() {
         placingState = null;
+        pendingNewStripPin = null;
         if (dom_pp_status) dom_pp_status.textContent = '';
         overlayCanvas.style.cursor = 'default';
         setNeedsRender();
@@ -4567,9 +5747,12 @@ export function init(container) {
             worldX: wx,
             worldY: wy,
             name,
+            pin: pendingNewStripPin || _defaultNewStripPin(),
         };
+        pendingNewStripPin = null;
         _doPanelPlace(action);
         pushUndo(action);
+        notePinMutation();
         _persistMultiStrip();
         renderStripsPanel();
         setNeedsGeometryUpdate();
@@ -4614,6 +5797,8 @@ export function init(container) {
             points: rawPtsAdd,
             diameter: typeof origDiameter === 'number' ? origDiameter : 0.5,
             video_offset: insertAt,
+            pin: (typeof action.pin === 'string' && action.pin) ? action.pin : 'pin1',
+            videoOffsetOverride: false,
         });
         stripInfo = stripStore.get();
         // origWidth/Height may still be 0 for fresh maps — recompute from rawPts
@@ -4669,9 +5854,12 @@ export function init(container) {
             worldX,
             worldY,
             name,
+            pin: pendingNewStripPin || _defaultNewStripPin(),
         };
+        pendingNewStripPin = null;
         _doPanelPlace(action);
         pushUndo(action);
+        notePinMutation();
         _persistMultiStrip();
         renderStripsPanel();
         setNeedsGeometryUpdate();
@@ -4815,6 +6003,7 @@ export function init(container) {
         const addedDescriptors = [];
         const base = stripStore.getTotalCount();
         let running = 0;
+        const pastePin = _defaultNewStripPin();
         for (const s of pasteState.strips) {
             const name = _uniqueNameAgainst(s.name, existingNames);
             existingNames.add(name);
@@ -4826,6 +6015,7 @@ export function init(container) {
                 rawPts: raw,
                 diameter: typeof s.diameter === 'number' ? s.diameter : (typeof origDiameter === 'number' ? origDiameter : 0.5),
                 video_offset: base + running,
+                pin: pastePin,
             });
             running += sm.length;
         }
@@ -4833,6 +6023,7 @@ export function init(container) {
         const action = { type: 'paste-strips', strips: addedDescriptors };
         _doPasteStrips(action);
         pushUndo(action);
+        notePinMutation();
         _persistMultiStrip();
         renderStripsPanel();
         setNeedsGeometryUpdate();
@@ -4873,6 +6064,8 @@ export function init(container) {
                 points: desc.rawPts,
                 diameter: desc.diameter,
                 video_offset: desc.video_offset,
+                pin: (typeof desc.pin === 'string' && desc.pin) ? desc.pin : 'pin1',
+                videoOffsetOverride: false,
             });
             desc._insertAt = insertAt;
             desc._count = desc.screenmapPts.length;
@@ -5139,7 +6332,7 @@ export function init(container) {
 
             if (signal.aborted) return null;
             const action = res.isConfirmed ? 'center' : (res.isDenied ? 'ghost' : null);
-            if (!action) return null;
+            if (!action) { pendingNewStripPin = null; return null; }
             const opts = (res.isConfirmed ? res.value : res.value) || _readInsertDialog();
             return _submitInsertDialog({ ...opts, place: action });
         } catch {

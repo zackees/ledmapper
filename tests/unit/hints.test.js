@@ -55,6 +55,37 @@ test('placing takes priority over strip selection', () => {
     assert.match(t, /Click to place "Ring 16"/);
 });
 
+test('chain mode shows arrowhead rewire + Esc-to-exit hint', () => {
+    const t = hintTextFor({ chainMode: true, empty: false });
+    assert.match(t, /Chain edit/);
+    assert.match(t, /drag an arrowhead to rewire/);
+    assert.match(t, /right-click arrow: menu/);
+    assert.match(t, /Esc\/\[Chain\]: exit/);
+});
+
+test('reorder mode shows move arrows + repin hint', () => {
+    const t = hintTextFor({ reorderMode: true, empty: false });
+    assert.match(t, /Reorder:/);
+    assert.match(t, /move strips within a pin/);
+    assert.match(t, /drag grip across pins to repin/);
+    assert.match(t, /Esc\/\[Reorder\]: exit/);
+});
+
+test('chain mode takes priority over point-edit and selection', () => {
+    const t = hintTextFor({
+        chainMode: true,
+        pointEditMode: true,
+        pointEditStripName: 'strip9',
+        selectedStripName: 'strip1',
+    });
+    assert.match(t, /Chain edit/);
+});
+
+test('placing takes priority over chain mode', () => {
+    const t = hintTextFor({ placing: true, placingLabel: 'Ring 16', chainMode: true });
+    assert.match(t, /Click to place "Ring 16"/);
+});
+
 test('point-edit takes priority over empty/idle', () => {
     const t = hintTextFor({
         pointEditMode: true,
