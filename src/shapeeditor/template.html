@@ -92,7 +92,11 @@
                         <input id="strips_show_chain" type="checkbox" checked>
                         Show chain
                     </label>
-                    <button id="strips_btn_add_pin" type="button" title="Move the selected strip onto a new pin" class="py-0.5 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs">+ Pin</button>
+                    <div class="flex items-center gap-1">
+                        <button id="strips_btn_chain" type="button" aria-pressed="false" title="Chain edit mode — rewire connectors on the canvas (Esc to exit)" class="mode-btn py-0.5 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs">Chain</button>
+                        <button id="strips_btn_reorder" type="button" aria-pressed="false" title="Reorder mode — move strips with the ▲/▼ arrows (Esc to exit)" class="mode-btn py-0.5 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs">Reorder</button>
+                        <button id="strips_btn_add_pin" type="button" title="Move the selected strip onto a new pin" class="py-0.5 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs">+ Pin</button>
+                    </div>
                 </div>
                 <div id="strips_list" class="flex flex-col gap-1 max-h-64 overflow-y-auto"></div>
                 <div id="strips_selected_row" class="flex items-center justify-between gap-2 text-xs text-lm-text-muted" style="display:none;">

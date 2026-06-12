@@ -15,7 +15,7 @@ import {
     SRGBColorSpace,
     DoubleSide,
 } from 'three';
-import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, stripStartEndLabels } from '../common.js';
+import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, getPinColors, stripStartEndLabels } from '../common.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import {
     saveScreenmap,
@@ -284,6 +284,16 @@ export function init(container) {
         _maybeShowGestureNotice();
     });
 
+    // ── Toolbar modes (issue #24 §1.6): null | 'chain' | 'reorder' ──────
+    let editorMode = null;
+    // In-flight canvas connector drag (Chain mode):
+    //   { upIdx, x, y, targetIdx } — arrowhead drag, drop on a Start handle
+    let connectorDrag = null;
+    //   { stripIdx, x, y, targetIdx } — Start-handle drag, drop on an End handle
+    let startHandleDrag = null;
+    // Canvas-space geometry captured by drawChainArrows for hit-testing.
+    const _chainGeom = { connectors: [], starts: [], ends: [], crossBadges: [] };
+
     // Test/debug hook: expose strip state and computed Start/End labels so
     // E2E tests can assert on canvas-drawn labels that have no DOM presence.
     window.__shapeeditorDebug = {
@@ -403,6 +413,29 @@ export function init(container) {
         },
         addPin: () => doAddPin(),
         renamePin: (oldId, newId) => doRenamePin(oldId, newId),
+        // Chain / Reorder modes (issue #24, Phase 3)
+        getMode: () => editorMode,
+        setMode: (m) => { setEditorMode(m); return editorMode; },
+        simulateConnectorDrag: (stripIdx, targetStripIdx) => doConnectorRetarget(stripIdx, targetStripIdx),
+        getCrossPinBadgeCount: () => _crossPinBadgeCount(),
+        getChainGeom: () => ({
+            connectors: _chainGeom.connectors.map((c) => ({ up: c.up, down: c.down, x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2 })),
+            starts: _chainGeom.starts.map((s) => ({ strip: s.strip, x: s.x, y: s.y })),
+            ends: _chainGeom.ends.map((s) => ({ strip: s.strip, x: s.x, y: s.y })),
+            crossBadges: _chainGeom.crossBadges.map((b) => ({ up: b.up, down: b.down })),
+        }),
+        getUndoStack: () => undoStack.map((a) => a.type),
+        // Dispatch a real contextmenu event at canvas-internal coords so the
+        // connector right-click hit-test path is exercised end-to-end.
+        simulateCanvasContextMenu: (canvasX, canvasY) => {
+            const rect = overlayCanvas.getBoundingClientRect();
+            const clientX = rect.left + (canvasX / canvasW) * rect.width;
+            const clientY = rect.top + (canvasY / canvasH) * rect.height;
+            overlayCanvas.dispatchEvent(new MouseEvent('contextmenu', {
+                clientX, clientY, button: 2, bubbles: true, cancelable: true,
+            }));
+            return true;
+        },
     };
 
     // ── Autosave / backup helpers ────────────────────────────────────────
@@ -1015,6 +1048,8 @@ export function init(container) {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.newValue });
         } else if (action.type === 'strip-repin') {
             _applyRepin(action);
+        } else if (action.type === 'connector-retarget') {
+            for (const sub of action.subActions) applyAction(sub);
         } else if (action.type === 'pin-reorder') {
             _applyPinOrder(action.newOrder);
         } else if (action.type === 'pin-rename') {
@@ -1071,6 +1106,10 @@ export function init(container) {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.oldValue });
         } else if (action.type === 'strip-repin') {
             _revertRepin(action);
+        } else if (action.type === 'connector-retarget') {
+            for (let i = action.subActions.length - 1; i >= 0; i--) {
+                applyInverse(action.subActions[i]);
+            }
         } else if (action.type === 'pin-reorder') {
             _applyPinOrder(action.oldOrder);
         } else if (action.type === 'pin-rename') {
@@ -1112,6 +1151,7 @@ export function init(container) {
             || action.type === 'strip-reverse'
             || action.type === 'strip-offset'
             || action.type === 'strip-repin'
+            || action.type === 'connector-retarget'
             || action.type === 'pin-reorder'
             || action.type === 'pin-rename'
             || action.type === 'vo-override-toggle'
@@ -1125,6 +1165,7 @@ export function init(container) {
     function isPinMutationAction(action) {
         return action && (
             action.type === 'strip-repin'
+            || action.type === 'connector-retarget'
             || action.type === 'strip-delete'
             || action.type === 'pin-reorder'
             || action.type === 'pin-rename'
@@ -1420,6 +1461,8 @@ export function init(container) {
             return;
         }
         dom_strips_panel.style.display = '';
+        dom_strips_list.classList.toggle('chain-mode', editorMode === 'chain');
+        dom_strips_list.classList.toggle('reorder-mode', editorMode === 'reorder');
         const selStripIdx = selection.getStripIdx();
         const total = strips.length;
 
@@ -1512,6 +1555,7 @@ export function init(container) {
             return row;
         };
 
+        let connectorN = 0;
         for (const pin of pinOrder) {
             const idxs = groups.get(pin);
             const ledTotal = idxs.reduce((a, i) => a + strips[i].count, 0);
@@ -1555,7 +1599,21 @@ export function init(container) {
 
             const body = document.createElement('div');
             body.className = 'pin-strips';
-            for (const i of idxs) body.appendChild(buildStripRow(i));
+            for (let k = 0; k < idxs.length; k++) {
+                body.appendChild(buildStripRow(idxs[k]));
+                // Connector rows between same-pin strips — visible only in
+                // Chain mode (§1.6); click opens the inline connector menu.
+                if (editorMode === 'chain' && k < idxs.length - 1) {
+                    connectorN++;
+                    const cr = document.createElement('div');
+                    cr.className = 'connector-row';
+                    cr.dataset.upIdx = String(idxs[k]);
+                    cr.dataset.downIdx = String(idxs[k + 1]);
+                    cr.textContent = `──(${connectorN})──▶`;
+                    cr.title = 'Connector — click for Swap / Split / Move options';
+                    body.appendChild(cr);
+                }
+            }
             det.appendChild(body);
 
             dom_strips_list.appendChild(det);
@@ -1633,6 +1691,18 @@ export function init(container) {
                 e.preventDefault();
                 e.stopPropagation();
                 await doRenamePinPrompt(pinName.dataset.pinId);
+                return;
+            }
+            // Connector row click → inline menu (Chain mode, §1.6)
+            const cRow = e.target.closest('.connector-row');
+            if (cRow) {
+                e.preventDefault();
+                e.stopPropagation();
+                _openConnectorMenu(
+                    parseInt(cRow.dataset.upIdx, 10),
+                    parseInt(cRow.dataset.downIdx, 10),
+                    e.clientX, e.clientY,
+                );
                 return;
             }
             // Ignore clicks that target inputs (so they keep focus)
@@ -1726,6 +1796,53 @@ export function init(container) {
     const dom_strips_btn_add_pin = container.querySelector('#strips_btn_add_pin');
     if (dom_strips_btn_add_pin) {
         dom_strips_btn_add_pin.addEventListener('click', () => { doAddPin(); }, { signal });
+    }
+
+    // ── [Chain] / [Reorder] toolbar modes (issue #24 §1.6, Phase 3) ─────
+    const dom_strips_btn_chain = container.querySelector('#strips_btn_chain');
+    const dom_strips_btn_reorder = container.querySelector('#strips_btn_reorder');
+
+    /** Switch the editor mode: 'chain' | 'reorder' | null (toggles are
+     *  mutually exclusive). Cancels any in-flight connector drag. */
+    function setEditorMode(mode) {
+        const m = (mode === 'chain' || mode === 'reorder') ? mode : null;
+        if (m === editorMode) return;
+        editorMode = m;
+        connectorDrag = null;
+        startHandleDrag = null;
+        if (m && dom_strips_panel) dom_strips_panel.open = true;
+        if (dom_strips_btn_chain) {
+            dom_strips_btn_chain.classList.toggle('active', m === 'chain');
+            dom_strips_btn_chain.setAttribute('aria-pressed', m === 'chain' ? 'true' : 'false');
+        }
+        if (dom_strips_btn_reorder) {
+            dom_strips_btn_reorder.classList.toggle('active', m === 'reorder');
+            dom_strips_btn_reorder.setAttribute('aria-pressed', m === 'reorder' ? 'true' : 'false');
+        }
+        // Reorder mode dims the canvas (§1.6); wrapper exists post-initRenderer.
+        if (wrapper) wrapper.classList.toggle('canvas-dim', m === 'reorder');
+        _hideConnectorMenu();
+        renderStripsPanel();
+        _updateHintStrip();
+        setNeedsRender();
+    }
+
+    if (dom_strips_btn_chain) {
+        dom_strips_btn_chain.addEventListener('click', () => {
+            setEditorMode(editorMode === 'chain' ? null : 'chain');
+        }, { signal });
+        // Canvas Chain-mode interactions are desktop-only (§1.11): hide the
+        // button on touch-only devices.
+        try {
+            if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
+                dom_strips_btn_chain.style.display = 'none';
+            }
+        } catch { /* matchMedia unavailable */ }
+    }
+    if (dom_strips_btn_reorder) {
+        dom_strips_btn_reorder.addEventListener('click', () => {
+            setEditorMode(editorMode === 'reorder' ? null : 'reorder');
+        }, { signal });
     }
 
     const dom_strips_selected_row = container.querySelector('#strips_selected_row');
@@ -1972,6 +2089,226 @@ export function init(container) {
         const newPin = _nextFreePinId();
         doRepinStrip(sIdx, newPin);
         return newPin;
+    }
+
+    // ── Chain-mode connector operations (issue #24 §1.7, Phase 3) ───────
+
+    /** Build a strip-repin action object for stripIdx → newPin (no apply). */
+    function _makeRepinAction(stripIdx, newPin) {
+        const strips = stripStore.getStrips();
+        const s = strips[stripIdx];
+        return {
+            type: 'strip-repin',
+            stripIdx,
+            oldPin: _pinOfStrip(s),
+            newPin,
+            oldWithinPinIdx: _withinPinIdx(stripIdx),
+            newWithinPinIdx: strips.filter((st) => _pinOfStrip(st) === newPin).length,
+            oldVideoOffset: typeof s.video_offset === 'number' ? s.video_offset : s.offset,
+            oldOverride: s.videoOffsetOverride === true,
+        };
+    }
+
+    /** Finish a composite connector edit: push ONE undo entry + persist. */
+    function _commitComposite(subActions, crossPin, toastStripName, toastPin) {
+        if (subActions.length === 0) return false;
+        pushUndo({ type: 'connector-retarget', subActions });
+        notePinMutation();
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+        if (crossPin) _maybeShowRepinToast(toastStripName, toastPin);
+        return true;
+    }
+
+    /**
+     * Retarget the connector leaving `upIdx` so that strip feeds `tgtIdx`:
+     * the target strip moves to immediately after the upstream strip, taking
+     * the upstream strip's pin when they differ. Emits ONE composite
+     * `connector-retarget` undo entry {subActions: [strip-repin?, strip-reorder?]}.
+     */
+    function doConnectorRetarget(upIdx, tgtIdx) {
+        const strips = stripStore.getStrips();
+        if (upIdx < 0 || upIdx >= strips.length) return false;
+        if (tgtIdx < 0 || tgtIdx >= strips.length) return false;
+        if (upIdx === tgtIdx) return false;
+        const upStrip = strips[upIdx];
+        const tgtStrip = strips[tgtIdx];
+        const upPin = _pinOfStrip(upStrip);
+        const tgtPin = _pinOfStrip(tgtStrip);
+        const subActions = [];
+        let crossPin = false;
+        if (tgtPin !== upPin) {
+            const repin = _makeRepinAction(tgtIdx, upPin);
+            applyAction(repin);
+            subActions.push(repin);
+            crossPin = true;
+        }
+        // Indices may have shifted after the repin — locate by object.
+        const curIdx = strips.indexOf(tgtStrip);
+        const upIdxNow = strips.indexOf(upStrip);
+        if (curIdx < 0 || upIdxNow < 0) return false;
+        const toIdx = curIdx < upIdxNow ? upIdxNow : upIdxNow + 1;
+        if (toIdx !== curIdx) {
+            const reorder = { type: 'strip-reorder', fromIdx: curIdx, toIdx };
+            applyAction(reorder);
+            subActions.push(reorder);
+        }
+        return _commitComposite(subActions, crossPin, tgtStrip.name, upPin);
+    }
+
+    /**
+     * Split a pin at the connector ABOVE `downIdx`: that strip and every
+     * following same-pin strip move onto a fresh pin, preserving order.
+     * One composite undo entry.
+     */
+    function doSplitPinAt(downIdx) {
+        const strips = stripStore.getStrips();
+        const s = strips[downIdx];
+        if (!s) return false;
+        const pin = _pinOfStrip(s);
+        const moving = [];
+        for (let i = downIdx; i < strips.length; i++) {
+            if (_pinOfStrip(strips[i]) === pin) moving.push(strips[i]);
+            else break;
+        }
+        if (moving.length === 0) return false;
+        const newPin = _nextFreePinId();
+        const subActions = [];
+        for (const obj of moving) {
+            const idx = strips.indexOf(obj);
+            if (idx < 0) continue;
+            const repin = _makeRepinAction(idx, newPin);
+            applyAction(repin);
+            subActions.push(repin);
+        }
+        return _commitComposite(subActions, true, s.name, newPin);
+    }
+
+    /** "Move downstream to pin…" prompt for the strip below a connector. */
+    async function _moveDownstreamToPinPrompt(downIdx) {
+        const strips = stripStore.getStrips();
+        const s = strips[downIdx];
+        if (!s) return;
+        const curPin = _pinOfStrip(s);
+        const options = {};
+        for (const p of stripStore.getPinOrder()) {
+            if (p !== curPin) options[p] = p;
+        }
+        options.__new__ = 'New pin…';
+        const Swal = (await import('sweetalert2')).default;
+        if (signal.aborted) return;
+        const { value } = await Swal.fire({
+            title: `Move "${s.name}" to pin`,
+            input: 'select',
+            inputOptions: options,
+            showCancelButton: true,
+            background: '#1a1a1a',
+            color: '#e5e7eb',
+        });
+        if (signal.aborted || typeof value !== 'string' || !value) return;
+        doRepinStrip(downIdx, value === '__new__' ? _nextFreePinId() : value);
+    }
+
+    // ── Inline connector menu (shared by panel rows + canvas right-click) ─
+    let connectorMenuEl = null;
+
+    function _hideConnectorMenu() {
+        if (connectorMenuEl) {
+            connectorMenuEl.remove();
+            connectorMenuEl = null;
+        }
+    }
+
+    function _openConnectorMenu(upIdx, downIdx, clientX, clientY) {
+        _hideConnectorMenu();
+        const menu = document.createElement('div');
+        menu.className = 'connector-menu';
+        const mk = (label, fn) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = label;
+            b.addEventListener('click', () => { _hideConnectorMenu(); fn(); }, { signal });
+            menu.appendChild(b);
+        };
+        mk('Swap upstream', () => { doReorderStrip(downIdx, upIdx); });
+        mk('Split pin here', () => { doSplitPinAt(downIdx); });
+        mk('Move downstream to pin…', () => { _moveDownstreamToPinPrompt(downIdx); });
+        menu.style.left = `${Math.min(clientX, window.innerWidth - 200)}px`;
+        menu.style.top = `${Math.min(clientY, window.innerHeight - 110)}px`;
+        document.body.appendChild(menu);
+        connectorMenuEl = menu;
+    }
+
+    window.addEventListener('mousedown', (e) => {
+        if (connectorMenuEl && !connectorMenuEl.contains(e.target)) {
+            _hideConnectorMenu();
+        }
+    }, { signal });
+
+    // ── Chain-mode canvas hit helpers (geometry from drawChainArrows) ────
+
+    function _hitChainArrowhead(cx, cy) {
+        for (const c of _chainGeom.connectors) {
+            const dx = cx - c.hx, dy = cy - c.hy;
+            if (dx * dx + dy * dy <= 14 * 14) return c;
+        }
+        return null;
+    }
+
+    function _hitStartHandle(cx, cy, excludeIdx) {
+        for (const st of _chainGeom.starts) {
+            if (st.strip === excludeIdx) continue;
+            const dx = cx - st.x, dy = cy - st.y;
+            if (dx * dx + dy * dy <= 12 * 12) return st.strip;
+        }
+        return null;
+    }
+
+    function _hitEndHandle(cx, cy, excludeIdx) {
+        for (const st of _chainGeom.ends) {
+            if (st.strip === excludeIdx) continue;
+            const dx = cx - st.x, dy = cy - st.y;
+            if (dx * dx + dy * dy <= 12 * 12) return st.strip;
+        }
+        return null;
+    }
+
+    /** Distance-to-segment hit test on connector arrow bodies. */
+    function _hitConnectorBody(cx, cy) {
+        for (const c of _chainGeom.connectors) {
+            const vx = c.x2 - c.x1, vy = c.y2 - c.y1;
+            const lenSq = vx * vx + vy * vy;
+            if (lenSq < 1) continue;
+            let t = ((cx - c.x1) * vx + (cy - c.y1) * vy) / lenSq;
+            t = Math.max(0, Math.min(1, t));
+            const px = c.x1 + t * vx, py = c.y1 + t * vy;
+            const dx = cx - px, dy = cy - py;
+            if (dx * dx + dy * dy <= 8 * 8) return c;
+        }
+        return null;
+    }
+
+    /** Live strips-panel row-order preview during a connector drag: move the
+     *  target row to just after the upstream row (DOM-only, no state). */
+    function _previewConnectorTarget(upIdx, targetIdx) {
+        renderStripsPanel();
+        if (targetIdx === null || targetIdx === undefined || upIdx === null) return;
+        if (!dom_strips_list) return;
+        const upRow = dom_strips_list.querySelector(`.strip-row[data-strip-idx="${upIdx}"]`);
+        const tgtRow = dom_strips_list.querySelector(`.strip-row[data-strip-idx="${targetIdx}"]`);
+        if (upRow && tgtRow && upRow !== tgtRow) {
+            upRow.after(tgtRow);
+            tgtRow.classList.add('preview-move');
+        }
+    }
+
+    function _cancelConnectorDrag() {
+        if (!connectorDrag && !startHandleDrag) return;
+        connectorDrag = null;
+        startHandleDrag = null;
+        renderStripsPanel();
+        setNeedsRender();
     }
 
     function doReorderStrip(fromIdx, toIdx) {
@@ -2338,6 +2675,8 @@ export function init(container) {
             pointEditMode: pointEditStripIdx !== null,
             pointEditStripName,
             selectedStripName,
+            chainMode: editorMode === 'chain',
+            reorderMode: editorMode === 'reorder',
         };
     }
 
@@ -2390,6 +2729,16 @@ export function init(container) {
                             <li>Pinch: zoom</li>
                         </ul>
                     </div>
+                </div>
+                <div id="help_chains_pins" style="margin-top:14px;text-align:left;font:13px/1.45 'Outfit',system-ui,sans-serif;color:#e5e7eb;">
+                    <h3 style="margin:0 0 6px 0;font-size:14px;color:#93c5fd;">Chains and Pins</h3>
+                    <ul style="margin:0;padding-left:18px;">
+                        <li><b>Chain</b> mode: drag a connector arrowhead to rewire strips; right-click an arrow for Swap / Split / Move options</li>
+                        <li><b>Reorder</b> mode: move strips within a pin with the ▲/▼ arrows; drag a grip across pin headers to repin</li>
+                        <li><b>+ Pin</b>: move the selected strip onto a fresh pin</li>
+                        <li><b>LOCK</b> (🔓/🔒) overrides a strip's <code>video_offset</code>; unlocked values re-derive from pin order</li>
+                        <li>Pin names are labels; export order, not name, determines FastLED <code>addLeds</code> call order</li>
+                    </ul>
                 </div>
                 <div style="margin-top:14px;text-align:left;">
                     <label style="font-size:12px;color:#9ca3af;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
@@ -3004,20 +3353,53 @@ export function init(container) {
     }
 
     function _chainArrowCount() {
-        if (!showChainArrows) return 0;
+        if (!showChainArrows && editorMode !== 'chain') return 0;
         if (!stripInfo || stripInfo.strips.length <= 1) return 0;
         let drawable = 0;
         for (let s = 0; s < stripInfo.strips.length - 1; s++) {
             const a = stripInfo.strips[s];
             const b = stripInfo.strips[s + 1];
-            if (a.count > 0 && b.count > 0) drawable++;
+            if (a.count > 0 && b.count > 0 && _pinOfStrip(a) === _pinOfStrip(b)) drawable++;
         }
         return drawable;
+    }
+
+    /** Cross-pin boundaries get a pin-tinted badge instead of an arrow (§1.7). */
+    function _crossPinBadgeCount() {
+        if (!showChainArrows && editorMode !== 'chain') return 0;
+        if (!stripInfo || stripInfo.strips.length <= 1) return 0;
+        let n = 0;
+        for (let s = 0; s < stripInfo.strips.length - 1; s++) {
+            const a = stripInfo.strips[s];
+            const b = stripInfo.strips[s + 1];
+            if (a.count > 0 && b.count > 0 && _pinOfStrip(a) !== _pinOfStrip(b)) n++;
+        }
+        return n;
     }
 
     function drawChainArrows(pts) {
         const strips = stripInfo.strips;
         const ctx = overlayCtx;
+        const pinOrder = stripStore.getPinOrder();
+        const pinColors = getPinColors(pinOrder.length);
+        const pinColorOf = (strip) => {
+            const i = pinOrder.indexOf(_pinOfStrip(strip));
+            return pinColors[i >= 0 ? i : 0] || '#3b82f6';
+        };
+        // Refresh canvas-space geometry used by Chain-mode hit-tests.
+        _chainGeom.connectors.length = 0;
+        _chainGeom.starts.length = 0;
+        _chainGeom.ends.length = 0;
+        _chainGeom.crossBadges.length = 0;
+        for (let s = 0; s < strips.length; s++) {
+            const st = strips[s];
+            if (st.count <= 0) continue;
+            const si = st.offset;
+            const ei = st.offset + st.count - 1;
+            if (si >= pts.length || ei >= pts.length) continue;
+            _chainGeom.starts.push({ strip: s, x: pts[si][0], y: pts[si][1] });
+            _chainGeom.ends.push({ strip: s, x: pts[ei][0], y: pts[ei][1] });
+        }
         ctx.save();
         ctx.globalAlpha = 0.9;
         ctx.strokeStyle = '#3b82f6';
@@ -3033,6 +3415,32 @@ export function init(container) {
             if (aLast >= pts.length || bFirst >= pts.length) continue;
             const [x1, y1] = pts[aLast];
             const [x2, y2] = pts[bFirst];
+            if (_pinOfStrip(a) !== _pinOfStrip(b)) {
+                // Cross-pin boundary: no arrow — pin-tinted dot near the next
+                // strip's Start (§1.7).
+                const tint = pinColorOf(b);
+                ctx.setLineDash([]);
+                ctx.fillStyle = tint;
+                ctx.beginPath();
+                ctx.arc(x2 + 12, y2 - 12, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(x2 + 12, y2 - 12, 6, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = tint;
+                ctx.font = '9px "IBM Plex Mono", monospace';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(_pinOfStrip(b), x2 + 21, y2 - 12);
+                ctx.strokeStyle = '#3b82f6';
+                ctx.fillStyle = '#3b82f6';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([6, 4]);
+                _chainGeom.crossBadges.push({ up: s, down: s + 1, x: x2 + 12, y: y2 - 12 });
+                continue;
+            }
             ctx.beginPath();
             ctx.moveTo(x1, y1);
             ctx.lineTo(x2, y2);
@@ -3069,6 +3477,46 @@ export function init(container) {
             ctx.fillText(String(badgeN), mx, my);
             ctx.setLineDash([6, 4]);
             badgeN++;
+            _chainGeom.connectors.push({ up: s, down: s + 1, x1, y1, x2, y2, hx: x2, hy: y2 });
+        }
+        ctx.restore();
+    }
+
+    /** Ghost arrow + drop-target highlight while a Chain-mode drag is live. */
+    function _drawChainDragGhost() {
+        const ctx = overlayCtx;
+        if (!ctx) return;
+        const drag = connectorDrag || startHandleDrag;
+        if (!drag) return;
+        let ax = null, ay = null;
+        if (connectorDrag) {
+            const end = _chainGeom.ends.find((e) => e.strip === connectorDrag.upIdx);
+            if (end) { ax = end.x; ay = end.y; }
+        } else {
+            const start = _chainGeom.starts.find((e) => e.strip === startHandleDrag.stripIdx);
+            if (start) { ax = start.x; ay = start.y; }
+        }
+        if (ax === null) return;
+        ctx.save();
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(drag.x, drag.y);
+        ctx.stroke();
+        if (drag.targetIdx !== null && drag.targetIdx !== undefined) {
+            const handles = connectorDrag ? _chainGeom.starts : _chainGeom.ends;
+            const h = handles.find((e) => e.strip === drag.targetIdx);
+            if (h) {
+                ctx.setLineDash([]);
+                ctx.strokeStyle = '#22d3ee';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, 13, 0, Math.PI * 2);
+                ctx.stroke();
+            }
         }
         ctx.restore();
     }
@@ -3250,9 +3698,15 @@ export function init(container) {
         }
 
         // Chain-order arrows: from each strip's LAST LED to next strip's FIRST LED.
-        if (showChainArrows && stripInfo && stripInfo.strips.length > 1) {
+        if ((showChainArrows || editorMode === 'chain') && stripInfo && stripInfo.strips.length > 1) {
             drawChainArrows(pts);
+        } else {
+            _chainGeom.connectors.length = 0;
+            _chainGeom.starts.length = 0;
+            _chainGeom.ends.length = 0;
+            _chainGeom.crossBadges.length = 0;
         }
+        _drawChainDragGhost();
 
         // Start and end LEDs always visible (per strip when multi-strip)
         overlayCtx.globalAlpha = 1;
@@ -3836,6 +4290,14 @@ export function init(container) {
         if (wasMoved) return;
         if (screenmap_pts.length === 0) return;
         const [cx, cy] = getCanvasCoords(e);
+        // Chain mode: right-click on a connector arrow opens the connector menu
+        if (editorMode === 'chain') {
+            const conn = _hitConnectorBody(cx, cy);
+            if (conn) {
+                _openConnectorMenu(conn.up, conn.down, e.clientX, e.clientY);
+                return;
+            }
+        }
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
             selectedIdx = idx;
@@ -3912,6 +4374,35 @@ export function init(container) {
 
         if (e.button !== 0) return;
         const [cx, cy] = getCanvasCoords(e);
+
+        // Chain mode: arrowhead / Start-handle drags only; LED hit-test and
+        // group-drag are suppressed (issue #24 §1.7). Everything else pans.
+        if (editorMode === 'chain') {
+            const conn = _hitChainArrowhead(cx, cy);
+            if (conn) {
+                connectorDrag = { upIdx: conn.up, x: cx, y: cy, targetIdx: null };
+                overlayCanvas.style.cursor = 'grabbing';
+                setNeedsRender();
+                return;
+            }
+            const startIdx = _hitStartHandle(cx, cy, -1);
+            if (startIdx !== null) {
+                startHandleDrag = { stripIdx: startIdx, x: cx, y: cy, targetIdx: null };
+                overlayCanvas.style.cursor = 'grabbing';
+                setNeedsRender();
+                return;
+            }
+            // Fall through to pan
+            if (selectedIdx >= 0) { selectedIdx = -1; setNeedsGeometryUpdate(); }
+            selection.clear();
+            isPanning = true;
+            panStartX = cx;
+            panStartY = cy;
+            panStartCamX = camPanX;
+            panStartCamY = camPanY;
+            overlayCanvas.style.cursor = 'move';
+            return;
+        }
 
         // Shift+Left-click: insert a new point between two existing points
         if (e.shiftKey && screenmap_pts.length >= 2) {
@@ -4098,6 +4589,40 @@ export function init(container) {
             return;
         }
 
+        // Chain-mode connector drag (arrowhead → new downstream target)
+        if (connectorDrag) {
+            connectorDrag.x = cx;
+            connectorDrag.y = cy;
+            const target = _hitStartHandle(cx, cy, connectorDrag.upIdx);
+            if (target !== connectorDrag.targetIdx) {
+                connectorDrag.targetIdx = target;
+                if (target !== null) {
+                    _previewConnectorTarget(connectorDrag.upIdx, target);
+                } else {
+                    renderStripsPanel();
+                }
+            }
+            setNeedsRender();
+            return;
+        }
+
+        // Chain-mode Start-handle drag (strip Start → upstream End target)
+        if (startHandleDrag) {
+            startHandleDrag.x = cx;
+            startHandleDrag.y = cy;
+            const target = _hitEndHandle(cx, cy, startHandleDrag.stripIdx);
+            if (target !== startHandleDrag.targetIdx) {
+                startHandleDrag.targetIdx = target;
+                if (target !== null) {
+                    _previewConnectorTarget(target, startHandleDrag.stripIdx);
+                } else {
+                    renderStripsPanel();
+                }
+            }
+            setNeedsRender();
+            return;
+        }
+
         // Ruler drag in progress
         if (rulerDrag) {
             const wdx = (cx - rulerDragStart.cx) / camZoom;
@@ -4271,6 +4796,34 @@ export function init(container) {
             rightButtonDown = false;
             // rightClickMoved is consumed by onContextMenu
             overlayCanvas.style.cursor = 'default';
+            return;
+        }
+
+        // Chain-mode drags: commit on a valid drop target, else cancel.
+        if (connectorDrag) {
+            const { upIdx, targetIdx } = connectorDrag;
+            connectorDrag = null;
+            overlayCanvas.style.cursor = 'default';
+            if (targetIdx !== null && targetIdx !== undefined) {
+                doConnectorRetarget(upIdx, targetIdx);
+            } else {
+                renderStripsPanel();
+            }
+            setNeedsRender();
+            return;
+        }
+        if (startHandleDrag) {
+            const { stripIdx, targetIdx } = startHandleDrag;
+            startHandleDrag = null;
+            overlayCanvas.style.cursor = 'default';
+            if (targetIdx !== null && targetIdx !== undefined) {
+                // Dropping a strip's Start on another strip's End wires that
+                // strip downstream of the target: target ──▶ stripIdx.
+                doConnectorRetarget(targetIdx, stripIdx);
+            } else {
+                renderStripsPanel();
+            }
+            setNeedsRender();
             return;
         }
 
@@ -4651,6 +5204,9 @@ export function init(container) {
         }
         // Escape: cancel panel placement, dismiss bg delete confirm, exit point-edit, or deselect
         if (e.key === 'Escape') {
+            if (connectorDrag || startHandleDrag) { _cancelConnectorDrag(); e.preventDefault(); return; }
+            if (connectorMenuEl) { _hideConnectorMenu(); e.preventDefault(); return; }
+            if (editorMode) { setEditorMode(null); e.preventDefault(); return; }
             if (placingState) { _cancelPlacing(); e.preventDefault(); return; }
             if (pasteState) { _cancelPaste(); e.preventDefault(); return; }
             if (deleteBgConfirmEl) { dismissDeleteBgConfirm(); e.preventDefault(); return; }

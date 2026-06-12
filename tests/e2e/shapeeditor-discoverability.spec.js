@@ -97,6 +97,57 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         await dismissFirstRunModalIfOpen(page);
     });
 
+    test('hint strip reflects Chain and Reorder modes', async ({ page }) => {
+        await page.addInitScript(() => {
+            try { localStorage.setItem('lm:shapeeditor-helpDismissed', '1'); } catch { /* ignore */ }
+        });
+        await gotoEditor(page);
+
+        await page.evaluate(() => window.__shapeeditorDebug.setMode('chain'));
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getHintText()))
+            .toMatch(/Chain edit: drag an arrowhead to rewire/);
+
+        await page.evaluate(() => window.__shapeeditorDebug.setMode('reorder'));
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getHintText()))
+            .toMatch(/Reorder: .* move strips within a pin/);
+
+        // Esc exits the mode and restores the idle hint.
+        await page.keyboard.press('Escape');
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getMode()))
+            .toBe(null);
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getHintText()))
+            .not.toMatch(/Reorder:/);
+    });
+
+    test('help overlay contains a Chains and Pins section', async ({ page }) => {
+        await page.addInitScript(() => {
+            try { localStorage.setItem('lm:shapeeditor-helpDismissed', '1'); } catch { /* ignore */ }
+        });
+        await gotoEditor(page);
+        await page.keyboard.press('F1');
+        const modal = page.locator('.swal2-popup');
+        await expect(modal).toBeVisible({ timeout: 5000 });
+        await expect(modal.locator('#help_chains_pins')).toBeVisible();
+        await expect(modal).toContainText('Chains and Pins');
+        await expect(modal).toContainText(/Chain.*mode/);
+        await expect(modal).toContainText(/Reorder.*mode/);
+        await expect(modal).toContainText('LOCK');
+    });
+
+    test('Chain button is hidden on touch-only devices (hover: none)', async ({ page }) => {
+        await page.addInitScript(() => {
+            try { localStorage.setItem('lm:shapeeditor-helpDismissed', '1'); } catch { /* ignore */ }
+            const orig = window.matchMedia.bind(window);
+            window.matchMedia = (q) => (q === '(hover: none)'
+                ? { matches: true, media: q, addEventListener() {}, removeEventListener() {} }
+                : orig(q));
+        });
+        await gotoEditor(page);
+        await expect(page.locator('#strips_btn_chain')).toBeHidden();
+        // Reorder remains available everywhere (panel-driven, touch-safe).
+        await expect(page.locator('#strips_btn_reorder')).toBeAttached();
+    });
+
     test('first-run does NOT auto-open when dismissal key is set', async ({ page }) => {
         await page.addInitScript(() => {
             try { localStorage.setItem('lm:shapeeditor-helpDismissed', '1'); } catch { /* ignore */ }

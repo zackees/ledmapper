@@ -11,6 +11,8 @@
  *     pointEditMode: boolean,   // double-clicked into point-edit mode
  *     pointEditStripName: string, // strip name in point-edit
  *     selectedStripName: string|null, // strip currently selected (null if none)
+ *     chainMode: boolean,       // [Chain] toolbar mode active (issue #24)
+ *     reorderMode: boolean,     // [Reorder] toolbar mode active (issue #24)
  *   }
  *
  * Returns the left-side hint string per the discoverability spec.
@@ -24,6 +26,12 @@ export function hintTextFor(state) {
     if (s.pasting) {
         const n = typeof s.pastingCount === 'number' ? s.pastingCount : 0;
         return `Click to drop pasted strips (${n}) • Esc: cancel`;
+    }
+    if (s.chainMode) {
+        return 'Chain edit: drag an arrowhead to rewire • right-click arrow: menu • Esc/[Chain]: exit';
+    }
+    if (s.reorderMode) {
+        return 'Reorder: ▲/▼ move strips within a pin • drag grip across pins to repin • Esc/[Reorder]: exit';
     }
     if (s.pointEditMode) {
         const name = s.pointEditStripName || '';

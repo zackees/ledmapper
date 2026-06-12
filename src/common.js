@@ -152,6 +152,23 @@ export function getStripColors(n) {
 }
 
 /**
+ * Generate N distinct pin tint colors (issue #24 §1.7). Mirrors
+ * getStripColors but offset in hue and softer in saturation so a pin badge
+ * reads as a different "layer" than the per-strip rainbow.
+ * @param {number} n - Number of colors needed
+ * @returns {string[]} Array of HSL color strings
+ */
+export function getPinColors(n) {
+    const colors = [];
+    const count = Math.max(1, n);
+    for (let i = 0; i < n; i++) {
+        const hue = (210 + i * 360 / count) % 360;
+        colors.push(`hsl(${hue}, 65%, 55%)`);
+    }
+    return colors;
+}
+
+/**
  * Build the Start/End overlay labels for a strip, shared by every tool so
  * the wording cannot drift: `Start<Name>`/`End<Name>` using the strip's JSON
  * map key, falling back to the strip index (`Start0`/`End0`, `Start1`/`End1`,

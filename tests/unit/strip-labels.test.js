@@ -1,6 +1,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { stripStartEndLabels } from '../../src/common.js';
+import { stripStartEndLabels, getPinColors } from '../../src/common.js';
+
+describe('getPinColors', () => {
+    it('returns n distinct HSL colors', () => {
+        const colors = getPinColors(4);
+        assert.equal(colors.length, 4);
+        assert.equal(new Set(colors).size, 4);
+        for (const c of colors) assert.match(c, /^hsl\(/);
+    });
+
+    it('returns empty array for n=0 without throwing', () => {
+        assert.deepEqual(getPinColors(0), []);
+    });
+});
 
 describe('stripStartEndLabels', () => {
     it('named strip uses its name', () => {
