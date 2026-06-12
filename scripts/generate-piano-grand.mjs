@@ -1,6 +1,6 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 /**
- * Regenerates public/screenmaps/piano_grand.json — the "Luminescent Grand"
+ * Regenerates public/screenmaps/piano_grand.json â€” the "Luminescent Grand"
  * LED piano harp: 12 mm TCL bullet pixels hand-placed in CNC-drilled holes
  * as staggered vertical strand columns (hexagonal dense packing, 1" in-strand
  * pitch), wired as a vertical serpentine. Single strip, real-cm units.
@@ -14,7 +14,7 @@ import { generateStaggeredColumns } from '../src/staggered-fill.js';
 
 const SPACING_CM = 2.54;            // in-strand (vertical) TCL pitch: 1 inch
 const WIDTH_CM = 132.08;            // keyboard-edge width: 52 inches
-const DIAMETER_CM = 1.2;            // 12 mm TCL bullet pixel bulb
+const DIAMETER_CM = 0.75;           // 7.5 mm visible dome of the TCL bullet pixel (15/32in hole holds the 11.9 mm housing)
 
 // Baldwin baby-grand harp outline traced from the original hand-built
 // preset (pre-2026 piano_grand.json, 28 rows, y-pitch 0.42, x-pitch
@@ -52,7 +52,7 @@ const OUTLINE_ROWS = [
     { y: 11.34, xMin: 0,      xMax: 15.1704 },
 ];
 
-const SCALE = WIDTH_CM / 15.1704; // ≈ 8.7064 → real cm
+const SCALE = WIDTH_CM / 15.1704; // â‰ˆ 8.7064 â†’ real cm
 // The traced rows mark the outermost LED holes of the old coarse grid;
 // the physical board edge sits roughly half a hole-pitch beyond them, so
 // grow the fill region by half the in-strand spacing on every side.

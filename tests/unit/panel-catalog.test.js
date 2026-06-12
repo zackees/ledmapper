@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+﻿import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     PANEL_CATALOG,
@@ -28,7 +28,7 @@ describe('PANEL_CATALOG', () => {
     });
 });
 
-describe('generatePanelPoints — matrix wiring', () => {
+describe('generatePanelPoints â€” matrix wiring', () => {
     const entry = getCatalogEntry('matrix-8x8');
 
     it('serpentine TL: starts at (0,0), row 1 reverses', () => {
@@ -41,7 +41,7 @@ describe('generatePanelPoints — matrix wiring', () => {
         assert.deepEqual(pts[15], [0, 1]);
     });
 
-    it('progressive TL: every row goes left→right', () => {
+    it('progressive TL: every row goes leftâ†’right', () => {
         const pts = generatePanelPoints(entry, { wiring: 'progressive', dataInCorner: 'TL' });
         assert.deepEqual(pts[0], [0, 0]);
         assert.deepEqual(pts[7], [7, 0]);
@@ -75,10 +75,10 @@ describe('generatePanelPoints — matrix wiring', () => {
     });
 });
 
-describe('generatePanelPoints — rotation and flip', () => {
+describe('generatePanelPoints â€” rotation and flip', () => {
     const entry = getCatalogEntry('matrix-4x16');
 
-    // normalise -0 → 0 for stable equality
+    // normalise -0 â†’ 0 for stable equality
     const z = (v) => (v === 0 ? 0 : v);
 
     it('rotation 90 swaps axes', () => {
@@ -112,7 +112,7 @@ describe('generatePanelPoints — rotation and flip', () => {
     });
 });
 
-describe('generatePanelPoints — ring and strip', () => {
+describe('generatePanelPoints â€” ring and strip', () => {
     it('ring-8 produces 8 points on a circle', () => {
         const entry = getCatalogEntry('ring-8');
         const pts = generatePanelPoints(entry, { spacing: 1 });
@@ -133,14 +133,14 @@ describe('generatePanelPoints — ring and strip', () => {
     });
 });
 
-describe('generatePanelPoints — staggered grid (TCL)', () => {
+describe('generatePanelPoints â€” staggered grid (TCL)', () => {
     const entry = getCatalogEntry('staggered-tcl');
     const LATERAL = 2.54 * Math.sqrt(3) / 2;
 
-    it('defaults: 8x8, spacing 2.54, stagger on, diameter 1.2', () => {
+    it('defaults: 8x8, spacing 2.54, stagger on, diameter 0.75', () => {
         assert.equal(entry.defaults.spacing, 2.54);
         assert.equal(entry.defaults.stagger, true);
-        assert.equal(entry.defaults.diameter, 1.2);
+        assert.equal(entry.defaults.diameter, 0.75);
         const pts = generatePanelPoints(entry, {});
         assert.equal(pts.length, 64);
         // Column 1 sits at the hex lateral pitch and is offset by spacing/2

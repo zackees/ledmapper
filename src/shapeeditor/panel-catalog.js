@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Panel catalog: commodity LED matrices, rings, and strips with
  * configurable wiring (serpentine vs progressive), data-in corner
  * (TL/TR/BL/BR), rotation (0/90/180/270), and flip.
@@ -13,13 +13,13 @@ import { generateStaggeredGrid } from '../staggered-fill.js';
 /** @typedef {{wiring?:'serpentine'|'progressive', dataInCorner?:'TL'|'TR'|'BL'|'BR', rotation?:0|90|180|270, flipH?:boolean, flipV?:boolean, spacing?:number, cols?:number, rows?:number, stagger?:boolean}} PanelOpts */
 
 export const PANEL_CATALOG = [
-    { id: 'matrix-8x8',   label: '8×8 Matrix',   kind: 'matrix', cols: 8,  rows: 8,
+    { id: 'matrix-8x8',   label: '8Ã—8 Matrix',   kind: 'matrix', cols: 8,  rows: 8,
       defaults: { wiring: 'serpentine', dataInCorner: 'TL' } },
-    { id: 'matrix-16x16', label: '16×16 Matrix', kind: 'matrix', cols: 16, rows: 16,
+    { id: 'matrix-16x16', label: '16Ã—16 Matrix', kind: 'matrix', cols: 16, rows: 16,
       defaults: { wiring: 'serpentine', dataInCorner: 'TL' } },
-    { id: 'matrix-8x32',  label: '8×32 Matrix',  kind: 'matrix', cols: 8,  rows: 32,
+    { id: 'matrix-8x32',  label: '8Ã—32 Matrix',  kind: 'matrix', cols: 8,  rows: 32,
       defaults: { wiring: 'serpentine', dataInCorner: 'TL' } },
-    { id: 'matrix-4x16',  label: '4×16 Matrix',  kind: 'matrix', cols: 4,  rows: 16,
+    { id: 'matrix-4x16',  label: '4Ã—16 Matrix',  kind: 'matrix', cols: 4,  rows: 16,
       defaults: { wiring: 'serpentine', dataInCorner: 'TL' } },
     { id: 'ring-8',  label: 'Ring 8',  kind: 'ring', count: 8,  defaults: {} },
     { id: 'ring-12', label: 'Ring 12', kind: 'ring', count: 12, defaults: {} },
@@ -27,7 +27,7 @@ export const PANEL_CATALOG = [
     { id: 'ring-24', label: 'Ring 24', kind: 'ring', count: 24, defaults: {} },
     { id: 'strip-60', label: 'Strip 60', kind: 'strip', count: 60, defaults: {} },
     { id: 'staggered-tcl', label: 'Staggered grid (TCL)', kind: 'staggered', cols: 8, rows: 8,
-      defaults: { spacing: 2.54, stagger: true, diameter: 1.2 } },
+      defaults: { spacing: 2.54, stagger: true, diameter: 0.75 } },
 ];
 
 export function getCatalogEntry(id) {
@@ -65,13 +65,13 @@ function generateMatrix(cols, rows, opts) {
 
 /**
  * Apply rotation (0/90/180/270 degrees) and optional flips.
- * Coordinates only — LED order is preserved.
+ * Coordinates only â€” LED order is preserved.
  */
 function transformPoints(pts, rotation, flipH, flipV) {
     if (pts.length === 0) return pts;
     let out = pts.map(p => [p[0], p[1]]);
     const rot = ((rotation || 0) % 360 + 360) % 360;
-    const z = (v) => (v === 0 ? 0 : v); // normalise -0 → 0
+    const z = (v) => (v === 0 ? 0 : v); // normalise -0 â†’ 0
     if (rot === 90) out = out.map(([x, y]) => [z(-y), z(x)]);
     else if (rot === 180) out = out.map(([x, y]) => [z(-x), z(-y)]);
     else if (rot === 270) out = out.map(([x, y]) => [z(y), z(-x)]);

@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+﻿import { test, expect } from './fixtures.js';
 
 test.describe('Piano Grand preset and staggered TCL panel', () => {
 
@@ -18,10 +18,10 @@ test.describe('Piano Grand preset and staggered TCL panel', () => {
         await page.waitForFunction(() => !!window.__shapeeditorDebug, null, { timeout: 10000 });
     }
 
-    test('Piano Grand preset loads staggered hex layout with 1.2 cm LEDs', async ({ page }) => {
+    test('Piano Grand preset loads staggered hex layout with 0.75 cm LEDs', async ({ page }) => {
         await gotoEditor(page);
 
-        // #sel_preset may sit inside a collapsed accordion — drive it directly.
+        // #sel_preset may sit inside a collapsed accordion â€” drive it directly.
         await page.evaluate(() => {
             const sel = document.querySelector('#sel_preset');
             sel.value = 'piano_grand.json';
@@ -32,10 +32,10 @@ test.describe('Piano Grand preset and staggered TCL panel', () => {
             page.evaluate(() => window.__shapeeditorDebug.getTotalLedCount())
         , { timeout: 10000 }).toBe(1744);
 
-        await expect(page.locator('#txt_diameter')).toHaveValue('1.2');
+        await expect(page.locator('#txt_diameter')).toHaveValue('0.75');
     });
 
-    test('inserting a Staggered grid (TCL) panel staggers odd columns and sets diameter 1.2', async ({ page }) => {
+    test('inserting a Staggered grid (TCL) panel staggers odd columns and sets diameter 0.75', async ({ page }) => {
         await gotoEditor(page);
 
         const before = await page.evaluate(() => window.__shapeeditorDebug.getStripCount());
@@ -53,7 +53,7 @@ test.describe('Piano Grand preset and staggered TCL panel', () => {
             return { points: dbg.getStripPoints(idx), diameter: dbg.getStripDiameter(idx) };
         }, name);
 
-        expect(result.diameter).toBe(1.2);
+        expect(result.diameter).toBe(0.75);
         expect(result.points.length).toBe(64);
 
         // Group points into columns by x; odd columns must be offset from
@@ -109,7 +109,7 @@ test.describe('Piano Grand preset and staggered TCL panel', () => {
             return { points: dbg.getStripPoints(idx), diameter: dbg.getStripDiameter(idx) };
         });
         expect(result.points.length).toBe(30);
-        expect(result.diameter).toBe(1.2);
+        expect(result.diameter).toBe(0.75);
 
         // Dialog wrote back to the accordion controls (single source of truth)
         await expect(page.locator('#pp_cols')).toHaveValue('6');

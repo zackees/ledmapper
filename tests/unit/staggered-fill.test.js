@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+﻿import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -136,8 +136,8 @@ describe('regenerated piano_grand.json preset', () => {
             `count ${strip.x.length} outside range`);
     });
 
-    it('diameter is 1.2 cm (12 mm TCL bullet pixel)', () => {
-        assert.equal(strip.diameter, 1.2);
+    it('diameter is 0.75 cm (7.5 mm TCL pixel dome)', () => {
+        assert.equal(strip.diameter, 0.75);
     });
 
     it('width is ~132.08 cm (52 in)', () => {
