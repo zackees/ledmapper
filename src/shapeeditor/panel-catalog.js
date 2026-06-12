@@ -8,8 +8,9 @@
  * coordinates in panel-local space, ordered along the wiring path.
  */
 import { generateStrip, generateRing } from '../shape-presets.js';
+import { generateStaggeredGrid } from '../staggered-fill.js';
 
-/** @typedef {{wiring?:'serpentine'|'progressive', dataInCorner?:'TL'|'TR'|'BL'|'BR', rotation?:0|90|180|270, flipH?:boolean, flipV?:boolean, spacing?:number}} PanelOpts */
+/** @typedef {{wiring?:'serpentine'|'progressive', dataInCorner?:'TL'|'TR'|'BL'|'BR', rotation?:0|90|180|270, flipH?:boolean, flipV?:boolean, spacing?:number, cols?:number, rows?:number, stagger?:boolean}} PanelOpts */
 
 export const PANEL_CATALOG = [
     { id: 'matrix-8x8',   label: '8×8 Matrix',   kind: 'matrix', cols: 8,  rows: 8,
@@ -25,6 +26,8 @@ export const PANEL_CATALOG = [
     { id: 'ring-16', label: 'Ring 16', kind: 'ring', count: 16, defaults: {} },
     { id: 'ring-24', label: 'Ring 24', kind: 'ring', count: 24, defaults: {} },
     { id: 'strip-60', label: 'Strip 60', kind: 'strip', count: 60, defaults: {} },
+    { id: 'staggered-tcl', label: 'Staggered grid (TCL)', kind: 'staggered', cols: 8, rows: 8,
+      defaults: { spacing: 2.54, stagger: true, diameter: 1.2 } },
 ];
 
 export function getCatalogEntry(id) {
@@ -95,6 +98,13 @@ export function generatePanelPoints(entry, opts = {}) {
         pts = generateRing(entry.count, radius);
     } else if (entry.kind === 'strip') {
         pts = generateStrip(entry.count, spacing);
+    } else if (entry.kind === 'staggered') {
+        pts = generateStaggeredGrid({
+            cols: Math.max(1, Math.round(merged.cols) || entry.cols),
+            rows: Math.max(1, Math.round(merged.rows) || entry.rows),
+            spacingCm: spacing,
+            stagger: merged.stagger !== false,
+        });
     } else {
         pts = [];
     }

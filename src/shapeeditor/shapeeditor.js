@@ -337,6 +337,12 @@ export function init(container) {
             }
             return out;
         },
+        getStripDiameter: (i) => {
+            const strips = stripStore.getStrips();
+            if (i < 0 || i >= strips.length) return null;
+            return typeof strips[i].diameter === 'number' ? strips[i].diameter : null;
+        },
+        getTotalLedCount: () => screenmap_pts.length,
         // Get a flat LED's transformed canvas coords (for synthetic drag tests).
         getLedCanvasPos: (flatIdx) => {
             if (flatIdx < 0 || flatIdx >= lastTransformedPts.length) return null;
@@ -5581,6 +5587,9 @@ export function init(container) {
     const dom_pp_flipH = container.querySelector('#pp_flipH');
     const dom_pp_flipV = container.querySelector('#pp_flipV');
     const dom_pp_spacing = container.querySelector('#pp_spacing');
+    const dom_pp_cols = container.querySelector('#pp_cols');
+    const dom_pp_rows = container.querySelector('#pp_rows');
+    const dom_pp_stagger = container.querySelector('#pp_stagger');
     const dom_pp_snap = container.querySelector('#pp_snap');
     const dom_pp_grid = container.querySelector('#pp_grid');
     const dom_pp_status = container.querySelector('#pp_status');
@@ -5597,7 +5606,10 @@ export function init(container) {
             btn.className = 'panel-btn py-1 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs';
             btn.textContent = entry.label;
             btn.dataset.catalogId = entry.id;
-            btn.addEventListener('click', () => _enterPlacing(entry.id), { signal });
+            btn.addEventListener('click', () => {
+                _seedSpacingForEntry(entry, dom_pp_spacing);
+                _enterPlacing(entry.id);
+            }, { signal });
             dom_panel_buttons.appendChild(btn);
         }
     }
@@ -5610,7 +5622,18 @@ export function init(container) {
             flipH: dom_pp_flipH ? !!dom_pp_flipH.checked : false,
             flipV: dom_pp_flipV ? !!dom_pp_flipV.checked : false,
             spacing: dom_pp_spacing ? (parseFloat(dom_pp_spacing.value) || 1) : 1,
+            cols: dom_pp_cols ? (parseInt(dom_pp_cols.value, 10) || 8) : 8,
+            rows: dom_pp_rows ? (parseInt(dom_pp_rows.value, 10) || 8) : 8,
+            stagger: dom_pp_stagger ? !!dom_pp_stagger.checked : true,
         };
+    }
+
+    function _seedSpacingForEntry(entry, inputEl) {
+        // Only seed while the control still holds the generic default (1),
+        // so a deliberate user spacing is never clobbered.
+        if (!inputEl || !entry || !entry.defaults) return;
+        if (typeof entry.defaults.spacing !== 'number') return;
+        if (parseFloat(inputEl.value) === 1) inputEl.value = String(entry.defaults.spacing);
     }
 
     function _enterPlacing(catalogId) {
@@ -5792,10 +5815,13 @@ export function init(container) {
             screenmap_pts.push(screenmapPts[i]);
             rawPts.push(rawPtsAdd[i]);
         }
+        const entryDiameter = (entry.defaults && typeof entry.defaults.diameter === 'number')
+            ? entry.defaults.diameter : null;
         const newIdx = stripStore.addStrip({
             name: action.name,
             points: rawPtsAdd,
-            diameter: typeof origDiameter === 'number' ? origDiameter : 0.5,
+            diameter: entryDiameter !== null ? entryDiameter
+                : (typeof origDiameter === 'number' ? origDiameter : 0.5),
             video_offset: insertAt,
             pin: (typeof action.pin === 'string' && action.pin) ? action.pin : 'pin1',
             videoOffsetOverride: false,
@@ -6173,6 +6199,9 @@ export function init(container) {
                 flipH: dom_pp_flipH ? !!dom_pp_flipH.checked : false,
                 flipV: dom_pp_flipV ? !!dom_pp_flipV.checked : false,
                 spacing: dom_pp_spacing ? dom_pp_spacing.value : '1',
+                cols: dom_pp_cols ? dom_pp_cols.value : '8',
+                rows: dom_pp_rows ? dom_pp_rows.value : '8',
+                stagger: dom_pp_stagger ? !!dom_pp_stagger.checked : true,
                 snap: dom_pp_snap ? !!dom_pp_snap.checked : true,
                 grid: dom_pp_grid ? dom_pp_grid.value : '1',
             };
@@ -6204,6 +6233,12 @@ export function init(container) {
                     </div>
                     <label for="ins_spacing">Spacing</label>
                     <input id="ins_spacing" type="number" step="0.1" min="0.01" style="padding:3px;">
+                    <label>Cols / Rows</label>
+                    <div>
+                        <input id="ins_cols" type="number" step="1" min="1" style="padding:3px;width:60px;margin-right:10px;">
+                        <input id="ins_rows" type="number" step="1" min="1" style="padding:3px;width:60px;margin-right:10px;">
+                        <label style="display:inline-flex;align-items:center;gap:4px;"><input id="ins_stagger" type="checkbox"> Stagger</label>
+                    </div>
                     <label>Snap / Grid</label>
                     <div>
                         <label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;"><input id="ins_snap" type="checkbox"> Snap</label>
@@ -6236,6 +6271,9 @@ export function init(container) {
                     const flipH = $('ins_flipH');
                     const flipV = $('ins_flipV');
                     const spacing = $('ins_spacing');
+                    const cols = $('ins_cols');
+                    const rows = $('ins_rows');
+                    const staggerEl = $('ins_stagger');
                     const snap = $('ins_snap');
                     const grid = $('ins_grid');
                     const preview = $('ins_preview');
@@ -6247,8 +6285,17 @@ export function init(container) {
                     if (flipH) flipH.checked = initial.flipH;
                     if (flipV) flipV.checked = initial.flipV;
                     if (spacing) spacing.value = initial.spacing;
+                    if (cols) cols.value = initial.cols;
+                    if (rows) rows.value = initial.rows;
+                    if (staggerEl) staggerEl.checked = initial.stagger;
                     if (snap) snap.checked = initial.snap;
                     if (grid) grid.value = initial.grid;
+
+                    if (catalog) {
+                        catalog.addEventListener('change', () => {
+                            _seedSpacingForEntry(getCatalogEntry(catalog.value), spacing);
+                        });
+                    }
 
                     function readForm() {
                         return {
@@ -6259,6 +6306,9 @@ export function init(container) {
                             flipH: flipH ? !!flipH.checked : false,
                             flipV: flipV ? !!flipV.checked : false,
                             spacing: spacing ? (parseFloat(spacing.value) || 1) : 1,
+                            cols: cols ? (parseInt(cols.value, 10) || 8) : 8,
+                            rows: rows ? (parseInt(rows.value, 10) || 8) : 8,
+                            stagger: staggerEl ? !!staggerEl.checked : true,
                             snap: snap ? !!snap.checked : true,
                             grid: grid ? (parseFloat(grid.value) || 1) : 1,
                         };
@@ -6278,6 +6328,9 @@ export function init(container) {
                             flipH: opts.flipH,
                             flipV: opts.flipV,
                             spacing: opts.spacing,
+                            cols: opts.cols,
+                            rows: opts.rows,
+                            stagger: opts.stagger,
                         });
                         if (pts.length === 0) return;
                         let xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
@@ -6318,7 +6371,7 @@ export function init(container) {
                         }
                     }
 
-                    for (const el of [catalog, wiring, corner, rotation, flipH, flipV, spacing, snap, grid]) {
+                    for (const el of [catalog, wiring, corner, rotation, flipH, flipV, spacing, cols, rows, staggerEl, snap, grid]) {
                         if (el) {
                             el.addEventListener('input', redrawPreview);
                             el.addEventListener('change', redrawPreview);
@@ -6350,6 +6403,9 @@ export function init(container) {
             flipH: $('ins_flipH') ? !!$('ins_flipH').checked : false,
             flipV: $('ins_flipV') ? !!$('ins_flipV').checked : false,
             spacing: $('ins_spacing') ? (parseFloat($('ins_spacing').value) || 1) : 1,
+            cols: $('ins_cols') ? (parseInt($('ins_cols').value, 10) || 8) : 8,
+            rows: $('ins_rows') ? (parseInt($('ins_rows').value, 10) || 8) : 8,
+            stagger: $('ins_stagger') ? !!$('ins_stagger').checked : true,
             snap: $('ins_snap') ? !!$('ins_snap').checked : true,
             grid: $('ins_grid') ? (parseFloat($('ins_grid').value) || 1) : 1,
         };
@@ -6362,6 +6418,9 @@ export function init(container) {
         if (dom_pp_flipH) dom_pp_flipH.checked = !!opts.flipH;
         if (dom_pp_flipV) dom_pp_flipV.checked = !!opts.flipV;
         if (dom_pp_spacing && (opts.spacing || opts.spacing === 0)) dom_pp_spacing.value = String(opts.spacing);
+        if (dom_pp_cols && opts.cols) dom_pp_cols.value = String(opts.cols);
+        if (dom_pp_rows && opts.rows) dom_pp_rows.value = String(opts.rows);
+        if (dom_pp_stagger && typeof opts.stagger === 'boolean') dom_pp_stagger.checked = opts.stagger;
         if (dom_pp_snap) dom_pp_snap.checked = !!opts.snap;
         if (dom_pp_grid && (opts.grid || opts.grid === 0)) dom_pp_grid.value = String(opts.grid);
     }

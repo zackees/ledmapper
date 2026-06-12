@@ -19,6 +19,7 @@ describe('PANEL_CATALOG', () => {
         assert.ok(ids.includes('ring-16'));
         assert.ok(ids.includes('ring-24'));
         assert.ok(ids.includes('strip-60'));
+        assert.ok(ids.includes('staggered-tcl'));
     });
 
     it('getCatalogEntry returns null for unknown ids', () => {
@@ -129,6 +130,32 @@ describe('generatePanelPoints — ring and strip', () => {
         assert.equal(pts.length, 60);
         assert.deepEqual(pts[0], [0, 0]);
         assert.deepEqual(pts[59], [59, 0]);
+    });
+});
+
+describe('generatePanelPoints — staggered grid (TCL)', () => {
+    const entry = getCatalogEntry('staggered-tcl');
+    const LATERAL = 2.54 * Math.sqrt(3) / 2;
+
+    it('defaults: 8x8, spacing 2.54, stagger on, diameter 1.2', () => {
+        assert.equal(entry.defaults.spacing, 2.54);
+        assert.equal(entry.defaults.stagger, true);
+        assert.equal(entry.defaults.diameter, 1.2);
+        const pts = generatePanelPoints(entry, {});
+        assert.equal(pts.length, 64);
+        // Column 1 sits at the hex lateral pitch and is offset by spacing/2
+        const col1 = pts.filter(([x]) => Math.abs(x - LATERAL) < 1e-6);
+        assert.equal(col1.length, 8);
+        const minY = Math.min(...col1.map(([, y]) => y));
+        assert.ok(Math.abs(minY - 2.54 / 2) < 1e-6);
+    });
+
+    it('honors cols/rows/stagger opts', () => {
+        const pts = generatePanelPoints(entry, { cols: 4, rows: 10, stagger: false, spacing: 1 });
+        assert.equal(pts.length, 40);
+        for (const [, y] of pts) {
+            assert.ok(Math.abs(y - Math.round(y)) < 1e-6, 'no stagger offset');
+        }
     });
 });
 
