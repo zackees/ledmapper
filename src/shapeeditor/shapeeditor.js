@@ -274,7 +274,12 @@ export function init(container) {
     const stripStore = new StripStore();
     let stripInfo = null; // multi-strip parse result (null until screenmap loaded)
     const selection = new Selection();
-    selection.setOnChange(() => { setNeedsGeometryUpdate(); renderStripsPanel(); _updateHintStrip(); });
+    selection.setOnChange(() => {
+        setNeedsGeometryUpdate();
+        renderStripsPanel();
+        _updateHintStrip();
+        _maybeShowGestureNotice();
+    });
 
     // Test/debug hook: expose strip state and computed Start/End labels so
     // E2E tests can assert on canvas-drawn labels that have no DOM presence.
@@ -341,6 +346,17 @@ export function init(container) {
         // Insert dialog hooks (Phase 4)
         openInsertDialog: () => _openInsertDialog(),
         submitInsertDialog: (opts) => _submitInsertDialog(opts),
+        // Touch (Phase 5) — synchronously execute the long-press action at
+        // the given canvas-internal coords without waiting 600ms in tests.
+        simulateLongPress: (canvasX, canvasY) => {
+            const rect = overlayCanvas.getBoundingClientRect();
+            const clientX = rect.left + (canvasX / canvasW) * rect.width;
+            const clientY = rect.top + (canvasY / canvasH) * rect.height;
+            _doLongPress(canvasX, canvasY, clientX, clientY);
+            return true;
+        },
+        getCamZoom: () => camZoom,
+        getCamPan: () => ({ x: camPanX, y: camPanY }),
         // Drive a synthetic L-drag from (flatIdx) by (dxClient, dyClient) client px.
         simulateLedDrag: (flatIdx, dxClient, dyClient, opts) => {
             const pos = window.__shapeeditorDebug.getLedCanvasPos(flatIdx);
@@ -1496,7 +1512,7 @@ export function init(container) {
         const dpr = window.devicePixelRatio || 1;
         overlayCanvas.width = width * dpr;
         overlayCanvas.height = height * dpr;
-        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;touch-action:none;';
         wrapper.appendChild(overlayCanvas);
         overlayCtx = overlayCanvas.getContext('2d');
         overlayCtx.scale(dpr, dpr);
@@ -1656,11 +1672,7 @@ export function init(container) {
             setNeedsRender();
         }, { passive: false, signal });
 
-        overlayCanvas.addEventListener('touchmove', (e) => {
-            if (e.touches.length) onMouseMove(e.touches[0]);
-        }, { passive: true, signal });
-        overlayCanvas.addEventListener('touchend', onMouseLeave, { passive: true, signal });
-        overlayCanvas.addEventListener('touchcancel', onMouseLeave, { passive: true, signal });
+        _wireTouchHandlers(signal);
 
         const labelStyle = 'position:absolute;pointer-events:none;color:#fff;font:bold 13px/1 "Outfit",system-ui,sans-serif;text-shadow:0 0 3px #000,0 0 3px #000;';
 
@@ -1754,9 +1766,13 @@ export function init(container) {
                         </ul>
                         <h3 style="margin:12px 0 6px 0;font-size:14px;color:#93c5fd;">Touch</h3>
                         <ul style="margin:0;padding-left:18px;">
-                            <li>Drag: pan / move strip</li>
-                            <li>Long-press LED: point-edit mode</li>
-                            <li>Two-finger / pinch: pan &amp; zoom</li>
+                            <li>Tap LED: select strip</li>
+                            <li>Drag LED: move whole strip</li>
+                            <li>Drag empty space: pan</li>
+                            <li>Long-press LED: enter point-edit</li>
+                            <li>Long-press empty: context menu</li>
+                            <li>Two-finger drag: pan</li>
+                            <li>Pinch: zoom</li>
                         </ul>
                     </div>
                 </div>
@@ -1788,6 +1804,27 @@ export function init(container) {
                 }
             } catch { /* persistence is best-effort */ }
         } catch { /* swal may fail in headless edge cases */ }
+    }
+
+    let _gestureNoticeShown = false;
+    function _maybeShowGestureNotice() {
+        if (_gestureNoticeShown) return;
+        const sIdx = selection.getStripIdx();
+        if (sIdx === null || sIdx < 0) return;
+        try {
+            if (localStorage.getItem('lm:shapeeditor-gestureNotice') === '1') {
+                _gestureNoticeShown = true;
+                return;
+            }
+        } catch { return; }
+        // Don't stack on top of the first-run help modal — skip if the
+        // dismissal key is missing (help is about to auto-open or did).
+        try {
+            if (localStorage.getItem('lm:shapeeditor-helpDismissed') !== '1') return;
+        } catch { return; }
+        _gestureNoticeShown = true;
+        try { localStorage.setItem('lm:shapeeditor-gestureNotice', '1'); } catch { /* ignore */ }
+        _toastInfo('New: drag moves the strip — double-click to edit points');
     }
 
     function _maybeAutoOpenHelpOnLaunch() {
@@ -3725,6 +3762,201 @@ export function init(container) {
         setNeedsGeometryUpdate();
     }
 
+    // ── Touch handling (Phase 5) ──────────────────────────────────────────
+    // Single-touch is forwarded as a synthesized left-mouse gesture. A
+    // long-press timer (600ms / 10px tolerance) consumes the gesture and
+    // either enters point-edit mode on an LED or pops the context menu on
+    // empty space. A second simultaneous touch cancels any single-touch
+    // gesture in progress and takes over with two-finger pan/pinch.
+    const LONG_PRESS_MS = 600;
+    const LONG_PRESS_MOVE_TOL = 10; // client px
+    let touchMode = 'idle'; // 'idle' | 'single' | 'multi' | 'longpress-fired'
+    let touchStartClientX = 0, touchStartClientY = 0;
+    let touchStartCanvasX = 0, touchStartCanvasY = 0;
+    let longPressTimer = null;
+    let multiPanStartCamPanX = 0, multiPanStartCamPanY = 0;
+    let multiPinchStartZoom = 1;
+    let multiStartCentroid = null; // [clientX, clientY]
+    let multiStartDist = 0;
+
+    function _clearLongPress() {
+        if (longPressTimer !== null) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+    }
+
+    function _synth(type, clientX, clientY, opts = {}) {
+        const init = { clientX, clientY, button: opts.button || 0, bubbles: true };
+        const evt = new MouseEvent(type, init);
+        if (type === 'mousedown') onMouseDown(evt);
+        else if (type === 'mousemove') onMouseMove(evt);
+        else if (type === 'mouseup') onMouseUp(evt);
+    }
+
+    function _cancelSingleTouchGesture() {
+        // Cancel any in-flight single-touch drag cleanly (no undo entry).
+        if (stripDragActive) {
+            stripDragActive = false;
+            stripDragIdx = -1;
+            stripDragStartScreenmap = null;
+            stripDragStartRaw = null;
+            stripDragLastSdx = 0;
+            stripDragLastSdy = 0;
+        }
+        if (isDragging) {
+            isDragging = false;
+            altQuasimode = false;
+        }
+        if (isPanning) {
+            isPanning = false;
+        }
+        if (gizmoActive) {
+            gizmoActive = null;
+            gizmoDragStart = null;
+        }
+        if (rulerDrag) {
+            rulerDrag = null;
+            rulerDragStart = null;
+        }
+        overlayCanvas.style.cursor = 'default';
+    }
+
+    function _doLongPress(canvasX, canvasY, clientX, clientY) {
+        // Cancel the pending single-touch synth gesture so it does not also
+        // commit a drag.
+        _cancelSingleTouchGesture();
+        if (screenmap_pts.length === 0) {
+            // Empty: open context menu
+            showContextMenu(clientX || 0, clientY || 0, -1, -1, false);
+            touchMode = 'longpress-fired';
+            return;
+        }
+        const idx = hitTestLED(canvasX, canvasY);
+        if (idx >= 0) {
+            const sIdx = stripStore.findStripForIndex(idx);
+            if (sIdx >= 0) {
+                selection.selectStrip(sIdx);
+                pointEditStripIdx = sIdx;
+                _updateHintStrip();
+                setNeedsGeometryUpdate();
+                _toastInfo(`Editing points in "${stripStore.getStrips()[sIdx].name}"`);
+            }
+        } else {
+            showContextMenu(clientX || 0, clientY || 0, -1, -1, false);
+        }
+        touchMode = 'longpress-fired';
+    }
+
+    function _wireTouchHandlers(signal) {
+        overlayCanvas.addEventListener('touchstart', (e) => {
+            // Cancel scrolling/zooming on the page during canvas touches
+            e.preventDefault();
+            if (e.touches.length === 1) {
+                const t = e.touches[0];
+                touchMode = 'single';
+                touchStartClientX = t.clientX;
+                touchStartClientY = t.clientY;
+                const [cx, cy] = getCanvasCoords(t);
+                touchStartCanvasX = cx;
+                touchStartCanvasY = cy;
+                // Start long-press timer
+                _clearLongPress();
+                longPressTimer = setTimeout(() => {
+                    longPressTimer = null;
+                    if (touchMode !== 'single') return;
+                    _doLongPress(touchStartCanvasX, touchStartCanvasY, touchStartClientX, touchStartClientY);
+                }, LONG_PRESS_MS);
+                // Forward as a synthesized mousedown for the drag/select path
+                _synth('mousedown', t.clientX, t.clientY);
+            } else if (e.touches.length >= 2) {
+                // Cancel any single-touch state cleanly
+                _clearLongPress();
+                if (touchMode === 'single') {
+                    _cancelSingleTouchGesture();
+                }
+                touchMode = 'multi';
+                const t0 = e.touches[0], t1 = e.touches[1];
+                multiStartCentroid = [(t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2];
+                const dxs = t0.clientX - t1.clientX;
+                const dys = t0.clientY - t1.clientY;
+                multiStartDist = Math.hypot(dxs, dys) || 1;
+                multiPanStartCamPanX = camPanX;
+                multiPanStartCamPanY = camPanY;
+                multiPinchStartZoom = camZoom;
+            }
+        }, { passive: false, signal });
+
+        overlayCanvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (touchMode === 'longpress-fired') return;
+            if (touchMode === 'single' && e.touches.length === 1) {
+                const t = e.touches[0];
+                const ddx = t.clientX - touchStartClientX;
+                const ddy = t.clientY - touchStartClientY;
+                if (Math.hypot(ddx, ddy) > LONG_PRESS_MOVE_TOL) _clearLongPress();
+                _synth('mousemove', t.clientX, t.clientY);
+                return;
+            }
+            if (touchMode === 'multi' && e.touches.length >= 2) {
+                const t0 = e.touches[0], t1 = e.touches[1];
+                const cx = (t0.clientX + t1.clientX) / 2;
+                const cy = (t0.clientY + t1.clientY) / 2;
+                const dx = cx - multiStartCentroid[0];
+                const dy = cy - multiStartCentroid[1];
+                // Pan: centroid delta in client px -> canvas px -> world px
+                const rect = overlayCanvas.getBoundingClientRect();
+                const sx = canvasW / rect.width;
+                const sy = canvasH / rect.height;
+                camPanX = multiPanStartCamPanX + (dx * sx) / camZoom;
+                camPanY = multiPanStartCamPanY + (dy * sy) / camZoom;
+                // Pinch: distance ratio
+                const dxs = t0.clientX - t1.clientX;
+                const dys = t0.clientY - t1.clientY;
+                const dist = Math.hypot(dxs, dys) || 1;
+                const ratio = dist / multiStartDist;
+                camZoom = Math.max(0.1, Math.min(10, multiPinchStartZoom * ratio));
+                setNeedsRender();
+            }
+        }, { passive: false, signal });
+
+        overlayCanvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            _clearLongPress();
+            if (touchMode === 'longpress-fired') {
+                // Discard the residual touch — drag was already cancelled.
+                if (e.touches.length === 0) {
+                    touchMode = 'idle';
+                }
+                return;
+            }
+            if (touchMode === 'single') {
+                // Forward as mouseup to commit / select
+                const t = (e.changedTouches && e.changedTouches[0]);
+                if (t) {
+                    _synth('mouseup', t.clientX, t.clientY);
+                }
+                touchMode = 'idle';
+                return;
+            }
+            if (touchMode === 'multi') {
+                if (e.touches.length === 0) {
+                    touchMode = 'idle';
+                } else if (e.touches.length === 1) {
+                    // Demote to single but don't restart drag — leave idle so
+                    // the user can lift their second finger without surprises.
+                    touchMode = 'idle';
+                }
+            }
+        }, { passive: false, signal });
+
+        overlayCanvas.addEventListener('touchcancel', () => {
+            _clearLongPress();
+            _cancelSingleTouchGesture();
+            touchMode = 'idle';
+        }, { passive: true, signal });
+    }
+
     function onMouseLeave() {
         if (gizmoActive) {
             commitGizmoDrag();
@@ -4597,9 +4829,11 @@ export function init(container) {
         _persistMultiStrip();
         renderStripsPanel();
         setNeedsGeometryUpdate();
+        const pastedCount = action.strips.length;
         pasteState = null;
         overlayCanvas.style.cursor = 'default';
         _updateHintStrip();
+        _toastSuccess(`Pasted ${pastedCount} strip${pastedCount === 1 ? '' : 's'}`);
         // Select the first pasted strip for discoverability
         if (action.strips.length > 0 && stripInfo) {
             for (let i = stripInfo.strips.length - 1; i >= 0; i--) {
