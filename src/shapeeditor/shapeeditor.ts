@@ -1593,8 +1593,8 @@ export function init(container: HTMLElement) {
     dom_btn_redo.addEventListener('click', performRedo, { signal });
 
     // ── Strips inspector panel ───────────────────────────────────────────
-    const dom_strips_panel = container.querySelector<HTMLElement>('');
-    const dom_strips_list = container.querySelector<HTMLElement>('');
+    const dom_strips_panel = container.querySelector<HTMLElement>('#strips_panel');
+    const dom_strips_list = container.querySelector<HTMLElement>('#strips_list');
 
     function hslAccentForStrip(s: number, total: number): string {
         if (total <= 1) return '#3b82f6';
@@ -1793,9 +1793,9 @@ export function init(container: HTMLElement) {
     }
 
     // ── Backup row inside #strips_panel ─────────────────────────────────
-    const dom_strips_backup_row = container.querySelector<HTMLElement>('');
-    const dom_strips_backup_summary = container.querySelector<HTMLElement>('');
-    const dom_strips_btn_restore_backup = container.querySelector<HTMLButtonElement>('');
+    const dom_strips_backup_row = container.querySelector<HTMLElement>('#strips_backup_row');
+    const dom_strips_backup_summary = container.querySelector<HTMLElement>('#strips_backup_summary');
+    const dom_strips_btn_restore_backup = container.querySelector<HTMLButtonElement>('#strips_btn_restore_backup');
 
     function renderBackupRow() {
         if (!dom_strips_backup_row) return;
@@ -1968,14 +1968,14 @@ export function init(container: HTMLElement) {
     }
 
     // ── [+ Pin] button + selected-strip "Move to pin…" row ──────────────
-    const dom_strips_btn_add_pin = container.querySelector<HTMLElement>('');
+    const dom_strips_btn_add_pin = container.querySelector<HTMLElement>('#strips_btn_add_pin');
     if (dom_strips_btn_add_pin) {
         dom_strips_btn_add_pin.addEventListener('click', () => { doAddPin(); }, { signal });
     }
 
     // -- [Chain] / [Reorder] toolbar modes (issue #24 �1.6, Phase 3) -----
-    const dom_strips_btn_chain = container.querySelector<HTMLElement>('');
-    const dom_strips_btn_reorder = container.querySelector<HTMLElement>('');
+    const dom_strips_btn_chain = container.querySelector<HTMLElement>('#strips_btn_chain');
+    const dom_strips_btn_reorder = container.querySelector<HTMLElement>('#strips_btn_reorder');
 
     /** Switch the editor mode: 'chain' | 'reorder' | null (toggles are
      *  mutually exclusive). Cancels any in-flight connector drag. */
@@ -2020,9 +2020,9 @@ export function init(container: HTMLElement) {
         }, { signal });
     }
 
-    const dom_strips_selected_row = container.querySelector<HTMLElement>('');
-    const dom_strips_selected_label = container.querySelector<HTMLElement>('');
-    const dom_strips_move_pin = container.querySelector<HTMLSelectElement>('');
+    const dom_strips_selected_row = container.querySelector<HTMLElement>('#strips_selected_row');
+    const dom_strips_selected_label = container.querySelector<HTMLElement>('#strips_selected_label');
+    const dom_strips_move_pin = container.querySelector<HTMLSelectElement>('#strips_move_pin');
 
     function renderSelectedStripRow() {
         if (!dom_strips_selected_row) return;
@@ -2071,7 +2071,7 @@ export function init(container: HTMLElement) {
     }
 
     // ── Show chain checkbox ──────────────────────────────────────────────
-    const dom_strips_show_chain = container.querySelector<HTMLInputElement>('');
+    const dom_strips_show_chain = container.querySelector<HTMLInputElement>('#strips_show_chain');
     let showChainArrows = dom_strips_show_chain ? dom_strips_show_chain.checked : true;
     if (dom_strips_show_chain) {
         dom_strips_show_chain.addEventListener('change', () => {
@@ -2818,8 +2818,8 @@ export function init(container: HTMLElement) {
 
         // ── Hint strip (lives inside #main, outside the renderer wrapper so
         // it sits above the canvas and is part of the tool's DOM) ──
-        hintStripTextEl = container.querySelector<HTMLElement>('');
-        hintStripHelpBtn = container.querySelector<HTMLButtonElement>('');
+        hintStripTextEl = container.querySelector<HTMLElement>('#hint_strip_text');
+        hintStripHelpBtn = container.querySelector<HTMLButtonElement>('#hint_strip_help');
         if (hintStripHelpBtn) {
             hintStripHelpBtn.addEventListener('click', () => {
                 void _openHelpOverlay();
@@ -5781,18 +5781,18 @@ export function init(container: HTMLElement) {
     // following the cursor; L-click commits, Esc/R-click cancels.
     let pasteState: PasteStateActive | null = null;
 
-    const dom_panel_buttons = container.querySelector<HTMLElement>('');
-    const dom_pp_wiring = container.querySelector<HTMLSelectElement>('');
-    const dom_pp_corner = container.querySelector<HTMLSelectElement>('');
-    const dom_pp_rotation = container.querySelector<HTMLSelectElement>('');
-    const dom_pp_flipH = container.querySelector<HTMLInputElement>('');
-    const dom_pp_flipV = container.querySelector<HTMLInputElement>('');
-    const dom_pp_spacing = container.querySelector<HTMLInputElement>('');
-    const dom_pp_snap = container.querySelector<HTMLInputElement>('');
-    const dom_pp_grid = container.querySelector<HTMLInputElement>('');
-    const dom_pp_status = container.querySelector<HTMLElement>('');
+    const dom_panel_buttons = container.querySelector<HTMLElement>('#panel_catalog_buttons');
+    const dom_pp_wiring = container.querySelector<HTMLSelectElement>('#pp_wiring');
+    const dom_pp_corner = container.querySelector<HTMLSelectElement>('#pp_corner');
+    const dom_pp_rotation = container.querySelector<HTMLSelectElement>('#pp_rotation');
+    const dom_pp_flipH = container.querySelector<HTMLInputElement>('#pp_flipH');
+    const dom_pp_flipV = container.querySelector<HTMLInputElement>('#pp_flipV');
+    const dom_pp_spacing = container.querySelector<HTMLInputElement>('#pp_spacing');
+    const dom_pp_snap = container.querySelector<HTMLInputElement>('#pp_snap');
+    const dom_pp_grid = container.querySelector<HTMLInputElement>('#pp_grid');
+    const dom_pp_status = container.querySelector<HTMLElement>('#pp_status');
 
-    const dom_pp_open_dialog = container.querySelector<HTMLElement>('');
+    const dom_pp_open_dialog = container.querySelector<HTMLElement>('#pp_open_dialog');
     if (dom_pp_open_dialog) {
         dom_pp_open_dialog.addEventListener('click', () => { void _openInsertDialog(); }, { signal });
     }
@@ -6324,7 +6324,11 @@ export function init(container: HTMLElement) {
 
     async function _pasteFromClipboardAPI() {
         try {
-            if (typeof navigator.clipboard.readText !== 'function') {
+            // navigator.clipboard can be absent at runtime (e.g., non-secure contexts,
+            // Playwright without clipboard permissions). Access via unknown to avoid
+            // no-unnecessary-condition; the catch below handles any TypeError.
+            const cb = (navigator as unknown as { clipboard?: { readText?: unknown } }).clipboard;
+            if (!cb || typeof cb.readText !== 'function') {
                 void _toastInfo('Clipboard read unavailable — try Ctrl+V');
                 return;
             }
@@ -6349,7 +6353,9 @@ export function init(container: HTMLElement) {
         const d = typeof s.diameter === 'number' ? s.diameter : (parseFloat(dom_txt_diameter.value) || 0.25);
         const json = JSON.stringify({ map: { [s.name]: { x, y, diameter: d } } }, null, 2);
         try {
-            if (typeof navigator.clipboard.writeText === 'function') {
+            // navigator.clipboard can be absent at runtime; access via unknown to avoid no-unnecessary-condition
+            const cbw = (navigator as unknown as { clipboard?: { writeText?: unknown } }).clipboard;
+            if (cbw && typeof cbw.writeText === 'function') {
                 void navigator.clipboard.writeText(json).then(
                     () => _toastSuccess(`Copied "${s.name}" to clipboard`),
                     () => _toastInfo('Copy failed — clipboard unavailable'),
