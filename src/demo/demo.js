@@ -685,9 +685,10 @@ export function init(container) {
 
             if (curr_frame) {
                 // Conservative combination of the size-proportional range and
-                // the density envelope; floor stays strictly positive.
-                const effMin = Math.max(bloomRange.min, demoBloomRange.min);
-                const effMax = Math.max(Math.min(bloomRange.max, demoBloomRange.max), effMin);
+                // the density envelope: neither ceiling is exceeded, and the
+                // floor stays strictly positive without rising above it.
+                const effMax = Math.min(bloomRange.max, demoBloomRange.max);
+                const effMin = Math.min(bloomRange.min, effMax);
                 const override = demoAutoBloomEnabled ? null : demoManualBloomStrength;
                 updateBloomIris(bloom.bloomPass, irisState, curr_frame, { min: effMin, max: effMax }, override);
             }

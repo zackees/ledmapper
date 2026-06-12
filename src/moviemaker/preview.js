@@ -212,11 +212,11 @@ export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }) {
         meshData.colorAttribute.needsUpdate = true;
 
         // Effective auto range: conservative combination of the size-
-        // proportional range and the density envelope — the floor stays
-        // strictly positive (bloom never disabled) and neither ceiling is
-        // exceeded.
-        const effMin = Math.max(bloomRange.min, currentRange.min);
-        const effMax = Math.max(Math.min(bloomRange.max, currentRange.max), effMin);
+        // proportional range and the density envelope — neither ceiling is
+        // exceeded, and the floor stays strictly positive (bloom never
+        // disabled) while never rising above the combined ceiling.
+        const effMax = Math.min(bloomRange.max, currentRange.max);
+        const effMin = Math.min(bloomRange.min, effMax);
         // Pass manualStrength only when auto is disabled.
         const override = autoBloomEnabled ? null : manualBloomStrength;
         updateBloomIris(bloom.bloomPass, irisState, src, { min: effMin, max: effMax }, override);
