@@ -19,7 +19,7 @@ export function createVideoSource({
 
     function stopWebcam() {
         if (webcamStream) {
-            webcamStream.getTracks().forEach((t) => t.stop());
+            webcamStream.getTracks().forEach((t) => { t.stop(); });
             webcamStream = null;
         }
         videoPlayer.srcObject = null;
@@ -28,7 +28,7 @@ export function createVideoSource({
     function loadVideoFile(file: File | null | undefined) {
         if (!file) return;
         stopWebcam();
-        if (videoPlayer.src && videoPlayer.src.startsWith('blob:')) {
+        if (videoPlayer.src.startsWith('blob:')) {
             URL.revokeObjectURL(videoPlayer.src);
         }
         const url = URL.createObjectURL(file);
@@ -47,18 +47,18 @@ export function createVideoSource({
             video: { width: res.width, height: res.height, frameRate },
             audio: false,
         };
-        navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+        void navigator.mediaDevices.getUserMedia(constraints).then(stream => {
             webcamStream = stream;
             videoPlayer.srcObject = stream;
-            videoPlayer.play();
+            void videoPlayer.play();
             const track = stream.getVideoTracks()[0];
             const settings = track?.getSettings() ?? {};
             sourceType = 'webcam';
             isPlaying = true;
-            onSourceReady(settings.width || res.width, settings.height || res.height, 'webcam');
-        }).catch(async (err: Error) => {
+            onSourceReady(settings.width ?? res.width, settings.height ?? res.height, 'webcam');
+        }).catch((err: unknown) => {
             console.error('Webcam error:', err);
-            onError(err.message);
+            onError(err instanceof Error ? err.message : String(err));
         });
     }
 
@@ -66,7 +66,7 @@ export function createVideoSource({
         if (isPlaying) {
             videoPlayer.pause();
         } else {
-            videoPlayer.play();
+            void videoPlayer.play();
         }
         isPlaying = !isPlaying;
         return isPlaying;
@@ -74,7 +74,7 @@ export function createVideoSource({
 
     function dispose() {
         stopWebcam();
-        if (videoPlayer.src && videoPlayer.src.startsWith('blob:')) {
+        if (videoPlayer.src.startsWith('blob:')) {
             URL.revokeObjectURL(videoPlayer.src);
         }
         videoPlayer.src = '';

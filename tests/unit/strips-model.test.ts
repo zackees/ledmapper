@@ -8,7 +8,7 @@ import type { StripInfo } from '../../src/shapeeditor/strips-model';
  * `parseScreenmapMultiStrip` would produce. Using fresh data per test
  * makes ordering issues caught immediately.
  */
-function makeInfo(stripSpecs: Array<{ name: string; points: [number, number][]; diameter?: number; video_offset?: number }>): StripInfo {
+function makeInfo(stripSpecs: { name: string; points: [number, number][]; diameter?: number; video_offset?: number }[]): StripInfo {
     const strips: StripInfo['strips'] = [];
     const allPoints: [number, number][] = [];
     let offset = 0;
@@ -30,13 +30,13 @@ function makeInfo(stripSpecs: Array<{ name: string; points: [number, number][]; 
     return { strips, allPoints, totalCount: allPoints.length };
 }
 
-function makeStore(specs: Array<{ name: string; points: [number, number][]; diameter?: number; video_offset?: number }>) {
+function makeStore(specs: { name: string; points: [number, number][]; diameter?: number; video_offset?: number }[]) {
     const s = new StripStore();
     s.load(makeInfo(specs));
     return s;
 }
 
-const THREE_STRIPS: Array<{ name: string; points: [number, number][] }> = [
+const THREE_STRIPS: { name: string; points: [number, number][] }[] = [
     { name: 'a', points: [[0, 0], [1, 0], [2, 0]] }, // offset 0, count 3
     { name: 'b', points: [[10, 0], [11, 0]] },       // offset 3, count 2
     { name: 'c', points: [[20, 0], [21, 0], [22, 0], [23, 0]] }, // offset 5, count 4
@@ -335,7 +335,7 @@ describe('StripStore — updateStrip', () => {
 
 // ── Pins (issue #24): pin/order/derived video_offset/snapshot ────────
 
-function makePinStore(specs: Array<{ name: string; points: [number, number][]; diameter?: number; video_offset?: number; pin?: string; videoOffsetOverride?: boolean }>) {
+function makePinStore(specs: { name: string; points: [number, number][]; diameter?: number; video_offset?: number; pin?: string; videoOffsetOverride?: boolean }[]) {
     const s = new StripStore();
     const info = makeInfo(specs);
     // Stamp pins/overrides post-makeInfo since makeInfo doesn't know them.
@@ -361,7 +361,7 @@ describe('StripStore — pins', () => {
         assert.strictEqual(StripStore.pinOf({}), 'pin1');
         assert.strictEqual(StripStore.pinOf({ pin: '  ' }), 'pin1');
         assert.strictEqual(StripStore.pinOf({ pin: 'gpio5' }), 'gpio5');
-        assert.strictEqual(StripStore.pinOf(null as unknown as { pin?: string }), 'pin1');
+        assert.strictEqual(StripStore.pinOf(null), 'pin1');
     });
 
     it('getPinOrder returns first-appearance order', () => {

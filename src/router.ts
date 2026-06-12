@@ -1,4 +1,5 @@
 import { updateActiveLink } from './nav';
+import type { ToolInitFn } from './types/domain';
 
 const routes = [
     { path: '/',                  tool: 'hub' },
@@ -15,7 +16,12 @@ const routes = [
     { path: '/screenmap/index.html',    tool: 'screenmap' },
 ];
 
-const toolConfig = {
+interface ToolModule {
+    css?: string;
+    init?: ToolInitFn;
+}
+
+const toolConfig: Record<string, { module: () => Promise<ToolModule> }> = {
     hub: {
         module: () => import('./hub/hub'),
     },
@@ -36,6 +42,15 @@ const toolConfig = {
     },
 };
 
+const titles: Record<string, string> = {
+    hub: 'FastLED Video Mapper',
+    demo: 'Demo',
+    moviemaker: 'Video Maker',
+    movieplayer: 'Video Player',
+    shapeeditor: 'ScreenMap Design',
+    screenmap: 'Screenmap Maker',
+};
+
 export function createRouter(appEl: HTMLElement) {
     let currentDestroy: (() => void) | null = null;
     let loadId = 0; // guard against concurrent loads
@@ -48,7 +63,7 @@ export function createRouter(appEl: HTMLElement) {
         const withSlash = path.endsWith('/') ? path : path + '/';
         const withoutSlash = path.endsWith('/') ? path.slice(0, -1) : path;
         const fallback = routes.find(r => r.path === withSlash || r.path === withoutSlash);
-        return fallback ? fallback.tool : 'hub';
+        return fallback?.tool ?? 'hub';
     }
 
     async function loadRoute(path: string) {
@@ -71,18 +86,14 @@ export function createRouter(appEl: HTMLElement) {
         updateActiveLink(path);
 
         // Update page title
-        const titles = {
-            hub: 'FastLED Video Mapper',
-            demo: 'Demo',
-            moviemaker: 'Video Maker',
-            movieplayer: 'Video Player',
-            shapeeditor: 'ScreenMap Design',
-            screenmap: 'Screenmap Maker',
-        };
-        document.title = (titles as Record<string, string>)[tool] || 'FastLED Video Mapper';
+        document.title = titles[tool] ?? 'FastLED Video Mapper';
 
         // Load and initialize tool module
-        const config = (toolConfig as Record<string, { module: () => Promise<{ css?: string; init?: (el: HTMLElement) => (() => void) | void } > }>)[tool]!;
+        const config = toolConfig[tool];
+        if (!config) {
+            console.error(`No config for tool: ${tool}`);
+            return;
+        }
         try {
             const mod = await config.module();
 
@@ -91,16 +102,20 @@ export function createRouter(appEl: HTMLElement) {
 
             // Wait for tool CSS to load before injecting content
             if (mod.css) {
-                const currentHref = toolCssLink!.getAttribute('href');
-                if (currentHref !== mod.css) {
-                    await new Promise((resolve) => {
-                        toolCssLink!.onload = () => resolve(undefined);
-                        toolCssLink!.onerror = () => resolve(undefined);
-                        toolCssLink!.href = mod.css!;
-                    });
+                if (toolCssLink) {
+                    const currentHref = toolCssLink.getAttribute('href');
+                    if (currentHref !== mod.css) {
+                        // toolCssLink is non-null here (outer if-guard)
+                        const cssLink = toolCssLink;
+                        await new Promise<void>((resolve) => {
+                            cssLink.onload = () => { resolve(); };
+                            cssLink.onerror = () => { resolve(); };
+                            cssLink.href = mod.css ?? '';
+                        });
+                    }
                 }
             } else {
-                toolCssLink!.removeAttribute('href');
+                toolCssLink?.removeAttribute('href');
             }
 
             if (thisLoad !== loadId) return;
@@ -122,19 +137,19 @@ export function createRouter(appEl: HTMLElement) {
             console.error(`Failed to load tool "${tool}":`, e);
             appEl.style.opacity = '';
             appEl.style.animation = '';
-            appEl.innerHTML = `<div style="color:red;padding:20px;">Failed to load tool: ${(e instanceof Error ? e.message : String(e))}</div>`;
+            appEl.innerHTML = `<div style="color:red;padding:20px;">Failed to load tool: ${e instanceof Error ? e.message : String(e)}</div>`;
         }
     }
 
     function navigate(path: string) {
         if (path === window.location.pathname) return;
         history.pushState(null, '', path);
-        loadRoute(path);
+        void loadRoute(path);
     }
 
     // Handle back/forward buttons
     window.addEventListener('popstate', () => {
-        loadRoute(window.location.pathname);
+        void loadRoute(window.location.pathname);
     });
 
     // Intercept all internal link clicks (delegated)
@@ -158,7 +173,7 @@ export function createRouter(appEl: HTMLElement) {
     return {
         navigate,
         start() {
-            loadRoute(window.location.pathname);
+            void loadRoute(window.location.pathname);
         }
     };
 }

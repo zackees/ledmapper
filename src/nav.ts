@@ -56,7 +56,7 @@ export function updateActiveLink(path: string) {
     if (!navEl) return;
     navEl.querySelectorAll('.nav-links a').forEach(a => {
         const href = a.getAttribute('href');
-        const toolDir = href === '/' ? null : (href || '').split('/').filter(Boolean)[0];
+        const toolDir = href === '/' ? null : (href ?? '').split('/').find(Boolean);
         if (toolDir && path.includes(toolDir)) {
             a.classList.add('active');
         } else if (!toolDir && (path === '/' || path === '/index.html')) {

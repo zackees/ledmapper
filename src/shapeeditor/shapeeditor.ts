@@ -1,4 +1,4 @@
-import {
+﻿import {
     WebGLRenderer,
     Scene,
     OrthographicCamera,
@@ -14,17 +14,17 @@ import {
     Mesh,
     SRGBColorSpace,
     DoubleSide,
-    Points,
-    BufferAttribute,
-    Texture,
+    type Points,
+    type BufferAttribute,
+    type Texture,
+    type PointsMaterial,
+    type Material,
 } from 'three';
-import type { MultiStripParseResult } from '../types/domain';
 import type { StripEntry, StripSnapshot, StripInfo } from './strips-model';
-import type { PasteResult, PasteStrip } from './paste-parse';
 import type { CatalogEntry, PanelOpts, WiringStyle, DataInCorner, RotationDeg } from './panel-catalog';
 
 /** Undo/redo action object — discriminated by `type`, extra fields vary per action. */
-type UndoAction = { type: string; [key: string]: unknown };
+interface UndoAction { type: string; [key: string]: unknown }
 
 /** Insert-dialog / accordion form values. */
 interface InsertDialogOpts {
@@ -56,7 +56,6 @@ interface BgImageBBox { cx: number; cy: number; hw: number; hh: number; cos: num
 interface GizmoHandle { id?: string; x: number; y: number; r?: number; cursor?: string; strip?: number; up?: number; down?: number; x1?: number; y1?: number; x2?: number; y2?: number; hx?: number; hy?: number; }
 
 /** Ruler drag state. */
-type RulerDragKind = 'a' | 'b' | 'body';
 interface RulerDragStart { cx: number; cy: number; ax: number; ay: number; bx: number; by: number; }
 
 /** Connector drag state. */
@@ -109,9 +108,19 @@ export function init(container: HTMLElement) {
     container.style.height = '100vh';
     container.style.overflow = 'hidden';
 
-    const qe  = <T extends HTMLElement>(sel: string) => container.querySelector(sel) as T;
+    function qe<T extends HTMLElement>(sel: string, _cast?: (e: Element) => T): T {
+        const el = container.querySelector(sel);
+        if (!el) throw new Error(`Missing element "${sel}"`);
+        return el as T;
+    }
     const qei = (sel: string) => qe<HTMLInputElement>(sel);
     const qeb = (sel: string) => qe<HTMLButtonElement>(sel);
+
+    /** Assert-non-null helper: replaces `value!` for noUncheckedIndexedAccess. */
+    function nn<T>(v: T | null | undefined, msg?: string): T {
+        if (v === null || v === undefined) throw new Error(msg ?? 'unexpected null/undefined');
+        return v;
+    }
 
     const mainEl = qe<HTMLElement>('#main');
     mainEl.style.flex = '1';
@@ -202,7 +211,7 @@ export function init(container: HTMLElement) {
         const tyCm = (parseFloat(dom_txt_translate_y.value) || 0) / fitScale;
         const fallbackDiameter = parseFloat(dom_txt_diameter.value) || 0.25;
 
-        const transformPoint = ([x, y]: [any, any]) => {
+        const transformPoint = ([x, y]: [number, number]) => {
             const rx = x * sX;
             const ry = y * sY;
             return [
@@ -212,14 +221,14 @@ export function init(container: HTMLElement) {
         };
 
         let json;
-        if (stripInfo && stripInfo!.strips.length >= 1
-            && stripInfo!.totalCount === rawPts.length) {
+        if (stripInfo && stripInfo.strips.length >= 1
+            && stripInfo.totalCount === rawPts.length) {
             // Preserve multi-strip structure (including non-sequential video_offset)
             // via the shared builder.
-            const stripsOut = stripInfo!.strips.map((strip: StripEntry) => {
+            const stripsOut = stripInfo.strips.map((strip: StripEntry) => {
                 const pts = [];
                 for (let i = strip.offset; i < strip.offset + strip.count; i++) {
-                    pts.push(transformPoint(rawPts[i]!));
+                    pts.push(transformPoint(rawPts[i] ?? [0, 0]));
                 }
                 const d = typeof strip.diameter === 'number' ? strip.diameter : fallbackDiameter;
                 return {
@@ -230,7 +239,7 @@ export function init(container: HTMLElement) {
                     count: strip.count,
                     video_offset: typeof strip.video_offset === 'number' ? strip.video_offset : strip.offset,
                     pin: typeof strip.pin === 'string' ? strip.pin : 'pin1',
-                    videoOffsetOverride: strip.videoOffsetOverride === true,
+                    videoOffsetOverride: strip.videoOffsetOverride,
                 };
             });
             json = buildScreenmapMultiStripJson(stripsOut);
@@ -271,9 +280,9 @@ export function init(container: HTMLElement) {
         txt.value = clampScale(val).toFixed(2);
     }
 
-    dom_txt_scale.addEventListener('change', () => writeScale(dom_txt_scale, dom_txt_scale.value), { signal });
-    dom_txt_scale_x.addEventListener('change', () => writeScale(dom_txt_scale_x, dom_txt_scale_x.value), { signal });
-    dom_txt_scale_y.addEventListener('change', () => writeScale(dom_txt_scale_y, dom_txt_scale_y.value), { signal });
+    dom_txt_scale.addEventListener('change', () => { writeScale(dom_txt_scale, dom_txt_scale.value); }, { signal });
+    dom_txt_scale_x.addEventListener('change', () => { writeScale(dom_txt_scale_x, dom_txt_scale_x.value); }, { signal });
+    dom_txt_scale_y.addEventListener('change', () => { writeScale(dom_txt_scale_y, dom_txt_scale_y.value); }, { signal });
 
     // ── Rotate ───────────────────────────────────────────────────────────────
 
@@ -286,7 +295,7 @@ export function init(container: HTMLElement) {
         dom_txt_rotate.value = String(clampRotate(rawVal));
     }
 
-    dom_txt_rotate.addEventListener('change', () => setRotate(dom_txt_rotate.value), { signal });
+    dom_txt_rotate.addEventListener('change', () => { setRotate(dom_txt_rotate.value); }, { signal });
 
     // ── Translate ─────────────────────────────────────────────────────────────
 
@@ -311,7 +320,7 @@ export function init(container: HTMLElement) {
     function wireTransformUndo(controlName: string, ...elements: HTMLInputElement[]) {
         for (const el of elements) {
             el.addEventListener('change', () => {
-                const newVal = getTransformValue(controlName) ?? 0;
+                const newVal = getTransformValue(controlName);
                 const oldVal = committedTransform[controlName] ?? 0;
                 if (oldVal !== newVal) {
                     pushUndo({ type: 'transform', control: controlName, oldValue: oldVal, newValue: newVal });
@@ -337,7 +346,7 @@ export function init(container: HTMLElement) {
     let origDiameter = 0.5;
     // Multi-strip metadata model. The store owns mutations; `stripInfo` is
     // kept as a local mirror of `stripStore.get()` so existing read paths
-    // (`stripInfo!.strips`, `stripInfo!.totalCount`, ...) work unchanged.
+    // (`_si().strips`, `_si().totalCount`, ...) work unchanged.
     const stripStore = new StripStore();
     let stripInfo: StripInfo | null = null; // multi-strip parse result (null until screenmap loaded)
     const selection = new Selection();
@@ -365,14 +374,14 @@ export function init(container: HTMLElement) {
     // Test/debug hook: expose strip state and computed Start/End labels so
     // E2E tests can assert on canvas-drawn labels that have no DOM presence.
     window.__shapeeditorDebug = {
-        getStripCount: () => (stripInfo ? stripInfo!.strips.length : 0),
+        getStripCount: () => (stripInfo ? stripInfo.strips.length : 0),
         getStripLabels: () => (stripInfo
-            ? stripInfo!.strips.map((s, i) => stripStartEndLabels(s, i))
+            ? stripInfo.strips.map((s, i) => stripStartEndLabels(s, i))
             : null),
         getSelectedStrip: () => selection.getStripIdx(),
-        getStripNames: () => (stripInfo ? stripInfo!.strips.map((s) => s.name) : []),
+        getStripNames: () => (stripInfo ? stripInfo.strips.map((s) => s.name) : []),
         selectStrip: (i: number) => { selection.selectStrip(i); },
-        placePanel: (catalogId: string, worldX: number, worldY: number, opts: PanelOpts) => _debugPlacePanel(catalogId, worldX, worldY, opts || {}),
+        placePanel: (catalogId: string, worldX: number, worldY: number, opts: PanelOpts) => _debugPlacePanel(catalogId, worldX, worldY, opts),
         getPlacingMode: () => (placingState ? placingState.entry.id : null),
         cancelPlacing: () => { _cancelPlacing(); },
         getChainArrowCount: () => _chainArrowCount(),
@@ -383,7 +392,7 @@ export function init(container: HTMLElement) {
             return { meta: b.meta, hasJson: typeof b.json === 'string' && b.json.length > 0 };
         },
         getHintText: () => (hintStripTextEl ? hintStripTextEl.textContent : ''),
-        openHelp: () => { _openHelpOverlay(); },
+        openHelp: () => { void _openHelpOverlay(); },
         getPointEditMode: () => pointEditStripIdx,
         enterPointEditMode: (i: number) => {
             if (typeof i !== 'number' || i < 0) return;
@@ -398,19 +407,24 @@ export function init(container: HTMLElement) {
         getStripPoints: (i: number) => {
             const strips = stripStore.getStrips();
             if (i < 0 || i >= strips.length) return null;
-            const s = strips[i]!;
+            const s = strips[i];
+            if (!s) return null;
             const out = [];
             for (let k = s.offset; k < s.offset + s.count; k++) {
-                out.push([screenmap_pts[k]![0], screenmap_pts[k]![1]]);
+                const pt = screenmap_pts[k];
+                out.push([pt?.[0] ?? 0, pt?.[1] ?? 0]);
             }
             return out;
         },
         // Get a flat LED's transformed canvas coords (for synthetic drag tests).
         getLedCanvasPos: (flatIdx: number) => {
             if (flatIdx < 0 || flatIdx >= lastTransformedPts.length) return null;
-            const [x, y] = lastTransformedPts[flatIdx]!;
+            const ltp = lastTransformedPts[flatIdx];
+            if (!ltp) return null;
+            const [x, y] = ltp;
             const [cx, cy] = toCanvasCoords(x, y);
-            const rect = overlayCanvas!.getBoundingClientRect();
+            if (!overlayCanvas) return null;
+            const rect = overlayCanvas.getBoundingClientRect();
             // Convert internal canvas px → client px
             const clientX = rect.left + (cx / canvasW) * rect.width;
             const clientY = rect.top + (cy / canvasH) * rect.height;
@@ -421,16 +435,17 @@ export function init(container: HTMLElement) {
         getPasteState: () => (pasteState
             ? { count: pasteState.strips.length, names: pasteState.strips.map((s) => s.name) }
             : null),
-        commitPasteAt: (canvasX: number, canvasY: number) => _commitPasteAt(canvasX, canvasY),
-        cancelPaste: () => _cancelPaste(),
-        copySelectedStrip: () => _copySelectedStripToClipboard(),
+        commitPasteAt: (canvasX: number, canvasY: number) => { _commitPasteAt(canvasX, canvasY); },
+        cancelPaste: () => { _cancelPaste(); },
+        copySelectedStrip: () => { _copySelectedStripToClipboard(); },
         // Insert dialog hooks (Phase 4)
         openInsertDialog: () => _openInsertDialog(),
         submitInsertDialog: (opts: Record<string, unknown>) => _submitInsertDialog(opts as unknown as InsertDialogOpts),
         // Touch (Phase 5) — synchronously execute the long-press action at
         // the given canvas-internal coords without waiting 600ms in tests.
         simulateLongPress: (canvasX: number, canvasY: number) => {
-            const rect = overlayCanvas!.getBoundingClientRect();
+            if (!overlayCanvas) return false;
+            const rect = overlayCanvas.getBoundingClientRect();
             const clientX = rect.left + (canvasX / canvasW) * rect.width;
             const clientY = rect.top + (canvasY / canvasH) * rect.height;
             _doLongPress(canvasX, canvasY, clientX, clientY);
@@ -442,11 +457,12 @@ export function init(container: HTMLElement) {
         simulateLedDrag: (flatIdx: number, dxClient: number, dyClient: number, opts: Record<string, unknown> | null | undefined) => {
             const pos = window.__shapeeditorDebug?.getLedCanvasPos?.(flatIdx) ?? null;
             if (!pos) return false;
-            const altKey = !!(opts && opts['altKey']);
+            const altKey = Boolean(opts?.altKey);
             const evtOpts = (x: number, y: number) => ({ clientX: x, clientY: y, button: 0, bubbles: true, altKey });
-            overlayCanvas!.dispatchEvent(new MouseEvent('mousedown', evtOpts(pos.clientX, pos.clientY)));
-            overlayCanvas!.dispatchEvent(new MouseEvent('mousemove', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
-            overlayCanvas!.dispatchEvent(new MouseEvent('mouseup', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
+            if (!overlayCanvas) return false;
+            overlayCanvas.dispatchEvent(new MouseEvent('mousedown', evtOpts(pos.clientX, pos.clientY)));
+            overlayCanvas.dispatchEvent(new MouseEvent('mousemove', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
+            overlayCanvas.dispatchEvent(new MouseEvent('mouseup', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
             return true;
         },
         // Pins / chain hooks (issue #24, Phases 1-2)
@@ -468,7 +484,7 @@ export function init(container: HTMLElement) {
         getStripPins: () => stripStore.getStrips().map((s) => StripStore.pinOf(s)),
         getVideoOffsets: () => stripStore.getStrips().map((s) => ({
             video_offset: s.video_offset,
-            override: !!s.videoOffsetOverride,
+            override: s.videoOffsetOverride,
         })),
         repinStrip: (stripIdx: number, newPinId: string) => doRepinStrip(stripIdx, newPinId),
         getDerivedVideoOffset: (stripIdx: number) => stripStore.getDerivedVideoOffset(stripIdx),
@@ -476,7 +492,7 @@ export function init(container: HTMLElement) {
             const strips = stripStore.getStrips();
             const s = strips[stripIdx];
             if (!s) return false;
-            if (!!s.videoOffsetOverride !== !!value) doToggleVoLock(stripIdx);
+            if (s.videoOffsetOverride !== value) doToggleVoLock(stripIdx);
             return true;
         },
         addPin: () => doAddPin(),
@@ -492,14 +508,15 @@ export function init(container: HTMLElement) {
             ends: _chainGeom.ends.map((s) => ({ strip: s.strip, x: s.x, y: s.y })),
             crossBadges: _chainGeom.crossBadges.map((b) => ({ up: b.up, down: b.down })),
         }),
-        getUndoStack: () => (undoStack as UndoAction[]).map((a) => a.type),
+        getUndoStack: () => (undoStack).map((a) => a.type),
         // Dispatch a real contextmenu event at canvas-internal coords so the
         // connector right-click hit-test path is exercised end-to-end.
         simulateCanvasContextMenu: (canvasX: number, canvasY: number) => {
-            const rect = overlayCanvas!.getBoundingClientRect();
+            if (!overlayCanvas) return false;
+            const rect = overlayCanvas.getBoundingClientRect();
             const clientX = rect.left + (canvasX / canvasW) * rect.width;
             const clientY = rect.top + (canvasY / canvasH) * rect.height;
-            overlayCanvas!.dispatchEvent(new MouseEvent('contextmenu', {
+            overlayCanvas.dispatchEvent(new MouseEvent('contextmenu', {
                 clientX, clientY, button: 2, bubbles: true, cancelable: true,
             }));
             return true;
@@ -514,18 +531,18 @@ export function init(container: HTMLElement) {
         const sec = Math.floor(ms / 1000);
         if (sec < 45) return 'just now';
         const min = Math.floor(sec / 60);
-        if (min < 60) return `${min} min ago`;
+        if (min < 60) return `${String(min)} min ago`;
         const hr = Math.floor(min / 60);
-        if (hr < 24) return `${hr} h ago`;
+        if (hr < 24) return `${String(hr)} h ago`;
         const day = Math.floor(hr / 24);
-        return `${day} d ago`;
+        return `${String(day)} d ago`;
     }
 
     async function _toast(opts: Record<string, unknown>) {
         try {
             const Swal = (await import('sweetalert2')).default;
             if (signal.aborted) return null;
-            return Swal.fire({
+            return await Swal.fire({
                 toast: true,
                 position: 'top',
                 showConfirmButton: false,
@@ -559,7 +576,7 @@ export function init(container: HTMLElement) {
                 position: 'top',
                 icon: 'info',
                 title: 'Looks like an empty edit',
-                html: `Your last good layout had <b>${ledCount} LED${ledCount === 1 ? '' : 's'}</b>.`,
+                html: `Your last good layout had <b>${String(ledCount)} LED${ledCount === 1 ? '' : 's'}</b>.`,
                 showConfirmButton: true,
                 showCancelButton: true,
                 confirmButtonText: 'Restore previous layout',
@@ -569,7 +586,7 @@ export function init(container: HTMLElement) {
                 timer: 12000,
                 timerProgressBar: true,
             });
-            if (res && res.isConfirmed) {
+            if (res.isConfirmed) {
                 const json = restoreBackup();
                 if (json) {
                     load_screenmap_data(json);
@@ -594,7 +611,7 @@ export function init(container: HTMLElement) {
                 position: 'top',
                 icon: 'success',
                 title: 'Restored your last good layout',
-                html: `${ledCount} LED${ledCount === 1 ? '' : 's'}, saved ${when}`,
+                html: `${String(ledCount)} LED${ledCount === 1 ? '' : 's'}, saved ${when}`,
                 showConfirmButton: true,
                 confirmButtonText: 'Undo',
                 showCancelButton: false,
@@ -603,7 +620,7 @@ export function init(container: HTMLElement) {
                 timer: 8000,
                 timerProgressBar: true,
             });
-            if (res && res.isConfirmed && typeof degenerateJson === 'string') {
+            if (res.isConfirmed && typeof degenerateJson === 'string') {
                 // Put the degenerate copy back as the working copy. We bypass
                 // the save gate by writing directly to the store keys.
                 try {
@@ -631,7 +648,7 @@ export function init(container: HTMLElement) {
             load_screenmap_data(stored);
             if (meta && typeof meta.savedAt === 'number'
                 && (now - meta.savedAt) > STALE_MS) {
-                _toastInfo(`Loaded layout from ${_relativeTime(meta.savedAt)}`);
+                void _toastInfo(`Loaded layout from ${_relativeTime(meta.savedAt)}`);
             }
             return true;
         }
@@ -645,13 +662,13 @@ export function init(container: HTMLElement) {
                 const restored = restoreBackup();
                 if (restored) {
                     load_screenmap_data(restored);
-                    _toastSilentRestored(backup.meta, stored);
+                    void _toastSilentRestored(backup.meta, stored);
                     return true;
                 }
             } else if (!stale && backup) {
                 // Fresh degenerate — load the degenerate copy and show banner.
                 load_screenmap_data(stored);
-                _toastFreshDegenerate(backup.meta);
+                void _toastFreshDegenerate(backup.meta);
                 return true;
             }
             // Degenerate, no backup — fall through to default behavior.
@@ -663,7 +680,7 @@ export function init(container: HTMLElement) {
             const restored = restoreBackup();
             if (restored) {
                 load_screenmap_data(restored);
-                _toastSuccess('Restored your last good layout');
+                void _toastSuccess('Restored your last good layout');
                 return true;
             }
         }
@@ -672,11 +689,11 @@ export function init(container: HTMLElement) {
 
     /** Convert an HSL color string like "hsl(120, 80%, 60%)" to [r, g, b] floats 0-1. */
     function hslStringToRgb(hslStr: string) {
-        const m = hslStr.match(/hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/);
-        if (!m) return [1, 1, 1];
-        const h = parseFloat(m[1]!) / 360;
-        const s = parseFloat(m[2]!) / 100;
-        const l = parseFloat(m[3]!) / 100;
+        const m = /hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/.exec(hslStr);
+        if (!m?.[1] || !m[2] || !m[3]) return [1, 1, 1];
+        const h = parseFloat(m[1]) / 360;
+        const s = parseFloat(m[2]) / 100;
+        const l = parseFloat(m[3]) / 100;
         if (s === 0) return [l, l, l];
         const hue2rgb = (p: number, q: number, t: number): number => {
             if (t < 0) t += 1;
@@ -702,7 +719,7 @@ export function init(container: HTMLElement) {
     let wrapper: HTMLElement | null = null;
     let pointsMesh: Points | null = null;
     let pointsGeometry: BufferGeometry | null = null;
-    let pointsMaterial: import('three').PointsMaterial | null = null;
+    let pointsMaterial: PointsMaterial | null = null;
     const circleTexture = createCircleTexture(64);
 
     // Grid line objects
@@ -735,6 +752,50 @@ export function init(container: HTMLElement) {
 
     function setNeedsGeometryUpdate() { geometryDirty = true; frameDirty = true; }
     function setNeedsRender() { frameDirty = true; }
+
+    // ── Null-safe getters for deferred renderer objects ─────────────────
+    // These throw if called before initRenderer(), which is intentional:
+    // all callers are event handlers wired up after renderer init.
+    function _oc(): HTMLCanvasElement {
+        if (!overlayCanvas) throw new Error('overlayCanvas not initialized');
+        return overlayCanvas;
+    }
+    function _octx(): CanvasRenderingContext2D {
+        if (!overlayCtx) throw new Error('overlayCtx not initialized');
+        return overlayCtx;
+    }
+    function _scene(): Scene {
+        if (!scene) throw new Error('scene not initialized');
+        return scene;
+    }
+    function _renderer(): WebGLRenderer {
+        if (!renderer) throw new Error('renderer not initialized');
+        return renderer;
+    }
+    function _camera(): OrthographicCamera {
+        if (!camera) throw new Error('camera not initialized');
+        return camera;
+    }
+    function _si(): StripInfo {
+        if (!stripInfo) throw new Error('stripInfo not initialized');
+        return stripInfo;
+    }
+    function _tooltip(): HTMLElement {
+        if (!tooltip) throw new Error('tooltip not initialized');
+        return tooltip;
+    }
+    function _outline(): Line {
+        if (!screenmapOutline) throw new Error('screenmapOutline not initialized');
+        return screenmapOutline;
+    }
+    function _infoDiv(): HTMLElement {
+        if (!infoDiv) throw new Error('infoDiv not initialized');
+        return infoDiv;
+    }
+    function _placeholderDiv(): HTMLElement {
+        if (!placeholderDiv) throw new Error('placeholderDiv not initialized');
+        return placeholderDiv;
+    }
 
     // ── Editing state ─────────────────────────────────────────────────────
     let selectedIdx = -1;
@@ -780,7 +841,8 @@ export function init(container: HTMLElement) {
     let hintStripHelpBtn: HTMLButtonElement | null = null;
     let _autoOpenHelpScheduled = false;
     let highlightedEdgeIdx = -1; // edge index highlighted for "insert between"
-    let loadedPresets = []; // populated by manifest fetch
+    interface PresetEntry { file: string; name: string; }
+    let loadedPresets: PresetEntry[] = []; // populated by manifest fetch
 
     const ctxBtnStyle =
         'display:block;width:100%;padding:8px 16px;background:none;border:none;' +
@@ -793,13 +855,13 @@ export function init(container: HTMLElement) {
         btn.style.cssText = ctxBtnStyle;
         btn.addEventListener('mouseenter', () => { btn.style.background = '#3b82f6'; btn.style.color = '#fff'; });
         btn.addEventListener('mouseleave', () => { btn.style.background = 'none'; btn.style.color = '#eee'; });
-        ctxContainer!.appendChild(btn);
+        if (ctxContainer) ctxContainer.appendChild(btn);
         return btn;
     }
     function makeCtxSeparator() {
         const sep = document.createElement('div');
         sep.style.cssText = 'height:1px;background:#444;margin:4px 0;';
-        ctxMenu!.appendChild(sep);
+        if (ctxMenu) ctxMenu.appendChild(sep);
         return sep;
     }
 
@@ -865,13 +927,14 @@ export function init(container: HTMLElement) {
     }
 
     function _persistMultiStrip() {
-        if (!stripInfo || stripInfo!.strips.length === 0) return;
+        if (!stripInfo || stripInfo.strips.length === 0) return;
         try {
             const fallbackDiameter = parseFloat(dom_txt_diameter.value) || 0.25;
-            const strips = stripInfo!.strips.map((s) => {
+            const strips = stripInfo.strips.map((s) => {
                 const pts: [number, number][] = [];
                 for (let i = s.offset; i < s.offset + s.count; i++) {
-                    pts.push([rawPts[i]![0], rawPts[i]![1]]);
+                    const rp = rawPts[i] ?? [0, 0];
+                    pts.push([rp[0], rp[1]]);
                 }
                 return {
                     name: s.name,
@@ -881,7 +944,7 @@ export function init(container: HTMLElement) {
                     count: s.count,
                     video_offset: typeof s.video_offset === 'number' ? s.video_offset : s.offset,
                     pin: typeof s.pin === 'string' ? s.pin : 'pin1',
-                    videoOffsetOverride: s.videoOffsetOverride === true,
+                    videoOffsetOverride: s.videoOffsetOverride,
                 };
             });
             saveScreenmapMultiStrip(strips);
@@ -894,10 +957,12 @@ export function init(container: HTMLElement) {
     }
 
     function _removeStripPoints(stripIdx: number) {
-        const strip = stripInfo!.strips[stripIdx]!;
+        if (!stripInfo) throw new Error('No stripInfo in _removeStripPoints');
+        const strip = stripInfo.strips[stripIdx];
+        if (!strip) throw new Error(`Strip ${String(stripIdx)} not found`);
         const removedScreenmap = _spliceArray(screenmap_pts, strip.offset, strip.count);
         const removedRaw = _spliceArray(rawPts, strip.offset, strip.count);
-        const removedStrip: StripEntry & { points: [number, number][] } = { ...strip, points: strip.points ? strip.points.map((p) => [p[0], p[1]] as [number, number]) : [] };
+        const removedStrip: StripEntry & { points: [number, number][] } = { ...strip, points: strip.points.map((p) => [p[0], p[1]] as [number, number]) };
         stripStore.removeStrip(stripIdx);
         return { removedStrip, removedScreenmap, removedRaw };
     }
@@ -908,8 +973,10 @@ export function init(container: HTMLElement) {
         // the strip will be placed at stripIdx; its starting offset equals
         // sum of counts of strips [0..stripIdx).
         let insertAt = 0;
-        for (let k = 0; k < stripIdx && k < stripInfo!.strips.length; k++) {
-            insertAt += stripInfo!.strips[k]!.count;
+        if (stripInfo) {
+            for (let k = 0; k < stripIdx && k < stripInfo.strips.length; k++) {
+                insertAt += stripInfo.strips[k]?.count ?? 0;
+            }
         }
         screenmap_pts.splice(insertAt, 0, ...removedScreenmap);
         rawPts.splice(insertAt, 0, ...removedRaw);
@@ -917,29 +984,31 @@ export function init(container: HTMLElement) {
         const info = stripStore.get();
         const stripObj = {
             name: removedStrip.name,
-            points: removedStrip.points || [],
+            points: removedStrip.points,
             diameter: removedStrip.diameter,
             offset: 0, // recomputed
             count: removedStrip.count,
             video_offset: typeof removedStrip.video_offset === 'number' ? removedStrip.video_offset : 0,
             pin: typeof removedStrip.pin === 'string' ? removedStrip.pin : 'pin1',
-            videoOffsetOverride: removedStrip.videoOffsetOverride === true,
+            videoOffsetOverride: removedStrip.videoOffsetOverride,
         };
-        info!.strips.splice(stripIdx, 0, stripObj as import('./strips-model').StripEntry);
+        if (info) info.strips.splice(stripIdx, 0, stripObj);
         // Recompute offsets/allPoints
         stripStore._recomputeOffsetsAndAllPoints();
     }
 
     function _reorderStripPoints(fromIdx: number, toIdx: number) {
+        if (!stripInfo) return;
         // Splice screenmap_pts/rawPts to mirror the strip move.
-        const fromStrip = stripInfo!.strips[fromIdx]!;
+        const fromStrip = stripInfo.strips[fromIdx];
+        if (!fromStrip) return;
         const fromOff = fromStrip.offset;
         const fromCnt = fromStrip.count;
         const movedScreenmap = screenmap_pts.splice(fromOff, fromCnt);
         const movedRaw = rawPts.splice(fromOff, fromCnt);
         stripStore.reorderStrip(fromIdx, toIdx);
         // After reorder, the moved strip is at toIdx; compute its new offset
-        const newOffset = stripInfo!.strips[toIdx]!.offset;
+        const newOffset = stripInfo.strips[toIdx]?.offset ?? 0;
         screenmap_pts.splice(newOffset, 0, ...movedScreenmap);
         rawPts.splice(newOffset, 0, ...movedRaw);
     }
@@ -954,10 +1023,13 @@ export function init(container: HTMLElement) {
     function _withinPinIdx(stripIdx: number) {
         const strips = stripStore.getStrips();
         if (stripIdx < 0 || stripIdx >= strips.length) return -1;
-        const pin = _pinOfStrip(strips[stripIdx]!);
+        const si = strips[stripIdx];
+        if (!si) return -1;
+        const pin = _pinOfStrip(si);
         let n = 0;
         for (let i = 0; i < stripIdx; i++) {
-            if (_pinOfStrip(strips[i]!) === pin) n++;
+            const st = strips[i];
+            if (st && _pinOfStrip(st) === pin) n++;
         }
         return n;
     }
@@ -966,8 +1038,8 @@ export function init(container: HTMLElement) {
     function _nextFreePinId() {
         const used = new Set(stripStore.getStrips().map(_pinOfStrip));
         let n = 1;
-        while (used.has(`pin${n}`)) n++;
-        return `pin${n}`;
+        while (used.has(`pin${String(n)}`)) n++;
+        return `pin${String(n)}`;
     }
 
     /** Pin a newly created strip should default to (B8: focused pin →
@@ -976,9 +1048,13 @@ export function init(container: HTMLElement) {
         const strips = stripStore.getStrips();
         const sIdx = selection.getStripIdx();
         if (sIdx !== null && sIdx >= 0 && sIdx < strips.length) {
-            return _pinOfStrip(strips[sIdx]!);
+            const s = strips[sIdx];
+            if (s) return _pinOfStrip(s);
         }
-        if (strips.length > 0) return _pinOfStrip(strips[strips.length - 1]!);
+        if (strips.length > 0) {
+            const last = strips[strips.length - 1];
+            if (last) return _pinOfStrip(last);
+        }
         return 'pin1';
     }
 
@@ -991,46 +1067,46 @@ export function init(container: HTMLElement) {
     function _applyRepin(action: UndoAction) {
         const a = action as Record<string, unknown>;
         const strips = stripStore.getStrips();
-        const s = strips[a['stripIdx'] as number];
+        const s = strips[a.stripIdx as number];
         if (!s) return;
-        s.pin = a['newPin'] as string;
+        s.pin = a.newPin as string;
         s.videoOffsetOverride = false;
         // Target index: just after the last existing strip of newPin
         // (excluding the strip itself); append at end for a brand-new pin.
         let lastSame = -1;
         for (let i = 0; i < strips.length; i++) {
-            if (i === (a['stripIdx'] as number)) continue;
-            if (_pinOfStrip(strips[i]!) === (a['newPin'] as string)) lastSame = i;
+            if (i === (a.stripIdx as number)) continue;
+            if (_pinOfStrip(nn(strips[i])) === (a.newPin as string)) lastSame = i;
         }
         let target;
         if (lastSame < 0) target = strips.length - 1;
-        else target = lastSame > (a['stripIdx'] as number) ? lastSame : lastSame + 1;
-        if (target !== (a['stripIdx'] as number)) {
-            _reorderStripPoints(a['stripIdx'] as number, target);
-            selection.onStripReorder(a['stripIdx'] as number, target);
+        else target = lastSame > (a.stripIdx as number) ? lastSame : lastSame + 1;
+        if (target !== (a.stripIdx as number)) {
+            _reorderStripPoints(a.stripIdx as number, target);
+            selection.onStripReorder(a.stripIdx as number, target);
         } else {
             stripStore.recomputeDerivedVideoOffsets();
         }
-        a['newStripIdx'] = target;
+        a.newStripIdx = target;
     }
 
     /** Inverse of _applyRepin: restore pin, position, override and value. */
     function _revertRepin(action: UndoAction) {
         const a = action as Record<string, unknown>;
         const strips = stripStore.getStrips();
-        const fromIdx = typeof a['newStripIdx'] === 'number' ? (a['newStripIdx'] as number) : (a['stripIdx'] as number);
+        const fromIdx = typeof a.newStripIdx === 'number' ? (a.newStripIdx) : (a.stripIdx as number);
         const s = strips[fromIdx];
         if (!s) return;
-        s.pin = a['oldPin'] as string;
-        s.videoOffsetOverride = a['oldOverride'] === true;
-        if (fromIdx !== (a['stripIdx'] as number)) {
-            _reorderStripPoints(fromIdx, a['stripIdx'] as number);
-            selection.onStripReorder(fromIdx, a['stripIdx'] as number);
+        s.pin = a.oldPin as string;
+        s.videoOffsetOverride = a.oldOverride === true;
+        if (fromIdx !== (a.stripIdx as number)) {
+            _reorderStripPoints(fromIdx, a.stripIdx as number);
+            selection.onStripReorder(fromIdx, a.stripIdx as number);
         } else {
             stripStore.recomputeDerivedVideoOffsets();
         }
-        if (a['oldOverride'] === true && typeof a['oldVideoOffset'] === 'number') {
-            stripStore.updateStrip(a['stripIdx'] as number, { video_offset: a['oldVideoOffset'] as number });
+        if (a.oldOverride === true && typeof a.oldVideoOffset === 'number') {
+            stripStore.updateStrip(a.stripIdx as number, { video_offset: a.oldVideoOffset });
         }
     }
 
@@ -1049,9 +1125,11 @@ export function init(container: HTMLElement) {
         })();
         const groups = new Map<string, number[]>();
         for (let i = 0; i < strips.length; i++) {
-            const p = _pinOfStrip(strips[i]!);
+            const st = strips[i];
+            if (!st) continue;
+            const p = _pinOfStrip(st);
             if (!groups.has(p)) groups.set(p, []);
-            groups.get(p)!.push(i);
+            groups.get(p)?.push(i);
         }
         const fullOrder = [...order];
         for (const p of groups.keys()) {
@@ -1064,14 +1142,15 @@ export function init(container: HTMLElement) {
         }
         if (newIdxOrder.length !== strips.length) return;
         // Rebuild flat arrays + strips array in the new order.
-        const newScreen = [];
-        const newRaw = [];
+        const newScreen: [number, number][] = [];
+        const newRaw: [number, number][] = [];
         const newStrips = [];
         for (const idx of newIdxOrder) {
-            const st = strips[idx]!;
+            const st = strips[idx];
+            if (!st) continue;
             for (let k = st.offset; k < st.offset + st.count; k++) {
-                newScreen.push(screenmap_pts[k]!);
-                newRaw.push(rawPts[k]!);
+                newScreen.push(screenmap_pts[k] ?? ([0, 0] as [number, number]));
+                newRaw.push(rawPts[k] ?? ([0, 0] as [number, number]));
             }
             newStrips.push(st);
         }
@@ -1080,7 +1159,7 @@ export function init(container: HTMLElement) {
         rawPts.length = 0;
         rawPts.push(...newRaw);
         strips.length = 0;
-        strips.push(...(newStrips as import('./strips-model').StripEntry[]));
+        strips.push(...(newStrips));
         stripStore._recomputeOffsetsAndAllPoints();
         // Re-select the same strip object at its new index.
         if (selStrip) {
@@ -1100,60 +1179,60 @@ export function init(container: HTMLElement) {
     function applyAction(action: UndoAction) {
         const a = action as Record<string, unknown>;
         if (action.type === 'move') {
-            screenmap_pts[a['idx'] as number] = [...(a['newScreenmapPt'] as [number, number])];
-            rawPts[a['idx'] as number] = [...(a['newRawPt'] as [number, number])];
+            screenmap_pts[a.idx as number] = [...(a.newScreenmapPt as [number, number])];
+            rawPts[a.idx as number] = [...(a.newRawPt as [number, number])];
         } else if (action.type === 'delete') {
-            const idx = a['idx'] as number;
+            const idx = a.idx as number;
             screenmap_pts.splice(idx, 1);
             rawPts.splice(idx, 1);
             _stripInfoOnDelete(idx);
             if (selectedIdx === idx) selectedIdx = -1;
             else if (selectedIdx > idx) selectedIdx--;
         } else if (action.type === 'insert') {
-            const idx = a['idx'] as number;
-            screenmap_pts.splice(idx, 0, [...(a['screenmapPt'] as [number, number])]);
-            rawPts.splice(idx, 0, [...(a['rawPt'] as [number, number])]);
+            const idx = a.idx as number;
+            screenmap_pts.splice(idx, 0, [...(a.screenmapPt as [number, number])]);
+            rawPts.splice(idx, 0, [...(a.rawPt as [number, number])]);
             _stripInfoOnInsert(idx);
             selectedIdx = idx;
         } else if (action.type === 'transform') {
-            setTransformValue(a['control'] as string, a['newValue'] as number);
-            committedTransform[a['control'] as string] = a['newValue'] as number;
+            setTransformValue(a.control as string, a.newValue as number);
+            committedTransform[a.control as string] = a.newValue as number;
         } else if (action.type === 'strip-rename') {
-            stripStore.renameStrip(a['stripIdx'] as number, a['newName'] as string);
+            stripStore.renameStrip(a.stripIdx as number, a.newName as string);
         } else if (action.type === 'strip-reorder') {
-            _reorderStripPoints(a['fromIdx'] as number, a['toIdx'] as number);
-            selection.onStripReorder(a['fromIdx'] as number, a['toIdx'] as number);
+            _reorderStripPoints(a.fromIdx as number, a.toIdx as number);
+            selection.onStripReorder(a.fromIdx as number, a.toIdx as number);
         } else if (action.type === 'strip-delete') {
-            const removed = _removeStripPoints(a['stripIdx'] as number);
-            a['removed'] = removed; // ensure restore data is captured
-            selection.onStripRemove(a['stripIdx'] as number);
+            const removed = _removeStripPoints(a.stripIdx as number);
+            a.removed = removed; // ensure restore data is captured
+            selection.onStripRemove(a.stripIdx as number);
             selectedIdx = -1;
         } else if (action.type === 'panel-place') {
             _redoPanelPlace(action);
         } else if (action.type === 'strip-reverse') {
-            _reverseStripInPlace(a['stripIdx'] as number);
+            _reverseStripInPlace(a.stripIdx as number);
         } else if (action.type === 'strip-offset') {
-            stripStore.updateStrip(a['stripIdx'] as number, { video_offset: a['newValue'] as number });
+            stripStore.updateStrip(a.stripIdx as number, { video_offset: a.newValue as number });
         } else if (action.type === 'strip-repin') {
             _applyRepin(action);
         } else if (action.type === 'connector-retarget') {
-            for (const sub of (a['subActions'] as UndoAction[])) applyAction(sub);
+            for (const sub of (a.subActions as UndoAction[])) applyAction(sub);
         } else if (action.type === 'pin-reorder') {
-            _applyPinOrder(a['newOrder'] as string[]);
+            _applyPinOrder(a.newOrder as string[]);
         } else if (action.type === 'pin-rename') {
-            _applyPinRename(a['oldId'] as string, a['newId'] as string);
+            _applyPinRename(a.oldId as string, a.newId as string);
         } else if (action.type === 'vo-override-toggle') {
-            stripStore.updateStrip(a['stripIdx'] as number, {
-                videoOffsetOverride: a['newOverride'] as boolean,
-                video_offset: a['newValue'] as number,
+            stripStore.updateStrip(a.stripIdx as number, {
+                videoOffsetOverride: a.newOverride as boolean,
+                video_offset: a.newValue as number,
             });
         } else if (action.type === 'strip-translate') {
-            _applyStripTranslate(a['stripIdx'] as number, a['sdx'] as number, a['sdy'] as number);
+            _applyStripTranslate(a.stripIdx as number, a.sdx as number, a.sdy as number);
         } else if (action.type === 'paste-strips') {
             _doPasteStrips(action);
         } else if (action.type === 'restore-backup') {
-            if (typeof a['afterJson'] === 'string') {
-                load_screenmap_data(a['afterJson']);
+            if (typeof a.afterJson === 'string') {
+                load_screenmap_data(a.afterJson);
             }
         }
     }
@@ -1161,63 +1240,64 @@ export function init(container: HTMLElement) {
     function applyInverse(action: UndoAction) {
         const a = action as Record<string, unknown>;
         if (action.type === 'move') {
-            screenmap_pts[a['idx'] as number] = [...(a['oldScreenmapPt'] as [number, number])];
-            rawPts[a['idx'] as number] = [...(a['oldRawPt'] as [number, number])];
+            screenmap_pts[a.idx as number] = [...(a.oldScreenmapPt as [number, number])];
+            rawPts[a.idx as number] = [...(a.oldRawPt as [number, number])];
         } else if (action.type === 'delete') {
-            const idx = a['idx'] as number;
-            screenmap_pts.splice(idx, 0, a['screenmapPt'] as [number, number]);
-            rawPts.splice(idx, 0, a['rawPt'] as [number, number]);
+            const idx = a.idx as number;
+            screenmap_pts.splice(idx, 0, a.screenmapPt as [number, number]);
+            rawPts.splice(idx, 0, a.rawPt as [number, number]);
             // Restore stripInfo from snapshot taken before delete
-            _restoreStripInfo(a['stripSnapshot'] as StripSnapshot);
+            _restoreStripInfo(a.stripSnapshot as StripSnapshot);
             selectedIdx = idx;
         } else if (action.type === 'insert') {
-            const idx = a['idx'] as number;
+            const idx = a.idx as number;
             screenmap_pts.splice(idx, 1);
             rawPts.splice(idx, 1);
             // Restore stripInfo from snapshot taken before insert
-            _restoreStripInfo(a['stripSnapshot'] as StripSnapshot);
+            _restoreStripInfo(a.stripSnapshot as StripSnapshot);
             if (selectedIdx === idx) selectedIdx = -1;
             else if (selectedIdx > idx) selectedIdx--;
         } else if (action.type === 'transform') {
-            setTransformValue(a['control'] as string, a['oldValue'] as number);
-            committedTransform[a['control'] as string] = a['oldValue'] as number;
+            setTransformValue(a.control as string, a.oldValue as number);
+            committedTransform[a.control as string] = a.oldValue as number;
         } else if (action.type === 'strip-rename') {
-            stripStore.renameStrip(a['stripIdx'] as number, a['oldName'] as string);
+            stripStore.renameStrip(a.stripIdx as number, a.oldName as string);
         } else if (action.type === 'strip-reorder') {
-            _reorderStripPoints(a['toIdx'] as number, a['fromIdx'] as number);
-            selection.onStripReorder(a['toIdx'] as number, a['fromIdx'] as number);
+            _reorderStripPoints(a.toIdx as number, a.fromIdx as number);
+            selection.onStripReorder(a.toIdx as number, a.fromIdx as number);
         } else if (action.type === 'strip-delete') {
-            _insertStripPoints(a['stripIdx'] as number, a['removed'] as ReturnType<typeof _removeStripPoints>);
+            _insertStripPoints(a.stripIdx as number, a.removed as ReturnType<typeof _removeStripPoints>);
         } else if (action.type === 'panel-place') {
             _undoPanelPlace(action);
         } else if (action.type === 'strip-reverse') {
             // self-inverse
-            _reverseStripInPlace(a['stripIdx'] as number);
+            _reverseStripInPlace(a.stripIdx as number);
         } else if (action.type === 'strip-offset') {
-            stripStore.updateStrip(a['stripIdx'] as number, { video_offset: a['oldValue'] as number });
+            stripStore.updateStrip(a.stripIdx as number, { video_offset: a.oldValue as number });
         } else if (action.type === 'strip-repin') {
             _revertRepin(action);
         } else if (action.type === 'connector-retarget') {
-            const subs = a['subActions'] as UndoAction[];
+            const subs = a.subActions as UndoAction[];
             for (let i = subs.length - 1; i >= 0; i--) {
-                applyInverse(subs[i]!);
+                const sub = subs[i];
+                if (sub) applyInverse(sub);
             }
         } else if (action.type === 'pin-reorder') {
-            _applyPinOrder(a['oldOrder'] as string[]);
+            _applyPinOrder(a.oldOrder as string[]);
         } else if (action.type === 'pin-rename') {
-            _applyPinRename(a['newId'] as string, a['oldId'] as string);
+            _applyPinRename(a.newId as string, a.oldId as string);
         } else if (action.type === 'vo-override-toggle') {
-            stripStore.updateStrip(a['stripIdx'] as number, {
-                videoOffsetOverride: a['oldOverride'] as boolean,
-                video_offset: a['oldValue'] as number,
+            stripStore.updateStrip(a.stripIdx as number, {
+                videoOffsetOverride: a.oldOverride as boolean,
+                video_offset: a.oldValue as number,
             });
         } else if (action.type === 'strip-translate') {
-            _applyStripTranslate(a['stripIdx'] as number, -(a['sdx'] as number), -(a['sdy'] as number));
+            _applyStripTranslate(a.stripIdx as number, -(a.sdx as number), -(a.sdy as number));
         } else if (action.type === 'paste-strips') {
             _undoPasteStrips(action);
         } else if (action.type === 'restore-backup') {
-            if (typeof a['beforeJson'] === 'string' && (a['beforeJson'] as string).length > 0) {
-                load_screenmap_data(a['beforeJson'] as string);
+            if (typeof a.beforeJson === 'string' && (a.beforeJson).length > 0) {
+                load_screenmap_data(a.beforeJson);
             } else {
                 // No prior working copy — clear back to a fresh empty state.
                 try {
@@ -1269,7 +1349,8 @@ export function init(container: HTMLElement) {
 
     function performUndo() {
         if (undoStack.length === 0) return;
-        const action = undoStack.pop()!;
+        const action = undoStack.pop();
+        if (!action) return;
         applyInverse(action);
         redoStack.push(action);
         updateUndoRedoButtons();
@@ -1288,7 +1369,8 @@ export function init(container: HTMLElement) {
 
     function performRedo() {
         if (redoStack.length === 0) return;
-        const action = redoStack.pop()!;
+        const action = redoStack.pop();
+        if (!action) return;
         applyAction(action);
         undoStack.push(action);
         updateUndoRedoButtons();
@@ -1322,8 +1404,8 @@ export function init(container: HTMLElement) {
         pushUndo({
             type: 'delete',
             idx,
-            screenmapPt: [...screenmap_pts[idx]!],
-            rawPt: [...rawPts[idx]!],
+            screenmapPt: [...(screenmap_pts[idx] ?? [0, 0])],
+            rawPt: [...(rawPts[idx] ?? [0, 0])],
             stripSnapshot: _snapshotStripInfo(),
         });
         screenmap_pts.splice(idx, 1);
@@ -1355,8 +1437,8 @@ export function init(container: HTMLElement) {
     function insertBetween(edgeIdx: number) {
         if (edgeIdx < 0 || edgeIdx >= screenmap_pts.length - 1) return;
         const a = edgeIdx, b = edgeIdx + 1;
-        const pa = screenmap_pts[a]!, pb = screenmap_pts[b]!;
-        const ra = rawPts[a]!, rb = rawPts[b]!;
+        const pa = screenmap_pts[a] ?? [0, 0], pb = screenmap_pts[b] ?? [0, 0];
+        const ra = rawPts[a] ?? [0, 0], rb = rawPts[b] ?? [0, 0];
         const newScreenmap: [number, number] = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2];
         const newRaw: [number, number] = [(ra[0] + rb[0]) / 2, (ra[1] + rb[1]) / 2];
         insertPointAt(a + 1, newScreenmap, newRaw);
@@ -1365,8 +1447,8 @@ export function init(container: HTMLElement) {
     function insertShiftForward() {
         const N = screenmap_pts.length;
         if (N < 2) return;
-        const sLast = screenmap_pts[N - 1]!, sPrev = screenmap_pts[N - 2]!;
-        const rLast = rawPts[N - 1]!, rPrev = rawPts[N - 2]!;
+        const sLast = screenmap_pts[N - 1] ?? [0, 0], sPrev = screenmap_pts[N - 2] ?? [0, 0];
+        const rLast = rawPts[N - 1] ?? [0, 0], rPrev = rawPts[N - 2] ?? [0, 0];
         const dx = sLast[0] - sPrev[0];
         const dy = sLast[1] - sPrev[1];
         const newScreenmap: [number, number] = [sLast[0] + dx, sLast[1] + dy];
@@ -1379,8 +1461,8 @@ export function init(container: HTMLElement) {
     function insertShiftBack() {
         const N = screenmap_pts.length;
         if (N < 2) return;
-        const sFirst = screenmap_pts[0]!, sSecond = screenmap_pts[1]!;
-        const rFirst = rawPts[0]!, rSecond = rawPts[1]!;
+        const sFirst = screenmap_pts[0] ?? [0, 0], sSecond = screenmap_pts[1] ?? [0, 1];
+        const rFirst = rawPts[0] ?? [0, 0], rSecond = rawPts[1] ?? [0, 1];
         const dx = sFirst[0] - sSecond[0];
         const dy = sFirst[1] - sSecond[1];
         const newScreenmap: [number, number] = [sFirst[0] + dx, sFirst[1] + dy];
@@ -1399,9 +1481,11 @@ export function init(container: HTMLElement) {
     }
 
     function screenmapToRawCoords(sx: number, sy: number): [number, number] {
+        const rp0 = rawPts[0] ?? [0, 0];
+        const sp0 = screenmap_pts[0] ?? [0, 0];
         return [
-            rawPts[0]![0] + (sx - screenmap_pts[0]![0]) / fitScale,
-            rawPts[0]![1] + (sy - screenmap_pts[0]![1]) / fitScale,
+            rp0[0] + (sx - sp0[0]) / fitScale,
+            rp0[1] + (sy - sp0[1]) / fitScale,
         ];
     }
 
@@ -1412,8 +1496,10 @@ export function init(container: HTMLElement) {
         let bestT = 0;
 
         for (let i = 0; i < lastTransformedPts.length - 1; i++) {
-            const [ax, ay] = toCanvasCoords(lastTransformedPts[i]![0], lastTransformedPts[i]![1]);
-            const [bx, by] = toCanvasCoords(lastTransformedPts[i + 1]![0], lastTransformedPts[i + 1]![1]);
+            const ltp_i = lastTransformedPts[i] ?? [0, 0];
+            const ltp_i1 = lastTransformedPts[i + 1] ?? [0, 0];
+            const [ax, ay] = toCanvasCoords(ltp_i[0], ltp_i[1]);
+            const [bx, by] = toCanvasCoords(ltp_i1[0], ltp_i1[1]);
 
             const dx = bx - ax, dy = by - ay;
             const lenSq = dx * dx + dy * dy;
@@ -1470,34 +1556,27 @@ export function init(container: HTMLElement) {
         ctxMenuIdx = idx;
         const onPointOrEdge = idx >= 0 || edgeIdx >= 0;
         // File ops: hide when on a point or edge
-        ctxFileOps!.style.display = onPointOrEdge ? 'none' : '';
-        ctxFileOpsSep!.style.display = onPointOrEdge ? 'none' : '';
+        if (ctxFileOps) ctxFileOps.style.display = onPointOrEdge ? 'none' : '';
+        if (ctxFileOpsSep) ctxFileOpsSep.style.display = onPointOrEdge ? 'none' : '';
         // Save enabled when dirty
         const canSave = !dom_btn_save.disabled;
-        ctxBtnSave!.disabled = !canSave;
-        ctxBtnSave!.style.opacity = canSave ? '1' : '0.4';
+        if (ctxBtnSave) { ctxBtnSave.disabled = !canSave; ctxBtnSave.style.opacity = canSave ? '1' : '0.4'; }
         // Show delete only when a point is targeted
-        ctxBtnDelete!.style.display = idx >= 0 ? 'block' : 'none';
+        if (ctxBtnDelete) ctxBtnDelete.style.display = idx >= 0 ? 'block' : 'none';
         // Show insert-between only when an edge is targeted
-        ctxBtnInsertBetween!.style.display = edgeIdx >= 0 ? 'block' : 'none';
+        if (ctxBtnInsertBetween) ctxBtnInsertBetween.style.display = edgeIdx >= 0 ? 'block' : 'none';
         // Shift insert: only when on a point/edge or inside the bbox
         const showShiftInsert = onPointOrEdge || insideBBox;
         const canInsert = screenmap_pts.length >= 2;
-        ctxBtnInsertFwd!.style.display = showShiftInsert ? 'block' : 'none';
-        ctxBtnInsertFwd!.disabled = !canInsert;
-        ctxBtnInsertFwd!.style.opacity = canInsert ? '1' : '0.4';
-        ctxBtnInsertBack!.style.display = showShiftInsert ? 'block' : 'none';
-        ctxBtnInsertBack!.disabled = !canInsert;
-        ctxBtnInsertBack!.style.opacity = canInsert ? '1' : '0.4';
+        if (ctxBtnInsertFwd) { ctxBtnInsertFwd.style.display = showShiftInsert ? 'block' : 'none'; ctxBtnInsertFwd.disabled = !canInsert; ctxBtnInsertFwd.style.opacity = canInsert ? '1' : '0.4'; }
+        if (ctxBtnInsertBack) { ctxBtnInsertBack.style.display = showShiftInsert ? 'block' : 'none'; ctxBtnInsertBack.disabled = !canInsert; ctxBtnInsertBack.style.opacity = canInsert ? '1' : '0.4'; }
         // Copy strip only when a strip is selected
         if (ctxBtnCopyStrip) {
             const sIdx = selection.getStripIdx();
             ctxBtnCopyStrip.style.display = (sIdx !== null && sIdx >= 0) ? 'block' : 'none';
         }
-        // Position — keep on screen
-        ctxMenu!.style.left = clientX + 'px';
-        ctxMenu!.style.top = clientY + 'px';
-        ctxMenu!.style.display = '';
+        // Position - keep on screen
+        if (ctxMenu) { ctxMenu.style.left = `${String(clientX)}px`; ctxMenu.style.top = `${String(clientY)}px`; ctxMenu.style.display = ''; }
     }
 
     function hideContextMenu() {
@@ -1514,8 +1593,8 @@ export function init(container: HTMLElement) {
     dom_btn_redo.addEventListener('click', performRedo, { signal });
 
     // ── Strips inspector panel ───────────────────────────────────────────
-    const dom_strips_panel = container.querySelector('#strips_panel') as HTMLElement | null;
-    const dom_strips_list = container.querySelector('#strips_list') as HTMLElement | null;
+    const dom_strips_panel = container.querySelector<HTMLElement>('');
+    const dom_strips_list = container.querySelector<HTMLElement>('');
 
     function hslAccentForStrip(s: number, total: number): string {
         if (total <= 1) return '#3b82f6';
@@ -1530,10 +1609,10 @@ export function init(container: HTMLElement) {
     function _withinPinNeighbor(stripIdx: number, dir: 1 | -1) {
         const strips = stripStore.getStrips();
         if (stripIdx < 0 || stripIdx >= strips.length) return -1;
-        const pin = _pinOfStrip(strips[stripIdx]!);
+        const pin = _pinOfStrip(nn(strips[stripIdx]));
         let i = stripIdx + dir;
         while (i >= 0 && i < strips.length) {
-            if (_pinOfStrip(strips[i]!) === pin) return i;
+            if (_pinOfStrip(nn(strips[i])) === pin) return i;
             i += dir;
         }
         return -1;
@@ -1548,27 +1627,27 @@ export function init(container: HTMLElement) {
         // backup…" after pressing New.
         const haveBackup = !!getBackup();
         if (strips.length === 0) {
-            dom_strips_panel!.style.display = haveBackup ? '' : 'none';
+            if (dom_strips_panel) dom_strips_panel.style.display = haveBackup ? '' : 'none';
             renderSelectedStripRow();
             return;
         }
-        dom_strips_panel!.style.display = '';
+        if (dom_strips_panel) dom_strips_panel.style.display = '';
         dom_strips_list.classList.toggle('chain-mode', editorMode === 'chain');
         dom_strips_list.classList.toggle('reorder-mode', editorMode === 'reorder');
         const selStripIdx = selection.getStripIdx();
         const total = strips.length;
 
         // Group strip indices under pins in first-appearance order (§1.1).
-        const pinOrder = [];
-        const groups = new Map();
+        const pinOrder: string[] = [];
+        const groups = new Map<string, number[]>();
         for (let i = 0; i < strips.length; i++) {
-            const p = _pinOfStrip(strips[i]!);
+            const p = _pinOfStrip(nn(strips[i]));
             if (!groups.has(p)) { groups.set(p, []); pinOrder.push(p); }
-            groups.get(p).push(i);
+            groups.get(p)?.push(i);
         }
 
         const buildStripRow = (i: number) => {
-            const s = strips[i]!;
+            const s = nn(strips[i]);
             const row = document.createElement('div');
             row.className = 'strip-row' + (i === selStripIdx ? ' active' : '');
             row.dataset.stripIdx = String(i);
@@ -1594,7 +1673,7 @@ export function init(container: HTMLElement) {
 
             const count = document.createElement('span');
             count.className = 'strip-count';
-            count.textContent = `${s.count} LED${s.count === 1 ? '' : 's'}`;
+            count.textContent = `${String(s.count)} LED${s.count === 1 ? '' : 's'}`;
             row.appendChild(count);
 
             const mkBtn = (label: string, title: string, action: string, disabled: boolean) => {
@@ -1610,14 +1689,14 @@ export function init(container: HTMLElement) {
             };
 
             row.appendChild(mkBtn('▲', 'Move up within pin', 'up', _withinPinNeighbor(i, -1) < 0));
-            row.appendChild(mkBtn('▼', 'Move down within pin', 'down', _withinPinNeighbor(i, +1) < 0));
+            row.appendChild(mkBtn('▼', 'Move down within pin', 'down', _withinPinNeighbor(i, 1) < 0));
             row.appendChild(mkBtn('Rev', 'Reverse LED order', 'reverse', s.count < 2));
             row.appendChild(mkBtn('Rename', 'Rename strip', 'rename', false));
             row.appendChild(mkBtn('×', 'Delete strip', 'delete', strips.length <= 1));
 
             // video_offset display: read-only unless this strip's LOCK
             // (videoOffsetOverride) is engaged (§1.4).
-            const overridden = s.videoOffsetOverride === true;
+            const overridden = s.videoOffsetOverride;
             const off = document.createElement('input');
             off.type = 'number';
             off.className = 'strip-offset' + (overridden ? '' : ' derived');
@@ -1649,8 +1728,8 @@ export function init(container: HTMLElement) {
 
         let connectorN = 0;
         for (const pin of pinOrder) {
-            const idxs = groups.get(pin);
-            const ledTotal = idxs.reduce((a: number, i: number) => a + strips[i]!.count, 0);
+            const idxs = nn(groups.get(pin), `pin ${pin} missing from groups`);
+            const ledTotal = idxs.reduce((a: number, i: number) => a + nn(strips[i]).count, 0);
             const det = document.createElement('details');
             det.className = 'pin-group';
             det.dataset.pinId = pin;
@@ -1675,7 +1754,7 @@ export function init(container: HTMLElement) {
 
             const pinMeta = document.createElement('span');
             pinMeta.className = 'pin-meta';
-            pinMeta.textContent = `${idxs.length} strip${idxs.length === 1 ? '' : 's'} · ${ledTotal} LED${ledTotal === 1 ? '' : 's'}`;
+            pinMeta.textContent = `${String(idxs.length)} strip${idxs.length === 1 ? '' : 's'} · ${String(ledTotal)} LED${ledTotal === 1 ? '' : 's'}`;
             sum.appendChild(pinMeta);
 
             const addStrip = document.createElement('button');
@@ -1692,16 +1771,16 @@ export function init(container: HTMLElement) {
             const body = document.createElement('div');
             body.className = 'pin-strips';
             for (let k = 0; k < idxs.length; k++) {
-                body.appendChild(buildStripRow(idxs[k]));
+                body.appendChild(buildStripRow(nn(idxs[k])));
                 // Connector rows between same-pin strips — visible only in
                 // Chain mode (§1.6); click opens the inline connector menu.
                 if (editorMode === 'chain' && k < idxs.length - 1) {
                     connectorN++;
                     const cr = document.createElement('div');
                     cr.className = 'connector-row';
-                    cr.dataset.upIdx = String(idxs[k]);
-                    cr.dataset.downIdx = String(idxs[k + 1]);
-                    cr.textContent = `──(${connectorN})──▶`;
+                    cr.dataset.upIdx = String(nn(idxs[k]));
+                    cr.dataset.downIdx = String(nn(idxs[k + 1]));
+                    cr.textContent = `──(${String(connectorN)})──▶`;
                     cr.title = 'Connector — click for Swap / Split / Move options';
                     body.appendChild(cr);
                 }
@@ -1714,14 +1793,14 @@ export function init(container: HTMLElement) {
     }
 
     // ── Backup row inside #strips_panel ─────────────────────────────────
-    const dom_strips_backup_row = container.querySelector('#strips_backup_row') as HTMLElement | null;
-    const dom_strips_backup_summary = container.querySelector('#strips_backup_summary') as HTMLElement | null;
-    const dom_strips_btn_restore_backup = container.querySelector('#strips_btn_restore_backup') as HTMLButtonElement | null;
+    const dom_strips_backup_row = container.querySelector<HTMLElement>('');
+    const dom_strips_backup_summary = container.querySelector<HTMLElement>('');
+    const dom_strips_btn_restore_backup = container.querySelector<HTMLButtonElement>('');
 
     function renderBackupRow() {
         if (!dom_strips_backup_row) return;
         const b = getBackup();
-        if (!b || !b.meta) {
+        if (!b?.meta) {
             dom_strips_backup_row.style.display = 'none';
             if (dom_strips_btn_restore_backup) dom_strips_btn_restore_backup.disabled = true;
             return;
@@ -1730,7 +1809,7 @@ export function init(container: HTMLElement) {
         const stripCount = typeof m.stripCount === 'number' ? m.stripCount : 0;
         const ledCount = typeof m.ledCount === 'number' ? m.ledCount : 0;
         const when = typeof m.savedAt === 'number' ? _relativeTime(m.savedAt) : '';
-        const summary = `${stripCount} strip${stripCount === 1 ? '' : 's'} · ${ledCount} LED${ledCount === 1 ? '' : 's'} · ${when}`;
+        const summary = `${String(stripCount)} strip${stripCount === 1 ? '' : 's'} · ${String(ledCount)} LED${ledCount === 1 ? '' : 's'} · ${when}`;
         if (dom_strips_backup_summary) dom_strips_backup_summary.textContent = summary;
         dom_strips_backup_row.style.display = '';
         if (dom_strips_btn_restore_backup) dom_strips_btn_restore_backup.disabled = false;
@@ -1749,7 +1828,7 @@ export function init(container: HTMLElement) {
         });
         load_screenmap_data(restored);
         renderBackupRow();
-        _toastSuccess('Backup restored');
+        void _toastSuccess('Backup restored');
     }
 
     if (dom_strips_btn_restore_backup) {
@@ -1757,7 +1836,7 @@ export function init(container: HTMLElement) {
     }
 
     if (dom_strips_list) {
-        dom_strips_list.addEventListener('click', async (e: MouseEvent) => {
+        dom_strips_list.addEventListener('click', (e: MouseEvent) => { void (async () => {
             const tgt = e.target as Element | null;
             const btn = tgt?.closest('button[data-action]');
             if (btn) {
@@ -1765,13 +1844,13 @@ export function init(container: HTMLElement) {
                 e.preventDefault();
                 const action = (btn as HTMLElement).dataset.action;
                 if (action === 'add-strip') {
-                    pendingNewStripPin = (btn as HTMLElement).dataset.pinId || null;
-                    _openInsertDialog();
+                    pendingNewStripPin = (btn as HTMLElement).dataset.pinId ?? null;
+                    void _openInsertDialog();
                     return;
                 }
                 const idx = parseInt((btn as HTMLElement).dataset.stripIdx ?? '', 10);
                 if (action === 'up') doReorderStrip(idx, _withinPinNeighbor(idx, -1));
-                else if (action === 'down') doReorderStrip(idx, _withinPinNeighbor(idx, +1));
+                else if (action === 'down') doReorderStrip(idx, _withinPinNeighbor(idx, 1));
                 else if (action === 'reverse') doReverseStrip(idx);
                 else if (action === 'rename') await doRenameStripPrompt(idx);
                 else if (action === 'delete') await doDeleteStripPrompt(idx);
@@ -1805,7 +1884,7 @@ export function init(container: HTMLElement) {
                 const idx = parseInt((row as HTMLElement).dataset.stripIdx ?? '', 10);
                 selection.selectStrip(idx);
             }
-        }, { signal });
+        })(); }, { signal });
 
         dom_strips_list.addEventListener('change', (e: Event) => {
             const t = e.target;
@@ -1866,7 +1945,8 @@ export function init(container: HTMLElement) {
                     const toIdx = parseInt((rowTarget as HTMLElement).dataset.stripIdx ?? '', 10);
                     if (toIdx === drag.idx) return;
                     const strips = stripStore.getStrips();
-                    const fromPin = strips[drag.idx] ? _pinOfStrip(strips[drag.idx]!) : null;
+                    const dragStrip = strips[drag.idx];
+                    const fromPin = dragStrip ? _pinOfStrip(dragStrip) : null;
                     const toPin = (rowTarget as HTMLElement).dataset.pinId;
                     if (fromPin === toPin) doReorderStrip(drag.idx, toIdx);
                     else if (toPin !== undefined) doRepinStrip(drag.idx, toPin);
@@ -1874,7 +1954,7 @@ export function init(container: HTMLElement) {
                     const htPinId = (headerTarget as HTMLElement).dataset.pinId;
                     if (htPinId !== undefined) doRepinStrip(drag.idx, htPinId);
                 }
-            } else if (drag.kind === 'pin' && headerTarget) {
+            } else if (headerTarget) {
                 const order = stripStore.getPinOrder();
                 const toIdx = order.indexOf((headerTarget as HTMLElement).dataset.pinId ?? '');
                 if (toIdx >= 0) doReorderPin(drag.pinId, toIdx);
@@ -1888,14 +1968,14 @@ export function init(container: HTMLElement) {
     }
 
     // ── [+ Pin] button + selected-strip "Move to pin…" row ──────────────
-    const dom_strips_btn_add_pin = container.querySelector('#strips_btn_add_pin');
+    const dom_strips_btn_add_pin = container.querySelector<HTMLElement>('');
     if (dom_strips_btn_add_pin) {
         dom_strips_btn_add_pin.addEventListener('click', () => { doAddPin(); }, { signal });
     }
 
-    // ── [Chain] / [Reorder] toolbar modes (issue #24 §1.6, Phase 3) ─────
-    const dom_strips_btn_chain = container.querySelector('#strips_btn_chain') as HTMLElement | null;
-    const dom_strips_btn_reorder = container.querySelector('#strips_btn_reorder') as HTMLButtonElement | null;
+    // -- [Chain] / [Reorder] toolbar modes (issue #24 �1.6, Phase 3) -----
+    const dom_strips_btn_chain = container.querySelector<HTMLElement>('');
+    const dom_strips_btn_reorder = container.querySelector<HTMLElement>('');
 
     /** Switch the editor mode: 'chain' | 'reorder' | null (toggles are
      *  mutually exclusive). Cancels any in-flight connector drag. */
@@ -1929,7 +2009,7 @@ export function init(container: HTMLElement) {
         // Canvas Chain-mode interactions are desktop-only (§1.11): hide the
         // button on touch-only devices.
         try {
-            if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
+            if (window.matchMedia('(hover: none)').matches) {
                 dom_strips_btn_chain.style.display = 'none';
             }
         } catch { /* matchMedia unavailable */ }
@@ -1940,9 +2020,9 @@ export function init(container: HTMLElement) {
         }, { signal });
     }
 
-    const dom_strips_selected_row = container.querySelector('#strips_selected_row') as HTMLElement | null;
-    const dom_strips_selected_label = container.querySelector('#strips_selected_label') as HTMLElement | null;
-    const dom_strips_move_pin = container.querySelector('#strips_move_pin') as HTMLSelectElement | null;
+    const dom_strips_selected_row = container.querySelector<HTMLElement>('');
+    const dom_strips_selected_label = container.querySelector<HTMLElement>('');
+    const dom_strips_move_pin = container.querySelector<HTMLSelectElement>('');
 
     function renderSelectedStripRow() {
         if (!dom_strips_selected_row) return;
@@ -1952,7 +2032,7 @@ export function init(container: HTMLElement) {
             dom_strips_selected_row.style.display = 'none';
             return;
         }
-        const s = strips[sIdx]!;
+        const s = nn(strips[sIdx]);
         const pin = _pinOfStrip(s);
         dom_strips_selected_row.style.display = '';
         if (dom_strips_selected_label) {
@@ -1991,11 +2071,11 @@ export function init(container: HTMLElement) {
     }
 
     // ── Show chain checkbox ──────────────────────────────────────────────
-    const dom_strips_show_chain = container.querySelector('#strips_show_chain') as HTMLInputElement | null;
-    let showChainArrows = dom_strips_show_chain ? !!dom_strips_show_chain.checked : true;
+    const dom_strips_show_chain = container.querySelector<HTMLInputElement>('');
+    let showChainArrows = dom_strips_show_chain ? dom_strips_show_chain.checked : true;
     if (dom_strips_show_chain) {
         dom_strips_show_chain.addEventListener('change', () => {
-            showChainArrows = !!dom_strips_show_chain.checked;
+            showChainArrows = dom_strips_show_chain.checked;
             setNeedsRender();
         }, { signal });
     }
@@ -2010,12 +2090,12 @@ export function init(container: HTMLElement) {
         const sm = screenmap_pts.slice(lo, hi).reverse();
         const rw = rawPts.slice(lo, hi).reverse();
         for (let i = 0; i < sm.length; i++) {
-            screenmap_pts[lo + i] = sm[i]!;
-            rawPts[lo + i] = rw[i]!;
+            screenmap_pts[lo + i] = nn(sm[i]);
+            rawPts[lo + i] = nn(rw[i]);
         }
         if (Array.isArray(strip.points)) strip.points.reverse();
         if (Array.isArray(info.allPoints)) {
-            for (let i = 0; i < sm.length; i++) info.allPoints![lo + i] = [sm[i]![0], sm[i]![1]];
+            for (let i = 0; i < sm.length; i++) info.allPoints[lo + i] = [nn(sm[i])[0], nn(sm[i])[1]];
         }
         return true;
     }
@@ -2036,9 +2116,9 @@ export function init(container: HTMLElement) {
             renderStripsPanel();
             return;
         }
-        const oldValue = typeof strips[stripIdx]!.video_offset === 'number'
-            ? strips[stripIdx]!.video_offset
-            : strips[stripIdx]!.offset;
+        const oldValue = typeof nn(strips[stripIdx]).video_offset === 'number'
+            ? nn(strips[stripIdx]).video_offset
+            : nn(strips[stripIdx]).offset;
         if (oldValue === v) return;
         stripStore.updateStrip(stripIdx, { video_offset: v });
         pushUndo({ type: 'strip-offset', stripIdx, oldValue, newValue: v });
@@ -2055,7 +2135,7 @@ export function init(container: HTMLElement) {
             if (localStorage.getItem('lm:shapeeditor-repinToastShown')) return;
             localStorage.setItem('lm:shapeeditor-repinToastShown', '1');
         } catch { /* private mode */ }
-        _toastInfo(`Moved "${stripName}" to ${newPin}. vo: was reset; Undo to restore.`);
+        void _toastInfo(`Moved "${stripName}" to ${newPin}. vo: was reset; Undo to restore.`);
     }
 
     /**
@@ -2068,7 +2148,7 @@ export function init(container: HTMLElement) {
         if (stripIdx < 0 || stripIdx >= strips.length) return false;
         const newPin = typeof newPinRaw === 'string' ? newPinRaw.trim() : '';
         if (!newPin) return false;
-        const s = strips[stripIdx]!;
+        const s = nn(strips[stripIdx]);
         const oldPin = _pinOfStrip(s);
         if (newPin === oldPin) return false;
         const action = {
@@ -2079,7 +2159,7 @@ export function init(container: HTMLElement) {
             oldWithinPinIdx: _withinPinIdx(stripIdx),
             newWithinPinIdx: strips.filter((st) => _pinOfStrip(st) === newPin).length,
             oldVideoOffset: typeof s.video_offset === 'number' ? s.video_offset : s.offset,
-            oldOverride: s.videoOffsetOverride === true,
+            oldOverride: s.videoOffsetOverride,
         };
         _applyRepin(action);
         pushUndo(action);
@@ -2099,8 +2179,8 @@ export function init(container: HTMLElement) {
     function doToggleVoLock(stripIdx: number) {
         const strips = stripStore.getStrips();
         if (stripIdx < 0 || stripIdx >= strips.length) return;
-        const s = strips[stripIdx]!;
-        const oldOverride = s.videoOffsetOverride === true;
+        const s = nn(strips[stripIdx]);
+        const oldOverride = s.videoOffsetOverride;
         const newOverride = !oldOverride;
         const oldValue = typeof s.video_offset === 'number' ? s.video_offset : s.offset;
         const newValue = newOverride ? oldValue : stripStore.getDerivedVideoOffset(stripIdx);
@@ -2131,7 +2211,7 @@ export function init(container: HTMLElement) {
         if (!pins.includes(pinId)) return;
         const Swal = (await import('sweetalert2')).default;
         if (signal.aborted) return;
-        const { value } = await Swal.fire({
+        const swalResult1 = await Swal.fire({
             title: 'Rename Pin',
             input: 'text',
             inputValue: pinId,
@@ -2146,8 +2226,9 @@ export function init(container: HTMLElement) {
                 return null;
             },
         });
-        if (signal.aborted || typeof value !== 'string') return;
-        doRenamePin(pinId, value);
+        const value1: unknown = swalResult1.value;
+        if (typeof value1 !== 'string') return;
+        doRenamePin(pinId, value1);
     }
 
     /** Move pin `pinId` to position `toIdx` in the pin order. */
@@ -2178,7 +2259,7 @@ export function init(container: HTMLElement) {
         const sIdx = selection.getStripIdx();
         const strips = stripStore.getStrips();
         if (sIdx === null || sIdx < 0 || sIdx >= strips.length) {
-            _toastInfo('Select a strip first — [+ Pin] moves it to a new pin');
+            void _toastInfo('Select a strip first — [+ Pin] moves it to a new pin');
             return null;
         }
         const newPin = _nextFreePinId();
@@ -2191,7 +2272,7 @@ export function init(container: HTMLElement) {
     /** Build a strip-repin action object for stripIdx → newPin (no apply). */
     function _makeRepinAction(stripIdx: number, newPin: string) {
         const strips = stripStore.getStrips();
-        const s = strips[stripIdx]!;
+        const s = nn(strips[stripIdx]);
         return {
             type: 'strip-repin',
             stripIdx,
@@ -2200,7 +2281,7 @@ export function init(container: HTMLElement) {
             oldWithinPinIdx: _withinPinIdx(stripIdx),
             newWithinPinIdx: strips.filter((st) => _pinOfStrip(st) === newPin).length,
             oldVideoOffset: typeof s.video_offset === 'number' ? s.video_offset : s.offset,
-            oldOverride: s.videoOffsetOverride === true,
+            oldOverride: s.videoOffsetOverride,
         };
     }
 
@@ -2227,8 +2308,8 @@ export function init(container: HTMLElement) {
         if (upIdx < 0 || upIdx >= strips.length) return false;
         if (tgtIdx < 0 || tgtIdx >= strips.length) return false;
         if (upIdx === tgtIdx) return false;
-        const upStrip = strips[upIdx]!;
-        const tgtStrip = strips[tgtIdx]!;
+        const upStrip = nn(strips[upIdx]);
+        const tgtStrip = nn(strips[tgtIdx]);
         const upPin = _pinOfStrip(upStrip);
         const tgtPin = _pinOfStrip(tgtStrip);
         const subActions = [];
@@ -2264,7 +2345,7 @@ export function init(container: HTMLElement) {
         const pin = _pinOfStrip(s);
         const moving = [];
         for (let i = downIdx; i < strips.length; i++) {
-            if (_pinOfStrip(strips[i]!) === pin) moving.push(strips[i]!);
+            if (_pinOfStrip(nn(strips[i])) === pin) moving.push(nn(strips[i]));
             else break;
         }
         if (moving.length === 0) return false;
@@ -2293,7 +2374,7 @@ export function init(container: HTMLElement) {
         options.__new__ = 'New pin…';
         const Swal = (await import('sweetalert2')).default;
         if (signal.aborted) return;
-        const { value } = await Swal.fire({
+        const swalResult2 = await Swal.fire({
             title: `Move "${s.name}" to pin`,
             input: 'select',
             inputOptions: options,
@@ -2301,8 +2382,9 @@ export function init(container: HTMLElement) {
             background: '#1a1a1a',
             color: '#e5e7eb',
         });
-        if (signal.aborted || typeof value !== 'string' || !value) return;
-        doRepinStrip(downIdx, value === '__new__' ? _nextFreePinId() : value);
+        const value2: unknown = swalResult2.value;
+        if (typeof value2 !== 'string' || !value2) return;
+        doRepinStrip(downIdx, value2 === '__new__' ? _nextFreePinId() : value2);
     }
 
     // ── Inline connector menu (shared by panel rows + canvas right-click) ─
@@ -2328,9 +2410,9 @@ export function init(container: HTMLElement) {
         };
         mk('Swap upstream', () => { doReorderStrip(downIdx, upIdx); });
         mk('Split pin here', () => { doSplitPinAt(downIdx); });
-        mk('Move downstream to pin…', () => { _moveDownstreamToPinPrompt(downIdx); });
-        menu.style.left = `${Math.min(clientX, window.innerWidth - 200)}px`;
-        menu.style.top = `${Math.min(clientY, window.innerHeight - 110)}px`;
+        mk('Move downstream to pin…', () => { void _moveDownstreamToPinPrompt(downIdx); });
+        menu.style.left = `${String(Math.min(clientX, window.innerWidth - 200))}px`;
+        menu.style.top = `${String(Math.min(clientY, window.innerHeight - 110))}px`;
         document.body.appendChild(menu);
         connectorMenuEl = menu;
     }
@@ -2345,7 +2427,8 @@ export function init(container: HTMLElement) {
 
     function _hitChainArrowhead(cx: number, cy: number) {
         for (const c of _chainGeom.connectors) {
-            const dx = cx - c.hx!, dy = cy - c.hy!;
+            if (c.hx === undefined || c.hy === undefined) continue;
+            const dx = cx - c.hx, dy = cy - c.hy;
             if (dx * dx + dy * dy <= 14 * 14) return c;
         }
         return null;
@@ -2372,12 +2455,13 @@ export function init(container: HTMLElement) {
     /** Distance-to-segment hit test on connector arrow bodies. */
     function _hitConnectorBody(cx: number, cy: number) {
         for (const c of _chainGeom.connectors) {
-            const vx = c.x2! - c.x1!, vy = c.y2! - c.y1!;
+            if (c.x1 === undefined || c.y1 === undefined || c.x2 === undefined || c.y2 === undefined) continue;
+            const vx = c.x2 - c.x1, vy = c.y2 - c.y1;
             const lenSq = vx * vx + vy * vy;
             if (lenSq < 1) continue;
-            let t = ((cx - c.x1!) * vx + (cy - c.y1!) * vy) / lenSq;
+            let t = ((cx - c.x1) * vx + (cy - c.y1) * vy) / lenSq;
             t = Math.max(0, Math.min(1, t));
-            const px = c.x1! + t * vx, py = c.y1! + t * vy;
+            const px = c.x1 + t * vx, py = c.y1 + t * vy;
             const dx = cx - px, dy = cy - py;
             if (dx * dx + dy * dy <= 8 * 8) return c;
         }
@@ -2388,10 +2472,10 @@ export function init(container: HTMLElement) {
      *  target row to just after the upstream row (DOM-only, no state). */
     function _previewConnectorTarget(upIdx: number, targetIdx: number | null) {
         renderStripsPanel();
-        if (targetIdx === null || targetIdx === undefined || upIdx === null) return;
+        if (targetIdx === null) return;
         if (!dom_strips_list) return;
-        const upRow = dom_strips_list.querySelector(`.strip-row[data-strip-idx="${upIdx}"]`);
-        const tgtRow = dom_strips_list.querySelector(`.strip-row[data-strip-idx="${targetIdx}"]`);
+        const upRow = dom_strips_list.querySelector(`.strip-row[data-strip-idx="${String(upIdx)}"]`);
+        const tgtRow = dom_strips_list.querySelector(`.strip-row[data-strip-idx="${String(targetIdx)}"]`);
         if (upRow && tgtRow && upRow !== tgtRow) {
             upRow.after(tgtRow);
             tgtRow.classList.add('preview-move');
@@ -2426,7 +2510,7 @@ export function init(container: HTMLElement) {
         const oldName = strip.name;
         const Swal = (await import('sweetalert2')).default;
         if (signal.aborted) return;
-        const { value } = await Swal.fire({
+        const swalResult3 = await Swal.fire({
             title: 'Rename Strip',
             input: 'text',
             inputValue: oldName,
@@ -2437,7 +2521,7 @@ export function init(container: HTMLElement) {
                 if (!name) return 'Strip name cannot be empty';
                 if (name !== oldName) {
                     for (let i = 0; i < strips.length; i++) {
-                        if (i !== stripIdx && strips[i]!.name === name) {
+                        if (i !== stripIdx && nn(strips[i]).name === name) {
                             return `A strip named "${name}" already exists`;
                         }
                     }
@@ -2445,8 +2529,9 @@ export function init(container: HTMLElement) {
                 return null;
             },
         });
-        if (signal.aborted || typeof value !== 'string') return;
-        const newName = value.trim();
+        const value3: unknown = swalResult3.value;
+        if (typeof value3 !== 'string') return;
+        const newName = value3.trim();
         if (!newName || newName === oldName) return;
         stripStore.renameStrip(stripIdx, newName);
         pushUndo({ type: 'strip-rename', stripIdx, oldName, newName });
@@ -2464,13 +2549,13 @@ export function init(container: HTMLElement) {
         if (signal.aborted) return;
         const result = await Swal.fire({
             title: `Delete "${strip.name}"?`,
-            text: `${strip.count} LED${strip.count === 1 ? '' : 's'} will be removed.`,
+            text: `${String(strip.count)} LED${strip.count === 1 ? '' : 's'} will be removed.`,
             icon: 'warning',
             showCancelButton: true,
             confirmButtonText: 'Delete',
             confirmButtonColor: '#ef4444',
         });
-        if (signal.aborted || !result.isConfirmed) return;
+        if (!result.isConfirmed) return;
         const removed = _removeStripPoints(stripIdx);
         selection.onStripRemove(stripIdx);
         selectedIdx = -1;
@@ -2523,7 +2608,7 @@ export function init(container: HTMLElement) {
     }
 
     function getCanvasCoords(e: { clientX: number; clientY: number }): [number, number] {
-        const rect = overlayCanvas!.getBoundingClientRect();
+        const rect = _oc().getBoundingClientRect();
         return [
             (e.clientX - rect.left) * (canvasW / rect.width),
             (e.clientY - rect.top) * (canvasH / rect.height),
@@ -2536,37 +2621,37 @@ export function init(container: HTMLElement) {
         canvasH = height;
 
         renderer = new WebGLRenderer({ antialias: false });
-        renderer!.setSize(width, height);
-        renderer!.setPixelRatio(window.devicePixelRatio);
-        renderer!.setClearColor(0x121212, 1);
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setClearColor(0x121212, 1);
 
         scene = new Scene();
 
         const hw = width / 2, hh = height / 2;
         camera = new OrthographicCamera(-hw, hw, -hh, hh, -1, 1);
-        camera!.position.z = 1;
+        camera.position.z = 1;
 
         wrapper = document.createElement('div');
         wrapper.style.position = 'absolute';
         wrapper.style.inset = '0';
         mainEl.appendChild(wrapper);
 
-        renderer!.domElement.style.cssText = 'display:block;width:100%;height:100%;';
-        wrapper.appendChild(renderer!.domElement);
+        renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;';
+        wrapper.appendChild(renderer.domElement);
 
         // Overlay canvas for rainbow lines, arrows, and labels (always visible)
         overlayCanvas = document.createElement('canvas');
         const dpr = window.devicePixelRatio || 1;
-        overlayCanvas!.width = width * dpr;
-        overlayCanvas!.height = height * dpr;
-        overlayCanvas!.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;touch-action:none;';
+        overlayCanvas.width = width * dpr;
+        overlayCanvas.height = height * dpr;
+        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;touch-action:none;';
         wrapper.appendChild(overlayCanvas);
-        overlayCtx = overlayCanvas!.getContext('2d');
-        overlayCtx!.scale(dpr, dpr);
+        overlayCtx = overlayCanvas.getContext('2d');
+        _octx().scale(dpr, dpr);
 
         // LED index tooltip
         tooltip = document.createElement('div');
-        tooltip!.style.cssText =
+        tooltip.style.cssText =
             'position:absolute;pointer-events:none;' +
             'background:rgba(0,0,0,0.85);color:#fff;' +
             'padding:4px 8px;border-radius:4px;font:12px monospace;white-space:nowrap;' +
@@ -2606,14 +2691,12 @@ export function init(container: HTMLElement) {
         makeCtxBtn('Upload file\u2026', 'upload-screenmap', ctxLoadSubmenu);
 
         ctxLoadWrapper.addEventListener('mouseenter', () => {
-            ctxBtnLoadScreenmap!.style.background = '#3b82f6';
-            ctxBtnLoadScreenmap!.style.color = '#fff';
-            ctxLoadSubmenu!.style.display = '';
+            if (ctxBtnLoadScreenmap) { ctxBtnLoadScreenmap.style.background = '#3b82f6'; ctxBtnLoadScreenmap.style.color = '#fff'; }
+            if (ctxLoadSubmenu) ctxLoadSubmenu.style.display = '';
         });
         ctxLoadWrapper.addEventListener('mouseleave', () => {
-            ctxBtnLoadScreenmap!.style.background = 'none';
-            ctxBtnLoadScreenmap!.style.color = '#eee';
-            ctxLoadSubmenu!.style.display = 'none';
+            if (ctxBtnLoadScreenmap) { ctxBtnLoadScreenmap.style.background = 'none'; ctxBtnLoadScreenmap.style.color = '#eee'; }
+            if (ctxLoadSubmenu) ctxLoadSubmenu.style.display = 'none';
         });
 
         // Load Image (triggers file picker)
@@ -2650,17 +2733,17 @@ export function init(container: HTMLElement) {
         ctxUploadInput.style.display = 'none';
         document.body.appendChild(ctxUploadInput);
         ctxUploadInput.addEventListener('change', () => {
-            if (ctxUploadInput.files && ctxUploadInput.files[0]) {
+            if (ctxUploadInput.files?.[0]) {
                 const reader = new FileReader();
-                reader.onload = (ev) => load_screenmap_data((ev.target as FileReader).result as string);
+                reader.onload = (ev) => { if (ev.target) load_screenmap_data(ev.target.result as string); };
                 reader.readAsText(ctxUploadInput.files[0]);
             }
             ctxUploadInput.value = '';
         }, { signal });
 
-        ctxLoadImageInput!.addEventListener('change', () => {
-            if (ctxLoadImageInput!.files?.[0]) loadBackgroundImage(ctxLoadImageInput!.files[0]!);
-            ctxLoadImageInput!.value = '';
+        ctxLoadImageInput.addEventListener('change', () => {
+            if (ctxLoadImageInput?.files?.[0]) loadBackgroundImage(ctxLoadImageInput.files[0]);
+            if (ctxLoadImageInput) ctxLoadImageInput.value = '';
         }, { signal });
 
         ctxMenu.addEventListener('click', (e: MouseEvent) => {
@@ -2672,12 +2755,12 @@ export function init(container: HTMLElement) {
                 saveAs();
             } else if (action === 'upload-screenmap') {
                 ctxUploadInput.click();
-            } else if (action && action.startsWith('load-preset:')) {
+            } else if (action?.startsWith('load-preset:')) {
                 const file = action.slice('load-preset:'.length);
                 fetch(`/screenmaps/${file}`).then(r => r.text()).then(load_screenmap_data)
-                    .catch(err => console.log('Failed to load preset:', err));
+                    .catch((err: unknown) => { console.warn('Failed to load preset:', err); });
             } else if (action === 'load-image') {
-                ctxLoadImageInput!.click();
+                ctxLoadImageInput?.click();
             } else if (action === 'delete' && ctxMenuIdx >= 0) {
                 deletePoint(ctxMenuIdx);
             } else if (action === 'insert-between' && highlightedEdgeIdx >= 0) {
@@ -2687,33 +2770,33 @@ export function init(container: HTMLElement) {
             } else if (action === 'insert-back') {
                 insertShiftBack();
             } else if (action === 'insert-panel') {
-                _openInsertDialog();
+                void _openInsertDialog();
             } else if (action === 'paste-screenmap') {
-                _pasteFromClipboardAPI();
+                void _pasteFromClipboardAPI();
             } else if (action === 'copy-strip') {
                 _copySelectedStripToClipboard();
             } else if (action === 'kbd-help') {
-                _openHelpOverlay();
+                void _openHelpOverlay();
             }
             hideContextMenu();
         }, { signal });
 
         // Dismiss on any click outside
         window.addEventListener('mousedown', (e) => {
-            if (ctxMenu!.style.display !== 'none' && !ctxMenu!.contains(e.target as Node | null)) {
+            if (ctxMenu?.style.display !== 'none' && !ctxMenu?.contains(e.target as Node | null)) {
                 hideContextMenu();
             }
         }, { signal });
 
         // ── Mouse interaction ─────────────────────────────────────────────
 
-        overlayCanvas!.addEventListener('mousedown', onMouseDown, { signal });
-        overlayCanvas!.addEventListener('mousemove', onMouseMove, { signal });
-        overlayCanvas!.addEventListener('mouseup', onMouseUp, { signal });
-        overlayCanvas!.addEventListener('mouseleave', onMouseLeave, { signal });
-        overlayCanvas!.addEventListener('contextmenu', onContextMenu, { signal });
-        overlayCanvas!.addEventListener('dblclick', onDoubleClick, { signal });
-        overlayCanvas!.addEventListener('wheel', (e: WheelEvent) => {
+        overlayCanvas.addEventListener('mousedown', onMouseDown, { signal });
+        overlayCanvas.addEventListener('mousemove', onMouseMove, { signal });
+        overlayCanvas.addEventListener('mouseup', onMouseUp, { signal });
+        overlayCanvas.addEventListener('mouseleave', onMouseLeave, { signal });
+        overlayCanvas.addEventListener('contextmenu', onContextMenu, { signal });
+        overlayCanvas.addEventListener('dblclick', onDoubleClick, { signal });
+        overlayCanvas.addEventListener('wheel', (e: WheelEvent) => {
             e.preventDefault();
             const zoomFactor = Math.pow(2, -e.deltaY / 3000);
             camZoom = Math.max(0.1, Math.min(10, camZoom * zoomFactor));
@@ -2735,11 +2818,11 @@ export function init(container: HTMLElement) {
 
         // ── Hint strip (lives inside #main, outside the renderer wrapper so
         // it sits above the canvas and is part of the tool's DOM) ──
-        hintStripTextEl = container.querySelector('#hint_strip_text');
-        hintStripHelpBtn = container.querySelector('#hint_strip_help');
+        hintStripTextEl = container.querySelector<HTMLElement>('');
+        hintStripHelpBtn = container.querySelector<HTMLButtonElement>('');
         if (hintStripHelpBtn) {
             hintStripHelpBtn.addEventListener('click', () => {
-                _openHelpOverlay();
+                void _openHelpOverlay();
             }, { signal });
         }
         _updateHintStrip();
@@ -2754,18 +2837,18 @@ export function init(container: HTMLElement) {
         const strips = stripStore.getStrips();
         let selectedStripName = null;
         if (selStripIdx !== null && selStripIdx >= 0 && selStripIdx < strips.length) {
-            selectedStripName = strips[selStripIdx]!.name;
+            selectedStripName = nn(strips[selStripIdx]).name;
         }
         let pointEditStripName = '';
         if (pointEditStripIdx !== null && pointEditStripIdx >= 0 && pointEditStripIdx < strips.length) {
-            pointEditStripName = strips[pointEditStripIdx]!.name;
+            pointEditStripName = nn(strips[pointEditStripIdx]).name;
         }
         return {
-            empty: !stripInfo || stripInfo!.strips.length === 0
-                || (stripInfo!.strips.length === 1 && (stripInfo!.strips[0]?.count ?? 0) <= 1
-                    && stripInfo!.totalCount <= 1),
+            empty: !stripInfo || stripInfo.strips.length === 0
+                || (stripInfo.strips.length === 1 && (stripInfo.strips[0]?.count ?? 0) <= 1
+                    && stripInfo.totalCount <= 1),
             placing: !!placingState,
-            placingLabel: placingState && placingState.entry ? placingState.entry.label : '',
+            placingLabel: placingState?.entry.label ?? '',
             pasting: !!pasteState,
             pastingCount: pasteState ? pasteState.strips.length : 0,
             pointEditMode: pointEditStripIdx !== null,
@@ -2856,14 +2939,17 @@ export function init(container: HTMLElement) {
                 // closing, so wrap the checkbox state in an object.
                 preConfirm: () => {
                     const cb = document.getElementById('help_dont_show');
-                    return { dontShow: cb ? !!(cb as HTMLInputElement).checked : false };
+                    return { dontShow: cb ? (cb as HTMLInputElement).checked : false };
                 },
             });
             // Only the confirm button reports the checkbox; closing via the
             // × or Esc leaves the stored preference untouched.
-            if (res && res.isConfirmed && res.value) {
+            if (res.isConfirmed && res.value) {
                 try {
-                    if (res.value.dontShow === true) {
+                    const resVal: unknown = res.value;
+                    const dontShow = typeof resVal === 'object' && resVal !== null
+                        && 'dontShow' in resVal && (resVal as Record<string, unknown>).dontShow === true;
+                    if (dontShow) {
                         localStorage.setItem('lm:shapeeditor-helpDismissed', '1');
                     } else {
                         localStorage.removeItem('lm:shapeeditor-helpDismissed');
@@ -2891,7 +2977,7 @@ export function init(container: HTMLElement) {
         } catch { return; }
         _gestureNoticeShown = true;
         try { localStorage.setItem('lm:shapeeditor-gestureNotice', '1'); } catch { /* ignore */ }
-        _toastInfo('New: drag moves the strip — double-click to edit points');
+        void _toastInfo('New: drag moves the strip — double-click to edit points');
     }
 
     function _maybeAutoOpenHelpOnLaunch() {
@@ -2903,15 +2989,15 @@ export function init(container: HTMLElement) {
         // Defer to next tick so any preset autoload finishes first
         setTimeout(() => {
             if (signal.aborted) return;
-            _openHelpOverlay();
+            void _openHelpOverlay();
         }, 250);
     }
 
     function buildGrid(width: number, height: number) {
         if (gridLines) {
-            scene!.remove(gridLines);
+            _scene().remove(gridLines);
             gridLines.geometry.dispose();
-            ((gridLines.material as import('three').Material)).dispose();
+            ((gridLines.material as Material)).dispose();
         }
 
         const extent = Math.max(width, height) * 5; // Large enough for pan/zoom
@@ -2928,7 +3014,7 @@ export function init(container: HTMLElement) {
         const geom = new BufferGeometry();
         geom.setAttribute('position', new Float32BufferAttribute(vertices, 3));
         gridLines = new LineSegments(geom, new LineBasicMaterial({ color: 0x323232, transparent: true }));
-        scene!.add(gridLines);
+        _scene().add(gridLines);
     }
 
     function center_and_fit(pts: [number, number][], canvasW: number, canvasH: number) {
@@ -2963,10 +3049,10 @@ export function init(container: HTMLElement) {
         }
         dom_txt_diameter.value = String(origDiameter);
 
-        rawPts = screenmap_pts.map(([x, y]: [any, any]) => [x, y]);
+        rawPts = screenmap_pts.map(([x, y]: [number, number]) => [x, y] as [number, number]);
 
         let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-        screenmap_pts.forEach(([x, y]: [any, any]) => {
+        screenmap_pts.forEach(([x, y]: [number, number]) => {
             xmin = Math.min(xmin, x); xmax = Math.max(xmax, x);
             ymin = Math.min(ymin, y); ymax = Math.max(ymax, y);
         });
@@ -3013,7 +3099,7 @@ export function init(container: HTMLElement) {
         } catch { /* quota / private mode */ }
         try { renderBackupRow(); } catch { /* render is best-effort */ }
         if (hadBackupPromote) {
-            _toastInfo('New layout — previous layout kept as backup');
+            void _toastInfo('New layout — previous layout kept as backup');
         }
     }, { signal });
 
@@ -3025,7 +3111,7 @@ export function init(container: HTMLElement) {
         }
         dom_sel_preset.value = '';
         file.text().then(load_screenmap_data).catch((error: unknown) => {
-            alert(`Error reading screenmap file: ${error}`);
+            alert(`Error reading screenmap file: ${String(error)}`);
         });
     }
 
@@ -3033,15 +3119,17 @@ export function init(container: HTMLElement) {
         loadScreenmapFile(dom_btn_upload_screenmap.files?.[0] ?? null);
     }, { signal });
 
-    wireFileDropTarget({
-        target: container.querySelector('#screenmap_drop_target') as Element,
+    const screenmapDropTarget = container.querySelector('#screenmap_drop_target');
+    if (screenmapDropTarget) wireFileDropTarget({
+        target: screenmapDropTarget,
         input: dom_btn_upload_screenmap,
         onFile: loadScreenmapFile,
         signal,
     });
 
-    wireFileDropTarget({
-        target: container.querySelector('#image_drop_target') as Element,
+    const imageDropTarget = container.querySelector('#image_drop_target');
+    if (imageDropTarget) wireFileDropTarget({
+        target: imageDropTarget,
         input: dom_btn_upload_image,
         onFile: (file) => {
             if (!file) return;
@@ -3054,23 +3142,31 @@ export function init(container: HTMLElement) {
         signal,
     });
 
-    dom_sel_preset.addEventListener('change', async () => {
+    dom_sel_preset.addEventListener('change', () => { void (async () => {
         const file = dom_sel_preset.value;
         if (!file) return;
         try {
             const resp = await fetch(`/screenmaps/${file}`);
             const text = await resp.text();
             load_screenmap_data(text);
-        } catch (e) {
-            console.log("Failed to load preset:", e);
+        } catch (e: unknown) {
+            console.warn("Failed to load preset:", e);
         }
-    }, { signal });
+    })(); }, { signal });
 
     async function loadPresetsFromManifest() {
         try {
             const resp = await fetch('/screenmaps/manifest.json');
-            const manifest = await resp.json();
-            loadedPresets = manifest.presets || [];
+            const manifest: unknown = await resp.json();
+            const presets: unknown = typeof manifest === 'object' && manifest !== null
+                ? (manifest as Record<string, unknown>).presets
+                : undefined;
+            loadedPresets = Array.isArray(presets)
+                ? presets.filter((p): p is PresetEntry =>
+                    typeof p === 'object' && p !== null
+                    && typeof (p as Record<string, unknown>).file === 'string'
+                    && typeof (p as Record<string, unknown>).name === 'string')
+                : [];
             dom_sel_preset.innerHTML = '<option value="">-- Select preset --</option>';
             for (const preset of loadedPresets) {
                 const opt = document.createElement('option');
@@ -3087,13 +3183,13 @@ export function init(container: HTMLElement) {
             if (autoLoaded) {
                 // already loaded
             } else if (loadedPresets.length > 0) {
-                dom_sel_preset.value = loadedPresets[0].file;
+                dom_sel_preset.value = nn(loadedPresets[0]).file;
                 dom_sel_preset.dispatchEvent(new Event('change'));
             }
             _updateHintStrip();
             _maybeAutoOpenHelpOnLaunch();
-        } catch (e) {
-            console.log("Failed to load preset manifest:", e);
+        } catch (e: unknown) {
+            console.warn("Failed to load preset manifest:", e);
             dom_sel_preset.innerHTML = '<option value="">No presets available</option>';
             _maybeAutoOpenHelpOnLaunch();
         }
@@ -3132,9 +3228,9 @@ export function init(container: HTMLElement) {
 
     function clearBackgroundImage() {
         if (bgImageMesh) {
-            scene!.remove(bgImageMesh);
+            _scene().remove(bgImageMesh);
             bgImageMesh.geometry.dispose();
-            ((bgImageMesh.material as import('three').Material)).dispose();
+            ((bgImageMesh.material as Material)).dispose();
             bgImageMesh = null;
         }
         if (bgImageTexture) {
@@ -3180,7 +3276,7 @@ export function init(container: HTMLElement) {
             if (val === 'yes') removeBackgroundImage();
             if (val) dismissDeleteBgConfirm();
         });
-        wrapper!.appendChild(deleteBgConfirmEl);
+        if (wrapper) wrapper.appendChild(deleteBgConfirmEl);
     }
     function dismissDeleteBgConfirm() {
         if (deleteBgConfirmEl) {
@@ -3228,7 +3324,7 @@ export function init(container: HTMLElement) {
             bgImageMesh = new Mesh(geometry, material);
             bgImageMesh.renderOrder = 1;
             bgImageMesh.scale.y = -1;
-            scene!.add(bgImageMesh);
+            _scene().add(bgImageMesh);
 
             setBgControlsEnabled(true);
             dom_bg_accordion.setAttribute('open', '');
@@ -3244,11 +3340,11 @@ export function init(container: HTMLElement) {
 
     dom_txt_image_opacity.addEventListener('input', () => {
         const val = Math.max(0, Math.min(100, parseFloat(dom_txt_image_opacity.value) || 50));
-        if (bgImageMesh) { ((bgImageMesh.material as import('three').Material)).opacity = val / 100; setNeedsRender(); }
+        if (bgImageMesh) { ((bgImageMesh.material as Material)).opacity = val / 100; setNeedsRender(); }
     }, { signal });
     dom_txt_image_opacity.addEventListener('change', () => {
         dom_txt_image_opacity.value = String(Math.max(0, Math.min(100, Math.round(parseFloat(dom_txt_image_opacity.value) || 50))));
-        if (bgImageMesh) { ((bgImageMesh.material as import('three').Material)).opacity = parseFloat(dom_txt_image_opacity.value) / 100; setNeedsRender(); }
+        if (bgImageMesh) { ((bgImageMesh.material as Material)).opacity = parseFloat(dom_txt_image_opacity.value) / 100; setNeedsRender(); }
     }, { signal });
 
     dom_txt_image_scale.addEventListener('input', () => {
@@ -3341,7 +3437,7 @@ export function init(container: HTMLElement) {
 
     function drawRuler() {
         if (!overlayCtx || fitScale <= 0) return;
-        const ctx = overlayCtx!;
+        const ctx = overlayCtx;
         const pxPerCm = fitScale * camZoom;
         const [ax, ay] = toCanvasCoords(rulerA.x, rulerA.y);
         const [bx, by] = toCanvasCoords(rulerB.x, rulerB.y);
@@ -3457,10 +3553,10 @@ export function init(container: HTMLElement) {
 
     function _chainArrowCount() {
         if (!showChainArrows && editorMode !== 'chain') return 0;
-        if (!stripInfo || stripInfo!.strips.length <= 1) return 0;
+        if (!stripInfo || stripInfo.strips.length <= 1) return 0;
         let drawable = 0;
-        for (let s = 0; s < stripInfo!.strips.length - 1; s++) {
-            const a = stripInfo!.strips[s]!, b = stripInfo!.strips[s + 1]!;
+        for (let s = 0; s < stripInfo.strips.length - 1; s++) {
+            const a = nn(stripInfo.strips[s]), b = nn(stripInfo.strips[s + 1]);
             if (a.count > 0 && b.count > 0 && _pinOfStrip(a) === _pinOfStrip(b)) drawable++;
         }
         return drawable;
@@ -3469,23 +3565,23 @@ export function init(container: HTMLElement) {
     /** Cross-pin boundaries get a pin-tinted badge instead of an arrow (§1.7). */
     function _crossPinBadgeCount() {
         if (!showChainArrows && editorMode !== 'chain') return 0;
-        if (!stripInfo || stripInfo!.strips.length <= 1) return 0;
+        if (!stripInfo || stripInfo.strips.length <= 1) return 0;
         let n = 0;
-        for (let s = 0; s < stripInfo!.strips.length - 1; s++) {
-            const a = stripInfo!.strips[s]!, b = stripInfo!.strips[s + 1]!;
+        for (let s = 0; s < stripInfo.strips.length - 1; s++) {
+            const a = nn(stripInfo.strips[s]), b = nn(stripInfo.strips[s + 1]);
             if (a.count > 0 && b.count > 0 && _pinOfStrip(a) !== _pinOfStrip(b)) n++;
         }
         return n;
     }
 
     function drawChainArrows(pts: [number, number][]) {
-        const strips = stripInfo!.strips;
-        const ctx = overlayCtx!;
+        const strips = _si().strips;
+        const ctx = _octx();
         const pinOrder = stripStore.getPinOrder();
         const pinColors = getPinColors(pinOrder.length);
         const pinColorOf = (strip: StripEntry) => {
             const i = pinOrder.indexOf(_pinOfStrip(strip));
-            return pinColors[i >= 0 ? i : 0] || '#3b82f6';
+            return pinColors[i >= 0 ? i : 0] ?? '#3b82f6';
         };
         // Refresh canvas-space geometry used by Chain-mode hit-tests.
         _chainGeom.connectors.length = 0;
@@ -3493,13 +3589,13 @@ export function init(container: HTMLElement) {
         _chainGeom.ends.length = 0;
         _chainGeom.crossBadges.length = 0;
         for (let s = 0; s < strips.length; s++) {
-            const st = strips[s]!;
+            const st = nn(strips[s]);
             if (st.count <= 0) continue;
             const si = st.offset;
             const ei = st.offset + st.count - 1;
             if (si >= pts.length || ei >= pts.length) continue;
-            _chainGeom.starts.push({ strip: s, x: pts[si]![0], y: pts[si]![1] });
-            _chainGeom.ends.push({ strip: s, x: pts[ei]![0], y: pts[ei]![1] });
+            _chainGeom.starts.push({ strip: s, x: nn(pts[si])[0], y: nn(pts[si])[1] });
+            _chainGeom.ends.push({ strip: s, x: nn(pts[ei])[0], y: nn(pts[ei])[1] });
         }
         ctx.save();
         ctx.globalAlpha = 0.9;
@@ -3509,13 +3605,13 @@ export function init(container: HTMLElement) {
         ctx.setLineDash([6, 4]);
         let badgeN = 1;
         for (let s = 0; s < strips.length - 1; s++) {
-            const a = strips[s]!, b = strips[s + 1]!;
+            const a = nn(strips[s]), b = nn(strips[s + 1]);
             if (a.count <= 0 || b.count <= 0) continue;
             const aLast = a.offset + a.count - 1;
             const bFirst = b.offset;
             if (aLast >= pts.length || bFirst >= pts.length) continue;
-            const [x1, y1] = pts[aLast]!;
-            const [x2, y2] = pts[bFirst]!;
+            const [x1, y1] = nn(pts[aLast]);
+            const [x2, y2] = nn(pts[bFirst]);
             if (_pinOfStrip(a) !== _pinOfStrip(b)) {
                 // Cross-pin boundary: no arrow — pin-tinted dot near the next
                 // strip's Start (§1.7).
@@ -3585,29 +3681,30 @@ export function init(container: HTMLElement) {
 
     /** Ghost arrow + drop-target highlight while a Chain-mode drag is live. */
     function _drawChainDragGhost() {
-        const ctx = overlayCtx!;
-        if (!ctx) return;
-        const drag = connectorDrag || startHandleDrag;
+        const ctx = _octx();
+        const drag = connectorDrag ?? startHandleDrag;
         if (!drag) return;
-        let ax = null, ay = null;
+        let ax: number | null = null, ay: number | null = null;
         if (connectorDrag) {
-            const end = _chainGeom.ends.find((e) => e.strip === connectorDrag!.upIdx);
+            const cdrag = connectorDrag;
+            const end = _chainGeom.ends.find((e) => e.strip === cdrag.upIdx);
             if (end) { ax = end.x; ay = end.y; }
-        } else {
-            const start = _chainGeom.starts.find((e) => e.strip === startHandleDrag!.stripIdx);
+        } else if (startHandleDrag) {
+            const shdrag = startHandleDrag;
+            const start = _chainGeom.starts.find((e) => e.strip === shdrag.stripIdx);
             if (start) { ax = start.x; ay = start.y; }
         }
-        if (ax === null) return;
+        if (ax === null || ay === null) return;
         ctx.save();
         ctx.globalAlpha = 0.95;
         ctx.strokeStyle = '#22d3ee';
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 4]);
         ctx.beginPath();
-        ctx.moveTo(ax!, ay!);
+        ctx.moveTo(ax, ay);
         ctx.lineTo(drag.x, drag.y);
         ctx.stroke();
-        if (drag.targetIdx !== null && drag.targetIdx !== undefined) {
+        if (drag.targetIdx !== null) {
             const handles = connectorDrag ? _chainGeom.starts : _chainGeom.ends;
             const h = handles.find((e) => e.strip === drag.targetIdx);
             if (h) {
@@ -3624,7 +3721,7 @@ export function init(container: HTMLElement) {
 
     function drawOverlay() {
         if (!overlayCtx) return;
-        overlayCtx!.clearRect(0, 0, canvasW, canvasH);
+        overlayCtx.clearRect(0, 0, canvasW, canvasH);
 
         // Lerp overlayAlpha: 1 = rainbow visible (default), 0 = faded out (hovering inside bbox)
         const target = isHovering ? 0 : 1;
@@ -3651,7 +3748,7 @@ export function init(container: HTMLElement) {
 
         if (lastTransformedPts.length === 0) { ptsBBox = null; drawBgGizmoHandles(); drawRuler(); _drawPlacingGhost(); _drawPasteGhost(); return; }
 
-        const pts = lastTransformedPts.map(([x, y]: [any, any]) => toCanvasCoords(x, y));
+        const pts = lastTransformedPts.map(([x, y]: [number, number]) => toCanvasCoords(x, y));
 
         // Compute an oriented bounding box (OBB) that stays fixed as rotation changes.
         // We find the bbox of the *scaled-only* points (before rotation), then rotate
@@ -3696,43 +3793,43 @@ export function init(container: HTMLElement) {
 
         // Draw oriented bounding box outline
         if (gizmoHover === 'translate' || gizmoActive === 'translate') {
-            overlayCtx!.globalAlpha = gizmoActive === 'translate' ? 0.8 : 0.5;
-            overlayCtx!.strokeStyle = '#3b82f6';
+            overlayCtx.globalAlpha = gizmoActive === 'translate' ? 0.8 : 0.5;
+            overlayCtx.strokeStyle = '#3b82f6';
         } else {
-            overlayCtx!.globalAlpha = 0.3;
-            overlayCtx!.strokeStyle = '#888';
+            overlayCtx.globalAlpha = 0.3;
+            overlayCtx.strokeStyle = '#888';
         }
-        overlayCtx!.lineWidth = 1;
-        overlayCtx!.setLineDash([6, 4]);
-        overlayCtx!.save();
-        overlayCtx!.translate(ccx, ccy);
-        overlayCtx!.rotate(rotateRad);
-        overlayCtx!.strokeRect(-hw, -hh, hw * 2, hh * 2);
-        overlayCtx!.restore();
-        overlayCtx!.setLineDash([]);
+        overlayCtx.lineWidth = 1;
+        overlayCtx.setLineDash([6, 4]);
+        overlayCtx.save();
+        overlayCtx.translate(ccx, ccy);
+        overlayCtx.rotate(rotateRad);
+        overlayCtx.strokeRect(-hw, -hh, hw * 2, hh * 2);
+        overlayCtx.restore();
+        overlayCtx.setLineDash([]);
 
         // Draw gizmo handles (scale, rotate, translate affordances)
         drawGizmoHandles();
 
         // Rainbow lines and arrows fade with hover
         if (overlayAlpha > 0) {
-            overlayCtx!.globalAlpha = overlayAlpha;
-            overlayCtx!.lineWidth = 2;
-            const hasMultiStrip = stripInfo && stripInfo!.strips.length > 1;
-            const stripColors = hasMultiStrip ? getStripColors(stripInfo!.strips.length) : null;
+            overlayCtx.globalAlpha = overlayAlpha;
+            overlayCtx.lineWidth = 2;
+            const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
+            const stripColors = hasMultiStrip ? getStripColors(_si().strips.length) : null;
             // Build a set of boundary indices (last point of each non-empty strip) to skip
             // cross-strip lines, plus a precomputed index→strip lookup table.
             const stripBoundaries = new Set();
             let idxToStrip = null;
             if (hasMultiStrip) {
-                for (const strip of stripInfo!.strips) {
+                for (const strip of _si().strips) {
                     if (strip.count > 0) {
                         stripBoundaries.add(strip.offset + strip.count - 1);
                     }
                 }
                 idxToStrip = new Int32Array(pts.length).fill(-1);
-                for (let s = 0; s < stripInfo!.strips.length; s++) {
-                    const st = stripInfo!.strips[s]!;
+                for (let s = 0; s < _si().strips.length; s++) {
+                    const st = nn(_si().strips[s]);
                     const lo = Math.max(0, st.offset);
                     const hi = Math.min(pts.length, st.offset + st.count);
                     for (let i = lo; i < hi; i++) idxToStrip[i] = s;
@@ -3742,20 +3839,20 @@ export function init(container: HTMLElement) {
                 // Skip line between last point of one strip and first point of the next
                 if (hasMultiStrip && stripBoundaries.has(i)) continue;
 
-                const [x1, y1] = pts[i]!;
-                const [x2, y2] = pts[i + 1]!;
+                const [x1, y1] = nn(pts[i]);
+                const [x2, y2] = nn(pts[i + 1]);
                 if (hasMultiStrip) {
                     const rawIdx = idxToStrip?.[i] ?? 0;
                     const stripIdx = rawIdx >= 0 ? rawIdx : 0;
-                    overlayCtx!.strokeStyle = stripColors?.[stripIdx] ?? '#ffffff';
+                    overlayCtx.strokeStyle = stripColors?.[stripIdx] ?? '#ffffff';
                 } else {
                     const hue = (120 + i * 2) % 360;
-                    overlayCtx!.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+                    overlayCtx.strokeStyle = `hsl(${String(hue)}, 100%, 50%)`;
                 }
-                overlayCtx!.beginPath();
-                overlayCtx!.moveTo(x1, y1);
-                overlayCtx!.lineTo(x2, y2);
-                overlayCtx!.stroke();
+                overlayCtx.beginPath();
+                overlayCtx.moveTo(x1, y1);
+                overlayCtx.lineTo(x2, y2);
+                overlayCtx.stroke();
 
                 if (i % 5 === 1 || i === pts.length - 2) {
                     const dx = x2 - x1, dy = y2 - y1;
@@ -3766,41 +3863,41 @@ export function init(container: HTMLElement) {
                         const ax = x1 + dx * t, ay = y1 + dy * t;
                         const arrowLen = 12;
                         const arrowHalf = 0.45;
-                        overlayCtx!.fillStyle = overlayCtx!.strokeStyle;
-                        overlayCtx!.beginPath();
-                        overlayCtx!.moveTo(ax, ay);
-                        overlayCtx!.lineTo(ax - arrowLen * Math.cos(angle - arrowHalf), ay - arrowLen * Math.sin(angle - arrowHalf));
-                        overlayCtx!.lineTo(ax - arrowLen * Math.cos(angle + arrowHalf), ay - arrowLen * Math.sin(angle + arrowHalf));
-                        overlayCtx!.closePath();
-                        overlayCtx!.fill();
+                        overlayCtx.fillStyle = overlayCtx.strokeStyle;
+                        overlayCtx.beginPath();
+                        overlayCtx.moveTo(ax, ay);
+                        overlayCtx.lineTo(ax - arrowLen * Math.cos(angle - arrowHalf), ay - arrowLen * Math.sin(angle - arrowHalf));
+                        overlayCtx.lineTo(ax - arrowLen * Math.cos(angle + arrowHalf), ay - arrowLen * Math.sin(angle + arrowHalf));
+                        overlayCtx.closePath();
+                        overlayCtx.fill();
                     }
                 }
             }
             for (let i = 2; i < pts.length - 1; i++) {
-                fillCircle(pts[i]![0], pts[i]![1], 4, 'rgba(255,255,255,0.5)');
+                fillCircle(nn(pts[i])[0], nn(pts[i])[1], 4, 'rgba(255,255,255,0.5)');
             }
         }
 
         // Highlighted edge for "insert between"
         if (highlightedEdgeIdx >= 0 && highlightedEdgeIdx < pts.length - 1) {
-            overlayCtx!.globalAlpha = 1;
-            overlayCtx!.strokeStyle = '#00ffff';
-            overlayCtx!.lineWidth = 4;
-            overlayCtx!.beginPath();
-            overlayCtx!.moveTo(pts[highlightedEdgeIdx]![0], pts[highlightedEdgeIdx]![1]);
-            overlayCtx!.lineTo(pts[highlightedEdgeIdx + 1]![0], pts[highlightedEdgeIdx + 1]![1]);
-            overlayCtx!.stroke();
+            overlayCtx.globalAlpha = 1;
+            overlayCtx.strokeStyle = '#00ffff';
+            overlayCtx.lineWidth = 4;
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(nn(pts[highlightedEdgeIdx])[0], nn(pts[highlightedEdgeIdx])[1]);
+            overlayCtx.lineTo(nn(pts[highlightedEdgeIdx + 1])[0], nn(pts[highlightedEdgeIdx + 1])[1]);
+            overlayCtx.stroke();
             // Midpoint marker
-            const mx = (pts[highlightedEdgeIdx]![0] + pts[highlightedEdgeIdx + 1]![0]) / 2;
-            const my = (pts[highlightedEdgeIdx]![1] + pts[highlightedEdgeIdx + 1]![1]) / 2;
-            overlayCtx!.fillStyle = '#00ffff';
-            overlayCtx!.beginPath();
-            overlayCtx!.arc(mx, my, 5, 0, Math.PI * 2);
-            overlayCtx!.fill();
+            const mx = (nn(pts[highlightedEdgeIdx])[0] + nn(pts[highlightedEdgeIdx + 1])[0]) / 2;
+            const my = (nn(pts[highlightedEdgeIdx])[1] + nn(pts[highlightedEdgeIdx + 1])[1]) / 2;
+            overlayCtx.fillStyle = '#00ffff';
+            overlayCtx.beginPath();
+            overlayCtx.arc(mx, my, 5, 0, Math.PI * 2);
+            overlayCtx.fill();
         }
 
         // Chain-order arrows: from each strip's LAST LED to next strip's FIRST LED.
-        if ((showChainArrows || editorMode === 'chain') && stripInfo && stripInfo!.strips.length > 1) {
+        if ((showChainArrows || editorMode === 'chain') && stripInfo && stripInfo.strips.length > 1) {
             drawChainArrows(pts);
         } else {
             _chainGeom.connectors.length = 0;
@@ -3813,52 +3910,52 @@ export function init(container: HTMLElement) {
         // Start and end LEDs always visible (per strip when multi-strip).
         // Labels go through the layout engine so 16+ strip maps stay readable:
         // anchor dot at the LED, displaced label box, leader line when far.
-        overlayCtx!.globalAlpha = 1;
-        const hasMultiStripLabels = stripInfo && stripInfo!.strips.length > 1;
+        overlayCtx.globalAlpha = 1;
+        const hasMultiStripLabels = stripInfo && stripInfo.strips.length > 1;
         const labelItems = [];
         const START_COLOR = 'rgba(0,255,0,1)';
         const END_COLOR = 'rgba(255,0,0,1)';
         if (hasMultiStripLabels) {
-            for (let s = 0; s < stripInfo!.strips.length; s++) {
-                const st = stripInfo!.strips[s]!;
+            for (let s = 0; s < _si().strips.length; s++) {
+                const st = nn(_si().strips[s]);
                 if (st.count <= 0) continue;
                 const startIdx = st.offset;
                 const endIdx = st.offset + st.count - 1;
                 if (startIdx < 0 || endIdx >= pts.length) continue;
                 const labels = stripStartEndLabels(st, s);
-                labelItems.push({ id: 'start:' + s, text: labels.start, anchorX: pts[startIdx]![0], anchorY: pts[startIdx]![1], color: START_COLOR, dotRadius: 4 });
+                labelItems.push({ id: `start:${String(s)}`, text: labels.start, anchorX: nn(pts[startIdx])[0], anchorY: nn(pts[startIdx])[1], color: START_COLOR, dotRadius: 4 });
                 if (labels.end !== null) {
-                    labelItems.push({ id: 'end:' + s, text: labels.end, anchorX: pts[endIdx]![0], anchorY: pts[endIdx]![1], color: END_COLOR, dotRadius: 4 });
+                    labelItems.push({ id: `end:${String(s)}`, text: labels.end, anchorX: nn(pts[endIdx])[0], anchorY: nn(pts[endIdx])[1], color: END_COLOR, dotRadius: 4 });
                 }
             }
         } else {
-            if (pts.length > 1) fillCircle(pts[1]![0], pts[1]![1], 6, 'rgba(0,255,0,0.5)');
-            const singleStrip = (stripInfo && stripInfo!.strips.length === 1)
-                ? { name: stripInfo!.strips[0]?.name ?? '', count: pts.length }
+            if (pts.length > 1) fillCircle(nn(pts[1])[0], nn(pts[1])[1], 6, 'rgba(0,255,0,0.5)');
+            const singleStrip = (stripInfo?.strips.length === 1)
+                ? { name: stripInfo.strips[0]?.name ?? '', count: pts.length }
                 : { name: '', count: pts.length };
             const labels = stripStartEndLabels(singleStrip, 0);
-            labelItems.push({ id: 'start:0', text: labels.start, anchorX: pts[0]![0], anchorY: pts[0]![1], color: START_COLOR, dotRadius: 4 });
+            labelItems.push({ id: 'start:0', text: labels.start, anchorX: nn(pts[0])[0], anchorY: nn(pts[0])[1], color: START_COLOR, dotRadius: 4 });
             if (labels.end !== null) {
-                labelItems.push({ id: 'end:0', text: labels.end, anchorX: pts[pts.length - 1]![0], anchorY: pts[pts.length - 1]![1], color: END_COLOR, dotRadius: 4 });
+                labelItems.push({ id: 'end:0', text: labels.end, anchorX: nn(pts[pts.length - 1])[0], anchorY: nn(pts[pts.length - 1])[1], color: END_COLOR, dotRadius: 4 });
             }
         }
         labelRenderer.draw(overlayCtx, labelItems, {
             font: 'bold 13px "Outfit", system-ui, sans-serif',
             textColor: '#fff',
             bounds: { x: 0, y: 0, w: canvasW, h: canvasH },
-            obstacles: () => pts.map(([x, y]: [any, any]) => ({ x: x - 3, y: y - 3, w: 6, h: 6 })),
+            obstacles: () => pts.map(([x, y]: [number, number]) => ({ x: x - 3, y: y - 3, w: 6, h: 6 })),
         });
 
         // Strip selection bounding box (axis-aligned in canvas space)
         const selStripIdx = selection.getStripIdx();
-        if (selStripIdx !== null && stripInfo && selStripIdx < stripInfo!.strips.length) {
-            const st = stripInfo!.strips[selStripIdx]!;
+        if (selStripIdx !== null && stripInfo && selStripIdx < stripInfo.strips.length) {
+            const st = nn(stripInfo.strips[selStripIdx]);
             if (st.count > 0) {
                 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
                 const lo = Math.max(0, st.offset);
                 const hi = Math.min(pts.length, st.offset + st.count);
                 for (let i = lo; i < hi; i++) {
-                    const [px, py] = pts[i]!;
+                    const [px, py] = nn(pts[i]);
                     if (px < minX) minX = px;
                     if (py < minY) minY = py;
                     if (px > maxX) maxX = px;
@@ -3866,31 +3963,31 @@ export function init(container: HTMLElement) {
                 }
                 if (isFinite(minX)) {
                     const pad = 10;
-                    overlayCtx!.globalAlpha = 0.9;
-                    overlayCtx!.strokeStyle = '#3b82f6';
-                    overlayCtx!.lineWidth = 2;
-                    overlayCtx!.setLineDash([6, 4]);
-                    overlayCtx!.strokeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2);
-                    overlayCtx!.setLineDash([]);
+                    overlayCtx.globalAlpha = 0.9;
+                    overlayCtx.strokeStyle = '#3b82f6';
+                    overlayCtx.lineWidth = 2;
+                    overlayCtx.setLineDash([6, 4]);
+                    overlayCtx.strokeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2);
+                    overlayCtx.setLineDash([]);
                 }
             }
         }
 
         // Selection indicator
         if (selectedIdx >= 0 && selectedIdx < pts.length) {
-            const [sx, sy] = pts[selectedIdx]!;
-            overlayCtx!.globalAlpha = 1;
-            overlayCtx!.strokeStyle = '#00ffff';
-            overlayCtx!.lineWidth = 2;
-            overlayCtx!.beginPath();
-            overlayCtx!.arc(sx, sy, 10, 0, Math.PI * 2);
-            overlayCtx!.stroke();
+            const [sx, sy] = nn(pts[selectedIdx]);
+            overlayCtx.globalAlpha = 1;
+            overlayCtx.strokeStyle = '#00ffff';
+            overlayCtx.lineWidth = 2;
+            overlayCtx.beginPath();
+            overlayCtx.arc(sx, sy, 10, 0, Math.PI * 2);
+            overlayCtx.stroke();
             // Pulsing inner glow
-            overlayCtx!.strokeStyle = 'rgba(0,255,255,0.4)';
-            overlayCtx!.lineWidth = 4;
-            overlayCtx!.beginPath();
-            overlayCtx!.arc(sx, sy, 14, 0, Math.PI * 2);
-            overlayCtx!.stroke();
+            overlayCtx.strokeStyle = 'rgba(0,255,255,0.4)';
+            overlayCtx.lineWidth = 4;
+            overlayCtx.beginPath();
+            overlayCtx.arc(sx, sy, 14, 0, Math.PI * 2);
+            overlayCtx.stroke();
         }
 
         drawBgGizmoHandles();
@@ -3900,10 +3997,10 @@ export function init(container: HTMLElement) {
     }
 
     function fillCircle(x: number, y: number, diameter: number, color: string) {
-        overlayCtx!.fillStyle = color;
-        overlayCtx!.beginPath();
-        overlayCtx!.arc(x, y, diameter / 2, 0, Math.PI * 2);
-        overlayCtx!.fill();
+        _octx().fillStyle = color;
+        _octx().beginPath();
+        _octx().arc(x, y, diameter / 2, 0, Math.PI * 2);
+        _octx().fill();
     }
 
     // ── Gizmo: geometry, hit-testing, drawing ─────────────────────────
@@ -4002,21 +4099,22 @@ export function init(container: HTMLElement) {
         const gizmoAlpha = 1 - overlayAlpha;
         if (gizmoAlpha < 0.01) return;
 
-        const rotRad = Math.atan2(ptsBBox!.sin, ptsBBox!.cos);
+        if (!ptsBBox) return;
+        const rotRad = Math.atan2(ptsBBox.sin, ptsBBox.cos);
 
-        overlayCtx!.save();
-        overlayCtx!.globalAlpha = gizmoAlpha;
+        _octx().save();
+        _octx().globalAlpha = gizmoAlpha;
 
         // Draw rotation connecting line (dashed)
         const topCenter = handles.edges.top;
-        overlayCtx!.strokeStyle = '#3b82f6';
-        overlayCtx!.lineWidth = 1;
-        overlayCtx!.setLineDash([4, 3]);
-        overlayCtx!.beginPath();
-        overlayCtx!.moveTo(topCenter.x, topCenter.y);
-        overlayCtx!.lineTo(handles.rotate.x, handles.rotate.y);
-        overlayCtx!.stroke();
-        overlayCtx!.setLineDash([]);
+        _octx().strokeStyle = '#3b82f6';
+        _octx().lineWidth = 1;
+        _octx().setLineDash([4, 3]);
+        _octx().beginPath();
+        _octx().moveTo(topCenter.x, topCenter.y);
+        _octx().lineTo(handles.rotate.x, handles.rotate.y);
+        _octx().stroke();
+        _octx().setLineDash([]);
 
         // Draw rotation handle (arc with arrowhead)
         const isRotHover = gizmoHover === 'rotate' || gizmoActive === 'rotate';
@@ -4028,11 +4126,11 @@ export function init(container: HTMLElement) {
         const arcEnd = Math.PI * 0.05;
 
         // Arc stroke
-        overlayCtx!.strokeStyle = rotColor;
-        overlayCtx!.lineWidth = 2;
-        overlayCtx!.beginPath();
-        overlayCtx!.arc(rx, ry, arcR, arcStart, arcEnd);
-        overlayCtx!.stroke();
+        _octx().strokeStyle = rotColor;
+        _octx().lineWidth = 2;
+        _octx().beginPath();
+        _octx().arc(rx, ry, arcR, arcStart, arcEnd);
+        _octx().stroke();
 
         // Arrowhead at arc end
         const ax = rx + arcR * Math.cos(arcEnd);
@@ -4040,25 +4138,25 @@ export function init(container: HTMLElement) {
         const tangent = arcEnd + Math.PI / 2; // tangent direction (perpendicular to radius)
         const arrowLen = 5;
         const arrowHalf = 0.55;
-        overlayCtx!.fillStyle = rotColor;
-        overlayCtx!.beginPath();
-        overlayCtx!.moveTo(ax, ay);
-        overlayCtx!.lineTo(ax - arrowLen * Math.cos(tangent - arrowHalf), ay - arrowLen * Math.sin(tangent - arrowHalf));
-        overlayCtx!.lineTo(ax - arrowLen * Math.cos(tangent + arrowHalf), ay - arrowLen * Math.sin(tangent + arrowHalf));
-        overlayCtx!.closePath();
-        overlayCtx!.fill();
+        _octx().fillStyle = rotColor;
+        _octx().beginPath();
+        _octx().moveTo(ax, ay);
+        _octx().lineTo(ax - arrowLen * Math.cos(tangent - arrowHalf), ay - arrowLen * Math.sin(tangent - arrowHalf));
+        _octx().lineTo(ax - arrowLen * Math.cos(tangent + arrowHalf), ay - arrowLen * Math.sin(tangent + arrowHalf));
+        _octx().closePath();
+        _octx().fill();
 
         // Helper: draw a rotated rect centered at (h.x, h.y)
         function drawHandle(h: GizmoHandle, w: number, ht: number, color: string) {
-            overlayCtx!.save();
-            overlayCtx!.translate(h.x, h.y);
-            overlayCtx!.rotate(rotRad);
-            overlayCtx!.fillStyle = color;
-            overlayCtx!.fillRect(-w / 2, -ht / 2, w, ht);
-            overlayCtx!.strokeStyle = '#fff';
-            overlayCtx!.lineWidth = 1;
-            overlayCtx!.strokeRect(-w / 2, -ht / 2, w, ht);
-            overlayCtx!.restore();
+            _octx().save();
+            _octx().translate(h.x, h.y);
+            _octx().rotate(rotRad);
+            _octx().fillStyle = color;
+            _octx().fillRect(-w / 2, -ht / 2, w, ht);
+            _octx().strokeStyle = '#fff';
+            _octx().lineWidth = 1;
+            _octx().strokeRect(-w / 2, -ht / 2, w, ht);
+            _octx().restore();
         }
 
         // Draw corner handles (squares)
@@ -4081,7 +4179,7 @@ export function init(container: HTMLElement) {
             drawHandle(h, w, ht, color);
         }
 
-        overlayCtx!.restore();
+        _octx().restore();
     }
 
     function hitTestLED(canvasX: number, canvasY: number) {
@@ -4090,7 +4188,7 @@ export function init(container: HTMLElement) {
         const threshSq = threshold * threshold;
         let bestIdx = -1, bestDist = threshSq;
         for (let i = 0; i < lastTransformedPts.length; i++) {
-            const [cx, cy] = toCanvasCoords(lastTransformedPts[i]![0], lastTransformedPts[i]![1]);
+            const [cx, cy] = toCanvasCoords(nn(lastTransformedPts[i])[0], nn(lastTransformedPts[i])[1]);
             const dx = canvasX - cx;
             const dy = canvasY - cy;
             const d = dx * dx + dy * dy;
@@ -4134,72 +4232,72 @@ export function init(container: HTMLElement) {
 
         const rotRad = Math.atan2(bgImageBBox.sin, bgImageBBox.cos);
 
-        overlayCtx!.save();
+        overlayCtx.save();
 
         // Draw oriented bounding box outline
         const isTranslating = bgGizmoHover === 'translate' || bgGizmoActive === 'translate';
         if (isTranslating) {
-            overlayCtx!.globalAlpha = bgGizmoActive === 'translate' ? 0.8 : 0.5;
-            overlayCtx!.strokeStyle = '#f59e0b';
+            overlayCtx.globalAlpha = bgGizmoActive === 'translate' ? 0.8 : 0.5;
+            overlayCtx.strokeStyle = '#f59e0b';
         } else {
-            overlayCtx!.globalAlpha = 0.3;
-            overlayCtx!.strokeStyle = '#888';
+            overlayCtx.globalAlpha = 0.3;
+            overlayCtx.strokeStyle = '#888';
         }
-        overlayCtx!.lineWidth = 1;
-        overlayCtx!.setLineDash([6, 4]);
-        overlayCtx!.save();
-        overlayCtx!.translate(bgImageBBox.cx, bgImageBBox.cy);
-        overlayCtx!.rotate(rotRad);
-        overlayCtx!.strokeRect(-handles.hw, -handles.hh, handles.hw * 2, handles.hh * 2);
-        overlayCtx!.restore();
-        overlayCtx!.setLineDash([]);
+        overlayCtx.lineWidth = 1;
+        overlayCtx.setLineDash([6, 4]);
+        overlayCtx.save();
+        overlayCtx.translate(bgImageBBox.cx, bgImageBBox.cy);
+        overlayCtx.rotate(rotRad);
+        overlayCtx.strokeRect(-handles.hw, -handles.hh, handles.hw * 2, handles.hh * 2);
+        overlayCtx.restore();
+        overlayCtx.setLineDash([]);
 
-        overlayCtx!.globalAlpha = 0.7;
+        overlayCtx.globalAlpha = 0.7;
 
         // Rotation connecting line
         const topCenter = handles.edges.top;
-        overlayCtx!.strokeStyle = '#f59e0b';
-        overlayCtx!.lineWidth = 1;
-        overlayCtx!.setLineDash([4, 3]);
-        overlayCtx!.beginPath();
-        overlayCtx!.moveTo(topCenter.x, topCenter.y);
-        overlayCtx!.lineTo(handles.rotate.x, handles.rotate.y);
-        overlayCtx!.stroke();
-        overlayCtx!.setLineDash([]);
+        overlayCtx.strokeStyle = '#f59e0b';
+        overlayCtx.lineWidth = 1;
+        overlayCtx.setLineDash([4, 3]);
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(topCenter.x, topCenter.y);
+        overlayCtx.lineTo(handles.rotate.x, handles.rotate.y);
+        overlayCtx.stroke();
+        overlayCtx.setLineDash([]);
 
         // Rotation handle
         const isRotHover = bgGizmoHover === 'rotate' || bgGizmoActive === 'rotate';
         const rotColor = isRotHover ? '#fbbf24' : '#f59e0b';
         const rx = handles.rotate.x, ry = handles.rotate.y;
         const arcR = isRotHover ? 9 : 7;
-        overlayCtx!.strokeStyle = rotColor;
-        overlayCtx!.lineWidth = 2;
-        overlayCtx!.beginPath();
-        overlayCtx!.arc(rx, ry, arcR, -Math.PI * 1.25, Math.PI * 0.05);
-        overlayCtx!.stroke();
+        overlayCtx.strokeStyle = rotColor;
+        overlayCtx.lineWidth = 2;
+        overlayCtx.beginPath();
+        overlayCtx.arc(rx, ry, arcR, -Math.PI * 1.25, Math.PI * 0.05);
+        overlayCtx.stroke();
 
         const ax = rx + arcR * Math.cos(Math.PI * 0.05);
         const ay = ry + arcR * Math.sin(Math.PI * 0.05);
         const tangent = Math.PI * 0.05 + Math.PI / 2;
-        overlayCtx!.fillStyle = rotColor;
-        overlayCtx!.beginPath();
-        overlayCtx!.moveTo(ax, ay);
-        overlayCtx!.lineTo(ax - 5 * Math.cos(tangent - 0.55), ay - 5 * Math.sin(tangent - 0.55));
-        overlayCtx!.lineTo(ax - 5 * Math.cos(tangent + 0.55), ay - 5 * Math.sin(tangent + 0.55));
-        overlayCtx!.closePath();
-        overlayCtx!.fill();
+        overlayCtx.fillStyle = rotColor;
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(ax, ay);
+        overlayCtx.lineTo(ax - 5 * Math.cos(tangent - 0.55), ay - 5 * Math.sin(tangent - 0.55));
+        overlayCtx.lineTo(ax - 5 * Math.cos(tangent + 0.55), ay - 5 * Math.sin(tangent + 0.55));
+        overlayCtx.closePath();
+        overlayCtx.fill();
 
         // Corner and edge handles
         function drawHandle(h: GizmoHandle, w: number, ht: number, color: string) {
-            overlayCtx!.save();
-            overlayCtx!.translate(h.x, h.y);
-            overlayCtx!.rotate(rotRad);
-            overlayCtx!.fillStyle = color;
-            overlayCtx!.fillRect(-w / 2, -ht / 2, w, ht);
-            overlayCtx!.strokeStyle = '#fff';
-            overlayCtx!.lineWidth = 1;
-            overlayCtx!.strokeRect(-w / 2, -ht / 2, w, ht);
-            overlayCtx!.restore();
+            _octx().save();
+            _octx().translate(h.x, h.y);
+            _octx().rotate(rotRad);
+            _octx().fillStyle = color;
+            _octx().fillRect(-w / 2, -ht / 2, w, ht);
+            _octx().strokeStyle = '#fff';
+            _octx().lineWidth = 1;
+            _octx().strokeRect(-w / 2, -ht / 2, w, ht);
+            _octx().restore();
         }
 
         for (const [key, h] of Object.entries(handles.corners)) {
@@ -4218,18 +4316,20 @@ export function init(container: HTMLElement) {
             drawHandle(h, w, ht, active ? '#fbbf24' : '#f59e0b');
         }
 
-        overlayCtx!.restore();
+        overlayCtx.restore();
     }
 
     function handleBgGizmoDrag(cx: number, cy: number) {
-        const dx = cx - bgGizmoDragStart!.canvasX;
-        const dy = cy - bgGizmoDragStart!.canvasY;
+        if (!bgGizmoDragStart || !bgGizmoActive) return;
+        const ds = bgGizmoDragStart;
+        const dx = cx - ds.canvasX;
+        const dy = cy - ds.canvasY;
 
         if (bgGizmoActive === 'translate') {
             const wdx = dx / camZoom;
             const wdy = dy / camZoom;
-            const newTx = Math.round(bgGizmoDragStart!.tx + wdx);
-            const newTy = Math.round(bgGizmoDragStart!.ty + wdy);
+            const newTx = Math.round(ds.tx + wdx);
+            const newTy = Math.round(ds.ty + wdy);
             dom_txt_image_tx.value = String(newTx);
             dom_txt_image_ty.value = String(newTy);
             applyBgImageTransform();
@@ -4237,14 +4337,14 @@ export function init(container: HTMLElement) {
         }
 
         if (bgGizmoActive === 'rotate') {
-            const center = bgGizmoDragStart!.bboxCenter!;
+            const center = ds.bboxCenter ?? { x: 0, y: 0 };
             const startAngle = Math.atan2(
-                bgGizmoDragStart!.canvasY - center.y,
-                bgGizmoDragStart!.canvasX - center.x
+                ds.canvasY - center.y,
+                ds.canvasX - center.x
             );
             const currentAngle = Math.atan2(cy - center.y, cx - center.x);
             const deltaDeg = (currentAngle - startAngle) * 180 / Math.PI;
-            let newRotate = bgGizmoDragStart!.rotate + deltaDeg;
+            let newRotate = ds.rotate + deltaDeg;
             if (shiftHeld) newRotate = Math.round(newRotate / 15) * 15;
             newRotate = Math.max(-180, Math.min(180, newRotate));
             dom_txt_image_rotate.value = newRotate.toFixed(2);
@@ -4253,16 +4353,16 @@ export function init(container: HTMLElement) {
         }
 
         // Corner or edge: uniform scale (image has single scale)
-        if (bgGizmoActive!.startsWith('corner-') || bgGizmoActive!.startsWith('edge-')) {
-            const center = bgGizmoDragStart!.bboxCenter!;
+        if (bgGizmoActive.startsWith('corner-') || bgGizmoActive.startsWith('edge-')) {
+            const center = ds.bboxCenter ?? { x: 0, y: 0 };
             const startDist = Math.hypot(
-                bgGizmoDragStart!.canvasX - center.x,
-                bgGizmoDragStart!.canvasY - center.y
+                ds.canvasX - center.x,
+                ds.canvasY - center.y
             );
             const currentDist = Math.hypot(cx - center.x, cy - center.y);
             if (startDist > 1) {
                 const ratio = currentDist / startDist;
-                const newScale = Math.max(0.1, Math.min(5, bgGizmoDragStart!.scale * ratio));
+                const newScale = Math.max(0.1, Math.min(5, ds.scale * ratio));
                 dom_txt_image_scale.value = newScale.toFixed(2);
                 applyBgImageTransform();
             }
@@ -4279,33 +4379,35 @@ export function init(container: HTMLElement) {
             rotate: parseFloat(dom_txt_image_rotate.value) || 0,
             tx: parseFloat(dom_txt_image_tx.value) || 0,
             ty: parseFloat(dom_txt_image_ty.value) || 0,
-            bboxCenter: handles ? handles.center : { x: bgImageBBox!.cx, y: bgImageBBox!.cy },
+            bboxCenter: handles ? handles.center : (bgImageBBox ? { x: bgImageBBox.cx, y: bgImageBBox.cy } : { x: 0, y: 0 }),
         };
     }
 
     // ── Gizmo drag logic ─────────────────────────────────────────────────
 
     function handleGizmoDrag(cx: number, cy: number) {
-        const dx = cx - gizmoDragStart!.canvasX;
-        const dy = cy - gizmoDragStart!.canvasY;
+        if (!gizmoDragStart || !gizmoActive) return;
+        const ds = gizmoDragStart;
+        const dx = cx - ds.canvasX;
+        const dy = cy - ds.canvasY;
 
         if (gizmoActive === 'translate') {
             const wdx = dx / camZoom;
             const wdy = dy / camZoom;
-            setTranslate(gizmoDragStart!.translateX + wdx, gizmoDragStart!.translateY + wdy);
+            setTranslate(ds.translateX + wdx, ds.translateY + wdy);
             markDirtyAndGeometry();
             return;
         }
 
         if (gizmoActive === 'rotate') {
-            const center = gizmoDragStart!.bboxCenter!;
+            const center = ds.bboxCenter ?? { x: 0, y: 0 };
             const startAngle = Math.atan2(
-                gizmoDragStart!.canvasY - center.y,
-                gizmoDragStart!.canvasX - center.x
+                ds.canvasY - center.y,
+                ds.canvasX - center.x
             );
             const currentAngle = Math.atan2(cy - center.y, cx - center.x);
             const deltaDeg = (currentAngle - startAngle) * 180 / Math.PI;
-            let newRotate = gizmoDragStart!.rotate + Math.round(deltaDeg);
+            let newRotate = ds.rotate + Math.round(deltaDeg);
             // Snap to 15-degree increments when shift held
             if (shiftHeld) newRotate = Math.round(newRotate / 15) * 15;
             setRotate(clampRotate(newRotate));
@@ -4313,37 +4415,37 @@ export function init(container: HTMLElement) {
             return;
         }
 
-        if (gizmoActive!.startsWith('corner-')) {
-            const center = gizmoDragStart!.bboxCenter!;
+        if (gizmoActive.startsWith('corner-')) {
+            const center = ds.bboxCenter ?? { x: 0, y: 0 };
             const startDist = Math.hypot(
-                gizmoDragStart!.canvasX - center.x,
-                gizmoDragStart!.canvasY - center.y
+                ds.canvasX - center.x,
+                ds.canvasY - center.y
             );
             const currentDist = Math.hypot(cx - center.x, cy - center.y);
             if (startDist > 1) {
                 const ratio = currentDist / startDist;
-                writeScale(dom_txt_scale, clampScale(gizmoDragStart!.scale * ratio));
+                writeScale(dom_txt_scale, clampScale(ds.scale * ratio));
                 markDirtyAndGeometry();
             }
             return;
         }
 
-        if (gizmoActive!.startsWith('edge-')) {
-            const edge = gizmoActive!.split('-')[1] ?? '';
+        if (gizmoActive.startsWith('edge-')) {
+            const edge = gizmoActive.split('-')[1] ?? '';
             // Project mouse positions onto OBB local axes for signed distance
-            const [startLx, startLy] = canvasToObbLocal(ptsBBox, gizmoDragStart!.canvasX, gizmoDragStart!.canvasY);
+            const [startLx, startLy] = canvasToObbLocal(ptsBBox, ds.canvasX, ds.canvasY);
             const [curLx, curLy] = canvasToObbLocal(ptsBBox, cx, cy);
 
             if (edge === 'left' || edge === 'right') {
                 if (Math.abs(startLx) > 1) {
                     const ratio = curLx / startLx; // signed: crossing center negates
-                    writeScale(dom_txt_scale_x, clampScale(gizmoDragStart!.scaleX * ratio));
+                    writeScale(dom_txt_scale_x, clampScale(ds.scaleX * ratio));
                     markDirtyAndGeometry();
                 }
             } else {
                 if (Math.abs(startLy) > 1) {
                     const ratio = curLy / startLy; // signed: crossing center negates
-                    writeScale(dom_txt_scale_y, clampScale(gizmoDragStart!.scaleY * ratio));
+                    writeScale(dom_txt_scale_y, clampScale(ds.scaleY * ratio));
                     markDirtyAndGeometry();
                 }
             }
@@ -4354,12 +4456,12 @@ export function init(container: HTMLElement) {
     function commitGizmoDrag() {
         if (!gizmoDragStart) return;
         const checks = [
-            ['scale', gizmoDragStart!.scale, getTransformValue('scale')],
-            ['scaleX', gizmoDragStart!.scaleX, getTransformValue('scaleX')],
-            ['scaleY', gizmoDragStart!.scaleY, getTransformValue('scaleY')],
-            ['rotate', gizmoDragStart!.rotate, getTransformValue('rotate')],
-            ['translateX', gizmoDragStart!.translateX, getTransformValue('translateX')],
-            ['translateY', gizmoDragStart!.translateY, getTransformValue('translateY')],
+            ['scale', gizmoDragStart.scale, getTransformValue('scale')],
+            ['scaleX', gizmoDragStart.scaleX, getTransformValue('scaleX')],
+            ['scaleY', gizmoDragStart.scaleY, getTransformValue('scaleY')],
+            ['rotate', gizmoDragStart.rotate, getTransformValue('rotate')],
+            ['translateX', gizmoDragStart.translateX, getTransformValue('translateX')],
+            ['translateY', gizmoDragStart.translateY, getTransformValue('translateY')],
         ];
         for (const [control, oldVal, newVal] of checks) {
             if (oldVal !== newVal) {
@@ -4392,7 +4494,7 @@ export function init(container: HTMLElement) {
         if (editorMode === 'chain') {
             const conn = _hitConnectorBody(cx, cy);
             if (conn) {
-                _openConnectorMenu(conn.up!, conn.down!, e.clientX, e.clientY);
+                if (conn.up !== undefined && conn.down !== undefined) _openConnectorMenu(conn.up, conn.down, e.clientX, e.clientY);
                 return;
             }
         }
@@ -4417,7 +4519,7 @@ export function init(container: HTMLElement) {
         let insideBBox = false;
         if (ptsBBox) {
             const [lx, ly] = canvasToObbLocal(ptsBBox, cx, cy);
-            insideBBox = Math.abs(lx) <= ptsBBox!.hw && Math.abs(ly) <= ptsBBox!.hh;
+            insideBBox = Math.abs(lx) <= ptsBBox.hw && Math.abs(ly) <= ptsBBox.hh;
         }
         showContextMenu(e.clientX, e.clientY, -1, -1, insideBBox);
     }
@@ -4478,15 +4580,15 @@ export function init(container: HTMLElement) {
         if (editorMode === 'chain') {
             const conn = _hitChainArrowhead(cx, cy);
             if (conn) {
-                connectorDrag = { upIdx: conn.up!, x: cx, y: cy, targetIdx: null };
-                overlayCanvas!.style.cursor = 'grabbing';
+                connectorDrag = { upIdx: conn.up ?? 0, x: cx, y: cy, targetIdx: null };
+                _oc().style.cursor = 'grabbing';
                 setNeedsRender();
                 return;
             }
             const startIdx = _hitStartHandle(cx, cy, -1);
             if (startIdx !== null) {
                 startHandleDrag = { stripIdx: startIdx, x: cx, y: cy, targetIdx: null };
-                overlayCanvas!.style.cursor = 'grabbing';
+                _oc().style.cursor = 'grabbing';
                 setNeedsRender();
                 return;
             }
@@ -4498,7 +4600,7 @@ export function init(container: HTMLElement) {
             panStartY = cy;
             panStartCamX = camPanX;
             panStartCamY = camPanY;
-            overlayCanvas!.style.cursor = 'move';
+            _oc().style.cursor = 'move';
             return;
         }
 
@@ -4507,8 +4609,8 @@ export function init(container: HTMLElement) {
             const edge = findNearestEdge(cx, cy);
             if (edge) {
                 const { idx, t } = edge;
-                const si = screenmap_pts[idx]!, si1 = screenmap_pts[idx + 1]!;
-                const ri = rawPts[idx]!, ri1 = rawPts[idx + 1]!;
+                const si = nn(screenmap_pts[idx]), si1 = nn(screenmap_pts[idx + 1]);
+                const ri = nn(rawPts[idx]), ri1 = nn(rawPts[idx + 1]);
                 const newScreenmapPt: [number, number] = [
                     si[0] + t * (si1[0] - si[0]),
                     si[1] + t * (si1[1] - si[1]),
@@ -4539,7 +4641,7 @@ export function init(container: HTMLElement) {
                 ax: rulerA.x, ay: rulerA.y,
                 bx: rulerB.x, by: rulerB.y,
             };
-            overlayCanvas!.style.cursor = rulerHit === 'body' ? 'move' : 'grab';
+            _oc().style.cursor = rulerHit === 'body' ? 'move' : 'grab';
             return;
         }
 
@@ -4556,9 +4658,9 @@ export function init(container: HTMLElement) {
                 rotate: parseInt(dom_txt_rotate.value) || 0,
                 translateX: parseInt(dom_txt_translate_x.value) || 0,
                 translateY: parseInt(dom_txt_translate_y.value) || 0,
-                bboxCenter: handles!.center,
+                bboxCenter: handles?.center ?? { x: 0, y: 0 },
             };
-            overlayCanvas!.style.cursor = gizmoHit === 'rotate' ? 'grabbing' : getCursorForGizmo(gizmoHit);
+            _oc().style.cursor = gizmoHit === 'rotate' ? 'grabbing' : getCursorForGizmo(gizmoHit);
             return;
         }
 
@@ -4571,32 +4673,32 @@ export function init(container: HTMLElement) {
             setNeedsGeometryUpdate(); // color update for selection
             dragStartCanvasX = cx;
             dragStartCanvasY = cy;
-            dragStartScreenmapPt = [...screenmap_pts[idx]!] as [number, number];
-            dragStartRawPt = [...rawPts[idx]!] as [number, number];
+            dragStartScreenmapPt = [...nn(screenmap_pts[idx])] as [number, number];
+            dragStartRawPt = [...nn(rawPts[idx])] as [number, number];
 
             // Alt quasimode = single-point move regardless of mode.
-            altQuasimode = !!e.altKey;
+            altQuasimode = e.altKey;
             const hitStripIdx = stripStore.findStripForIndex(idx);
             const inPointEdit = pointEditStripIdx !== null && pointEditStripIdx === hitStripIdx;
 
             if (altQuasimode || inPointEdit) {
                 // Single-point drag (existing behavior)
                 isDragging = true;
-                overlayCanvas!.style.cursor = 'grabbing';
+                _oc().style.cursor = 'grabbing';
             } else {
                 // Group drag for the whole strip
                 stripDragActive = true;
                 stripDragIdx = hitStripIdx;
-                const strip = stripInfo!.strips[hitStripIdx]!;
+                const strip = nn(_si().strips[hitStripIdx]);
                 stripDragStartScreenmap = [];
                 stripDragStartRaw = [];
                 for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-                    stripDragStartScreenmap.push([screenmap_pts[k]![0], screenmap_pts[k]![1]]);
-                    stripDragStartRaw.push([rawPts[k]![0], rawPts[k]![1]]);
+                    stripDragStartScreenmap.push([nn(screenmap_pts[k])[0], nn(screenmap_pts[k])[1]]);
+                    stripDragStartRaw.push([nn(rawPts[k])[0], nn(rawPts[k])[1]]);
                 }
                 stripDragLastSdx = 0;
                 stripDragLastSdy = 0;
-                overlayCanvas!.style.cursor = 'grabbing';
+                _oc().style.cursor = 'grabbing';
             }
             return;
         }
@@ -4627,7 +4729,7 @@ export function init(container: HTMLElement) {
                 translateY: parseInt(dom_txt_translate_y.value) || 0,
                 bboxCenter: null,
             };
-            overlayCanvas!.style.cursor = 'move';
+            _oc().style.cursor = 'move';
             return;
         }
 
@@ -4636,12 +4738,12 @@ export function init(container: HTMLElement) {
             const bgHit = hitTestBgGizmo(cx, cy);
             if (bgHit && bgHit !== 'translate') {
                 startBgGizmoDrag(bgHit, cx, cy);
-                overlayCanvas!.style.cursor = bgHit === 'rotate' ? 'grabbing' : getCursorForGizmo(bgHit);
+                _oc().style.cursor = bgHit === 'rotate' ? 'grabbing' : getCursorForGizmo(bgHit);
                 return;
             }
             if (bgHit === 'translate') {
                 startBgGizmoDrag('translate', cx, cy);
-                overlayCanvas!.style.cursor = 'move';
+                _oc().style.cursor = 'move';
                 return;
             }
         }
@@ -4655,20 +4757,20 @@ export function init(container: HTMLElement) {
         panStartY = cy;
         panStartCamX = camPanX;
         panStartCamY = camPanY;
-        overlayCanvas!.style.cursor = 'move';
+        _oc().style.cursor = 'move';
     }
 
     function onMouseMove(e: MouseEvent) {
         if (placingState) {
             const [cx, cy] = getCanvasCoords(e);
             _updateGhostFromCanvas(cx, cy);
-            overlayCanvas!.style.cursor = 'crosshair';
+            _oc().style.cursor = 'crosshair';
             return;
         }
         if (pasteState) {
             const [cx, cy] = getCanvasCoords(e);
             _updatePasteGhostFromCanvas(cx, cy);
-            overlayCanvas!.style.cursor = 'crosshair';
+            _oc().style.cursor = 'crosshair';
             return;
         }
         if (screenmap_pts.length === 0 && !bgImageMesh) return;
@@ -4683,7 +4785,7 @@ export function init(container: HTMLElement) {
             if (Math.abs(dy) > 3) rightClickMoved = true;
             if (rightClickMoved) {
                 camZoom = Math.max(0.1, Math.min(10, zoomStartLevel * Math.pow(2, -dy / 200)));
-                overlayCanvas!.style.cursor = 'ns-resize';
+                _oc().style.cursor = 'ns-resize';
                 setNeedsRender();
             }
             return;
@@ -4724,21 +4826,22 @@ export function init(container: HTMLElement) {
         }
 
         // Ruler drag in progress
-        if (rulerDrag) {
-            const wdx = (cx - rulerDragStart!.cx) / camZoom;
-            const wdy = (cy - rulerDragStart!.cy) / camZoom;
+        if (rulerDrag && rulerDragStart) {
+            const ds = rulerDragStart;
+            const wdx = (cx - ds.cx) / camZoom;
+            const wdy = (cy - ds.cy) / camZoom;
             if (rulerDrag === 'a') {
-                rulerA.x = rulerDragStart!.ax + wdx;
-                rulerA.y = rulerDragStart!.ay + wdy;
+                rulerA.x = ds.ax + wdx;
+                rulerA.y = ds.ay + wdy;
             } else if (rulerDrag === 'b') {
-                rulerB.x = rulerDragStart!.bx + wdx;
-                rulerB.y = rulerDragStart!.by + wdy;
+                rulerB.x = ds.bx + wdx;
+                rulerB.y = ds.by + wdy;
             } else {
                 // body — move both handles
-                rulerA.x = rulerDragStart!.ax + wdx;
-                rulerA.y = rulerDragStart!.ay + wdy;
-                rulerB.x = rulerDragStart!.bx + wdx;
-                rulerB.y = rulerDragStart!.by + wdy;
+                rulerA.x = ds.ax + wdx;
+                rulerA.y = ds.ay + wdy;
+                rulerB.x = ds.bx + wdx;
+                rulerB.y = ds.by + wdy;
             }
             setNeedsRender();
             return;
@@ -4772,12 +4875,12 @@ export function init(container: HTMLElement) {
             const dy = cy - dragStartCanvasY;
             const [sdx, sdy] = canvasDeltaToScreenmapDelta(dx, dy);
             screenmap_pts[selectedIdx] = [
-                dragStartScreenmapPt![0] + sdx,
-                dragStartScreenmapPt![1] + sdy,
+                (dragStartScreenmapPt?.[0] ?? 0) + sdx,
+                (dragStartScreenmapPt?.[1] ?? 0) + sdy,
             ];
             rawPts[selectedIdx] = [
-                dragStartRawPt![0] + sdx / fitScale,
-                dragStartRawPt![1] + sdy / fitScale,
+                (dragStartRawPt?.[0] ?? 0) + sdx / fitScale,
+                (dragStartRawPt?.[1] ?? 0) + sdy / fitScale,
             ];
             setNeedsGeometryUpdate();
             return;
@@ -4787,16 +4890,18 @@ export function init(container: HTMLElement) {
             const dx = cx - dragStartCanvasX;
             const dy = cy - dragStartCanvasY;
             const [sdx, sdy] = canvasDeltaToScreenmapDelta(dx, dy);
-            const strip = stripInfo!.strips[stripDragIdx]!;
+            const strip = nn(stripInfo.strips[stripDragIdx]);
             for (let k = 0; k < strip.count; k++) {
                 const base = strip.offset + k;
+                const startSm = stripDragStartScreenmap ? (stripDragStartScreenmap[k] ?? [0, 0] as [number, number]) : [0, 0] as [number, number];
+                const startRw = stripDragStartRaw ? (stripDragStartRaw[k] ?? [0, 0] as [number, number]) : [0, 0] as [number, number];
                 screenmap_pts[base] = [
-                    stripDragStartScreenmap![k]![0] + sdx,
-                    stripDragStartScreenmap![k]![1] + sdy,
+                    startSm[0] + sdx,
+                    startSm[1] + sdy,
                 ];
                 rawPts[base] = [
-                    stripDragStartRaw![k]![0] + sdx / fitScale,
-                    stripDragStartRaw![k]![1] + sdy / fitScale,
+                    startRw[0] + sdx / fitScale,
+                    startRw[1] + sdy / fitScale,
                 ];
             }
             stripDragLastSdx = sdx;
@@ -4808,9 +4913,9 @@ export function init(container: HTMLElement) {
         // Ruler hover cursor
         const rulerHoverHit = hitTestRuler(cx, cy);
         if (rulerHoverHit) {
-            overlayCanvas!.style.cursor = rulerHoverHit === 'body' ? 'move' : 'grab';
+            _oc().style.cursor = rulerHoverHit === 'body' ? 'move' : 'grab';
             tooltipLedIdx = -1;
-            tooltip!.style.opacity = '0';
+            _tooltip().style.opacity = '0';
             // still update gizmo/bbox hover state below so rendering stays correct
         }
 
@@ -4823,7 +4928,7 @@ export function init(container: HTMLElement) {
         const wasHovering = isHovering;
         if (ptsBBox) {
             const [lx, ly] = canvasToObbLocal(ptsBBox, cx, cy);
-            const inObb = Math.abs(lx) <= ptsBBox!.hw && Math.abs(ly) <= ptsBBox!.hh;
+            const inObb = Math.abs(lx) <= ptsBBox.hw && Math.abs(ly) <= ptsBBox.hh;
             isHovering = inObb || !!gizmoHover;
         } else {
             isHovering = false;
@@ -4844,58 +4949,58 @@ export function init(container: HTMLElement) {
 
         // Gizmo handle hover takes cursor priority
         if (gizmoHover && gizmoHover !== 'translate') {
-            overlayCanvas!.style.cursor = getCursorForGizmo(gizmoHover);
+            _oc().style.cursor = getCursorForGizmo(gizmoHover);
             tooltipLedIdx = -1;
-            tooltip!.style.opacity = '0';
+            _tooltip().style.opacity = '0';
             return;
         }
 
         // Shift held: crosshair (insert between)
         // Ctrl held: copy cursor (extend/append)
         if (screenmap_pts.length > 0 && (e.shiftKey || e.ctrlKey || e.metaKey)) {
-            overlayCanvas!.style.cursor = e.shiftKey ? 'crosshair' : 'copy';
+            _oc().style.cursor = e.shiftKey ? 'crosshair' : 'copy';
             tooltipLedIdx = -1;
-            tooltip!.style.opacity = '0';
+            _tooltip().style.opacity = '0';
             return;
         }
 
         const idx = hitTestLED(cx, cy);
         if (idx >= 0) {
-            overlayCanvas!.style.cursor = 'grab';
+            _oc().style.cursor = 'grab';
             if (idx !== tooltipLedIdx) {
                 tooltipLedIdx = idx;
-                const [ox, oy] = rawPts[idx]!;
-                tooltip!.textContent = `LED #${idx}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
+                const [ox, oy] = nn(rawPts[idx]);
+                _tooltip().textContent = `LED #${String(idx)}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
             }
-            const tx = Math.min(cx + 14, canvasW - tooltip!.offsetWidth - 4);
+            const tx = Math.min(cx + 14, canvasW - _tooltip().offsetWidth - 4);
             const ty = Math.max(cy - 28, 4);
-            tooltip!.style.left = tx + 'px';
-            tooltip!.style.top = ty + 'px';
-            tooltip!.style.opacity = '1';
+            _tooltip().style.left = `${String(tx)}px`;
+            _tooltip().style.top = `${String(ty)}px`;
+            _tooltip().style.opacity = '1';
         } else if (gizmoHover === 'translate') {
-            overlayCanvas!.style.cursor = 'move';
+            _oc().style.cursor = 'move';
             tooltipLedIdx = -1;
-            tooltip!.style.opacity = '0';
+            _tooltip().style.opacity = '0';
         } else if (bgGizmoHover && bgGizmoHover !== 'translate') {
-            overlayCanvas!.style.cursor = getCursorForGizmo(bgGizmoHover);
+            _oc().style.cursor = getCursorForGizmo(bgGizmoHover);
             tooltipLedIdx = -1;
-            tooltip!.style.opacity = '0';
+            _tooltip().style.opacity = '0';
         } else if (bgGizmoHover === 'translate') {
-            overlayCanvas!.style.cursor = 'move';
+            _oc().style.cursor = 'move';
             tooltipLedIdx = -1;
-            tooltip!.style.opacity = '0';
+            _tooltip().style.opacity = '0';
         } else {
-            overlayCanvas!.style.cursor = 'default';
+            _oc().style.cursor = 'default';
             tooltipLedIdx = -1;
-            tooltip!.style.opacity = '0';
+            _tooltip().style.opacity = '0';
         }
     }
 
     function onMouseUp(e: MouseEvent) {
-        if (e && e.button === 2) {
+        if (e.button === 2) {
             rightButtonDown = false;
             // rightClickMoved is consumed by onContextMenu
-            overlayCanvas!.style.cursor = 'default';
+            _oc().style.cursor = 'default';
             return;
         }
 
@@ -4903,8 +5008,8 @@ export function init(container: HTMLElement) {
         if (connectorDrag) {
             const { upIdx, targetIdx } = connectorDrag;
             connectorDrag = null;
-            overlayCanvas!.style.cursor = 'default';
-            if (targetIdx !== null && targetIdx !== undefined) {
+            _oc().style.cursor = 'default';
+            if (targetIdx !== null) {
                 doConnectorRetarget(upIdx, targetIdx);
             } else {
                 renderStripsPanel();
@@ -4915,8 +5020,8 @@ export function init(container: HTMLElement) {
         if (startHandleDrag) {
             const { stripIdx, targetIdx } = startHandleDrag;
             startHandleDrag = null;
-            overlayCanvas!.style.cursor = 'default';
-            if (targetIdx !== null && targetIdx !== undefined) {
+            _oc().style.cursor = 'default';
+            if (targetIdx !== null) {
                 // Dropping a strip's Start on another strip's End wires that
                 // strip downstream of the target: target ──▶ stripIdx.
                 doConnectorRetarget(targetIdx, stripIdx);
@@ -4930,7 +5035,7 @@ export function init(container: HTMLElement) {
         if (rulerDrag) {
             rulerDrag = null;
             rulerDragStart = null;
-            overlayCanvas!.style.cursor = 'default';
+            _oc().style.cursor = 'default';
             return;
         }
 
@@ -4938,29 +5043,29 @@ export function init(container: HTMLElement) {
             commitGizmoDrag();
             gizmoActive = null;
             gizmoDragStart = null;
-            overlayCanvas!.style.cursor = 'default';
+            _oc().style.cursor = 'default';
             return;
         }
 
         if (bgGizmoActive) {
             bgGizmoActive = null;
             bgGizmoDragStart = null;
-            overlayCanvas!.style.cursor = 'default';
+            _oc().style.cursor = 'default';
             return;
         }
 
         if (isPanning) {
             isPanning = false;
-            overlayCanvas!.style.cursor = 'default';
+            _oc().style.cursor = 'default';
             return;
         }
 
         if (isDragging && selectedIdx >= 0) {
-            const newScreenmapPt = [...screenmap_pts[selectedIdx]!];
-            const newRawPt = [...rawPts[selectedIdx]!];
+            const newScreenmapPt = [...nn(screenmap_pts[selectedIdx])];
+            const newRawPt = [...nn(rawPts[selectedIdx])];
             // Only record undo if the point actually moved
-            if (newScreenmapPt[0] !== dragStartScreenmapPt![0] ||
-                newScreenmapPt[1] !== dragStartScreenmapPt![1]) {
+            if (newScreenmapPt[0] !== (dragStartScreenmapPt?.[0] ?? 0) ||
+                newScreenmapPt[1] !== (dragStartScreenmapPt?.[1] ?? 0)) {
                 pushUndo({
                     type: 'move',
                     idx: selectedIdx,
@@ -4972,13 +5077,13 @@ export function init(container: HTMLElement) {
             }
             isDragging = false;
             altQuasimode = false;
-            overlayCanvas!.style.cursor = 'grab';
+            _oc().style.cursor = 'grab';
             return;
         }
 
         if (stripDragActive) {
             _finalizeStripDrag();
-            overlayCanvas!.style.cursor = 'grab';
+            _oc().style.cursor = 'grab';
             return;
         }
     }
@@ -5005,11 +5110,11 @@ export function init(container: HTMLElement) {
     }
 
     function _applyStripTranslate(stripIdx: number, sdx: number, sdy: number) {
-        if (!stripInfo || stripIdx < 0 || stripIdx >= stripInfo!.strips.length) return;
-        const strip = stripInfo!.strips[stripIdx]!;
+        if (!stripInfo || stripIdx < 0 || stripIdx >= stripInfo.strips.length) return;
+        const strip = nn(stripInfo.strips[stripIdx]);
         for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-            screenmap_pts[k] = [screenmap_pts[k]![0] + sdx, screenmap_pts[k]![1] + sdy];
-            rawPts[k] = [rawPts[k]![0] + sdx / fitScale, rawPts[k]![1] + sdy / fitScale];
+            screenmap_pts[k] = [nn(screenmap_pts[k])[0] + sdx, nn(screenmap_pts[k])[1] + sdy];
+            rawPts[k] = [nn(rawPts[k])[0] + sdx / fitScale, nn(rawPts[k])[1] + sdy / fitScale];
         }
     }
 
@@ -5090,7 +5195,7 @@ export function init(container: HTMLElement) {
             rulerDrag = null;
             rulerDragStart = null;
         }
-        overlayCanvas!.style.cursor = 'default';
+        _oc().style.cursor = 'default';
     }
 
     function _doLongPress(canvasX: number, canvasY: number, clientX: number, clientY: number) {
@@ -5111,7 +5216,7 @@ export function init(container: HTMLElement) {
                 pointEditStripIdx = sIdx;
                 _updateHintStrip();
                 setNeedsGeometryUpdate();
-                _toastInfo(`Editing points in "${stripStore.getStrips()[sIdx]!.name}"`);
+                void _toastInfo(`Editing points in "${stripStore.getStrips()[sIdx]?.name ?? ''}"`);
             }
         } else {
             showContextMenu(clientX || 0, clientY || 0, -1, -1, false);
@@ -5120,11 +5225,11 @@ export function init(container: HTMLElement) {
     }
 
     function _wireTouchHandlers(signal: AbortSignal) {
-        overlayCanvas!.addEventListener('touchstart', (e: TouchEvent) => {
+        _oc().addEventListener('touchstart', (e: TouchEvent) => {
             // Cancel scrolling/zooming on the page during canvas touches
             e.preventDefault();
             if (e.touches.length === 1) {
-                const t = e.touches[0]!;
+                const t = nn(e.touches[0]);
                 touchMode = 'single';
                 touchStartClientX = t.clientX;
                 touchStartClientY = t.clientY;
@@ -5147,7 +5252,7 @@ export function init(container: HTMLElement) {
                     _cancelSingleTouchGesture();
                 }
                 touchMode = 'multi';
-                const t0 = e.touches[0]!, t1 = e.touches[1]!;
+                const t0 = nn(e.touches[0]), t1 = nn(e.touches[1]);
                 multiStartCentroid = [(t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2];
                 const dxs = t0.clientX - t1.clientX;
                 const dys = t0.clientY - t1.clientY;
@@ -5158,11 +5263,11 @@ export function init(container: HTMLElement) {
             }
         }, { passive: false, signal });
 
-        overlayCanvas!.addEventListener('touchmove', (e: TouchEvent) => {
+        _oc().addEventListener('touchmove', (e: TouchEvent) => {
             e.preventDefault();
             if (touchMode === 'longpress-fired') return;
             if (touchMode === 'single' && e.touches.length === 1) {
-                const t = e.touches[0]!;
+                const t = nn(e.touches[0]);
                 const ddx = t.clientX - touchStartClientX;
                 const ddy = t.clientY - touchStartClientY;
                 if (Math.hypot(ddx, ddy) > LONG_PRESS_MOVE_TOL) _clearLongPress();
@@ -5170,13 +5275,13 @@ export function init(container: HTMLElement) {
                 return;
             }
             if (touchMode === 'multi' && e.touches.length >= 2) {
-                const t0 = e.touches[0]!, t1 = e.touches[1]!;
+                const t0 = nn(e.touches[0]), t1 = nn(e.touches[1]);
                 const cx = (t0.clientX + t1.clientX) / 2;
                 const cy = (t0.clientY + t1.clientY) / 2;
-                const dx = cx - multiStartCentroid![0];
-                const dy = cy - multiStartCentroid![1];
+                const dx = cx - (multiStartCentroid?.[0] ?? 0);
+                const dy = cy - (multiStartCentroid?.[1] ?? 0);
                 // Pan: centroid delta in client px -> canvas px -> world px
-                const rect = overlayCanvas!.getBoundingClientRect();
+                const rect = _oc().getBoundingClientRect();
                 const sx = canvasW / rect.width;
                 const sy = canvasH / rect.height;
                 camPanX = multiPanStartCamPanX + (dx * sx) / camZoom;
@@ -5191,7 +5296,7 @@ export function init(container: HTMLElement) {
             }
         }, { passive: false, signal });
 
-        overlayCanvas!.addEventListener('touchend', (e: TouchEvent) => {
+        _oc().addEventListener('touchend', (e: TouchEvent) => {
             e.preventDefault();
             _clearLongPress();
             if (touchMode === 'longpress-fired') {
@@ -5203,7 +5308,7 @@ export function init(container: HTMLElement) {
             }
             if (touchMode === 'single') {
                 // Forward as mouseup to commit / select
-                const t = (e.changedTouches && e.changedTouches[0]) || null;
+                const t = e.changedTouches[0] ?? null;
                 if (t) {
                     _synth('mouseup', t.clientX, t.clientY);
                 }
@@ -5221,7 +5326,7 @@ export function init(container: HTMLElement) {
             }
         }, { passive: false, signal });
 
-        overlayCanvas!.addEventListener('touchcancel', () => {
+        _oc().addEventListener('touchcancel', () => {
             _clearLongPress();
             _cancelSingleTouchGesture();
             touchMode = 'idle';
@@ -5249,10 +5354,10 @@ export function init(container: HTMLElement) {
         }
         if (isDragging && selectedIdx >= 0) {
             // Finalize drag on leave
-            const newScreenmapPt = [...screenmap_pts[selectedIdx]!];
-            const newRawPt = [...rawPts[selectedIdx]!];
-            if (newScreenmapPt[0] !== dragStartScreenmapPt![0] ||
-                newScreenmapPt[1] !== dragStartScreenmapPt![1]) {
+            const newScreenmapPt = [...nn(screenmap_pts[selectedIdx])];
+            const newRawPt = [...nn(rawPts[selectedIdx])];
+            if (newScreenmapPt[0] !== (dragStartScreenmapPt?.[0] ?? 0) ||
+                newScreenmapPt[1] !== (dragStartScreenmapPt?.[1] ?? 0)) {
                 pushUndo({
                     type: 'move',
                     idx: selectedIdx,
@@ -5270,8 +5375,8 @@ export function init(container: HTMLElement) {
         }
         isHovering = false;
         tooltipLedIdx = -1;
-        tooltip!.style.opacity = '0';
-        overlayCanvas!.style.cursor = 'default';
+        _tooltip().style.opacity = '0';
+        _oc().style.cursor = 'default';
     }
 
     // ── Keyboard shortcuts ────────────────────────────────────────────────
@@ -5325,13 +5430,13 @@ export function init(container: HTMLElement) {
         if (isTyping) return;
         // ? or F1 → help
         if (e.key === '?' || e.key === 'F1') {
-            _openHelpOverlay();
+            void _openHelpOverlay();
             e.preventDefault();
             return;
         }
         // I → insert panel dialog
         if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            _openInsertDialog();
+            void _openInsertDialog();
             e.preventDefault();
             return;
         }
@@ -5339,7 +5444,7 @@ export function init(container: HTMLElement) {
         // primary path; we also try navigator.clipboard.readText() as a
         // best-effort fallback (works in secure contexts with permission).
         if (e.key === 'v' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
-            _pasteFromClipboardAPI();
+            void _pasteFromClipboardAPI();
             e.preventDefault();
             return;
         }
@@ -5360,33 +5465,33 @@ export function init(container: HTMLElement) {
         if (count !== lastBuiltPointCount) {
             // Point count changed — full rebuild required
             if (screenmapOutline) {
-                scene!.remove(screenmapOutline);
+                _scene().remove(screenmapOutline);
                 screenmapOutline.geometry.dispose();
-                ((screenmapOutline.material as import('three').Material)).dispose();
+                ((screenmapOutline.material as Material)).dispose();
             }
             if (pointsMesh) {
-                scene!.remove(pointsMesh);
-                pointsGeometry!.dispose();
-                pointsMaterial!.dispose();
+                _scene().remove(pointsMesh);
+                pointsGeometry?.dispose();
+                pointsMaterial?.dispose();
             }
 
-            const hasMultiStrip = stripInfo && stripInfo!.strips.length > 1;
+            const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
 
             if (hasMultiStrip) {
                 // Build LineSegments pairs, skipping cross-strip boundaries.
                 // Skip empty strips (count <= 0) so we don't introduce bogus boundaries.
-                const stripColors = getStripColors(stripInfo!.strips.length);
+                const stripColors = getStripColors(_si().strips.length);
                 const stripRgbs = stripColors.map(hslStringToRgb);
                 const stripBoundaries = new Set();
-                for (const strip of stripInfo!.strips) {
+                for (const strip of _si().strips) {
                     if (strip.count > 0) {
                         stripBoundaries.add(strip.offset + strip.count - 1);
                     }
                 }
                 // Per-index strip lookup table — O(N) once, instead of O(N*S) inside the loop.
                 const idxToStrip = new Int32Array(count).fill(-1);
-                for (let s = 0; s < stripInfo!.strips.length; s++) {
-                    const st = stripInfo!.strips[s]!;
+                for (let s = 0; s < _si().strips.length; s++) {
+                    const st = nn(_si().strips[s]);
                     const lo = Math.max(0, st.offset);
                     const hi = Math.min(count, st.offset + st.count);
                     for (let i = lo; i < hi; i++) idxToStrip[i] = s;
@@ -5403,9 +5508,9 @@ export function init(container: HTMLElement) {
                     if (stripBoundaries.has(i)) continue;
                     const rawStripIdx = idxToStrip[i] ?? 0;
                     const stripIdx = rawStripIdx >= 0 ? rawStripIdx : 0;
-                    const rgb = stripRgbs[stripIdx]!;
-                    const sr = rgb[0]!, sg = rgb[1]!, sb = rgb[2]!;
-                    const pti = transformedPts[i]!, pti1 = transformedPts[i + 1]!;
+                    const rgb = nn(stripRgbs[stripIdx]);
+                    const sr = nn(rgb[0]), sg = nn(rgb[1]), sb = nn(rgb[2]);
+                    const pti = nn(transformedPts[i]), pti1 = nn(transformedPts[i + 1]);
                     const v = seg * 6;
                     lineVerts[v] = pti[0]; lineVerts[v + 1] = pti[1]; lineVerts[v + 2] = 0;
                     lineVerts[v + 3] = pti1[0]; lineVerts[v + 4] = pti1[1]; lineVerts[v + 5] = 0;
@@ -5420,7 +5525,7 @@ export function init(container: HTMLElement) {
             } else {
                 const lineVerts = new Float32Array(count * 3);
                 for (let i = 0; i < count; i++) {
-                    const tp = transformedPts[i]!;
+                    const tp = nn(transformedPts[i]);
                     lineVerts[i * 3] = tp[0];
                     lineVerts[i * 3 + 1] = tp[1];
                     lineVerts[i * 3 + 2] = 0;
@@ -5432,7 +5537,7 @@ export function init(container: HTMLElement) {
                 screenmapOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3, transparent: true }));
             }
             screenmapOutline.renderOrder = 2;
-            scene!.add(screenmapOutline);
+            _scene().add(screenmapOutline);
 
             const diameterCm = parseFloat(dom_txt_diameter.value) || 0.5;
             const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
@@ -5444,27 +5549,27 @@ export function init(container: HTMLElement) {
                 diameter: pixelDiameter,
                 defaultColor: [244 / 255, 67 / 255, 54 / 255],
             });
-            (result.geometry.getAttribute('position') as import('three').BufferAttribute).setUsage(DynamicDrawUsage);
+            (result.geometry.getAttribute('position') as BufferAttribute).setUsage(DynamicDrawUsage);
 
             pointsGeometry = result.geometry;
             pointsMaterial = result.material;
             pointsMesh = result.mesh;
             pointsColorAttr = result.colorAttribute;
-            pointsMesh!.renderOrder = 3;
-            scene!.add(pointsMesh);
+            pointsMesh.renderOrder = 3;
+            _scene().add(pointsMesh);
 
             lastBuiltPointCount = count;
         } else {
             // Same point count — update buffers in place (no allocation)
-            const hasMultiStrip = stripInfo && stripInfo!.strips.length > 1;
-            const outlinePos = screenmapOutline!.geometry.getAttribute('position');
-            const pointsPos = pointsGeometry!.getAttribute('position');
+            const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
+            const outlinePos = _outline().geometry.getAttribute('position');
+            const pointsPos = pointsGeometry?.getAttribute('position');
 
             if (hasMultiStrip) {
                 // LineSegments layout: pairs of vertices, skipping cross-strip boundaries.
                 // Skip empty strips so we don't introduce bogus boundary indices.
                 const stripBoundaries = new Set();
-                for (const strip of stripInfo!.strips) {
+                for (const strip of _si().strips) {
                     if (strip.count > 0) {
                         stripBoundaries.add(strip.offset + strip.count - 1);
                     }
@@ -5473,45 +5578,47 @@ export function init(container: HTMLElement) {
                 for (let i = 0; i < count - 1; i++) {
                     if (stripBoundaries.has(i)) continue;
                     const v = seg * 2;
-                    const pti = transformedPts[i]!, pti1 = transformedPts[i + 1]!;
+                    const pti = nn(transformedPts[i]), pti1 = nn(transformedPts[i + 1]);
                     outlinePos.setXY(v, pti[0], pti[1]);
                     outlinePos.setXY(v + 1, pti1[0], pti1[1]);
                     seg++;
                 }
             } else {
                 for (let i = 0; i < count; i++) {
-                    const tp = transformedPts[i]!;
+                    const tp = nn(transformedPts[i]);
                     outlinePos.setXY(i, tp[0], tp[1]);
                 }
             }
-            for (let i = 0; i < count; i++) {
-                const tp = transformedPts[i]!;
-                pointsPos.setXY(i, tp[0], tp[1]);
+            if (pointsPos) {
+                for (let i = 0; i < count; i++) {
+                    const tp = nn(transformedPts[i]);
+                    pointsPos.setXY(i, tp[0], tp[1]);
+                }
+                pointsPos.needsUpdate = true;
             }
             outlinePos.needsUpdate = true;
-            pointsPos.needsUpdate = true;
 
             // Update point size
             const diameterCm = parseFloat(dom_txt_diameter.value) || 0.5;
             const scaleGlobal = parseFloat(dom_txt_scale.value) || 1;
-            pointsMaterial!.size = Math.max(2, diameterCm * fitScale * scaleGlobal);
+            if (pointsMaterial) pointsMaterial.size = Math.max(2, diameterCm * fitScale * scaleGlobal);
         }
 
         // Update colors (selection highlight, first/last LED markers)
         if (pointsColorAttr) {
             const colors = pointsColorAttr.array;
-            const hasMultiStrip = stripInfo && stripInfo!.strips.length > 1;
+            const hasMultiStrip = stripInfo && stripInfo.strips.length > 1;
 
             if (hasMultiStrip) {
                 // Per-strip coloring (dim non-selected strips when one is selected)
-                const stripColors = getStripColors(stripInfo!.strips.length);
+                const stripColors = getStripColors(_si().strips.length);
                 const stripRgbs = stripColors.map(hslStringToRgb);
                 const selStrip = selection.getStripIdx();
                 const dim = 0.35;
-                for (let s = 0; s < stripInfo!.strips.length; s++) {
-                    const strip = stripInfo!.strips[s]!;
-                    const rgb = stripRgbs[s]!;
-                    let sr = rgb[0]!, sg = rgb[1]!, sb = rgb[2]!;
+                for (let s = 0; s < _si().strips.length; s++) {
+                    const strip = nn(_si().strips[s]);
+                    const rgb = nn(stripRgbs[s]);
+                    let sr = nn(rgb[0]), sg = nn(rgb[1]), sb = nn(rgb[2]);
                     if (selStrip !== null && s !== selStrip) {
                         sr *= dim; sg *= dim; sb *= dim;
                     }
@@ -5541,12 +5648,12 @@ export function init(container: HTMLElement) {
 
     function updateLabels(transformedPts: [number, number][]) {
         if (transformedPts.length === 0) {
-            placeholderDiv!.style.display = '';
-            infoDiv!.textContent = '';
+            _placeholderDiv().style.display = '';
+            _infoDiv().textContent = '';
             return;
         }
 
-        placeholderDiv!.style.display = 'none';
+        _placeholderDiv().style.display = 'none';
 
         const scaleG = parseFloat(dom_txt_scale.value) || 1;
         const sX = (parseFloat(dom_txt_scale_x.value) || 1) * scaleG;
@@ -5554,8 +5661,8 @@ export function init(container: HTMLElement) {
         const physW = (origWidth * sX).toFixed(2);
         const physH = (origHeight * sY).toFixed(2);
 
-        infoDiv!.innerHTML =
-            `Points: ${screenmap_pts.length}<br>Size: ${physW} &times; ${physH} cm` +
+        _infoDiv().innerHTML =
+            `Points: ${String(screenmap_pts.length)}<br>Size: ${physW} &times; ${physH} cm` +
             `<br><span style="opacity:0.5;font-size:12px">Shift+click: insert between &nbsp; Ctrl+click: extend end</span>`;
     }
 
@@ -5563,20 +5670,20 @@ export function init(container: HTMLElement) {
         const { width, height } = getCanvasSize();
         canvasW = width;
         canvasH = height;
-        renderer!.setSize(width, height);
+        _renderer().setSize(width, height);
 
         const hw = width / 2, hh = height / 2;
-        camera!.left = -hw;
-        camera!.right = hw;
-        camera!.top = -hh;
-        camera!.bottom = hh;
-        camera!.zoom = camZoom;
-        camera!.updateProjectionMatrix();
+        _camera().left = -hw;
+        _camera().right = hw;
+        _camera().top = -hh;
+        _camera().bottom = hh;
+        _camera().zoom = camZoom;
+        _camera().updateProjectionMatrix();
 
         const dpr = window.devicePixelRatio || 1;
-        overlayCanvas!.width = width * dpr;
-        overlayCanvas!.height = height * dpr;
-        overlayCtx!.scale(dpr, dpr);
+        _oc().width = width * dpr;
+        _oc().height = height * dpr;
+        _octx().scale(dpr, dpr);
 
         buildGrid(width, height);
         drawOverlay();
@@ -5629,15 +5736,15 @@ export function init(container: HTMLElement) {
             drawOverlay();
         } else {
             if (screenmapOutline) {
-                scene!.remove(screenmapOutline);
+                _scene().remove(screenmapOutline);
                 screenmapOutline.geometry.dispose();
-                ((screenmapOutline.material as import('three').Material)).dispose();
+                ((screenmapOutline.material as Material)).dispose();
                 screenmapOutline = null;
             }
             if (pointsMesh) {
-                scene!.remove(pointsMesh);
-                pointsGeometry!.dispose();
-                pointsMaterial!.dispose();
+                _scene().remove(pointsMesh);
+                pointsGeometry?.dispose();
+                pointsMaterial?.dispose();
                 pointsMesh = null;
                 lastBuiltPointCount = -1;
             }
@@ -5647,12 +5754,12 @@ export function init(container: HTMLElement) {
         }
 
         // Apply camera pan/zoom (view-only, not an edit)
-        camera!.position.x = -camPanX;
-        camera!.position.y = -camPanY;
-        camera!.zoom = camZoom;
-        camera!.updateProjectionMatrix();
+        _camera().position.x = -camPanX;
+        _camera().position.y = -camPanY;
+        _camera().zoom = camZoom;
+        _camera().updateProjectionMatrix();
 
-        renderer!.render(scene!, camera!);
+        _renderer().render(_scene(), _camera());
 
         geometryDirty = false;
         frameDirty = false;
@@ -5674,20 +5781,20 @@ export function init(container: HTMLElement) {
     // following the cursor; L-click commits, Esc/R-click cancels.
     let pasteState: PasteStateActive | null = null;
 
-    const dom_panel_buttons = container.querySelector('#panel_catalog_buttons');
-    const dom_pp_wiring = container.querySelector('#pp_wiring') as HTMLSelectElement | null;
-    const dom_pp_corner = container.querySelector('#pp_corner') as HTMLSelectElement | null;
-    const dom_pp_rotation = container.querySelector('#pp_rotation') as HTMLSelectElement | null;
-    const dom_pp_flipH = container.querySelector('#pp_flipH') as HTMLInputElement | null;
-    const dom_pp_flipV = container.querySelector('#pp_flipV') as HTMLInputElement | null;
-    const dom_pp_spacing = container.querySelector('#pp_spacing') as HTMLInputElement | null;
-    const dom_pp_snap = container.querySelector('#pp_snap') as HTMLInputElement | null;
-    const dom_pp_grid = container.querySelector('#pp_grid') as HTMLInputElement | null;
-    const dom_pp_status = container.querySelector('#pp_status') as HTMLElement | null;
+    const dom_panel_buttons = container.querySelector<HTMLElement>('');
+    const dom_pp_wiring = container.querySelector<HTMLSelectElement>('');
+    const dom_pp_corner = container.querySelector<HTMLSelectElement>('');
+    const dom_pp_rotation = container.querySelector<HTMLSelectElement>('');
+    const dom_pp_flipH = container.querySelector<HTMLInputElement>('');
+    const dom_pp_flipV = container.querySelector<HTMLInputElement>('');
+    const dom_pp_spacing = container.querySelector<HTMLInputElement>('');
+    const dom_pp_snap = container.querySelector<HTMLInputElement>('');
+    const dom_pp_grid = container.querySelector<HTMLInputElement>('');
+    const dom_pp_status = container.querySelector<HTMLElement>('');
 
-    const dom_pp_open_dialog = container.querySelector('#pp_open_dialog');
+    const dom_pp_open_dialog = container.querySelector<HTMLElement>('');
     if (dom_pp_open_dialog) {
-        dom_pp_open_dialog.addEventListener('click', () => { _openInsertDialog(); }, { signal });
+        dom_pp_open_dialog.addEventListener('click', () => { void _openInsertDialog(); }, { signal });
     }
 
     if (dom_panel_buttons) {
@@ -5697,24 +5804,24 @@ export function init(container: HTMLElement) {
             btn.className = 'panel-btn py-1 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs';
             btn.textContent = entry.label;
             btn.dataset.catalogId = entry.id;
-            btn.addEventListener('click', () => _enterPlacing(entry.id), { signal });
+            btn.addEventListener('click', () => { _enterPlacing(entry.id); }, { signal });
             dom_panel_buttons.appendChild(btn);
         }
     }
 
-    function _readPanelOpts(): import('./panel-catalog').PanelOpts {
+    function _readPanelOpts(): PanelOpts {
         const rot = dom_pp_rotation ? parseInt(dom_pp_rotation.value, 10) || 0 : 0;
         // Clamp to the valid RotationDeg union
-        const validRots: import('./panel-catalog').RotationDeg[] = [0, 90, 180, 270];
-        const rotation = (validRots.includes(rot as import('./panel-catalog').RotationDeg)
+        const validRots: RotationDeg[] = [0, 90, 180, 270];
+        const rotation = (validRots.includes(rot as RotationDeg)
             ? rot
-            : 0) as import('./panel-catalog').RotationDeg;
+            : 0) as RotationDeg;
         return {
-            wiring: (dom_pp_wiring ? dom_pp_wiring.value : 'serpentine') as import('./panel-catalog').WiringStyle,
-            dataInCorner: (dom_pp_corner ? dom_pp_corner.value : 'TL') as import('./panel-catalog').DataInCorner,
+            wiring: (dom_pp_wiring ? dom_pp_wiring.value : 'serpentine') as WiringStyle,
+            dataInCorner: (dom_pp_corner ? dom_pp_corner.value : 'TL') as DataInCorner,
             rotation,
-            flipH: dom_pp_flipH ? !!dom_pp_flipH.checked : false,
-            flipV: dom_pp_flipV ? !!dom_pp_flipV.checked : false,
+            flipH: dom_pp_flipH ? dom_pp_flipH.checked : false,
+            flipV: dom_pp_flipV ? dom_pp_flipV.checked : false,
             spacing: dom_pp_spacing ? (parseFloat(dom_pp_spacing.value) || 1) : 1,
         };
     }
@@ -5727,7 +5834,7 @@ export function init(container: HTMLElement) {
         placingState = { entry, opts, localPts, ghostWorld: null };
         _updateHintStrip();
         if (dom_pp_status) dom_pp_status.textContent = `Placing ${entry.label} — click canvas (Esc to cancel)`;
-        overlayCanvas!.style.cursor = 'crosshair';
+        _oc().style.cursor = 'crosshair';
         setNeedsRender();
     }
 
@@ -5735,7 +5842,7 @@ export function init(container: HTMLElement) {
         placingState = null;
         pendingNewStripPin = null;
         if (dom_pp_status) dom_pp_status.textContent = '';
-        overlayCanvas!.style.cursor = 'default';
+        _oc().style.cursor = 'default';
         setNeedsRender();
         _updateHintStrip();
     }
@@ -5756,7 +5863,7 @@ export function init(container: HTMLElement) {
     function _updateGhostFromCanvas(cx: number, cy: number) {
         if (!placingState) return;
         let [wx, wy] = _canvasToWorldPx(cx, cy);
-        if (dom_pp_snap && dom_pp_snap.checked) {
+        if (dom_pp_snap?.checked) {
             const gpx = _gridSizePx();
             [wx, wy] = snapToGrid([wx, wy], gpx);
         }
@@ -5765,8 +5872,8 @@ export function init(container: HTMLElement) {
     }
 
     function _drawPlacingGhost() {
-        if (!placingState || !placingState.ghostWorld) return;
-        const ctx = overlayCtx!;
+        if (!placingState?.ghostWorld) return;
+        const ctx = _octx();
         const [wx, wy] = placingState.ghostWorld;
         const fs = fitScale > 0 ? fitScale : 1;
         const pts = placingState.localPts;
@@ -5778,7 +5885,7 @@ export function init(container: HTMLElement) {
         // Connecting polyline (wiring order)
         ctx.beginPath();
         for (let i = 0; i < pts.length; i++) {
-            const [px, py] = pts[i]!;
+            const [px, py] = nn(pts[i]);
             const [cx, cy] = toCanvasCoords(wx + px * fs, wy + py * fs);
             if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
         }
@@ -5805,14 +5912,14 @@ export function init(container: HTMLElement) {
         const strips = stripStore.getStrips();
         for (const s of strips) used.add(s.name);
         let i = 1;
-        while (used.has(`${base}${i}`)) i++;
-        return `${base}${i}`;
+        while (used.has(`${base}${String(i)}`)) i++;
+        return `${base}${String(i)}`;
     }
 
     function _isEmptyScreenmap() {
-        return !stripInfo || stripInfo!.strips.length === 0
-            || (stripInfo!.strips.length === 1 && (stripInfo!.strips[0]?.count ?? 0) <= 1
-                && stripInfo!.totalCount <= 1);
+        return !stripInfo || stripInfo.strips.length === 0
+            || (stripInfo.strips.length === 1 && (stripInfo.strips[0]?.count ?? 0) <= 1
+                && stripInfo.totalCount <= 1);
     }
 
     function _initFreshScreenmapForPanel() {
@@ -5838,7 +5945,7 @@ export function init(container: HTMLElement) {
         const entry = placingState.entry;
         const opts = placingState.opts;
         let [wx, wy] = _canvasToWorldPx(cx, cy);
-        if (dom_pp_snap && dom_pp_snap.checked) {
+        if (dom_pp_snap?.checked) {
             const gpx = _gridSizePx();
             [wx, wy] = snapToGrid([wx, wy], gpx);
         }
@@ -5853,7 +5960,7 @@ export function init(container: HTMLElement) {
             worldX: wx,
             worldY: wy,
             name,
-            pin: pendingNewStripPin || _defaultNewStripPin(),
+            pin: pendingNewStripPin ?? _defaultNewStripPin(),
         };
         pendingNewStripPin = null;
         _doPanelPlace(action);
@@ -5864,14 +5971,14 @@ export function init(container: HTMLElement) {
         setNeedsGeometryUpdate();
         placingState = null;
         if (dom_pp_status) dom_pp_status.textContent = `Placed ${entry.label} as ${name}`;
-        overlayCanvas!.style.cursor = 'default';
+        _oc().style.cursor = 'default';
         _updateHintStrip();
     }
 
     function _doPanelPlace(action: UndoAction) {
-        const entry = getCatalogEntry(action['catalogId'] as string);
+        const entry = getCatalogEntry(action.catalogId as string);
         if (!entry) return;
-        const localPts = generatePanelPoints(entry, (action['opts'] as PanelOpts | undefined) ?? {});
+        const localPts = generatePanelPoints(entry, (action.opts as PanelOpts | undefined) ?? {});
         const fs = fitScale > 0 ? fitScale : 1;
         // rawPts (cm-units): use worldX/worldY divided by fitScale to place
         // the panel origin at the click point. screenmap_pts = rawPts * fs
@@ -5883,11 +5990,11 @@ export function init(container: HTMLElement) {
         // Determine current "raw->screenmap" offset using existing point 0
         let offX = 0, offY = 0;
         if (rawPts.length > 0) {
-            offX = rawPts[0]![0] * fs - screenmap_pts[0]![0];
-            offY = rawPts[0]![1] * fs - screenmap_pts[0]![1];
+            offX = nn(rawPts[0])[0] * fs - nn(screenmap_pts[0])[0];
+            offY = nn(rawPts[0])[1] * fs - nn(screenmap_pts[0])[1];
         }
-        const actionWorldX = action['worldX'] as number;
-        const actionWorldY = action['worldY'] as number;
+        const actionWorldX = action.worldX as number;
+        const actionWorldY = action.worldY as number;
         for (const [px, py] of localPts) {
             const sx = actionWorldX + px * fs;
             const sy = actionWorldY + py * fs;
@@ -5897,15 +6004,15 @@ export function init(container: HTMLElement) {
         // Append to flat arrays
         const insertAt = screenmap_pts.length;
         for (let i = 0; i < screenmapPts.length; i++) {
-            screenmap_pts.push(screenmapPts[i]!);
-            rawPts.push(rawPtsAdd[i]!);
+            screenmap_pts.push(nn(screenmapPts[i]));
+            rawPts.push(nn(rawPtsAdd[i]));
         }
         const newIdx = stripStore.addStrip({
-            name: action['name'] as string,
+            name: action.name as string,
             points: rawPtsAdd,
             diameter: typeof origDiameter === 'number' ? origDiameter : 0.5,
             video_offset: insertAt,
-            pin: (typeof action['pin'] === 'string' && action['pin']) ? (action['pin'] as string) : 'pin1',
+            pin: (typeof action.pin === 'string' && action.pin) ? (action.pin) : 'pin1',
             videoOffsetOverride: false,
         });
         stripInfo = stripStore.get();
@@ -5933,12 +6040,12 @@ export function init(container: HTMLElement) {
         if (!stripInfo) return;
         // Find the strip we added by name (most reliable after reordering).
         let stripIdx = -1;
-        const strips = stripInfo!.strips;
+        const strips = stripInfo.strips;
         for (let i = strips.length - 1; i >= 0; i--) {
-            if (strips[i]?.name === action['name']) { stripIdx = i; break; }
+            if (strips[i]?.name === action.name) { stripIdx = i; break; }
         }
         if (stripIdx < 0) return;
-        const strip = strips[stripIdx]!;
+        const strip = nn(strips[stripIdx]);
         screenmap_pts.splice(strip.offset, strip.count);
         rawPts.splice(strip.offset, strip.count);
         stripStore.removeStrip(stripIdx);
@@ -5962,7 +6069,7 @@ export function init(container: HTMLElement) {
             worldX,
             worldY,
             name,
-            pin: pendingNewStripPin || _defaultNewStripPin(),
+            pin: pendingNewStripPin ?? _defaultNewStripPin(),
         };
         pendingNewStripPin = null;
         _doPanelPlace(action);
@@ -5979,7 +6086,7 @@ export function init(container: HTMLElement) {
     function _enterPasteFromText(text: string) {
         const parsed = parsePastedScreenmap(text);
         if (!parsed) {
-            _toastInfo("Clipboard didn't look like a screenmap");
+            void _toastInfo("Clipboard didn't look like a screenmap");
             return false;
         }
         // Cancel any in-flight placing so the modes don't overlap
@@ -5994,7 +6101,7 @@ export function init(container: HTMLElement) {
             for (const p of s.points) { sx += p[0]; sy += p[1]; n++; }
         }
         if (n === 0) {
-            _toastInfo("Clipboard didn't look like a screenmap");
+            void _toastInfo("Clipboard didn't look like a screenmap");
             return false;
         }
         const cxRaw = sx / n, cyRaw = sy / n;
@@ -6010,7 +6117,7 @@ export function init(container: HTMLElement) {
         });
         const totalCount = merged.reduce((a, s) => a + s.points.length, 0);
         pasteState = { strips, ghostWorld: null, totalCount };
-        overlayCanvas!.style.cursor = 'crosshair';
+        _oc().style.cursor = 'crosshair';
         _updateHintStrip();
         setNeedsRender();
         return true;
@@ -6019,7 +6126,7 @@ export function init(container: HTMLElement) {
     function _cancelPaste() {
         if (!pasteState) return;
         pasteState = null;
-        overlayCanvas!.style.cursor = 'default';
+        _oc().style.cursor = 'default';
         _updateHintStrip();
         setNeedsRender();
     }
@@ -6027,7 +6134,7 @@ export function init(container: HTMLElement) {
     function _updatePasteGhostFromCanvas(cx: number, cy: number) {
         if (!pasteState) return;
         let [wx, wy] = _canvasToWorldPx(cx, cy);
-        if (dom_pp_snap && dom_pp_snap.checked) {
+        if (dom_pp_snap?.checked) {
             const gpx = _gridSizePx();
             [wx, wy] = snapToGrid([wx, wy], gpx);
         }
@@ -6036,24 +6143,25 @@ export function init(container: HTMLElement) {
     }
 
     function _drawPasteGhost() {
-        if (!pasteState || !pasteState.ghostWorld) return;
-        const ctx = overlayCtx!;
+        if (!pasteState?.ghostWorld) return;
+        const ctx = _octx();
         const [wx, wy] = pasteState.ghostWorld;
         ctx.save();
         ctx.lineWidth = 1;
         ctx.strokeStyle = 'rgba(168,85,247,0.9)';
         ctx.fillStyle = 'rgba(168,85,247,0.4)';
         for (const strip of pasteState.strips) {
+            if (!strip.offsetsLocal) continue;
             // Polyline of this strip
             ctx.beginPath();
-            for (let i = 0; i < strip.offsetsLocal!.length; i++) {
-                const [ox, oy] = strip.offsetsLocal![i]!;
+            for (let i = 0; i < strip.offsetsLocal.length; i++) {
+                const [ox, oy] = nn(strip.offsetsLocal[i]);
                 const [px, py] = toCanvasCoords(wx + ox, wy + oy);
                 if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
             }
             ctx.stroke();
             const r = Math.max(2, 0.25 * (fitScale > 0 ? fitScale : 1) * camZoom);
-            for (const [ox, oy] of strip.offsetsLocal!) {
+            for (const [ox, oy] of strip.offsetsLocal) {
                 const [px, py] = toCanvasCoords(wx + ox, wy + oy);
                 ctx.beginPath();
                 ctx.arc(px, py, r, 0, Math.PI * 2);
@@ -6073,7 +6181,7 @@ export function init(container: HTMLElement) {
     function _commitPasteAt(cx: number, cy: number) {
         if (!pasteState) return;
         let [wx, wy] = _canvasToWorldPx(cx, cy);
-        if (dom_pp_snap && dom_pp_snap.checked) {
+        if (dom_pp_snap?.checked) {
             const gpx = _gridSizePx();
             [wx, wy] = snapToGrid([wx, wy], gpx);
         }
@@ -6099,8 +6207,8 @@ export function init(container: HTMLElement) {
         // raw -> screenmap conversion offset (matches _doPanelPlace's logic)
         let offX = 0, offY = 0;
         if (rawPts.length > 0) {
-            offX = rawPts[0]![0] * fs - screenmap_pts[0]![0];
-            offY = rawPts[0]![1] * fs - screenmap_pts[0]![1];
+            offX = nn(rawPts[0])[0] * fs - nn(screenmap_pts[0])[0];
+            offY = nn(rawPts[0])[1] * fs - nn(screenmap_pts[0])[1];
         }
 
         // Rebuild the "addedStrips" descriptor with screenmap-coord points.
@@ -6115,8 +6223,8 @@ export function init(container: HTMLElement) {
         for (const s of pasteState.strips) {
             const name = _uniqueNameAgainst(s.name, existingNames);
             existingNames.add(name);
-            const sm = s.offsetsLocal!.map(([ox, oy]: [number, number]) => [wx + ox, wy + oy] as [number, number]);
-            const raw = sm.map(([smx, smy]: [any, any]) => [(smx + offX) / fs, (smy + offY) / fs]);
+            const sm = (s.offsetsLocal ?? []).map(([ox, oy]: [number, number]) => [wx + ox, wy + oy] as [number, number]);
+            const raw = sm.map(([smx, smy]: [number, number]) => [(smx + offX) / fs, (smy + offY) / fs] as [number, number]);
             addedDescriptors.push({
                 name,
                 screenmapPts: sm,
@@ -6137,13 +6245,13 @@ export function init(container: HTMLElement) {
         setNeedsGeometryUpdate();
         const pastedCount = action.strips.length;
         pasteState = null;
-        overlayCanvas!.style.cursor = 'default';
+        _oc().style.cursor = 'default';
         _updateHintStrip();
-        _toastSuccess(`Pasted ${pastedCount} strip${pastedCount === 1 ? '' : 's'}`);
+        void _toastSuccess(`Pasted ${String(pastedCount)} strip${pastedCount === 1 ? '' : 's'}`);
         // Select the first pasted strip for discoverability
         if (action.strips.length > 0 && stripInfo) {
-            for (let i = stripInfo!.strips.length - 1; i >= 0; i--) {
-                if (stripInfo!.strips[i]?.name === action.strips[0]?.name) {
+            for (let i = stripInfo.strips.length - 1; i >= 0; i--) {
+                if (stripInfo.strips[i]?.name === action.strips[0]?.name) {
                     selection.selectStrip(i);
                     break;
                 }
@@ -6154,19 +6262,19 @@ export function init(container: HTMLElement) {
     function _uniqueNameAgainst(baseName: string, used: Set<string>) {
         if (!used.has(baseName)) return baseName;
         let n = 2;
-        while (used.has(`${baseName} (${n})`)) n++;
-        return `${baseName} (${n})`;
+        while (used.has(`${baseName} (${String(n)})`)) n++;
+        return `${baseName} (${String(n)})`;
     }
 
     function _doPasteStrips(action: UndoAction) {
         // Append every strip atomically. Identical scheme to _doPanelPlace
         // (append to flat arrays + stripStore.addStrip), but for many at once.
-        const actionStrips = action['strips'] as Array<{ name: string; screenmapPts: [number, number][]; rawPts: [number, number][]; diameter?: number; video_offset: number; pin?: string; _insertAt?: number; _count?: number }>;
+        const actionStrips = action.strips as { name: string; screenmapPts: [number, number][]; rawPts: [number, number][]; diameter?: number; video_offset: number; pin?: string; _insertAt?: number; _count?: number }[];
         for (const desc of actionStrips) {
             const insertAt = screenmap_pts.length;
             for (let i = 0; i < desc.screenmapPts.length; i++) {
-                screenmap_pts.push([desc.screenmapPts[i]![0], desc.screenmapPts[i]![1]]);
-                rawPts.push([desc.rawPts[i]![0], desc.rawPts[i]![1]]);
+                screenmap_pts.push([nn(desc.screenmapPts[i])[0], nn(desc.screenmapPts[i])[1]]);
+                rawPts.push([nn(desc.rawPts[i])[0], nn(desc.rawPts[i])[1]]);
             }
             stripStore.addStrip({
                 name: desc.name,
@@ -6195,16 +6303,16 @@ export function init(container: HTMLElement) {
         if (!stripInfo) return;
         // Walk added strips in reverse order; locate each by name (most recent
         // additions are at the end) and remove from both flat arrays + store.
-        const undoStrips = action['strips'] as Array<{ name: string }>;
+        const undoStrips = action.strips as { name: string }[];
         for (let i = undoStrips.length - 1; i >= 0; i--) {
-            const desc = undoStrips[i]!;
-            const strips = stripInfo!.strips;
+            const desc = nn(undoStrips[i]);
+            const strips = stripInfo.strips;
             let stripIdx = -1;
             for (let k = strips.length - 1; k >= 0; k--) {
                 if (strips[k]?.name === desc.name) { stripIdx = k; break; }
             }
             if (stripIdx < 0) continue;
-            const strip = strips[stripIdx]!;
+            const strip = nn(strips[stripIdx]);
             screenmap_pts.splice(strip.offset, strip.count);
             rawPts.splice(strip.offset, strip.count);
             stripStore.removeStrip(stripIdx);
@@ -6216,14 +6324,14 @@ export function init(container: HTMLElement) {
 
     async function _pasteFromClipboardAPI() {
         try {
-            if (!navigator.clipboard || !navigator.clipboard.readText) {
-                _toastInfo('Clipboard read unavailable — try Ctrl+V');
+            if (typeof navigator.clipboard.readText !== 'function') {
+                void _toastInfo('Clipboard read unavailable — try Ctrl+V');
                 return;
             }
             const text = await navigator.clipboard.readText();
             _enterPasteFromText(text || '');
         } catch {
-            _toastInfo("Clipboard didn't look like a screenmap");
+            void _toastInfo("Clipboard didn't look like a screenmap");
         }
     }
 
@@ -6232,25 +6340,25 @@ export function init(container: HTMLElement) {
         if (sIdx === null || sIdx < 0) return;
         const strips = stripStore.getStrips();
         if (sIdx >= strips.length) return;
-        const s = strips[sIdx]!;
+        const s = nn(strips[sIdx]);
         const x = [], y = [];
         for (let i = s.offset; i < s.offset + s.count; i++) {
-            x.push(+rawPts[i]![0].toFixed(4));
-            y.push(+rawPts[i]![1].toFixed(4));
+            x.push(+nn(rawPts[i])[0].toFixed(4));
+            y.push(+nn(rawPts[i])[1].toFixed(4));
         }
         const d = typeof s.diameter === 'number' ? s.diameter : (parseFloat(dom_txt_diameter.value) || 0.25);
         const json = JSON.stringify({ map: { [s.name]: { x, y, diameter: d } } }, null, 2);
         try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(json).then(
+            if (typeof navigator.clipboard.writeText === 'function') {
+                void navigator.clipboard.writeText(json).then(
                     () => _toastSuccess(`Copied "${s.name}" to clipboard`),
                     () => _toastInfo('Copy failed — clipboard unavailable'),
                 );
             } else {
-                _toastInfo('Copy failed — clipboard unavailable');
+                void _toastInfo('Copy failed — clipboard unavailable');
             }
         } catch {
-            _toastInfo('Copy failed — clipboard unavailable');
+            void _toastInfo('Copy failed — clipboard unavailable');
         }
     }
 
@@ -6260,7 +6368,7 @@ export function init(container: HTMLElement) {
     document.addEventListener('paste', (e) => {
         const t = e.target;
         if (t && ((t as HTMLElement).tagName === 'INPUT' || (t as HTMLElement).tagName === 'TEXTAREA' || (t as HTMLElement).isContentEditable)) return;
-        const txt = (e.clipboardData && e.clipboardData.getData('text')) || '';
+        const txt = e.clipboardData?.getData('text') ?? '';
         if (!txt) return;
         if (_enterPasteFromText(txt)) {
             e.preventDefault();
@@ -6280,10 +6388,10 @@ export function init(container: HTMLElement) {
                 wiring: dom_pp_wiring ? dom_pp_wiring.value : 'serpentine',
                 corner: dom_pp_corner ? dom_pp_corner.value : 'TL',
                 rotation: dom_pp_rotation ? dom_pp_rotation.value : '0',
-                flipH: dom_pp_flipH ? !!dom_pp_flipH.checked : false,
-                flipV: dom_pp_flipV ? !!dom_pp_flipV.checked : false,
+                flipH: dom_pp_flipH ? dom_pp_flipH.checked : false,
+                flipV: dom_pp_flipV ? dom_pp_flipV.checked : false,
                 spacing: dom_pp_spacing ? dom_pp_spacing.value : '1',
-                snap: dom_pp_snap ? !!dom_pp_snap.checked : true,
+                snap: dom_pp_snap ? dom_pp_snap.checked : true,
                 grid: dom_pp_grid ? dom_pp_grid.value : '1',
             };
 
@@ -6355,12 +6463,12 @@ export function init(container: HTMLElement) {
                     if (catalog) catalog.value = initial.catalogId;
                     if (wiring) wiring.value = initial.wiring;
                     if (corner) corner.value = initial.corner;
-                    if (rotation) rotation.value = String(initial.rotation);
+                    if (rotation) rotation.value = initial.rotation;
                     if (flipH) flipH.checked = initial.flipH;
                     if (flipV) flipV.checked = initial.flipV;
-                    if (spacing) spacing.value = String(initial.spacing);
+                    if (spacing) spacing.value = initial.spacing;
                     if (snap) snap.checked = initial.snap;
-                    if (grid) grid.value = String(initial.grid);
+                    if (grid) grid.value = initial.grid;
 
                     function readForm() {
                         return {
@@ -6368,10 +6476,10 @@ export function init(container: HTMLElement) {
                             wiring: wiring ? wiring.value : 'serpentine',
                             corner: corner ? corner.value : 'TL',
                             rotation: rotation ? parseInt(rotation.value, 10) || 0 : 0,
-                            flipH: flipH ? !!flipH.checked : false,
-                            flipV: flipV ? !!flipV.checked : false,
+                            flipH: flipH ? flipH.checked : false,
+                            flipV: flipV ? flipV.checked : false,
                             spacing: spacing ? (parseFloat(spacing.value) || 1) : 1,
-                            snap: snap ? !!snap.checked : true,
+                            snap: snap ? snap.checked : true,
                             grid: grid ? (parseFloat(grid.value) || 1) : 1,
                         };
                     }
@@ -6385,9 +6493,9 @@ export function init(container: HTMLElement) {
                         const entry = getCatalogEntry(opts.catalogId);
                         if (!entry) return;
                         const pts = generatePanelPoints(entry, {
-                            wiring: opts.wiring as import('./panel-catalog').WiringStyle,
-                            dataInCorner: opts.corner as import('./panel-catalog').DataInCorner,
-                            rotation: opts.rotation as import('./panel-catalog').RotationDeg,
+                            wiring: opts.wiring as WiringStyle,
+                            dataInCorner: opts.corner as DataInCorner,
+                            rotation: opts.rotation as RotationDeg,
                             flipH: opts.flipH,
                             flipV: opts.flipV,
                             spacing: opts.spacing,
@@ -6409,8 +6517,8 @@ export function init(container: HTMLElement) {
                         ctx.lineWidth = 1;
                         ctx.beginPath();
                         for (let i = 0; i < pts.length; i++) {
-                            const x = pts[i]![0] * sc + cxOff;
-                            const y = pts[i]![1] * sc + cyOff;
+                            const x = nn(pts[i])[0] * sc + cxOff;
+                            const y = nn(pts[i])[1] * sc + cyOff;
                             if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
                         }
                         ctx.stroke();
@@ -6426,7 +6534,7 @@ export function init(container: HTMLElement) {
                         if (pts.length > 0) {
                             ctx.fillStyle = '#4caf50';
                             ctx.beginPath();
-                            ctx.arc(pts[0]![0] * sc + cxOff, pts[0]![1] * sc + cyOff, 3, 0, Math.PI * 2);
+                            ctx.arc(nn(pts[0])[0] * sc + cxOff, nn(pts[0])[1] * sc + cyOff, 3, 0, Math.PI * 2);
                             ctx.fill();
                         }
                     }
@@ -6443,10 +6551,9 @@ export function init(container: HTMLElement) {
                 preDeny: () => _readInsertDialog(),
             });
 
-            if (signal.aborted) return null;
             const action = res.isConfirmed ? 'center' : (res.isDenied ? 'ghost' : null);
             if (!action) { pendingNewStripPin = null; return null; }
-            const opts = (res.isConfirmed ? res.value : res.value) || _readInsertDialog();
+            const opts: InsertDialogOpts = _readInsertDialog();
             return _submitInsertDialog({ ...opts, place: action });
         } catch {
             return null;
@@ -6456,16 +6563,25 @@ export function init(container: HTMLElement) {
     function _readInsertDialog(): InsertDialogOpts {
         const $inp = (id: string) => document.getElementById(id) as HTMLInputElement | null;
         const $sel = (id: string) => document.getElementById(id) as HTMLSelectElement | null;
+        const insCatalog = $sel('ins_catalog');
+        const insWiring = $sel('ins_wiring');
+        const insCorner = $sel('ins_corner');
+        const insRotation = $inp('ins_rotation');
+        const insFlipH = $inp('ins_flipH');
+        const insFlipV = $inp('ins_flipV');
+        const insSpacing = $inp('ins_spacing');
+        const insSnap = $inp('ins_snap');
+        const insGrid = $inp('ins_grid');
         return {
-            catalogId: $sel('ins_catalog') ? $sel('ins_catalog')!.value : '',
-            wiring: $sel('ins_wiring') ? $sel('ins_wiring')!.value : 'serpentine',
-            corner: $sel('ins_corner') ? $sel('ins_corner')!.value : 'TL',
-            rotation: $inp('ins_rotation') ? parseInt($inp('ins_rotation')!.value, 10) || 0 : 0,
-            flipH: $inp('ins_flipH') ? !!$inp('ins_flipH')!.checked : false,
-            flipV: $inp('ins_flipV') ? !!$inp('ins_flipV')!.checked : false,
-            spacing: $inp('ins_spacing') ? (parseFloat($inp('ins_spacing')!.value) || 1) : 1,
-            snap: $inp('ins_snap') ? !!$inp('ins_snap')!.checked : true,
-            grid: $inp('ins_grid') ? (parseFloat($inp('ins_grid')!.value) || 1) : 1,
+            catalogId: insCatalog ? insCatalog.value : '',
+            wiring: insWiring ? insWiring.value : 'serpentine',
+            corner: insCorner ? insCorner.value : 'TL',
+            rotation: insRotation ? parseInt(insRotation.value, 10) || 0 : 0,
+            flipH: insFlipH ? insFlipH.checked : false,
+            flipV: insFlipV ? insFlipV.checked : false,
+            spacing: insSpacing ? (parseFloat(insSpacing.value) || 1) : 1,
+            snap: insSnap ? insSnap.checked : true,
+            grid: insGrid ? (parseFloat(insGrid.value) || 1) : 1,
         };
     }
 
@@ -6473,15 +6589,15 @@ export function init(container: HTMLElement) {
         if (dom_pp_wiring && opts.wiring) dom_pp_wiring.value = opts.wiring;
         if (dom_pp_corner && opts.corner) dom_pp_corner.value = opts.corner;
         if (dom_pp_rotation && (opts.rotation || opts.rotation === 0)) dom_pp_rotation.value = String(opts.rotation);
-        if (dom_pp_flipH) dom_pp_flipH.checked = !!opts.flipH;
-        if (dom_pp_flipV) dom_pp_flipV.checked = !!opts.flipV;
+        if (dom_pp_flipH) dom_pp_flipH.checked = opts.flipH;
+        if (dom_pp_flipV) dom_pp_flipV.checked = opts.flipV;
         if (dom_pp_spacing && (opts.spacing || opts.spacing === 0)) dom_pp_spacing.value = String(opts.spacing);
-        if (dom_pp_snap) dom_pp_snap.checked = !!opts.snap;
+        if (dom_pp_snap) dom_pp_snap.checked = opts.snap;
         if (dom_pp_grid && (opts.grid || opts.grid === 0)) dom_pp_grid.value = String(opts.grid);
     }
 
     function _submitInsertDialog(opts: InsertDialogOpts) {
-        if (!opts || !opts.catalogId) return null;
+        if (!opts.catalogId) return null;
         const entry = getCatalogEntry(opts.catalogId);
         if (!entry) return null;
         _writeAccordionFromDialog(opts);
@@ -6503,7 +6619,7 @@ export function init(container: HTMLElement) {
 
     // --- Initialize ---
     initRenderer();
-    loadPresetsFromManifest();
+    void loadPresetsFromManifest();
     renderStripsPanel();
     rafId = requestAnimationFrame(animate);
 
@@ -6511,24 +6627,24 @@ export function init(container: HTMLElement) {
         ac.abort();
         if (rafId) cancelAnimationFrame(rafId);
         if (screenmapOutline) {
-            scene!.remove(screenmapOutline);
+            _scene().remove(screenmapOutline);
             screenmapOutline.geometry.dispose();
-            ((screenmapOutline.material as import('three').Material)).dispose();
+            ((screenmapOutline.material as Material)).dispose();
         }
         if (pointsMesh) {
-            scene!.remove(pointsMesh);
-            pointsGeometry!.dispose();
-            pointsMaterial!.dispose();
+            _scene().remove(pointsMesh);
+            pointsGeometry?.dispose();
+            pointsMaterial?.dispose();
         }
         if (gridLines) {
-            scene!.remove(gridLines);
+            _scene().remove(gridLines);
             gridLines.geometry.dispose();
-            ((gridLines.material as import('three').Material)).dispose();
+            ((gridLines.material as Material)).dispose();
         }
         removeBackgroundImage();
         circleTexture.dispose();
-        renderer!.dispose();
-        if (ctxMenu && ctxMenu.parentNode) ctxMenu.parentNode.removeChild(ctxMenu);
+        _renderer().dispose();
+        ctxMenu?.parentNode?.removeChild(ctxMenu);
         // Clean up container layout styles
         container.style.display = '';
         container.style.flexDirection = '';
@@ -6536,3 +6652,6 @@ export function init(container: HTMLElement) {
         container.style.overflow = '';
     };
 }
+
+
+

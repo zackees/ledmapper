@@ -49,7 +49,7 @@ function createDragStateMachine() {
         if (!drag || !hasPoints) return;
         if (drag.kind === 'translate') {
             translateCallCount++;
-        } else if (drag.kind === 'zoom') {
+        } else {
             zoomCallCount++;
             drag.lastY = e.offsetY;
         }
@@ -115,7 +115,7 @@ describe('drag state machine — basic transitions', () => {
     });
 
     it('cancelDrag is idempotent when already idle', () => {
-        assert.doesNotThrow(() => sm.cancelDrag());
+        assert.doesNotThrow(() => { sm.cancelDrag(); });
         assert.equal(sm.getDrag(), null);
     });
 
@@ -175,7 +175,8 @@ describe('drag state machine — stale right-drag bug (issue #31)', () => {
         const d = sm.getDrag();
         assert.ok(d !== null);
         // It should be exactly one kind, never both
-        assert.ok(d.kind === 'translate' || d.kind === 'zoom');
+        const validKinds: string[] = ['translate', 'zoom'];
+        assert.ok(validKinds.includes(d.kind));
     });
 
     it('window blur mid-hold cancels drag', () => {

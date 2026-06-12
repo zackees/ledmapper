@@ -17,7 +17,7 @@
  * @param {AbortSignal} [options.signal] - removes the listeners on abort
  */
 export function wireFileDropTarget({ target, input = null as HTMLInputElement | null, onFile, signal }: { target: Element; input?: HTMLInputElement | null; onFile: (file: File | undefined) => void; signal?: AbortSignal }) {
-    const isDisabled = () => Boolean(input && (input as HTMLInputElement).disabled);
+    const isDisabled = () => Boolean(input?.disabled);
     const opts: AddEventListenerOptions = signal !== undefined ? { signal } : {};
 
     target.addEventListener('dragover', (event: Event) => {
@@ -40,7 +40,7 @@ export function wireFileDropTarget({ target, input = null as HTMLInputElement | 
         target.classList.remove('drag-over');
         if (isDisabled()) return;
         const dragEvent = event as DragEvent;
-        const file = dragEvent.dataTransfer?.files?.[0];
+        const file = dragEvent.dataTransfer?.files[0];
         onFile(file);
     }, opts);
 }

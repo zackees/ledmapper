@@ -1,4 +1,5 @@
-const Swal = import('sweetalert2').then(m => m.default);
+import type SweetAlert2 from 'sweetalert2';
+const Swal: Promise<typeof SweetAlert2> = import('sweetalert2').then(m => m.default);
 import type { ParsedStrip, MultiStripParseResult } from '../types/domain';
 import { parseScreenmapMultiStrip } from '../common';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
@@ -17,21 +18,32 @@ import { perfEnabled } from './perf';
 import templateHtml from './template.html?raw';
 export { default as css } from './moviemaker.css?url';
 
+/** Typed DOM-query-or-throw. Throws if `sel` does not match. */
+function qeFrom(root: ParentNode, sel: string): Element {
+    const el = root.querySelector(sel);
+    if (!el) throw new Error(`Missing element "${sel}"`);
+    return el;
+}
+
 export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
 
     // ── DOM refs ────────────────────────────────────────────────────────────────
-    const qe  = <T extends HTMLElement>(sel: string) => container.querySelector(sel) as T;
+    // Shorthand DOM query helper scoped to this component's container.
+    // The type parameter T appears in the return; `_cast` makes it appear twice.
+    function qe<T extends Element>(sel: string, _cast?: (e: Element) => T): T {
+        return qeFrom(container, sel) as T;
+    }
     const qei = (sel: string) => qe<HTMLInputElement>(sel);
 
     const dom_btn_load_video    = qe<HTMLButtonElement>('#btn_load_video');
     const dom_btn_start_webcam  = qe<HTMLButtonElement>('#btn_start_webcam');
     const dom_btn_upload_screenmap  = qei('#btn_upload_screenmap');
-    const dom_preset_buttons = container.querySelector('.preset-buttons') as HTMLElement | null;
+    const dom_preset_buttons = container.querySelector('.preset-buttons');
     const dom_btn_unload_source = qe<HTMLButtonElement>('#btn_unload_source');
     const dom_btn_play_pause    = qe<HTMLButtonElement>('#btn_play_pause');
     const dom_video_progress    = qe('#video-progress');
-    const dom_progress_track    = qe('#video-progress-track');
+    const dom_progress_track    = qe<HTMLElement>('#video-progress-track');
     const dom_progress_fill     = qe<HTMLElement>('#video-progress-fill');
     const dom_progress_thumb    = qe<HTMLElement>('#video-progress-thumb');
     const dom_time_current      = qe<HTMLElement>('#video-time-current');
@@ -64,7 +76,9 @@ export function init(container: HTMLElement) {
     const videoPlayer    = qe<HTMLVideoElement>('#videoPlayer');
     const renderCanvas   = qe<HTMLCanvasElement>('#renderCanvas');
     const overlayCanvas  = qe<HTMLCanvasElement>('#overlayCanvas');
-    const overlayCtx     = overlayCanvas.getContext('2d')!;
+    const overlayCtxRaw  = overlayCanvas.getContext('2d');
+    if (!overlayCtxRaw) throw new Error('moviemaker: overlay canvas 2d context unavailable');
+    const overlayCtx     = overlayCtxRaw;
     const previewPanel   = qe<HTMLElement>('#previewPanel');
     const preview        = createLedPreview({ parent: previewPanel, side: 200 });
 
@@ -111,8 +125,8 @@ export function init(container: HTMLElement) {
                 frame_rate = 30;
             }
         },
-        async onError(message: string) {
-            (await Swal).fire('Webcam Error', message, 'error');
+        onError(message: string) {
+            void Swal.then(s => s.fire('Webcam Error', message, 'error'));
         },
     });
 
@@ -126,7 +140,7 @@ export function init(container: HTMLElement) {
         if (!isFinite(seconds) || seconds < 0) return '0:00';
         const m = Math.floor(seconds / 60);
         const s = Math.floor(seconds % 60);
-        return `${m}:${s.toString().padStart(2, '0')}`;
+        return `${String(m)}:${s.toString().padStart(2, '0')}`;
     }
 
     function getMaxResolution() {
@@ -150,10 +164,10 @@ export function init(container: HTMLElement) {
             curr_translate = [w / 2, h / 2];
         }
 
-        const canvasRow = container.querySelector('.canvas-row') as HTMLElement | null;
-        if (canvasRow) canvasRow.dataset['layout'] = (w > h) ? 'landscape' : 'portrait';
+        const canvasRow = container.querySelector<HTMLElement>('.canvas-row');
+        if (canvasRow) canvasRow.dataset.layout = (w > h) ? 'landscape' : 'portrait';
 
-        dom_txt_curr_resolution.textContent = `${w}×${h}`;
+        dom_txt_curr_resolution.textContent = `${String(w)}×${String(h)}`;
     }
 
     function setupForNewSource(nativeW: number, nativeH: number) {
@@ -210,7 +224,7 @@ export function init(container: HTMLElement) {
     // Stays null when no strip declares one (preview falls back to the
     // spacing heuristic).
     function updatePreviewLedDiameter() {
-        const declared = resolveLedDiameter(screenmapStrips as unknown as Array<Record<string, unknown>>);
+        const declared = resolveLedDiameter(screenmapStrips as unknown as Record<string, unknown>[]);
         previewLedDiameter = (declared !== null && screenmap_pts.length > 0)
             ? declared * computeFitScale(rawScreenmapPts, screenmap_pts)
             : null;
@@ -229,7 +243,7 @@ export function init(container: HTMLElement) {
             screenmapValid = true;
             target_zoom = 1; curr_zoom = 1;
             curr_rotate = 0; target_rotate = 0;
-            const rotTxt = container.querySelector('#txt_curr_rotation') as HTMLElement | null;
+            const rotTxt = container.querySelector<HTMLElement>('#txt_curr_rotation');
             if (rotTxt) rotTxt.innerText = '0';
             dom_rng_rotation.value = '0';
             target_translate = [videoWidth / 2, videoHeight / 2];
@@ -241,11 +255,11 @@ export function init(container: HTMLElement) {
     let presetButtons: HTMLButtonElement[] = [];
 
     function clearPresetActive() {
-        presetButtons.forEach((b) => b.classList.remove('active-preset'));
+        presetButtons.forEach((b) => { b.classList.remove('active-preset'); });
     }
 
     if (dom_preset_buttons) {
-        for (const preset of screenmapPresets as Array<{ file: string; name: string }>) {
+        for (const preset of screenmapPresets as { file: string; name: string }[]) {
             const btn = document.createElement('button');
             btn.id = `btn_preset_${preset.file.replace(/\.json$/i, '')}`;
             btn.type = 'button';
@@ -259,14 +273,16 @@ export function init(container: HTMLElement) {
             const presetFile = btn.dataset.presetFile;
             if (!presetFile) continue;
 
-            btn.addEventListener('click', async () => {
-                clearPresetActive();
-                btn.classList.add('active-preset');
-                try {
-                    loadScreenmapFromParsed(parseScreenmapMultiStrip(await loadPresetText(presetFile)));
-                } catch (error) {
-                    alert(`Error loading preset: ${error}`);
-                }
+            btn.addEventListener('click', () => {
+                void (async () => {
+                    clearPresetActive();
+                    btn.classList.add('active-preset');
+                    try {
+                        loadScreenmapFromParsed(parseScreenmapMultiStrip(await loadPresetText(presetFile)));
+                    } catch (error) {
+                        alert(`Error loading preset: ${String(error)}`);
+                    }
+                })();
             }, { signal });
         }
     }
@@ -283,13 +299,13 @@ export function init(container: HTMLElement) {
         }
     }
     if (!restoredFromStore && presetButtons.length > 0) {
-        presetButtons[0]!.click();
+        presetButtons[0]?.click();
     }
 
     // Wire welcome overlay buttons to sidebar buttons
     container.querySelectorAll('[data-trigger]').forEach((btn) => {
         const b = btn as HTMLElement;
-        b.addEventListener('click', () => (container.querySelector('#' + b.dataset.trigger) as HTMLElement | null)?.click(), { signal });
+        b.addEventListener('click', () => { container.querySelector<HTMLElement>(`#${b.dataset.trigger ?? ''}`)?.click(); }, { signal });
     });
 
     // ── Camera position (smooth interpolation) ──────────────────────────────────
@@ -312,8 +328,8 @@ export function init(container: HTMLElement) {
 
     // ── Event handlers ──────────────────────────────────────────────────────────
 
-    dom_btn_how_to.addEventListener('click', async () => {
-        (await Swal).fire({
+    dom_btn_how_to.addEventListener('click', () => {
+        void Swal.then(s => s.fire({
             title: 'How to get the best video',
             html: `
                 <div style="text-align: left; margin-bottom: 15px;">
@@ -330,7 +346,7 @@ export function init(container: HTMLElement) {
             `,
             confirmButtonText: 'Got it!',
             customClass: { popup: 'custom-popup-class', htmlContainer: 'custom-content-class' },
-        });
+        }));
     }, { signal });
 
     // Video source: Load file
@@ -339,7 +355,7 @@ export function init(container: HTMLElement) {
         input.type = 'file';
         input.accept = 'video/*';
         input.onchange = (e) => {
-            const file = (e.target as HTMLInputElement).files![0];
+            const file = (e.target as HTMLInputElement).files?.[0];
             if (file) videoSource.loadVideoFile(file);
         };
         input.click();
@@ -384,8 +400,8 @@ export function init(container: HTMLElement) {
         const seekTime = fraction * videoPlayer.duration;
         videoPlayer.currentTime = seekTime;
         const pct = fraction * 100;
-        dom_progress_fill.style.width = `${pct}%`;
-        dom_progress_thumb.style.left = `${pct}%`;
+        dom_progress_fill.style.width = `${String(pct)}%`;
+        dom_progress_thumb.style.left = `${String(pct)}%`;
         dom_time_current.textContent = formatTime(seekTime);
     }
 
@@ -423,8 +439,8 @@ export function init(container: HTMLElement) {
         const toolbar = container.querySelector('.canvas-toolbar');
         if (toolbar) toolbar.classList.remove('visible');
 
-        const canvasRow = container.querySelector('.canvas-row') as HTMLElement | null;
-        if (canvasRow) delete canvasRow.dataset['layout'];
+        const canvasRow = container.querySelector<HTMLElement>('.canvas-row');
+        if (canvasRow) delete canvasRow.dataset.layout;
     }, { signal });
 
     // Screenmap upload
@@ -441,7 +457,7 @@ export function init(container: HTMLElement) {
             loadScreenmapFromParsed(parseScreenmapMultiStrip(text));
             saveScreenmap(text);
         }).catch((error: unknown) => {
-            alert(`Error reading screenmap file: ${error}`);
+            alert(`Error reading screenmap file: ${String(error)}`);
         });
     }
 
@@ -450,14 +466,14 @@ export function init(container: HTMLElement) {
     }, { signal });
 
     wireFileDropTarget({
-        target: container.querySelector('#screenmap_drop_target') as Element,
+        target: qeFrom(container, '#screenmap_drop_target'),
         input: dom_btn_upload_screenmap,
         onFile: loadScreenmapFile,
         signal,
     });
 
     wireFileDropTarget({
-        target: container.querySelector('.canvas-area') as Element,
+        target: qeFrom(container, '.canvas-area'),
         onFile: (file) => {
             if (!file) return;
             if (!file.type.startsWith('video/')) {
@@ -480,15 +496,15 @@ export function init(container: HTMLElement) {
         const snapped = snap_rotation(parseInt(String(val)));
         target_rotate = snapped;
         dom_rng_rotation.value = String(snapped);
-        const rotTxt2 = container.querySelector('#txt_curr_rotation') as HTMLElement | null;
+        const rotTxt2 = container.querySelector<HTMLElement>('#txt_curr_rotation');
         if (rotTxt2) rotTxt2.innerText = String(snapped);
     }
-    dom_rng_rotation.addEventListener('input', () => set_target_rotate(dom_rng_rotation.value), { signal });
+    dom_rng_rotation.addEventListener('input', () => { set_target_rotate(dom_rng_rotation.value); }, { signal });
 
     dom_rng_brightness.addEventListener('input', () => {
         dom_txt_curr_bri.innerText = `${dom_rng_brightness.value}%`;
     }, { signal });
-    const dom_max_bri_slider = container.querySelector('#max_bri_slider') as HTMLElement | null;
+    const dom_max_bri_slider = container.querySelector('#max_bri_slider');
     dom_chk_limit_bri.addEventListener('change', () => {
         const enabled = dom_chk_limit_bri.checked;
         dom_rng_max_bri.disabled = !enabled;
@@ -498,10 +514,10 @@ export function init(container: HTMLElement) {
         dom_txt_curr_max_bri.innerText = `${dom_rng_max_bri.value}%`;
     }, { signal });
     dom_rng_gamma.addEventListener('input', () => {
-        dom_txt_curr_gamma.innerText = `${(parseFloat(dom_rng_gamma.value) / 10).toFixed(1)}`;
+        dom_txt_curr_gamma.innerText = (parseFloat(dom_rng_gamma.value) / 10).toFixed(1);
     }, { signal });
-    const dom_txt_curr_blur = container.querySelector('#txt_curr_blur') as HTMLElement | null;
-    const dom_txt_curr_blur_sigma = container.querySelector('#txt_curr_blur_sigma') as HTMLElement | null;
+    const dom_txt_curr_blur = container.querySelector<HTMLElement>('#txt_curr_blur');
+    const dom_txt_curr_blur_sigma = container.querySelector<HTMLElement>('#txt_curr_blur_sigma');
     dom_rng_blur.addEventListener('input', () => {
         if (dom_txt_curr_blur) dom_txt_curr_blur.innerText = dom_rng_blur.value;
         if (dom_chk_sigma_lock.checked) {
@@ -594,14 +610,15 @@ export function init(container: HTMLElement) {
     }, { signal });
 
     // Recording toggle
-    dom_btn_toggle_record.addEventListener('click', async () => {
+    dom_btn_toggle_record.addEventListener('click', () => {
         if (!recording.isActive && screenmap_pts.length < 2) {
             alert('Please load a valid screenmap first of size >= 2');
             return;
         }
-        const active = await recording.toggle();
-        dom_btn_toggle_record.value = active ? 'Stop Recording' : 'Start Recording';
-        dom_btn_toggle_record.classList.toggle('recording', active);
+        void recording.toggle().then(active => {
+            dom_btn_toggle_record.value = active ? 'Stop Recording' : 'Start Recording';
+            dom_btn_toggle_record.classList.toggle('recording', active);
+        });
     }, { signal });
 
     // Pointer-Events drag on overlay canvas.
@@ -632,7 +649,7 @@ export function init(container: HTMLElement) {
         if (drag.kind === 'translate') {
             target_translate[0] = e.offsetX;
             target_translate[1] = e.offsetY;
-        } else if (drag.kind === 'zoom') {
+        } else {
             const dy = e.offsetY - drag.lastY;
             target_zoom -= dy * 0.01;
             target_zoom = Math.max(Math.min(target_zoom, 3), 0.15);
@@ -645,7 +662,7 @@ export function init(container: HTMLElement) {
     overlayCanvas.addEventListener('pointerup', cancelDrag, { signal });
     overlayCanvas.addEventListener('pointercancel', cancelDrag, { signal });
     overlayCanvas.addEventListener('lostpointercapture', cancelDrag, { signal });
-    overlayCanvas.addEventListener('contextmenu', (e: Event) => e.preventDefault(), { signal });
+    overlayCanvas.addEventListener('contextmenu', (e: Event) => { e.preventDefault(); }, { signal });
 
     // Safety net: cancel any in-progress drag on window blur or tab hide.
     window.addEventListener('blur', cancelDrag, { signal });
@@ -659,7 +676,7 @@ export function init(container: HTMLElement) {
     let recordRgbPts: Uint8Array | null = null;
 
     // Debug hook always exposed for e2e tests (drag state needed for issue #31 tests).
-    if (!window.__mmDebug) window.__mmDebug = {};
+    window.__mmDebug ??= {};
     window.__mmDebug.getDragState = () => drag ? { kind: drag.kind } : null;
 
     if (perfEnabled) {
@@ -680,13 +697,13 @@ export function init(container: HTMLElement) {
     // video_offset values that differ from flat point order, remap the flat
     // sample into channel order for recording (overlay/preview stay flat).
     function toRecordingSample(sample: { rgbPts: Uint8Array; avgBri: number }, numPts: number) {
-        if (!videoChannelMap || videoChannelMap.length !== numPts) return sample;
-        if (!recordRgbPts || recordRgbPts.length !== numPts * 3) {
+        if (videoChannelMap?.length !== numPts) return sample;
+        if (recordRgbPts?.length !== numPts * 3) {
             recordRgbPts = new Uint8Array(numPts * 3);
         }
         const src = sample.rgbPts;
         for (let i = 0; i < numPts; i++) {
-            const ch = videoChannelMap![i]! * 3;
+            const ch = (videoChannelMap[i] ?? 0) * 3;
             const o = i * 3;
             recordRgbPts[ch]     = src[o] ?? 0;
             recordRgbPts[ch + 1] = src[o + 1] ?? 0;
@@ -728,8 +745,8 @@ export function init(container: HTMLElement) {
             blurPipeline.requestSample();
             // Consume the latest resolved async readback (1-2 frames behind)
             const gather = blurPipeline.getLatestSample();
-            if (gather && gather.numPts === screenmap_pts.length) {
-                if (!sampleRgbPts || sampleRgbPts.length !== gather.numPts * 3) {
+            if (gather?.numPts === screenmap_pts.length) {
+                if (sampleRgbPts?.length !== gather.numPts * 3) {
                     sampleRgbPts = new Uint8Array(gather.numPts * 3);
                 }
                 lastSample = extractGatherSample(gather.buffer, gather.numPts, sampleRgbPts);
@@ -748,8 +765,8 @@ export function init(container: HTMLElement) {
             const d = videoPlayer.duration;
             if (isFinite(d) && d > 0) {
                 const pct = (t / d) * 100;
-                dom_progress_fill.style.width = `${pct}%`;
-                dom_progress_thumb.style.left = `${pct}%`;
+                dom_progress_fill.style.width = `${String(pct)}%`;
+                dom_progress_thumb.style.left = `${String(pct)}%`;
                 dom_time_current.textContent = formatTime(t);
             }
         }

@@ -14,9 +14,16 @@ import {
     BLOOM_MIN_STRENGTH,
 } from '../bloom-utils';
 import { estimateLedSize } from '../moviemaker/transforms';
-import type { MultiStripParseResult, StripPoint, ScreenmapJson } from '../types/domain';
+import type { MultiStripParseResult, StripPoint, RendererContextWithOverlay } from '../types/domain';
+import type { BufferGeometry, PointsMaterial, Points, Float32BufferAttribute } from 'three';
 import templateHtml from './template.html?raw';
 export { default as css } from './demo.css?url';
+
+function qe<T extends HTMLElement>(container: ParentNode, sel: string, _cast?: (e: Element) => T): T {
+    const el = container.querySelector(sel);
+    if (!el) throw new Error(`Missing element "${sel}"`);
+    return el as T;
+}
 
 export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
@@ -26,19 +33,19 @@ export function init(container: HTMLElement) {
     let videoBuffer = new Uint8Array();
 
     // DOM elements
-    const dom_btn_upload_screenmap = container.querySelector('#btn_upload_screenmap') as HTMLInputElement;
-    const dom_btn_load_movie = container.querySelector('#btn_load_movie') as HTMLInputElement;
-    const dom_btn_play = container.querySelector('#btn_play') as HTMLInputElement;
-    const dom_rng_diameter = container.querySelector('#rng_diameter') as HTMLInputElement;
-    const dom_txt_curr_diameter = container.querySelector('#txt_curr_diameter') as HTMLElement;
-    const dom_btn_download_screenmap = container.querySelector('#btn_download_screenmap') as HTMLButtonElement;
-    const dom_btn_download_video = container.querySelector('#btn_download_video') as HTMLButtonElement;
-    const dom_sel_framerate = container.querySelector('#sel_framerate') as HTMLSelectElement;
-    const dom_btn_download_screenmap_16x16_serpentine = container.querySelector('#btn_download_screenmap_16x16_serpentine') as HTMLButtonElement;
-    const dom_chk_auto_bloom        = container.querySelector('#chk_auto_bloom') as HTMLInputElement;
-    const dom_bloom_strength_slider = container.querySelector('#bloom_strength_slider') as HTMLElement;
-    const dom_rng_bloom_strength    = container.querySelector('#rng_bloom_strength') as HTMLInputElement;
-    const dom_txt_bloom_strength    = container.querySelector('#txt_curr_bloom_strength') as HTMLElement;
+    const dom_btn_upload_screenmap = qe<HTMLInputElement>(container, '#btn_upload_screenmap');
+    const dom_btn_load_movie = qe<HTMLInputElement>(container, '#btn_load_movie');
+    const dom_btn_play = qe<HTMLInputElement>(container, '#btn_play');
+    const dom_rng_diameter = qe<HTMLInputElement>(container, '#rng_diameter');
+    const dom_txt_curr_diameter = qe<HTMLElement>(container, '#txt_curr_diameter');
+    const dom_btn_download_screenmap = qe<HTMLButtonElement>(container, '#btn_download_screenmap');
+    const dom_btn_download_video = qe<HTMLButtonElement>(container, '#btn_download_video');
+    const dom_sel_framerate = qe<HTMLSelectElement>(container, '#sel_framerate');
+    const dom_btn_download_screenmap_16x16_serpentine = qe<HTMLButtonElement>(container, '#btn_download_screenmap_16x16_serpentine');
+    const dom_chk_auto_bloom        = qe<HTMLInputElement>(container, '#chk_auto_bloom');
+    const dom_bloom_strength_slider = qe<HTMLElement>(container, '#bloom_strength_slider');
+    const dom_rng_bloom_strength    = qe<HTMLInputElement>(container, '#rng_bloom_strength');
+    const dom_txt_bloom_strength    = qe<HTMLElement>(container, '#txt_curr_bloom_strength');
 
     dom_btn_play.disabled = true;
 
@@ -52,10 +59,10 @@ export function init(container: HTMLElement) {
     let curr_frame: Uint8Array | null = null;
 
     // Three.js objects
-    let pointsGeometry: import('three').BufferGeometry | undefined;
-    let pointsMaterial: import('three').PointsMaterial | undefined;
-    let pointsMesh: import('three').Points | undefined;
-    let colorAttribute: import('three').Float32BufferAttribute | undefined;
+    let pointsGeometry: BufferGeometry | undefined;
+    let pointsMaterial: PointsMaterial | undefined;
+    let pointsMesh: Points | undefined;
+    let colorAttribute: Float32BufferAttribute | undefined;
 
     // Overlay state
     let showLines = false;
@@ -69,13 +76,13 @@ export function init(container: HTMLElement) {
     // --- Three.js Initialization ---
     const circleTexture = createCircleTexture(64);
 
-    const main = container.querySelector('main');
+    const main = qe<HTMLElement>(container, 'main');
     const { renderer, scene, camera, wrapper, overlayCanvas, overlayCtx } = createRendererAndScene({
         width: CANVAS_SIZE,
         height: CANVAS_SIZE,
-        parent: main as HTMLElement,
+        parent: main,
         enableOverlay: true,
-    }) as import('../types/domain').RendererContextWithOverlay;
+    }) as RendererContextWithOverlay;
 
     // FastLED-style bloom: UnrealBloomPass with auto-bloom iris.
     const bloom = createBloomComposer({
@@ -203,8 +210,9 @@ export function init(container: HTMLElement) {
         const threshSq = threshold * threshold;
         let bestIdx = -1, bestDist = threshSq;
         for (let i = 0; i < screenmap_pts.length; i++) {
-            const dx = canvasX - screenmap_pts[i]![0];
-            const dy = canvasY - screenmap_pts[i]![1];
+            const pt = screenmap_pts[i] ?? [0, 0];
+            const dx = canvasX - pt[0];
+            const dy = canvasY - pt[1];
             const d = dx * dx + dy * dy;
             if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
@@ -221,13 +229,13 @@ export function init(container: HTMLElement) {
         if (idx >= 0) {
             if (idx !== tooltipLedIdx) {
                 tooltipLedIdx = idx;
-                const [ox, oy] = screenmap_pts_original[idx]!;
-                tooltip.textContent = `LED #${idx}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
+                const [ox, oy] = screenmap_pts_original[idx] ?? [0, 0];
+                tooltip.textContent = `LED #${String(idx)}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
             }
             const tx = Math.min(cx + 14, CANVAS_SIZE - tooltip.offsetWidth - 4);
             const ty = Math.max(cy - 28, 4);
-            tooltip.style.left = tx + 'px';
-            tooltip.style.top = ty + 'px';
+            tooltip.style.left = `${String(tx)}px`;
+            tooltip.style.top = `${String(ty)}px`;
             tooltip.style.opacity = '1';
         } else {
             tooltipLedIdx = -1;
@@ -266,14 +274,14 @@ export function init(container: HTMLElement) {
 
     // --- Screenmap data loading ---
     function load_screenmap_data(jsonBlob: Record<string, unknown>) {
-        screenmap_pts = parse_screenmap_data_json(jsonBlob as unknown as ScreenmapJson);
+        screenmap_pts = parse_screenmap_data_json(jsonBlob);
         if (screenmap_pts.length === 0) {
             console.error('Failed to load screenmap data');
             return;
         }
         screenmap_pts_original = screenmap_pts.map(([x, y]) => [x, y] as StripPoint);
         screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
-        stripInfo = parseScreenmapMultiStrip(jsonBlob as unknown as ScreenmapJson);
+        stripInfo = parseScreenmapMultiStrip(jsonBlob);
         buildPoints();
         _recomputeDemoBloomRange();
         applyScreenmapDiameter();
@@ -287,7 +295,7 @@ export function init(container: HTMLElement) {
     // slider with it. The user can still override via the slider. Maps that
     // declare no diameter keep the slider's current value.
     function applyScreenmapDiameter() {
-        const declared = resolveLedDiameter(stripInfo ? (stripInfo.strips as unknown as Array<Record<string, unknown>>) : null);
+        const declared = resolveLedDiameter(stripInfo ? (stripInfo.strips as unknown as Record<string, unknown>[]) : null);
         if (declared === null) return;
         // Canvas world units map 1:1 to CSS pixels (and PointsMaterial.size
         // is in CSS pixels), so no pixelRatio term here.
@@ -301,7 +309,7 @@ export function init(container: HTMLElement) {
 
     function stopVideoStream() {
         if (videoReader) {
-            videoReader.cancel().catch(() => {});
+            void videoReader.cancel().catch((_e: unknown) => { /* ignore cancel errors */ });
             videoReader = null;
         }
         videoBuffer = new Uint8Array();
@@ -313,7 +321,7 @@ export function init(container: HTMLElement) {
             alert('Please choose a .json screenmap file.');
             return;
         }
-        file.text().then((text: string) => {
+        void file.text().then((text: string) => {
             // A new screenmap invalidates frames sized for the old LED count
             stopVideoStream();
             movie_frames.length = 0;
@@ -321,7 +329,7 @@ export function init(container: HTMLElement) {
             set_dom_btn_play(false);
             load_screenmap_data(JSON.parse(text) as Record<string, unknown>);
         }).catch((error: unknown) => {
-            alert(`Error reading screenmap file: ${error}`);
+            alert(`Error reading screenmap file: ${String(error)}`);
         });
     }
 
@@ -331,8 +339,8 @@ export function init(container: HTMLElement) {
             alert('Please choose a .rgb video file.');
             return;
         }
-        file.arrayBuffer().then(load_movie_data).catch((error: unknown) => {
-            alert(`Error reading video file: ${error}`);
+        void file.arrayBuffer().then(load_movie_data).catch((error: unknown) => {
+            alert(`Error reading video file: ${String(error)}`);
         });
     }
 
@@ -368,7 +376,7 @@ export function init(container: HTMLElement) {
     }, { signal });
 
     wireFileDropTarget({
-        target: main as HTMLElement,
+        target: main,
         onFile: (file) => {
             if (!file) return;
             if (fileHasExtension(file, ['.json'])) {
@@ -389,11 +397,11 @@ export function init(container: HTMLElement) {
                 return response.json();
             })
             .then((jsonBlob: Record<string, unknown>) => {
-                console.log('Screenmap data loaded successfully');
+                console.warn('Screenmap data loaded successfully');
                 load_screenmap_data(jsonBlob);
-                fetchAndLoadVideo();
+                void fetchAndLoadVideo();
             })
-            .catch((error: unknown) => console.error('Error loading JSON:', error));
+            .catch((error: unknown) => { console.error('Error loading JSON:', error); });
     }
 
     // --- Video streaming ---
@@ -402,8 +410,8 @@ export function init(container: HTMLElement) {
             const response = await fetch('/demo/video.rgb');
             if (!response.ok) throw new Error('Network response was not ok');
             if (!response.body) throw new Error('ReadableStream not supported');
-            videoReader = response.body.getReader() as ReadableStreamDefaultReader<Uint8Array>;
-            streamVideoData();
+            videoReader = response.body.getReader();
+            void streamVideoData();
         } catch (error) {
             console.error('Error loading video:', error);
         }
@@ -412,9 +420,10 @@ export function init(container: HTMLElement) {
     async function streamVideoData() {
         try {
             for (;;) {
-                const { done, value } = await videoReader!.read();
+                if (!videoReader) break;
+                const { done, value } = await videoReader.read();
                 if (done) {
-                    console.log('Finished streaming video data');
+                    console.warn('Finished streaming video data');
                     break;
                 }
                 const newBuffer = new Uint8Array(videoBuffer.length + value.length);
@@ -455,7 +464,7 @@ export function init(container: HTMLElement) {
         dom_btn_play.value = playing ? 'Pause' : 'Play';
     }
 
-    dom_btn_play.addEventListener('click', () => set_dom_btn_play(!playing), { signal });
+    dom_btn_play.addEventListener('click', () => { set_dom_btn_play(!playing); }, { signal });
 
     // --- Diameter slider ---
     const getDiameter = wireDiameterSlider({
@@ -476,7 +485,7 @@ export function init(container: HTMLElement) {
 
     // --- Download handlers ---
     dom_btn_download_screenmap.addEventListener('click', () => {
-        if (!screenmap_pts || screenmap_pts.length === 0) {
+        if (screenmap_pts.length === 0) {
             alert('No screenmap data available to download!');
             return;
         }
@@ -494,7 +503,7 @@ export function init(container: HTMLElement) {
     }, { signal });
 
     dom_btn_download_video.addEventListener('click', () => {
-        if (!movie_frames || movie_frames.length === 0) {
+        if (movie_frames.length === 0) {
             alert('No video data available to download!');
             return;
         }
@@ -519,7 +528,7 @@ export function init(container: HTMLElement) {
                 const blob = new Blob([JSON.stringify(jsonData, null)], { type: 'application/json' });
                 download_blob_as_file(blob, '16x16_serpentine.json');
             })
-            .catch((error: unknown) => console.error('Error loading 16x16 serpentine JSON:', error));
+            .catch((error: unknown) => { console.error('Error loading 16x16 serpentine JSON:', error); });
     }, { signal });
 
     // Initialize diameter to 16 on load
@@ -528,7 +537,6 @@ export function init(container: HTMLElement) {
 
     // --- Overlay drawing for LED connection visualization ---
     function drawOverlay() {
-        if (!overlayCtx) return;
         overlayCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
         if (!showLines || screenmap_pts.length === 0) return;
 
@@ -546,10 +554,10 @@ export function init(container: HTMLElement) {
         // Connecting lines with rainbow colors
         overlayCtx.lineWidth = 2;
         for (let i = 0; i < pts.length - 1; i++) {
-            const [x1, y1] = pts[i]!;
-            const [x2, y2] = pts[i + 1]!;
+            const [x1, y1] = pts[i] ?? [0, 0];
+            const [x2, y2] = pts[i + 1] ?? [0, 0];
             const hue = (120 + i * 2) % 360;
-            overlayCtx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+            overlayCtx.strokeStyle = `hsl(${String(hue)}, 100%, 50%)`;
             overlayCtx.beginPath();
             overlayCtx.moveTo(x1, y1);
             overlayCtx.lineTo(x2, y2);
@@ -560,18 +568,22 @@ export function init(container: HTMLElement) {
             }
         }
 
-        fillCircle(pts[0]![0], pts[0]![1], 8, 'rgba(0,255,0,1)');
-        if (pts.length > 1) fillCircle(pts[1]![0], pts[1]![1], 6, 'rgba(0,255,0,0.5)');
-        fillCircle(pts[pts.length - 1]![0], pts[pts.length - 1]![1], 8, 'rgba(255,0,0,1)');
+        const pt0 = pts[0] ?? [0, 0];
+        const pt1 = pts[1] ?? [0, 0];
+        const ptLast = pts[pts.length - 1] ?? [0, 0];
+        fillCircle(pt0[0], pt0[1], 8, 'rgba(0,255,0,1)');
+        if (pts.length > 1) fillCircle(pt1[0], pt1[1], 6, 'rgba(0,255,0,0.5)');
+        fillCircle(ptLast[0], ptLast[1], 8, 'rgba(255,0,0,1)');
         for (let i = 2; i < pts.length - 1; i++) {
-            fillCircle(pts[i]![0], pts[i]![1], 4, 'rgba(255,255,255,0.5)');
+            const pt = pts[i] ?? [0, 0];
+            fillCircle(pt[0], pt[1], 4, 'rgba(255,255,255,0.5)');
         }
 
-        const strip = (stripInfo && stripInfo.strips[0]) || { name: '', count: pts.length };
+        const strip = (stripInfo?.strips[0]) ?? { name: '', count: pts.length };
         const labels = stripStartEndLabels(strip, 0);
-        const items = [{ id: 'start:0', text: labels.start, anchorX: pts[0]![0], anchorY: pts[0]![1], color: 'rgba(0,255,0,1)', dotRadius: 4 }];
+        const items = [{ id: 'start:0', text: labels.start, anchorX: pt0[0], anchorY: pt0[1], color: 'rgba(0,255,0,1)', dotRadius: 4 }];
         if (labels.end) {
-            items.push({ id: 'end:0', text: labels.end, anchorX: pts[pts.length - 1]![0], anchorY: pts[pts.length - 1]![1], color: 'rgba(255,0,0,1)', dotRadius: 4 });
+            items.push({ id: 'end:0', text: labels.end, anchorX: ptLast[0], anchorY: ptLast[1], color: 'rgba(255,0,0,1)', dotRadius: 4 });
         }
         drawLabelItems(items, pts);
     }
@@ -580,11 +592,12 @@ export function init(container: HTMLElement) {
         if (!stripInfo) return;
         const strips = stripInfo.strips;
         const colors = getStripColors(strips.length);
-        const labelItems: Array<{ id: string; text: string; anchorX: number; anchorY: number; color: string; dotRadius: number }> = [];
+        const labelItems: { id: string; text: string; anchorX: number; anchorY: number; color: string; dotRadius: number }[] = [];
 
         overlayCtx.lineWidth = 2;
         for (let s = 0; s < strips.length; s++) {
-            const strip = strips[s]!;
+            const strip = strips[s];
+            if (!strip) continue;
             // Skip empty strips and strips that fall outside the available points
             if (strip.count <= 0) continue;
             if (strip.offset >= pts.length) continue;
@@ -596,8 +609,8 @@ export function init(container: HTMLElement) {
 
             // Draw connection lines within this strip
             for (let i = startIdx; i < endIdx; i++) {
-                const [x1, y1] = pts[i]!;
-                const [x2, y2] = pts[i + 1]!;
+                const [x1, y1] = pts[i] ?? [0, 0];
+                const [x2, y2] = pts[i + 1] ?? [0, 0];
                 overlayCtx.beginPath();
                 overlayCtx.moveTo(x1, y1);
                 overlayCtx.lineTo(x2, y2);
@@ -610,22 +623,26 @@ export function init(container: HTMLElement) {
             }
 
             // Draw LED circles for this strip
-            fillCircle(pts[startIdx]![0], pts[startIdx]![1], 8, color);
+            const ptStart = pts[startIdx] ?? [0, 0];
+            const ptEnd = pts[endIdx] ?? [0, 0];
+            fillCircle(ptStart[0], ptStart[1], 8, color);
             if (endIdx > startIdx) {
                 if (endIdx > startIdx + 1) {
-                    fillCircle(pts[startIdx + 1]![0], pts[startIdx + 1]![1], 6, color);
+                    const ptStart1 = pts[startIdx + 1] ?? [0, 0];
+                    fillCircle(ptStart1[0], ptStart1[1], 6, color);
                 }
-                fillCircle(pts[endIdx]![0], pts[endIdx]![1], 8, color);
+                fillCircle(ptEnd[0], ptEnd[1], 8, color);
             }
             for (let i = startIdx + 2; i < endIdx; i++) {
-                fillCircle(pts[i]![0], pts[i]![1], 4, color);
+                const pt = pts[i] ?? [0, 0];
+                fillCircle(pt[0], pt[1], 4, color);
             }
 
             // Label start/end of each strip (single label for 1-LED strips)
             const labels = stripStartEndLabels({ name: strip.name, count: endIdx - startIdx + 1 }, s);
-            labelItems.push({ id: 'start:' + s, text: labels.start, anchorX: pts[startIdx]![0], anchorY: pts[startIdx]![1], color, dotRadius: 4 });
+            labelItems.push({ id: `start:${String(s)}`, text: labels.start, anchorX: ptStart[0], anchorY: ptStart[1], color, dotRadius: 4 });
             if (labels.end) {
-                labelItems.push({ id: 'end:' + s, text: labels.end, anchorX: pts[endIdx]![0], anchorY: pts[endIdx]![1], color, dotRadius: 4 });
+                labelItems.push({ id: `end:${String(s)}`, text: labels.end, anchorX: ptEnd[0], anchorY: ptEnd[1], color, dotRadius: 4 });
             }
         }
         drawLabelItems(labelItems, pts);
@@ -633,7 +650,7 @@ export function init(container: HTMLElement) {
 
     const labelRenderer = createLabelRenderer();
 
-    function drawLabelItems(items: Array<{ id: string; text: string; anchorX: number; anchorY: number; color: string; dotRadius?: number }>, pts: StripPoint[]) {
+    function drawLabelItems(items: { id: string; text: string; anchorX: number; anchorY: number; color: string; dotRadius?: number }[], pts: StripPoint[]) {
         labelRenderer.draw(overlayCtx, items, {
             font: '12px sans-serif',
             textColor: 'white',
@@ -707,7 +724,7 @@ export function init(container: HTMLElement) {
         ac.abort();
         animLoop.stop();
         if (videoReader) {
-            videoReader.cancel().catch(() => {});
+            void videoReader.cancel().catch((_e: unknown) => { /* ignore cancel errors */ });
         }
         if (pointsMesh) {
             scene.remove(pointsMesh);

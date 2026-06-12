@@ -53,7 +53,7 @@ function createGrid(cellSize: number) {
         const y1 = Math.floor((box.y + box.h) / cellSize);
         for (let cy = y0; cy <= y1; cy++) {
             for (let cx = x0; cx <= x1; cx++) {
-                fn(cx + ',' + cy);
+                fn(`${String(cx)},${String(cy)}`);
             }
         }
     }
@@ -132,12 +132,11 @@ function makePlacement(label: LabelAnchorInput, box: Box, displacement: number, 
 
 function runLayout(labels: LabelAnchorInput[], opts: ResolvedLayoutOptions, preferredSlot: Map<string, number>): LabelPlacement[] {
     const { padding, ringSlots, ringSteps, baseRadius, radiusStep, canvasBounds, obstacles, seedSlots } = opts;
-    const leaderThreshold = opts.leaderThreshold !== null && opts.leaderThreshold !== undefined
-        ? opts.leaderThreshold : 1.2 * baseRadius;
+    const leaderThreshold = opts.leaderThreshold ?? 1.2 * baseRadius;
 
     // Priority desc, then stable on id, so output is deterministic.
     const order = [...labels].sort((a, b) =>
-        ((b.priority || 0) - (a.priority || 0)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+        ((b.priority ?? 0) - (a.priority ?? 0)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
     const cell = Math.max(8, median(order.map((l) => Math.max(l.w, l.h))));
     const grid = createGrid(cell);
@@ -154,7 +153,7 @@ function runLayout(labels: LabelAnchorInput[], opts: ResolvedLayoutOptions, pref
 
     const byId = new Map<string, LabelPlacement>();
     for (const label of order) {
-        const startSlot = seedSlots ? (preferredSlot.get(label.id) || 0) : 0;
+        const startSlot = seedSlots ? (preferredSlot.get(label.id) ?? 0) : 0;
         let clean: Candidate | null = null;        // no hard overlaps, no soft overlaps
         let labelClean: Candidate | null = null;   // no hard overlaps (may occlude obstacles)
         let best: Candidate | null = null;         // fewest hard overlaps (degradation fallback)
@@ -174,13 +173,13 @@ function runLayout(labels: LabelAnchorInput[], opts: ResolvedLayoutOptions, pref
                 const candidate: Candidate = { box, padded, slot, displacement: r, hard };
                 if (best === null || hard < best.hard) best = candidate;
                 if (hard === 0) {
-                    if (labelClean === null) labelClean = candidate;
+                    labelClean ??= candidate;
                     if (soft === 0) { clean = candidate; break; }
                 }
             }
         }
 
-        const pick = clean || labelClean;
+        const pick = clean ?? labelClean;
         if (pick) {
             grid.insert(pick.padded, true);
             preferredSlot.set(label.id, pick.slot);
@@ -194,7 +193,11 @@ function runLayout(labels: LabelAnchorInput[], opts: ResolvedLayoutOptions, pref
     }
 
     // Return in input order so consumers can zip with their own arrays.
-    return labels.map((l) => byId.get(l.id)!);
+    return labels.map((l) => {
+        const p = byId.get(l.id);
+        if (!p) throw new Error(`runLayout: missing placement for label id "${l.id}"`);
+        return p;
+    });
 }
 
 interface SnapshotEntry { id: string; anchorX: number; anchorY: number; w: number; h: number; }
@@ -202,11 +205,16 @@ interface SnapshotEntry { id: string; anchorX: number; anchorY: number; w: numbe
 // True when `labels` is the previous input rigidly translated by a constant
 // (dx, dy) — same ids in the same order, same box sizes.
 function detectTranslation(prev: SnapshotEntry[] | null, labels: LabelAnchorInput[]): { dx: number; dy: number } | null {
-    if (!prev || prev.length !== labels.length || labels.length === 0) return null;
-    const dx = labels[0]!.anchorX - prev[0]!.anchorX;
-    const dy = labels[0]!.anchorY - prev[0]!.anchorY;
+    if (prev?.length !== labels.length || labels.length === 0) return null;
+    const l0 = labels[0];
+    const p0 = prev[0];
+    if (!l0 || !p0) return null;
+    const dx = l0.anchorX - p0.anchorX;
+    const dy = l0.anchorY - p0.anchorY;
     for (let i = 0; i < labels.length; i++) {
-        const a = prev[i]!, b = labels[i]!;
+        const a = prev[i];
+        const b = labels[i];
+        if (!a || !b) return null;
         if (a.id !== b.id || a.w !== b.w || a.h !== b.h) return null;
         if (Math.abs((b.anchorX - a.anchorX) - dx) > EPS) return null;
         if (Math.abs((b.anchorY - a.anchorY) - dy) > EPS) return null;

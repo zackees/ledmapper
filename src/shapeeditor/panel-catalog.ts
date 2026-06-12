@@ -105,7 +105,7 @@ function transformPoints(pts: [number, number][], rotation: RotationDeg | undefi
  * @returns {Array<[number,number]>}
  */
 export function generatePanelPoints(entry: CatalogEntry, opts: PanelOpts = {}): [number, number][] {
-    const merged: PanelOpts = { ...(entry.defaults ?? {}), ...opts };
+    const merged: PanelOpts = { ...entry.defaults, ...opts };
     const spacing = typeof merged.spacing === 'number' ? merged.spacing : 1;
     let pts: [number, number][];
     if (entry.kind === 'matrix') {
@@ -114,10 +114,8 @@ export function generatePanelPoints(entry: CatalogEntry, opts: PanelOpts = {}): 
         // Ring radius scales with spacing for a reasonable footprint.
         const radius = spacing * (entry.count ?? 1) / (2 * Math.PI);
         pts = generateRing(entry.count ?? 1, radius);
-    } else if (entry.kind === 'strip') {
-        pts = generateStrip(entry.count ?? 1, spacing);
     } else {
-        pts = [];
+        pts = generateStrip(entry.count ?? 1, spacing);
     }
     return transformPoints(pts, merged.rotation, merged.flipH, merged.flipV);
 }

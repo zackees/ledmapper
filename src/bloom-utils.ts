@@ -15,7 +15,7 @@
  * Kept free of DOM/Three.js imports so node:test can load it directly.
  */
 
-import type { BloomAutoRangeInput, BloomRange, BloomParams, FrameBrightnessResult, ParsedStrip } from './types/domain';
+import type { BloomAutoRangeInput, BloomRange, BloomParams, FrameBrightnessResult } from './types/domain';
 
 export const BLOOM_MIN_STRENGTH = 0.5;
 export const BLOOM_MAX_STRENGTH = 16;
@@ -113,13 +113,13 @@ export function computeAutoBloomRange({
 }
 
 export function resolveLedDiameter(
-    strips: Array<Record<string, unknown>> | null | undefined,
+    strips: Record<string, unknown>[] | null | undefined,
     fallback: number | null = null,
 ): number | null {
     let max = 0;
     if (strips) {
         for (const s of strips) {
-            if (s && typeof s.diameter === 'number' && Number.isFinite(s.diameter) && s.diameter > max) {
+            if (typeof s.diameter === 'number' && Number.isFinite(s.diameter) && s.diameter > max) {
                 max = s.diameter;
             }
         }
@@ -141,7 +141,7 @@ export function computeFitScale(rawPts: number[][], fittedPts: number[][]): numb
         }
         return Math.max(xmax - xmin, ymax - ymin);
     };
-    if (!rawPts || !fittedPts || rawPts.length < 2 || fittedPts.length < 2) return 1;
+    if (rawPts.length < 2 || fittedPts.length < 2) return 1;
     const rawExtent = extent(rawPts);
     const fittedExtent = extent(fittedPts);
     if (!(rawExtent > 0) || !(fittedExtent > 0)) return 1;

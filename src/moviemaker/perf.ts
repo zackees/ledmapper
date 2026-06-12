@@ -17,5 +17,5 @@ export function perfCount(name: keyof PerfCounters): void {
     if (!perfEnabled) return;
     const p: PerfCounters = window.__perf ?? { transformRebuilds: 0, positionUploads: 0, ringLayerRebuilds: 0 };
     window.__perf = p;
-    p[name] = (p[name] || 0) + 1;
+    p[name] = (p[name] ?? 0) + 1;
 }

@@ -8,7 +8,7 @@ import {
     DynamicDrawUsage,
     PointsMaterial,
     Points,
-    Texture,
+    type Texture,
 } from 'three';
 
 import type { RendererContext, RendererContextWithOverlay, PointsMeshResult } from './types/domain';
@@ -18,7 +18,8 @@ export function createCircleTexture(size: number): CanvasTexture {
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('createCircleTexture: 2d context unavailable');
     ctx.beginPath();
     ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
     ctx.fillStyle = 'white';
@@ -40,7 +41,7 @@ export function createRendererAndScene({ width, height, parent, clearColor = 0x0
 
     const wrapper = document.createElement('div');
     wrapper.style.position = 'relative';
-    wrapper.style.width = width + 'px';
+    wrapper.style.width = `${String(width)}px`;
     wrapper.style.margin = '0 auto';
     parent.appendChild(wrapper);
 
@@ -53,7 +54,8 @@ export function createRendererAndScene({ width, height, parent, clearColor = 0x0
         overlayCanvas.height = height;
         overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;';
         wrapper.appendChild(overlayCanvas);
-        const overlayCtx = overlayCanvas.getContext('2d')!;
+        const overlayCtx = overlayCanvas.getContext('2d');
+        if (!overlayCtx) throw new Error('createRendererAndScene: overlay 2d context unavailable');
         return { renderer, scene, camera, wrapper, overlayCanvas, overlayCtx };
     }
 

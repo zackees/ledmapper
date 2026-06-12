@@ -19,7 +19,8 @@ export interface ScreenmapStrip {
 
 /** Top-level screenmap JSON object. */
 export interface ScreenmapJson {
-    map: Record<string, ScreenmapStrip>;
+    /** Strip data keyed by strip name. Optional only to allow graceful validation of untrusted JSON. */
+    map?: Record<string, ScreenmapStrip>;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,16 +255,14 @@ export interface ScreenmapPresetManifestEntry {
 // ---------------------------------------------------------------------------
 
 /** Common signature for all tool entry points. */
-export type ToolInitFn = (container: HTMLElement) => (() => void) | void;
+export type ToolInitFn = (container: HTMLElement) => (() => void) | undefined;
 
 // ---------------------------------------------------------------------------
 // Debug globals interfaces
 // ---------------------------------------------------------------------------
 
 /** Perf counters exposed on window.__perf */
-export interface PerfCounters {
-    [key: string]: number;
-}
+export type PerfCounters = Record<string, number>;
 
 /** Moviemaker debug hooks exposed on window.__mmDebug */
 export interface MoviemakerDebugHooks {
