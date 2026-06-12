@@ -74,13 +74,20 @@ export const COPY_FRAG = `
 /**
  * Fragment shader for the LED gather pass.
  * Each texel of the (small) gather target corresponds to one LED. tPositions
- * holds the LED's source UV in .rg and a validity flag in .a (0 = LED is
- * out of bounds, output transparent black so the CPU can tell them apart).
+ * holds the LED's screenmap-local position in .rg (uploaded once per
+ * screenmap) and a validity flag in .a (0 = padding texel past the LED
+ * count). Rotate/zoom/translate are applied here as uniforms so dragging the
+ * shape never re-uploads the position texture. Out-of-bounds LEDs output
+ * transparent black so the CPU can tell them apart.
  * @type {string}
  */
 export const GATHER_FRAG = `
     uniform sampler2D tPositions;
     uniform sampler2D tSource;
+    uniform vec2 uResolution;
+    uniform vec2 uTranslate;
+    uniform float uZoom;
+    uniform float uRotate;
     varying vec2 vUv;
     void main() {
         vec4 pos = texture2D(tPositions, vUv);
@@ -88,6 +95,18 @@ export const GATHER_FRAG = `
             gl_FragColor = vec4(0.0);
             return;
         }
-        gl_FragColor = vec4(texture2D(tSource, pos.rg).rgb, 1.0);
+        float c = cos(uRotate);
+        float s = sin(uRotate);
+        vec2 p = vec2(pos.r * c - pos.g * s, pos.r * s + pos.g * c) * uZoom + uTranslate;
+        // floor(p + 0.5) replicates the CPU path's Math.round pixel snap so
+        // sampled colors are identical to the old baked-coordinate path.
+        vec2 px = floor(p + 0.5);
+        if (px.x < 0.0 || px.x >= uResolution.x || px.y < 0.0 || px.y >= uResolution.y) {
+            gl_FragColor = vec4(0.0);
+            return;
+        }
+        vec2 uv = vec2((px.x + 0.5) / uResolution.x,
+                       (uResolution.y - 1.0 - px.y + 0.5) / uResolution.y);
+        gl_FragColor = vec4(texture2D(tSource, uv).rgb, 1.0);
     }
 `;
