@@ -35,6 +35,7 @@ import { Selection } from './selection.js';
 import { PANEL_CATALOG, getCatalogEntry, generatePanelPoints } from './panel-catalog.js';
 import { snapToGrid } from './grid-snap.js';
 import { hintTextFor } from './hints.js';
+import { parsePastedScreenmap, planPasteMerge } from './paste-parse.js';
 import templateHtml from './template.html?raw';
 export { default as css } from './shapeeditor.css?url';
 
@@ -329,6 +330,17 @@ export function init(container) {
             const clientY = rect.top + (cy / canvasH) * rect.height;
             return { clientX, clientY, canvasX: cx, canvasY: cy };
         },
+        // Paste flow hooks (Phase 3)
+        pasteScreenmapText: (text) => _enterPasteFromText(text || ''),
+        getPasteState: () => (pasteState
+            ? { count: pasteState.strips.length, names: pasteState.strips.map((s) => s.name) }
+            : null),
+        commitPasteAt: (canvasX, canvasY) => _commitPasteAt(canvasX, canvasY),
+        cancelPaste: () => _cancelPaste(),
+        copySelectedStrip: () => _copySelectedStripToClipboard(),
+        // Insert dialog hooks (Phase 4)
+        openInsertDialog: () => _openInsertDialog(),
+        submitInsertDialog: (opts) => _submitInsertDialog(opts),
         // Drive a synthetic L-drag from (flatIdx) by (dxClient, dyClient) client px.
         simulateLedDrag: (flatIdx, dxClient, dyClient, opts) => {
             const pos = window.__shapeeditorDebug.getLedCanvasPos(flatIdx);
@@ -598,6 +610,7 @@ export function init(container) {
     let ctxLoadImageInput;
     let ctxFileOps, ctxFileOpsSep;
     let ctxBtnDelete, ctxBtnInsertBetween, ctxBtnInsertFwd, ctxBtnInsertBack;
+    let ctxBtnCopyStrip;
     let hintStripTextEl, hintStripHelpBtn;
     let _autoOpenHelpScheduled = false;
     let highlightedEdgeIdx = -1; // edge index highlighted for "insert between"
@@ -796,6 +809,8 @@ export function init(container) {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.newValue });
         } else if (action.type === 'strip-translate') {
             _applyStripTranslate(action.stripIdx, action.sdx, action.sdy);
+        } else if (action.type === 'paste-strips') {
+            _doPasteStrips(action);
         } else if (action.type === 'restore-backup') {
             if (typeof action.afterJson === 'string') {
                 load_screenmap_data(action.afterJson);
@@ -839,6 +854,8 @@ export function init(container) {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.oldValue });
         } else if (action.type === 'strip-translate') {
             _applyStripTranslate(action.stripIdx, -action.sdx, -action.sdy);
+        } else if (action.type === 'paste-strips') {
+            _undoPasteStrips(action);
         } else if (action.type === 'restore-backup') {
             if (typeof action.beforeJson === 'string' && action.beforeJson.length > 0) {
                 load_screenmap_data(action.beforeJson);
@@ -867,6 +884,7 @@ export function init(container) {
             || action.type === 'strip-reverse'
             || action.type === 'strip-offset'
             || action.type === 'strip-translate'
+            || action.type === 'paste-strips'
         );
     }
 
@@ -1090,6 +1108,11 @@ export function init(container) {
         ctxBtnInsertBack.style.display = showShiftInsert ? 'block' : 'none';
         ctxBtnInsertBack.disabled = !canInsert;
         ctxBtnInsertBack.style.opacity = canInsert ? '1' : '0.4';
+        // Copy strip only when a strip is selected
+        if (ctxBtnCopyStrip) {
+            const sIdx = selection.getStripIdx();
+            ctxBtnCopyStrip.style.display = (sIdx !== null && sIdx >= 0) ? 'block' : 'none';
+        }
         // Position — keep on screen
         ctxMenu.style.left = clientX + 'px';
         ctxMenu.style.top = clientY + 'px';
@@ -1543,6 +1566,7 @@ export function init(container) {
         // ── Discoverability entry points ──
         makeCtxBtn('Insert panel…', 'insert-panel');
         makeCtxBtn('Paste screenmap', 'paste-screenmap');
+        ctxBtnCopyStrip = makeCtxBtn('Copy strip', 'copy-strip');
 
         // ── Point operations ──
         ctxBtnDelete = makeCtxBtn('Delete Point', 'delete');
@@ -1599,9 +1623,11 @@ export function init(container) {
             } else if (action === 'insert-back') {
                 insertShiftBack();
             } else if (action === 'insert-panel') {
-                _openInsertPanelStub();
+                _openInsertDialog();
             } else if (action === 'paste-screenmap') {
-                _toastInfo('Paste coming soon');
+                _pasteFromClipboardAPI();
+            } else if (action === 'copy-strip') {
+                _copySelectedStripToClipboard();
             } else if (action === 'kbd-help') {
                 _openHelpOverlay();
             }
@@ -1680,8 +1706,8 @@ export function init(container) {
                     && stripInfo.totalCount <= 1),
             placing: !!placingState,
             placingLabel: placingState && placingState.entry ? placingState.entry.label : '',
-            pasting: false,
-            pastingCount: 0,
+            pasting: !!pasteState,
+            pastingCount: pasteState ? pasteState.strips.length : 0,
             pointEditMode: pointEditStripIdx !== null,
             pointEditStripName,
             selectedStripName,
@@ -1762,19 +1788,6 @@ export function init(container) {
                 }
             } catch { /* persistence is best-effort */ }
         } catch { /* swal may fail in headless edge cases */ }
-    }
-
-    // Phase 4 will replace this with a SweetAlert2 modal; for now we open
-    // (and focus) the existing Add-Panel accordion so the user has a path
-    // to insert a panel.
-    function _openInsertPanelStub() {
-        const panel = container.querySelector('#panel_palette');
-        if (panel) {
-            panel.open = true;
-            try { panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { /* ignore */ }
-            const firstBtn = panel.querySelector('.panel-btn');
-            if (firstBtn) firstBtn.focus();
-        }
     }
 
     function _maybeAutoOpenHelpOnLaunch() {
@@ -2432,7 +2445,7 @@ export function init(container) {
             bgImageBBox = null;
         }
 
-        if (lastTransformedPts.length === 0) { ptsBBox = null; drawBgGizmoHandles(); drawRuler(); _drawPlacingGhost(); return; }
+        if (lastTransformedPts.length === 0) { ptsBBox = null; drawBgGizmoHandles(); drawRuler(); _drawPlacingGhost(); _drawPasteGhost(); return; }
 
         const pts = lastTransformedPts.map(([x, y]) => toCanvasCoords(x, y));
 
@@ -2665,6 +2678,7 @@ export function init(container) {
         drawBgGizmoHandles();
         drawRuler();
         _drawPlacingGhost();
+        _drawPasteGhost();
     }
 
     function fillCircle(x, y, diameter, color) {
@@ -3157,6 +3171,10 @@ export function init(container) {
             _cancelPlacing();
             return;
         }
+        if (pasteState) {
+            _cancelPaste();
+            return;
+        }
         // If right-click was used for zoom dragging, skip the context menu
         const wasMoved = rightClickMoved;
         rightClickMoved = false;
@@ -3204,6 +3222,22 @@ export function init(container) {
                 e.preventDefault();
                 const [cx, cy] = getCanvasCoords(e);
                 _commitPlacingAt(cx, cy);
+                return;
+            }
+            return;
+        }
+
+        // Paste-pending ghost commit / cancel
+        if (pasteState) {
+            if (e.button === 2) {
+                e.preventDefault();
+                _cancelPaste();
+                return;
+            }
+            if (e.button === 0) {
+                e.preventDefault();
+                const [cx, cy] = getCanvasCoords(e);
+                _commitPasteAt(cx, cy);
                 return;
             }
             return;
@@ -3382,6 +3416,12 @@ export function init(container) {
         if (placingState) {
             const [cx, cy] = getCanvasCoords(e);
             _updateGhostFromCanvas(cx, cy);
+            overlayCanvas.style.cursor = 'crosshair';
+            return;
+        }
+        if (pasteState) {
+            const [cx, cy] = getCanvasCoords(e);
+            _updatePasteGhostFromCanvas(cx, cy);
             overlayCanvas.style.cursor = 'crosshair';
             return;
         }
@@ -3762,6 +3802,7 @@ export function init(container) {
         // Escape: cancel panel placement, dismiss bg delete confirm, exit point-edit, or deselect
         if (e.key === 'Escape') {
             if (placingState) { _cancelPlacing(); e.preventDefault(); return; }
+            if (pasteState) { _cancelPaste(); e.preventDefault(); return; }
             if (deleteBgConfirmEl) { dismissDeleteBgConfirm(); e.preventDefault(); return; }
             if (pointEditStripIdx !== null) {
                 pointEditStripIdx = null;
@@ -3782,17 +3823,28 @@ export function init(container) {
             e.preventDefault();
             return;
         }
-        // I → insert panel stub
+        // I → insert panel dialog
         if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            _openInsertPanelStub();
+            _openInsertDialog();
             e.preventDefault();
             return;
         }
-        // Ctrl+V → paste stub
+        // Ctrl+V → paste screenmap. The document-level 'paste' handler is the
+        // primary path; we also try navigator.clipboard.readText() as a
+        // best-effort fallback (works in secure contexts with permission).
         if (e.key === 'v' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
-            _toastInfo('Paste coming soon');
+            _pasteFromClipboardAPI();
             e.preventDefault();
             return;
+        }
+        // Ctrl+C → copy selected strip
+        if (e.key === 'c' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+            const sIdx = selection.getStripIdx();
+            if (sIdx !== null && sIdx >= 0) {
+                _copySelectedStripToClipboard();
+                e.preventDefault();
+                return;
+            }
         }
     }, { signal });
 
@@ -4099,6 +4151,11 @@ export function init(container) {
     /** @type {null | { entry:object, opts:object, localPts:Array<[number,number]>, ghostWorld:[number,number] | null }} */
     let placingState = null;
 
+    // Paste-pending state: parsed strips ghost together around their centroid
+    // following the cursor; L-click commits, Esc/R-click cancels.
+    /** @type {null | { strips:Array<{name:string,points:Array<[number,number]>,diameter?:number,video_offset:number,offsetsLocal:Array<[number,number]>}>, ghostWorld:[number,number]|null, totalCount:number }} */
+    let pasteState = null;
+
     const dom_panel_buttons = container.querySelector('#panel_catalog_buttons');
     const dom_pp_wiring = container.querySelector('#pp_wiring');
     const dom_pp_corner = container.querySelector('#pp_corner');
@@ -4109,6 +4166,11 @@ export function init(container) {
     const dom_pp_snap = container.querySelector('#pp_snap');
     const dom_pp_grid = container.querySelector('#pp_grid');
     const dom_pp_status = container.querySelector('#pp_status');
+
+    const dom_pp_open_dialog = container.querySelector('#pp_open_dialog');
+    if (dom_pp_open_dialog) {
+        dom_pp_open_dialog.addEventListener('click', () => { _openInsertDialog(); }, { signal });
+    }
 
     if (dom_panel_buttons) {
         for (const entry of PANEL_CATALOG) {
@@ -4375,6 +4437,520 @@ export function init(container) {
         renderStripsPanel();
         setNeedsGeometryUpdate();
         return name;
+    }
+
+    // ── Paste-pending flow ────────────────────────────────────────────────
+
+    function _enterPasteFromText(text) {
+        const parsed = parsePastedScreenmap(text);
+        if (!parsed) {
+            _toastInfo("Clipboard didn't look like a screenmap");
+            return false;
+        }
+        // Cancel any in-flight placing so the modes don't overlap
+        if (placingState) _cancelPlacing();
+
+        const existingNames = new Set(stripStore.getStrips().map((s) => s.name));
+        const merged = planPasteMerge(parsed, existingNames, stripStore.getTotalCount());
+
+        // Compute centroid of the source points (in raw cm space).
+        let sx = 0, sy = 0, n = 0;
+        for (const s of merged) {
+            for (const p of s.points) { sx += p[0]; sy += p[1]; n++; }
+        }
+        if (n === 0) {
+            _toastInfo("Clipboard didn't look like a screenmap");
+            return false;
+        }
+        const cxRaw = sx / n, cyRaw = sy / n;
+
+        // Determine the cm-to-pixel scale to apply. If we have an existing
+        // screenmap, reuse its fitScale so pasted strips visually match.
+        // For an empty editor, defer; we'll initialise fitScale on commit.
+        const fs = (rawPts.length > 0 && fitScale > 0) ? fitScale : 1;
+        // Offsets in screenmap-pixel space, centred around (0,0)
+        const strips = merged.map((s) => {
+            const offsetsLocal = s.points.map((p) => [(p[0] - cxRaw) * fs, (p[1] - cyRaw) * fs]);
+            return { ...s, offsetsLocal };
+        });
+        const totalCount = merged.reduce((a, s) => a + s.points.length, 0);
+        pasteState = { strips, ghostWorld: null, totalCount };
+        overlayCanvas.style.cursor = 'crosshair';
+        _updateHintStrip();
+        setNeedsRender();
+        return true;
+    }
+
+    function _cancelPaste() {
+        if (!pasteState) return;
+        pasteState = null;
+        overlayCanvas.style.cursor = 'default';
+        _updateHintStrip();
+        setNeedsRender();
+    }
+
+    function _updatePasteGhostFromCanvas(cx, cy) {
+        if (!pasteState) return;
+        let [wx, wy] = _canvasToWorldPx(cx, cy);
+        if (dom_pp_snap && dom_pp_snap.checked) {
+            const gpx = _gridSizePx();
+            [wx, wy] = snapToGrid([wx, wy], gpx);
+        }
+        pasteState.ghostWorld = [wx, wy];
+        setNeedsRender();
+    }
+
+    function _drawPasteGhost() {
+        if (!pasteState || !pasteState.ghostWorld) return;
+        const ctx = overlayCtx;
+        const [wx, wy] = pasteState.ghostWorld;
+        ctx.save();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(168,85,247,0.9)';
+        ctx.fillStyle = 'rgba(168,85,247,0.4)';
+        for (const strip of pasteState.strips) {
+            // Polyline of this strip
+            ctx.beginPath();
+            for (let i = 0; i < strip.offsetsLocal.length; i++) {
+                const [ox, oy] = strip.offsetsLocal[i];
+                const [px, py] = toCanvasCoords(wx + ox, wy + oy);
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+            const r = Math.max(2, 0.25 * (fitScale > 0 ? fitScale : 1) * camZoom);
+            for (const [ox, oy] of strip.offsetsLocal) {
+                const [px, py] = toCanvasCoords(wx + ox, wy + oy);
+                ctx.beginPath();
+                ctx.arc(px, py, r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        // Crosshair at drop centroid
+        const [ocx, ocy] = toCanvasCoords(wx, wy);
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.beginPath();
+        ctx.moveTo(ocx - 6, ocy); ctx.lineTo(ocx + 6, ocy);
+        ctx.moveTo(ocx, ocy - 6); ctx.lineTo(ocx, ocy + 6);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function _commitPasteAt(cx, cy) {
+        if (!pasteState) return;
+        let [wx, wy] = _canvasToWorldPx(cx, cy);
+        if (dom_pp_snap && dom_pp_snap.checked) {
+            const gpx = _gridSizePx();
+            [wx, wy] = snapToGrid([wx, wy], gpx);
+        }
+
+        if (_isEmptyScreenmap()) {
+            _initFreshScreenmapForPanel();
+            // After fresh init, fitScale is freshly chosen. Recompute the
+            // strips' offsetsLocal in that new scale.
+            const fs = fitScale > 0 ? fitScale : 1;
+            // Find raw centroid again to keep ghost-centred layout consistent.
+            let sxR = 0, syR = 0, n = 0;
+            for (const s of pasteState.strips) {
+                for (const p of s.points) { sxR += p[0]; syR += p[1]; n++; }
+            }
+            const cxRaw = n ? sxR / n : 0;
+            const cyRaw = n ? syR / n : 0;
+            for (const s of pasteState.strips) {
+                s.offsetsLocal = s.points.map((p) => [(p[0] - cxRaw) * fs, (p[1] - cyRaw) * fs]);
+            }
+        }
+
+        const fs = fitScale > 0 ? fitScale : 1;
+        // raw -> screenmap conversion offset (matches _doPanelPlace's logic)
+        let offX = 0, offY = 0;
+        if (rawPts.length > 0) {
+            offX = rawPts[0][0] * fs - screenmap_pts[0][0];
+            offY = rawPts[0][1] * fs - screenmap_pts[0][1];
+        }
+
+        // Rebuild the "addedStrips" descriptor with screenmap-coord points.
+        // Re-resolve unique names AGAIN here in case the editor changed
+        // between parse-time and commit-time (e.g. an undo happened while
+        // paste was pending).
+        const existingNames = new Set(stripStore.getStrips().map((s) => s.name));
+        const addedDescriptors = [];
+        const base = stripStore.getTotalCount();
+        let running = 0;
+        for (const s of pasteState.strips) {
+            const name = _uniqueNameAgainst(s.name, existingNames);
+            existingNames.add(name);
+            const sm = s.offsetsLocal.map(([ox, oy]) => [wx + ox, wy + oy]);
+            const raw = sm.map(([smx, smy]) => [(smx + offX) / fs, (smy + offY) / fs]);
+            addedDescriptors.push({
+                name,
+                screenmapPts: sm,
+                rawPts: raw,
+                diameter: typeof s.diameter === 'number' ? s.diameter : (typeof origDiameter === 'number' ? origDiameter : 0.5),
+                video_offset: base + running,
+            });
+            running += sm.length;
+        }
+
+        const action = { type: 'paste-strips', strips: addedDescriptors };
+        _doPasteStrips(action);
+        pushUndo(action);
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+        pasteState = null;
+        overlayCanvas.style.cursor = 'default';
+        _updateHintStrip();
+        // Select the first pasted strip for discoverability
+        if (action.strips.length > 0 && stripInfo) {
+            for (let i = stripInfo.strips.length - 1; i >= 0; i--) {
+                if (stripInfo.strips[i].name === action.strips[0].name) {
+                    selection.selectStrip(i);
+                    break;
+                }
+            }
+        }
+    }
+
+    function _uniqueNameAgainst(baseName, used) {
+        if (!used.has(baseName)) return baseName;
+        let n = 2;
+        while (used.has(`${baseName} (${n})`)) n++;
+        return `${baseName} (${n})`;
+    }
+
+    function _doPasteStrips(action) {
+        // Append every strip atomically. Identical scheme to _doPanelPlace
+        // (append to flat arrays + stripStore.addStrip), but for many at once.
+        for (const desc of action.strips) {
+            const insertAt = screenmap_pts.length;
+            for (let i = 0; i < desc.screenmapPts.length; i++) {
+                screenmap_pts.push([desc.screenmapPts[i][0], desc.screenmapPts[i][1]]);
+                rawPts.push([desc.rawPts[i][0], desc.rawPts[i][1]]);
+            }
+            stripStore.addStrip({
+                name: desc.name,
+                points: desc.rawPts,
+                diameter: desc.diameter,
+                video_offset: desc.video_offset,
+            });
+            desc._insertAt = insertAt;
+            desc._count = desc.screenmapPts.length;
+        }
+        stripInfo = stripStore.get();
+        if (origWidth === 0 && origHeight === 0 && rawPts.length > 0) {
+            let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+            for (const [x, y] of rawPts) {
+                if (x < xmin) xmin = x; if (x > xmax) xmax = x;
+                if (y < ymin) ymin = y; if (y > ymax) ymax = y;
+            }
+            origWidth = xmax - xmin;
+            origHeight = ymax - ymin;
+        }
+    }
+
+    function _undoPasteStrips(action) {
+        if (!stripInfo) return;
+        // Walk added strips in reverse order; locate each by name (most recent
+        // additions are at the end) and remove from both flat arrays + store.
+        for (let i = action.strips.length - 1; i >= 0; i--) {
+            const desc = action.strips[i];
+            const strips = stripInfo.strips;
+            let stripIdx = -1;
+            for (let k = strips.length - 1; k >= 0; k--) {
+                if (strips[k].name === desc.name) { stripIdx = k; break; }
+            }
+            if (stripIdx < 0) continue;
+            const strip = strips[stripIdx];
+            screenmap_pts.splice(strip.offset, strip.count);
+            rawPts.splice(strip.offset, strip.count);
+            stripStore.removeStrip(stripIdx);
+            selection.onStripRemove(stripIdx);
+        }
+        selectedIdx = -1;
+        stripInfo = stripStore.get();
+    }
+
+    async function _pasteFromClipboardAPI() {
+        try {
+            if (!navigator.clipboard || !navigator.clipboard.readText) {
+                _toastInfo('Clipboard read unavailable — try Ctrl+V');
+                return;
+            }
+            const text = await navigator.clipboard.readText();
+            _enterPasteFromText(text || '');
+        } catch {
+            _toastInfo("Clipboard didn't look like a screenmap");
+        }
+    }
+
+    function _copySelectedStripToClipboard() {
+        const sIdx = selection.getStripIdx();
+        if (sIdx === null || sIdx < 0) return;
+        const strips = stripStore.getStrips();
+        if (sIdx >= strips.length) return;
+        const s = strips[sIdx];
+        const x = [], y = [];
+        for (let i = s.offset; i < s.offset + s.count; i++) {
+            x.push(+rawPts[i][0].toFixed(4));
+            y.push(+rawPts[i][1].toFixed(4));
+        }
+        const d = typeof s.diameter === 'number' ? s.diameter : (parseFloat(dom_txt_diameter.value) || 0.25);
+        const json = JSON.stringify({ map: { [s.name]: { x, y, diameter: d } } }, null, 2);
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(json).then(
+                    () => _toastSuccess(`Copied "${s.name}" to clipboard`),
+                    () => _toastInfo('Copy failed — clipboard unavailable'),
+                );
+            } else {
+                _toastInfo('Copy failed — clipboard unavailable');
+            }
+        } catch {
+            _toastInfo('Copy failed — clipboard unavailable');
+        }
+    }
+
+    // Document-level paste handler — captures Ctrl+V across the page when
+    // focus is anywhere except an editable element. Works without the
+    // navigator.clipboard permission gate.
+    document.addEventListener('paste', (e) => {
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        const txt = (e.clipboardData && e.clipboardData.getData('text')) || '';
+        if (!txt) return;
+        if (_enterPasteFromText(txt)) {
+            e.preventDefault();
+        }
+    }, { signal });
+
+    // ── Insert Panel dialog (Phase 4) ─────────────────────────────────────
+
+    async function _openInsertDialog() {
+        try {
+            const Swal = (await import('sweetalert2')).default;
+            if (signal.aborted) return;
+
+            // Snapshot current accordion values for initial form state
+            const initial = {
+                catalogId: PANEL_CATALOG[0] ? PANEL_CATALOG[0].id : '',
+                wiring: dom_pp_wiring ? dom_pp_wiring.value : 'serpentine',
+                corner: dom_pp_corner ? dom_pp_corner.value : 'TL',
+                rotation: dom_pp_rotation ? dom_pp_rotation.value : '0',
+                flipH: dom_pp_flipH ? !!dom_pp_flipH.checked : false,
+                flipV: dom_pp_flipV ? !!dom_pp_flipV.checked : false,
+                spacing: dom_pp_spacing ? dom_pp_spacing.value : '1',
+                snap: dom_pp_snap ? !!dom_pp_snap.checked : true,
+                grid: dom_pp_grid ? dom_pp_grid.value : '1',
+            };
+
+            const catalogOptions = PANEL_CATALOG.map((e) => `<option value="${e.id}">${e.label}</option>`).join('');
+            const html = `
+                <div style="text-align:left;font:13px/1.4 'Outfit',system-ui,sans-serif;color:#e5e7eb;display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;">
+                    <label for="ins_catalog">Panel</label>
+                    <select id="ins_catalog" style="padding:3px;">${catalogOptions}</select>
+                    <label for="ins_wiring">Wiring</label>
+                    <select id="ins_wiring" style="padding:3px;">
+                        <option value="serpentine">Serpentine</option>
+                        <option value="progressive">Progressive</option>
+                    </select>
+                    <label for="ins_corner">Data In</label>
+                    <select id="ins_corner" style="padding:3px;">
+                        <option value="TL">TL</option><option value="TR">TR</option>
+                        <option value="BL">BL</option><option value="BR">BR</option>
+                    </select>
+                    <label for="ins_rotation">Rotate</label>
+                    <select id="ins_rotation" style="padding:3px;">
+                        <option value="0">0°</option><option value="90">90°</option>
+                        <option value="180">180°</option><option value="270">270°</option>
+                    </select>
+                    <label>Flips</label>
+                    <div>
+                        <label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;"><input id="ins_flipH" type="checkbox"> H</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;"><input id="ins_flipV" type="checkbox"> V</label>
+                    </div>
+                    <label for="ins_spacing">Spacing</label>
+                    <input id="ins_spacing" type="number" step="0.1" min="0.01" style="padding:3px;">
+                    <label>Snap / Grid</label>
+                    <div>
+                        <label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;"><input id="ins_snap" type="checkbox"> Snap</label>
+                        <input id="ins_grid" type="number" step="0.1" min="0.01" style="padding:3px;width:80px;">
+                    </div>
+                </div>
+                <div style="margin-top:12px;display:flex;justify-content:center;">
+                    <canvas id="ins_preview" width="320" height="200" style="background:#0d0d0d;border:1px solid #333;border-radius:4px;"></canvas>
+                </div>
+            `;
+
+            const res = await Swal.fire({
+                title: 'Insert Panel',
+                html,
+                width: 480,
+                background: '#1a1a1a',
+                color: '#e5e7eb',
+                showCancelButton: true,
+                showDenyButton: true,
+                cancelButtonText: 'Cancel',
+                denyButtonText: 'Place…',
+                confirmButtonText: 'Insert at center',
+                focusConfirm: false,
+                didOpen: () => {
+                    const $ = (id) => document.getElementById(id);
+                    const catalog = $('ins_catalog');
+                    const wiring = $('ins_wiring');
+                    const corner = $('ins_corner');
+                    const rotation = $('ins_rotation');
+                    const flipH = $('ins_flipH');
+                    const flipV = $('ins_flipV');
+                    const spacing = $('ins_spacing');
+                    const snap = $('ins_snap');
+                    const grid = $('ins_grid');
+                    const preview = $('ins_preview');
+
+                    if (catalog) catalog.value = initial.catalogId;
+                    if (wiring) wiring.value = initial.wiring;
+                    if (corner) corner.value = initial.corner;
+                    if (rotation) rotation.value = String(initial.rotation);
+                    if (flipH) flipH.checked = initial.flipH;
+                    if (flipV) flipV.checked = initial.flipV;
+                    if (spacing) spacing.value = initial.spacing;
+                    if (snap) snap.checked = initial.snap;
+                    if (grid) grid.value = initial.grid;
+
+                    function readForm() {
+                        return {
+                            catalogId: catalog ? catalog.value : initial.catalogId,
+                            wiring: wiring ? wiring.value : 'serpentine',
+                            corner: corner ? corner.value : 'TL',
+                            rotation: rotation ? parseInt(rotation.value, 10) || 0 : 0,
+                            flipH: flipH ? !!flipH.checked : false,
+                            flipV: flipV ? !!flipV.checked : false,
+                            spacing: spacing ? (parseFloat(spacing.value) || 1) : 1,
+                            snap: snap ? !!snap.checked : true,
+                            grid: grid ? (parseFloat(grid.value) || 1) : 1,
+                        };
+                    }
+
+                    function redrawPreview() {
+                        if (!preview) return;
+                        const ctx = preview.getContext('2d');
+                        ctx.clearRect(0, 0, preview.width, preview.height);
+                        const opts = readForm();
+                        const entry = getCatalogEntry(opts.catalogId);
+                        if (!entry) return;
+                        const pts = generatePanelPoints(entry, {
+                            wiring: opts.wiring,
+                            dataInCorner: opts.corner,
+                            rotation: opts.rotation,
+                            flipH: opts.flipH,
+                            flipV: opts.flipV,
+                            spacing: opts.spacing,
+                        });
+                        if (pts.length === 0) return;
+                        let xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+                        for (const [x, y] of pts) {
+                            if (x < xmin) xmin = x; if (x > xmax) xmax = x;
+                            if (y < ymin) ymin = y; if (y > ymax) ymax = y;
+                        }
+                        const w = xmax - xmin || 1;
+                        const h = ymax - ymin || 1;
+                        const margin = 14;
+                        const sc = Math.min((preview.width - margin * 2) / w, (preview.height - margin * 2) / h);
+                        const cxOff = preview.width / 2 - ((xmin + xmax) / 2) * sc;
+                        const cyOff = preview.height / 2 - ((ymin + ymax) / 2) * sc;
+                        // Polyline
+                        ctx.strokeStyle = '#3b82f6';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        for (let i = 0; i < pts.length; i++) {
+                            const x = pts[i][0] * sc + cxOff;
+                            const y = pts[i][1] * sc + cyOff;
+                            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                        }
+                        ctx.stroke();
+                        ctx.fillStyle = '#93c5fd';
+                        for (const [px, py] of pts) {
+                            const x = px * sc + cxOff;
+                            const y = py * sc + cyOff;
+                            ctx.beginPath();
+                            ctx.arc(x, y, 2, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                        // First LED green
+                        if (pts.length > 0) {
+                            ctx.fillStyle = '#4caf50';
+                            ctx.beginPath();
+                            ctx.arc(pts[0][0] * sc + cxOff, pts[0][1] * sc + cyOff, 3, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+
+                    for (const el of [catalog, wiring, corner, rotation, flipH, flipV, spacing, snap, grid]) {
+                        if (el) {
+                            el.addEventListener('input', redrawPreview);
+                            el.addEventListener('change', redrawPreview);
+                        }
+                    }
+                    redrawPreview();
+                },
+                preConfirm: () => _readInsertDialog(),
+                preDeny: () => _readInsertDialog(),
+            });
+
+            if (signal.aborted) return null;
+            const action = res.isConfirmed ? 'center' : (res.isDenied ? 'ghost' : null);
+            if (!action) return null;
+            const opts = (res.isConfirmed ? res.value : res.value) || _readInsertDialog();
+            return _submitInsertDialog({ ...opts, place: action });
+        } catch {
+            return null;
+        }
+    }
+
+    function _readInsertDialog() {
+        const $ = (id) => document.getElementById(id);
+        return {
+            catalogId: $('ins_catalog') ? $('ins_catalog').value : '',
+            wiring: $('ins_wiring') ? $('ins_wiring').value : 'serpentine',
+            corner: $('ins_corner') ? $('ins_corner').value : 'TL',
+            rotation: $('ins_rotation') ? parseInt($('ins_rotation').value, 10) || 0 : 0,
+            flipH: $('ins_flipH') ? !!$('ins_flipH').checked : false,
+            flipV: $('ins_flipV') ? !!$('ins_flipV').checked : false,
+            spacing: $('ins_spacing') ? (parseFloat($('ins_spacing').value) || 1) : 1,
+            snap: $('ins_snap') ? !!$('ins_snap').checked : true,
+            grid: $('ins_grid') ? (parseFloat($('ins_grid').value) || 1) : 1,
+        };
+    }
+
+    function _writeAccordionFromDialog(opts) {
+        if (dom_pp_wiring && opts.wiring) dom_pp_wiring.value = opts.wiring;
+        if (dom_pp_corner && opts.corner) dom_pp_corner.value = opts.corner;
+        if (dom_pp_rotation && (opts.rotation || opts.rotation === 0)) dom_pp_rotation.value = String(opts.rotation);
+        if (dom_pp_flipH) dom_pp_flipH.checked = !!opts.flipH;
+        if (dom_pp_flipV) dom_pp_flipV.checked = !!opts.flipV;
+        if (dom_pp_spacing && (opts.spacing || opts.spacing === 0)) dom_pp_spacing.value = String(opts.spacing);
+        if (dom_pp_snap) dom_pp_snap.checked = !!opts.snap;
+        if (dom_pp_grid && (opts.grid || opts.grid === 0)) dom_pp_grid.value = String(opts.grid);
+    }
+
+    function _submitInsertDialog(opts) {
+        if (!opts || !opts.catalogId) return null;
+        const entry = getCatalogEntry(opts.catalogId);
+        if (!entry) return null;
+        _writeAccordionFromDialog(opts);
+        if (opts.place === 'center') {
+            // Place at viewport center via existing commit path.
+            // _commitPlacingAt uses canvas coords; canvas center is (canvasW/2, canvasH/2).
+            // Use _enterPlacing then immediately commit at center, so undo is
+            // a single panel-place action.
+            _enterPlacing(opts.catalogId);
+            _commitPlacingAt(canvasW / 2, canvasH / 2);
+            return entry.label;
+        }
+        if (opts.place === 'ghost') {
+            _enterPlacing(opts.catalogId);
+            return entry.label;
+        }
+        return null;
     }
 
     // --- Initialize ---
