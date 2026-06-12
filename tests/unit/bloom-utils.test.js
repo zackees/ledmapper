@@ -2,11 +2,20 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     computeFrameBrightness,
-    stepIris,
+    stepIrisAttackDecay,
     computeBloomStrength,
+    resolveLedDiameter,
+    computeFitScale,
+    bloomParamsForLedSize,
     BLOOM_MIN_STRENGTH,
     BLOOM_MAX_STRENGTH,
-    IRIS_RESPONSE_SPEED,
+    BLOOM_RADIUS,
+    BLOOM_RADIUS_MIN,
+    BLOOM_COVERAGE_REF,
+    BLOOM_AREA_REF,
+    IRIS_ATTACK_TAU,
+    IRIS_DECAY_TAU,
+    IRIS_MAX_DT,
 } from '../../src/bloom-utils.js';
 
 describe('computeFrameBrightness', () => {
@@ -37,25 +46,64 @@ describe('computeFrameBrightness', () => {
     });
 });
 
-describe('stepIris', () => {
-    it('moves current brightness toward the average at the iris speed', () => {
-        const next = stepIris(0, 1);
-        assert.ok(Math.abs(next - IRIS_RESPONSE_SPEED) < 1e-9);
+describe('stepIrisAttackDecay', () => {
+    it('matches the FastLED attack-decay formula on a rising input', () => {
+        const dt = 0.033;
+        const expected = 1 + (0 - 1) * Math.exp(-dt / IRIS_ATTACK_TAU);
+        assert.ok(Math.abs(stepIrisAttackDecay(0, 1, dt) - expected) < 1e-12);
+    });
+
+    it('matches the FastLED attack-decay formula on a falling input', () => {
+        const dt = 0.033;
+        const expected = 0 + (1 - 0) * Math.exp(-dt / IRIS_DECAY_TAU);
+        assert.ok(Math.abs(stepIrisAttackDecay(1, 0, dt) - expected) < 1e-12);
+    });
+
+    it('fast attack vs slow decay asymmetry: rises far faster than it falls', () => {
+        const dt = 0.05;
+        const rise = stepIrisAttackDecay(0, 1, dt);       // dark → blowout
+        const fall = 1 - stepIrisAttackDecay(1, 0, dt);   // bright → dark
+        assert.ok(rise > 0.4, `attack should track most of the step, got ${rise}`);
+        assert.ok(fall < 0.1, `decay should move only slightly, got ${fall}`);
+        assert.ok(rise > 4 * fall, 'attack must be much faster than decay');
+    });
+
+    it('is dt-independent: two 0.05s steps ≈ one 0.1s step', () => {
+        const one = stepIrisAttackDecay(0, 1, 0.1);
+        const two = stepIrisAttackDecay(stepIrisAttackDecay(0, 1, 0.05), 1, 0.05);
+        assert.ok(Math.abs(one - two) < 1e-9);
+    });
+
+    it('clamps dt to IRIS_MAX_DT (tab-switch stall)', () => {
+        const stalled = stepIrisAttackDecay(1, 0, 60); // a minute "elapsed"
+        const clamped = stepIrisAttackDecay(1, 0, IRIS_MAX_DT);
+        assert.ok(Math.abs(stalled - clamped) < 1e-12);
+        // and the clamped decay still hasn't fully converged
+        assert.ok(stalled > 0.5);
+    });
+
+    it('clamps negative dt to zero (no movement)', () => {
+        assert.equal(stepIrisAttackDecay(0.5, 1, -1), 0.5);
+    });
+
+    it('is identity at the target and with dt=0', () => {
+        assert.equal(stepIrisAttackDecay(0.5, 0.5, 0.1), 0.5);
+        assert.ok(Math.abs(stepIrisAttackDecay(0.3, 1, 0) - 0.3) < 1e-12);
     });
 
     it('converges: repeated steps approach the target', () => {
-        let cur = 0;
-        for (let i = 0; i < 200; i++) cur = stepIris(cur, 0.8);
-        assert.ok(Math.abs(cur - 0.8) < 1e-3);
+        let cur = 1;
+        for (let i = 0; i < 600; i++) cur = stepIrisAttackDecay(cur, 0.2, 1 / 60);
+        assert.ok(Math.abs(cur - 0.2) < 1e-3);
     });
 
-    it('is identity at the target', () => {
-        assert.equal(stepIris(0.5, 0.5), 0.5);
+    it('snaps to the input when tau <= 0 (no smoothing)', () => {
+        assert.equal(stepIrisAttackDecay(0, 1, 0.01, { attackTau: 0 }), 1);
     });
 
-    it('clamps to [0, 1]', () => {
-        assert.ok(stepIris(2, 5) <= 1);
-        assert.ok(stepIris(-1, -2) >= 0);
+    it('clamps the result to [0, 1]', () => {
+        assert.ok(stepIrisAttackDecay(0, 5, 10) <= 1);
+        assert.ok(stepIrisAttackDecay(1, -5, 10) >= 0);
     });
 });
 
@@ -86,5 +134,120 @@ describe('computeBloomStrength', () => {
         assert.ok(computeBloomStrength(-5, 200, 100) <= BLOOM_MAX_STRENGTH);
         assert.ok(computeBloomStrength(5, 100, 100) >= BLOOM_MIN_STRENGTH);
         assert.ok(computeBloomStrength(0.5, 10, 0) >= BLOOM_MIN_STRENGTH);
+    });
+});
+
+describe('resolveLedDiameter', () => {
+    it('screenmap-declared diameter wins over the heuristic fallback', () => {
+        assert.equal(resolveLedDiameter([{ diameter: 0.25 }], 7), 0.25);
+    });
+
+    it('uses the max diameter across strips', () => {
+        const strips = [{ diameter: 0.2 }, { diameter: 0.75 }, { diameter: 0.3 }];
+        assert.equal(resolveLedDiameter(strips, 7), 0.75);
+    });
+
+    it('falls back to the heuristic when no strip declares a diameter', () => {
+        assert.equal(resolveLedDiameter([{}, { name: 's' }], 7), 7);
+    });
+
+    it('ignores non-numeric / non-positive declared diameters', () => {
+        assert.equal(resolveLedDiameter([{ diameter: '3' }, { diameter: 0 }, { diameter: NaN }], 7), 7);
+    });
+
+    it('returns null when neither source provides a diameter', () => {
+        assert.equal(resolveLedDiameter([], null), null);
+        assert.equal(resolveLedDiameter(null), null);
+        assert.equal(resolveLedDiameter([{}], 0), null);
+    });
+});
+
+describe('computeFitScale', () => {
+    it('returns the bbox extent ratio of a uniform fit', () => {
+        const raw = [[0, 0], [10, 5]];
+        const fitted = [[0, 0], [100, 50]];
+        assert.ok(Math.abs(computeFitScale(raw, fitted) - 10) < 1e-9);
+    });
+
+    it('uses the max extent (matches min-scale fitting of the larger axis)', () => {
+        const raw = [[0, 0], [10, 2]];
+        const fitted = raw.map(([x, y]) => [x * 3, y * 3]);
+        assert.ok(Math.abs(computeFitScale(raw, fitted) - 3) < 1e-9);
+    });
+
+    it('returns 1 for degenerate inputs', () => {
+        assert.equal(computeFitScale([], []), 1);
+        assert.equal(computeFitScale([[1, 1]], [[5, 5]]), 1);
+        assert.equal(computeFitScale([[0, 0], [0, 0]], [[0, 0], [1, 1]]), 1);
+    });
+});
+
+describe('bloomParamsForLedSize', () => {
+    // Pane / count where the reference coverages line up exactly:
+    // linear ref → ledPx = 0.02 * panePx; area ref → count = refArea / linear².
+    const PANE = 800;
+    const REF_LED_PX = BLOOM_COVERAGE_REF * PANE; // 16
+    const REF_COUNT = BLOOM_AREA_REF / (BLOOM_COVERAGE_REF * BLOOM_COVERAGE_REF); // 62.5
+
+    it('reproduces the stock FastLED numbers at the reference coverages', () => {
+        const p = bloomParamsForLedSize(REF_LED_PX, PANE, REF_COUNT);
+        assert.ok(Math.abs(p.radius - BLOOM_RADIUS) < 1e-9);
+        assert.ok(Math.abs(p.minStrength - BLOOM_MIN_STRENGTH) < 1e-9);
+        assert.ok(Math.abs(p.maxStrength - BLOOM_MAX_STRENGTH) < 1e-9);
+    });
+
+    it('radius is proportional to the rendered dot size', () => {
+        const p = bloomParamsForLedSize(REF_LED_PX / 4, PANE, 4);
+        assert.ok(Math.abs(p.radius - BLOOM_RADIUS / 4) < 1e-9);
+    });
+
+    it('sparse small dots keep the full strength range', () => {
+        // area = 4 * (4/800)^2 = 1e-4 << refArea
+        const p = bloomParamsForLedSize(4, PANE, 4);
+        assert.ok(Math.abs(p.maxStrength - BLOOM_MAX_STRENGTH) < 1e-9);
+        assert.ok(Math.abs(p.minStrength - BLOOM_MIN_STRENGTH) < 1e-9);
+    });
+
+    it('dense/large layouts scale strength down inversely with lit area, radius capped at base', () => {
+        const p = bloomParamsForLedSize(REF_LED_PX * 2, PANE, REF_COUNT);
+        assert.ok(Math.abs(p.radius - BLOOM_RADIUS) < 1e-9); // capped
+        // total lit area quadrupled (×1/4) and per-dot area quadrupled (×1/4)
+        assert.ok(Math.abs(p.maxStrength - BLOOM_MAX_STRENGTH / 16) < 1e-9);
+        assert.ok(Math.abs(p.minStrength - BLOOM_MIN_STRENGTH / 16) < 1e-9);
+    });
+
+    it('a small pane (low bloom resolution) scales strength down linearly', () => {
+        const full = bloomParamsForLedSize(4, PANE, 4);
+        const quarter = bloomParamsForLedSize(4, PANE, 4, { bloomResolution: 200 });
+        assert.ok(Math.abs(quarter.maxStrength - full.maxStrength / 4) < 1e-9);
+        assert.ok(Math.abs(quarter.radius - full.radius) < 1e-9); // radius unaffected
+    });
+
+    it('more LEDs at the same dot size → lower strength', () => {
+        const sparse = bloomParamsForLedSize(8, PANE, 100);
+        const dense = bloomParamsForLedSize(8, PANE, 4000);
+        assert.ok(dense.maxStrength < sparse.maxStrength);
+        assert.ok(Math.abs(dense.radius - sparse.radius) < 1e-9); // radius from dot size only
+    });
+
+    it('radius never collapses below the floor for sub-pixel dots', () => {
+        const p = bloomParamsForLedSize(0.05, PANE, 10);
+        assert.ok(p.radius >= BLOOM_RADIUS_MIN);
+    });
+
+    it('is monotonic: bigger dots never increase strength', () => {
+        let prev = Infinity;
+        for (const ledPx of [1, 4, 16, 40, 160, 800]) {
+            const p = bloomParamsForLedSize(ledPx, PANE, 1000);
+            assert.ok(p.maxStrength <= prev + 1e-12);
+            prev = p.maxStrength;
+        }
+    });
+
+    it('clamps degenerate inputs instead of blowing up', () => {
+        const lo = bloomParamsForLedSize(0, 0, 0);
+        const hi = bloomParamsForLedSize(5000, PANE, 1e9);
+        assert.ok(Number.isFinite(lo.radius) && Number.isFinite(lo.maxStrength));
+        assert.ok(Number.isFinite(hi.radius) && hi.maxStrength > 0);
     });
 });

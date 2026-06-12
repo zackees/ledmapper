@@ -5,6 +5,9 @@ import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDia
 import { createBloomComposer, updateBloomIris } from '../three-bloom.js';
 import {
     computeAutoBloomRange,
+    resolveLedDiameter,
+    computeFitScale,
+    bloomParamsForLedSize,
     DEMO_AUTO_FLOOR,
     DEMO_AUTO_MAX_DENSE,
     DEMO_AUTO_MAX_SPARSE,
@@ -77,6 +80,21 @@ export function init(container) {
         width: CANVAS_SIZE, height: CANVAS_SIZE,
     });
     const irisState = { currentBrightness: 0 };
+    // Strength range / radius proportioned to the rendered dot size
+    // (updated in updateBloomParams whenever the diameter changes).
+    const bloomRange = { min: 0, max: 0 };
+
+    // Proportion the bloom kernel to the rendered LED size so small dots
+    // keep a tight halo and large dots don't white out the canvas.
+    function updateBloomParams() {
+        if (!pointsMaterial) return;
+        // PointsMaterial.size is in CSS pixels (the renderer applies its
+        // pixelRatio to the size uniform internally).
+        const params = bloomParamsForLedSize(pointsMaterial.size, CANVAS_SIZE, screenmap_pts.length);
+        bloom.bloomPass.radius = params.radius;
+        bloomRange.min = params.minStrength;
+        bloomRange.max = params.maxStrength;
+    }
 
     /** Demo bloom profile constants. */
     const DEMO_PROFILE = { floor: DEMO_AUTO_FLOOR, maxDense: DEMO_AUTO_MAX_DENSE, maxSparse: DEMO_AUTO_MAX_SPARSE };
@@ -255,8 +273,27 @@ export function init(container) {
         stripInfo = parseScreenmapMultiStrip(jsonBlob);
         buildPoints();
         _recomputeDemoBloomRange();
+        applyScreenmapDiameter();
+        updateBloomParams();
         drawOverlay();
         dom_btn_play.disabled = false;
+    }
+
+    // The screenmap's declared LED diameter (world units) defines the
+    // rendered dot size: scale it into canvas pixels and drive the diameter
+    // slider with it. The user can still override via the slider. Maps that
+    // declare no diameter keep the slider's current value.
+    function applyScreenmapDiameter() {
+        const declared = resolveLedDiameter(stripInfo ? stripInfo.strips : null);
+        if (declared === null) return;
+        // Canvas world units map 1:1 to CSS pixels (and PointsMaterial.size
+        // is in CSS pixels), so no pixelRatio term here.
+        const scale = computeFitScale(screenmap_pts_original, screenmap_pts);
+        const px = Math.round(declared * scale);
+        const min = parseInt(dom_rng_diameter.min) || 1;
+        const max = parseInt(dom_rng_diameter.max) || 64;
+        dom_rng_diameter.value = Math.min(Math.max(px, min), max);
+        dom_rng_diameter.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     function stopVideoStream() {
@@ -424,6 +461,8 @@ export function init(container) {
         getMaterial: () => pointsMaterial,
         signal,
     });
+    // Re-proportion the bloom after wireDiameterSlider applies the new size.
+    dom_rng_diameter.addEventListener('input', updateBloomParams, { signal });
 
     // --- Frame rate ---
     let targetFPS = parseInt(dom_sel_framerate.value);
@@ -645,8 +684,13 @@ export function init(container) {
             }
 
             if (curr_frame) {
+                // Conservative combination of the size-proportional range and
+                // the density envelope: neither ceiling is exceeded, and the
+                // floor stays strictly positive without rising above it.
+                const effMax = Math.min(bloomRange.max, demoBloomRange.max);
+                const effMin = Math.min(bloomRange.min, effMax);
                 const override = demoAutoBloomEnabled ? null : demoManualBloomStrength;
-                updateBloomIris(bloom.bloomPass, irisState, curr_frame, demoBloomRange, override);
+                updateBloomIris(bloom.bloomPass, irisState, curr_frame, { min: effMin, max: effMax }, override);
             }
             bloom.render();
         }
