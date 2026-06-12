@@ -8,7 +8,7 @@ const repoRoot = join(__dirname, '..');
 
 const manifest = JSON.parse(readFileSync(join(repoRoot, 'public', 'screenmaps', 'manifest.json'), 'utf-8'));
 const template = readFileSync(join(repoRoot, 'src', 'moviemaker', 'template.html'), 'utf-8');
-const moviemaker = readFileSync(join(repoRoot, 'src', 'moviemaker', 'moviemaker.js'), 'utf-8');
+const moviemaker = readFileSync(join(repoRoot, 'src', 'moviemaker', 'moviemaker.ts'), 'utf-8');
 const viteConfig = readFileSync(join(repoRoot, 'vite.config.js'), 'utf-8');
 
 const presets = manifest.presets || [];
