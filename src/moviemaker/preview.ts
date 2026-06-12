@@ -41,7 +41,7 @@ const PREVIEW_PROFILE = {
  *
  * @param {Object} opts
  * @param {HTMLElement} opts.parent - Container the WebGL canvas is appended to.
- * @param {number} [opts.side=200] - CSS pixel size of the (square) preview.
+ * @param {number} [opts.side=400] - CSS pixel size of the (square) preview.
  * @param {number} [opts.maxBufferSize=1024] - Cap on the backing resolution.
  * @returns {{
  *   render: Function,
@@ -52,7 +52,7 @@ const PREVIEW_PROFILE = {
  *   getCurrentBloomStrength: () => number,
  * }}
  */
-export function createLedPreview({ parent, side = 200, maxBufferSize = 1024 }: { parent: HTMLElement; side?: number; maxBufferSize?: number }) {
+export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: { parent: HTMLElement; side?: number; maxBufferSize?: number }) {
     // Supersample at 2x devicePixelRatio (capped) so circles stay crisp.
     const pixelRatio = Math.min((window.devicePixelRatio || 1) * 2, maxBufferSize / side);
 
