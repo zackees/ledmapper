@@ -329,3 +329,109 @@ describe('StripStore — updateStrip', () => {
         assert.deepStrictEqual(s.get().allPoints[8], [20, 0]);
     });
 });
+
+// ── Pins (issue #24): pin/order/derived video_offset/snapshot ────────
+
+function makePinStore(specs) {
+    const s = new StripStore();
+    const info = makeInfo(specs);
+    // Stamp pins/overrides post-makeInfo since makeInfo doesn't know them.
+    specs.forEach((spec, i) => {
+        if (spec.pin) info.strips[i].pin = spec.pin;
+        if (spec.videoOffsetOverride) info.strips[i].videoOffsetOverride = true;
+    });
+    s.load(info);
+    return s;
+}
+
+describe('StripStore — pins', () => {
+    it('load normalizes missing pin/override fields', () => {
+        const s = makeStore(THREE_STRIPS);
+        for (const strip of s.getStrips()) {
+            assert.strictEqual(strip.pin, 'pin1');
+            assert.strictEqual(strip.videoOffsetOverride, false);
+        }
+    });
+
+    it('pinOf defaults blank/missing pins to pin1', () => {
+        assert.strictEqual(StripStore.pinOf({}), 'pin1');
+        assert.strictEqual(StripStore.pinOf({ pin: '  ' }), 'pin1');
+        assert.strictEqual(StripStore.pinOf({ pin: 'gpio5' }), 'gpio5');
+        assert.strictEqual(StripStore.pinOf(null), 'pin1');
+    });
+
+    it('getPinOrder returns first-appearance order', () => {
+        const s = makePinStore([
+            { name: 'a', points: [[0, 0]], pin: 'pin2' },
+            { name: 'b', points: [[1, 0]], pin: 'pin1' },
+            { name: 'c', points: [[2, 0]], pin: 'pin2' },
+        ]);
+        assert.deepStrictEqual(s.getPinOrder(), ['pin2', 'pin1']);
+    });
+
+    it('load re-derives video_offset over pin order (within-pin walk)', () => {
+        const s = makePinStore([
+            { name: 'a', points: [[0, 0], [1, 0], [2, 0]], pin: 'pin1' }, // 3 LEDs
+            { name: 'b', points: [[10, 0], [11, 0]], pin: 'pin2' },       // 2 LEDs
+            { name: 'c', points: [[20, 0], [21, 0], [22, 0], [23, 0]], pin: 'pin1' }, // 4 LEDs
+        ]);
+        const vo = s.getStrips().map((x) => x.video_offset);
+        // Chain walk: pin1 (a=0, c=3) then pin2 (b=7)
+        assert.deepStrictEqual(vo, [0, 7, 3]);
+    });
+
+    it('overridden strip keeps its manual value but occupies chain space', () => {
+        const s = makePinStore([
+            { name: 'a', points: [[0, 0], [1, 0], [2, 0]], video_offset: 100, videoOffsetOverride: true },
+            { name: 'b', points: [[10, 0], [11, 0]] },
+        ]);
+        assert.strictEqual(s.getStrips()[0].video_offset, 100);
+        // b still derived as if a occupies 0..2
+        assert.strictEqual(s.getStrips()[1].video_offset, 3);
+        assert.strictEqual(s.getDerivedVideoOffset(0), 0);
+        assert.strictEqual(s.getDerivedVideoOffset(1), 3);
+    });
+
+    it('updateStrip({pin}) recomputes derived offsets', () => {
+        const s = makeStore(THREE_STRIPS); // a:3, b:2, c:4 all pin1
+        s.updateStrip(1, { pin: 'pin2' });
+        const vo = s.getStrips().map((x) => x.video_offset);
+        // pin1: a=0, c=3; pin2: b=7
+        assert.deepStrictEqual(vo, [0, 7, 3]);
+        assert.deepStrictEqual(s.getPinOrder(), ['pin1', 'pin2']);
+    });
+
+    it('addStrip stores pin and override', () => {
+        const s = makeStore(THREE_STRIPS);
+        const idx = s.addStrip({ name: 'd', points: [[30, 0]], pin: 'pin3', videoOffsetOverride: true, video_offset: 55 });
+        const d = s.getStrips()[idx];
+        assert.strictEqual(d.pin, 'pin3');
+        assert.strictEqual(d.videoOffsetOverride, true);
+        assert.strictEqual(d.video_offset, 55);
+    });
+
+    it('snapshot/restore round-trips pin, override, and video_offset', () => {
+        const s = makePinStore([
+            { name: 'a', points: [[0, 0], [1, 0]], pin: 'pin1' },
+            { name: 'b', points: [[10, 0]], pin: 'pin2', video_offset: 9, videoOffsetOverride: true },
+        ]);
+        const snap = s.snapshot();
+        s.updateStrip(1, { pin: 'pin1', videoOffsetOverride: false });
+        assert.strictEqual(s.getStrips()[1].pin, 'pin1');
+        s.restore(snap);
+        assert.strictEqual(s.getStrips()[1].pin, 'pin2');
+        assert.strictEqual(s.getStrips()[1].videoOffsetOverride, true);
+        assert.strictEqual(s.getStrips()[1].video_offset, 9);
+    });
+
+    it('removeStrip recomputes derived offsets', () => {
+        const s = makePinStore([
+            { name: 'a', points: [[0, 0], [1, 0], [2, 0]], pin: 'pin1' },
+            { name: 'b', points: [[10, 0], [11, 0]], pin: 'pin2' },
+            { name: 'c', points: [[20, 0]], pin: 'pin2' },
+        ]);
+        s.removeStrip(1); // remove b
+        const vo = s.getStrips().map((x) => x.video_offset);
+        assert.deepStrictEqual(vo, [0, 3]);
+    });
+});

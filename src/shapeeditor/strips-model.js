@@ -35,6 +35,74 @@ export class StripStore {
      */
     load(stripInfo) {
         this._info = stripInfo || null;
+        if (this._info) {
+            // Normalise pin fields and re-derive non-overridden video_offsets
+            // (issue #24): derived order = pins in first-appearance order,
+            // then within-pin (array) order.
+            for (const s of this._info.strips) {
+                if (typeof s.pin !== 'string' || s.pin.trim() === '') s.pin = 'pin1';
+                if (typeof s.videoOffsetOverride !== 'boolean') s.videoOffsetOverride = false;
+            }
+            this.recomputeDerivedVideoOffsets();
+        }
+    }
+
+    /** Pin id of a strip object (default 'pin1'). */
+    static pinOf(s) {
+        return (s && typeof s.pin === 'string' && s.pin.trim() !== '') ? s.pin : 'pin1';
+    }
+
+    /**
+     * Distinct pin ids in first-appearance order while walking strips[]
+     * (issue #24 §1.1 — the strip array is the single source of truth).
+     * @returns {string[]}
+     */
+    getPinOrder() {
+        const order = [];
+        const seen = new Set();
+        for (const s of this.getStrips()) {
+            const p = StripStore.pinOf(s);
+            if (!seen.has(p)) { seen.add(p); order.push(p); }
+        }
+        return order;
+    }
+
+    /**
+     * Derived video_offset for the strip at `stripIdx`: sum of counts of all
+     * strips that precede it in the (pin first-appearance order, within-pin
+     * array order) walk. Returns 0 when out of range.
+     */
+    getDerivedVideoOffset(stripIdx) {
+        const strips = this.getStrips();
+        if (stripIdx < 0 || stripIdx >= strips.length) return 0;
+        const targetPin = StripStore.pinOf(strips[stripIdx]);
+        let acc = 0;
+        for (const pin of this.getPinOrder()) {
+            for (let i = 0; i < strips.length; i++) {
+                if (StripStore.pinOf(strips[i]) !== pin) continue;
+                if (pin === targetPin && i === stripIdx) return acc;
+                acc += strips[i].count;
+            }
+        }
+        return acc;
+    }
+
+    /**
+     * Recompute video_offset for every strip whose videoOffsetOverride is
+     * false, walking pins in first-appearance order then within-pin order.
+     * Overridden strips keep their manual value but still occupy their
+     * count in the accumulated chain.
+     */
+    recomputeDerivedVideoOffsets() {
+        const strips = this.getStrips();
+        let acc = 0;
+        for (const pin of this.getPinOrder()) {
+            for (const s of strips) {
+                if (StripStore.pinOf(s) !== pin) continue;
+                if (s.videoOffsetOverride !== true) s.video_offset = acc;
+                acc += s.count;
+            }
+        }
     }
 
     /** Returns the raw stripInfo object (or null). */
@@ -107,6 +175,7 @@ export class StripStore {
         if (Array.isArray(info.allPoints) && point) {
             info.allPoints.splice(flatIdx, 0, point);
         }
+        this.recomputeDerivedVideoOffsets();
     }
 
     /**
@@ -132,6 +201,7 @@ export class StripStore {
         if (Array.isArray(info.allPoints)) {
             info.allPoints.splice(flatIdx, 1);
         }
+        this.recomputeDerivedVideoOffsets();
     }
 
     /**
@@ -158,6 +228,15 @@ export class StripStore {
         for (let i = 0; i < snap.strips.length && i < strips.length; i++) {
             strips[i].offset = snap.strips[i].offset;
             strips[i].count = snap.strips[i].count;
+            if (typeof snap.strips[i].pin === 'string') {
+                strips[i].pin = snap.strips[i].pin;
+            }
+            if (typeof snap.strips[i].videoOffsetOverride === 'boolean') {
+                strips[i].videoOffsetOverride = snap.strips[i].videoOffsetOverride;
+            }
+            if (typeof snap.strips[i].video_offset === 'number') {
+                strips[i].video_offset = snap.strips[i].video_offset;
+            }
         }
         this._info.totalCount = snap.totalCount;
     }
@@ -166,7 +245,7 @@ export class StripStore {
      * Append a new strip at the end. `points` is copied; offsets are
      * recomputed to chain after the previous last strip.
      */
-    addStrip({ name, points = [], diameter, video_offset } = {}) {
+    addStrip({ name, points = [], diameter, video_offset, pin, videoOffsetOverride } = {}) {
         if (!this._info) {
             this._info = { strips: [], allPoints: [], totalCount: 0 };
         }
@@ -182,11 +261,14 @@ export class StripStore {
             offset,
             count: ptsCopy.length,
             video_offset: vo,
+            pin: (typeof pin === 'string' && pin.trim() !== '') ? pin : 'pin1',
+            videoOffsetOverride: videoOffsetOverride === true,
         });
         info.totalCount += ptsCopy.length;
         if (Array.isArray(info.allPoints)) {
             for (const p of ptsCopy) info.allPoints.push([p[0], p[1]]);
         }
+        this.recomputeDerivedVideoOffsets();
         return info.strips.length - 1;
     }
 
@@ -211,6 +293,7 @@ export class StripStore {
         if (Array.isArray(info.allPoints)) {
             info.allPoints.splice(removedOffset, removedCount);
         }
+        this.recomputeDerivedVideoOffsets();
     }
 
     /**
@@ -251,6 +334,7 @@ export class StripStore {
         if (stripIdx < 0 || stripIdx >= strips.length) return;
         const strip = strips[stripIdx];
         const pointsChanged = Object.prototype.hasOwnProperty.call(patch, 'points');
+        const pinChanged = Object.prototype.hasOwnProperty.call(patch, 'pin');
         for (const key of Object.keys(patch)) {
             if (key === 'offset' || key === 'count') continue; // managed
             if (key === 'points') {
@@ -262,6 +346,8 @@ export class StripStore {
         }
         if (pointsChanged) {
             this._recomputeOffsetsAndAllPoints();
+        } else if (pinChanged) {
+            this.recomputeDerivedVideoOffsets();
         }
     }
 
@@ -289,5 +375,6 @@ export class StripStore {
             }
             info.allPoints = next;
         }
+        this.recomputeDerivedVideoOffsets();
     }
 }

@@ -28,6 +28,7 @@ import {
     restoreBackup,
     backfillMeta,
     isDegenerate,
+    notePinMutation,
 } from '../screenmap-store.js';
 import { createCircleTexture, buildPointsMesh } from '../three-utils.js';
 import { StripStore } from './strips-model.js';
@@ -164,6 +165,8 @@ export function init(container) {
                     offset: strip.offset,
                     count: strip.count,
                     video_offset: typeof strip.video_offset === 'number' ? strip.video_offset : strip.offset,
+                    pin: typeof strip.pin === 'string' ? strip.pin : 'pin1',
+                    videoOffsetOverride: strip.videoOffsetOverride === true,
                 };
             });
             json = buildScreenmapMultiStripJson(stripsOut);
@@ -368,6 +371,38 @@ export function init(container) {
             overlayCanvas.dispatchEvent(new MouseEvent('mouseup', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
             return true;
         },
+        // Pins / chain hooks (issue #24, Phases 1-2)
+        getPinSummary: () => {
+            const strips = stripStore.getStrips();
+            const order = stripStore.getPinOrder();
+            return order.map((pinId) => {
+                const stripIndices = [];
+                let totalCount = 0;
+                strips.forEach((s, i) => {
+                    if (StripStore.pinOf(s) === pinId) {
+                        stripIndices.push(i);
+                        totalCount += s.count;
+                    }
+                });
+                return { pinId, stripIndices, totalCount };
+            });
+        },
+        getStripPins: () => stripStore.getStrips().map((s) => StripStore.pinOf(s)),
+        getVideoOffsets: () => stripStore.getStrips().map((s) => ({
+            video_offset: s.video_offset,
+            override: !!s.videoOffsetOverride,
+        })),
+        repinStrip: (stripIdx, newPinId) => doRepinStrip(stripIdx, newPinId),
+        getDerivedVideoOffset: (stripIdx) => stripStore.getDerivedVideoOffset(stripIdx),
+        setVideoOffsetOverride: (stripIdx, value) => {
+            const strips = stripStore.getStrips();
+            const s = strips[stripIdx];
+            if (!s) return false;
+            if (!!s.videoOffsetOverride !== !!value) doToggleVoLock(stripIdx);
+            return true;
+        },
+        addPin: () => doAddPin(),
+        renamePin: (oldId, newId) => doRenamePin(oldId, newId),
     };
 
     // ── Autosave / backup helpers ────────────────────────────────────────
@@ -729,6 +764,8 @@ export function init(container) {
                     offset: s.offset,
                     count: s.count,
                     video_offset: typeof s.video_offset === 'number' ? s.video_offset : s.offset,
+                    pin: typeof s.pin === 'string' ? s.pin : 'pin1',
+                    videoOffsetOverride: s.videoOffsetOverride === true,
                 };
             });
             saveScreenmapMultiStrip(strips);
@@ -769,6 +806,8 @@ export function init(container) {
             offset: 0, // recomputed
             count: removedStrip.count,
             video_offset: typeof removedStrip.video_offset === 'number' ? removedStrip.video_offset : 0,
+            pin: typeof removedStrip.pin === 'string' ? removedStrip.pin : 'pin1',
+            videoOffsetOverride: removedStrip.videoOffsetOverride === true,
         };
         info.strips.splice(stripIdx, 0, stripObj);
         // Recompute offsets/allPoints
@@ -787,6 +826,157 @@ export function init(container) {
         const newOffset = stripInfo.strips[toIdx].offset;
         screenmap_pts.splice(newOffset, 0, ...movedScreenmap);
         rawPts.splice(newOffset, 0, ...movedRaw);
+    }
+
+    // ── Pin helpers (issue #24) ──────────────────────────────────────────
+
+    function _pinOfStrip(s) {
+        return StripStore.pinOf(s);
+    }
+
+    /** Zero-based position of stripIdx among the strips sharing its pin. */
+    function _withinPinIdx(stripIdx) {
+        const strips = stripStore.getStrips();
+        if (stripIdx < 0 || stripIdx >= strips.length) return -1;
+        const pin = _pinOfStrip(strips[stripIdx]);
+        let n = 0;
+        for (let i = 0; i < stripIdx; i++) {
+            if (_pinOfStrip(strips[i]) === pin) n++;
+        }
+        return n;
+    }
+
+    /** Next free auto pin id: pin1, pin2, ... */
+    function _nextFreePinId() {
+        const used = new Set(stripStore.getStrips().map(_pinOfStrip));
+        let n = 1;
+        while (used.has(`pin${n}`)) n++;
+        return `pin${n}`;
+    }
+
+    /** Pin a newly created strip should default to (B8: focused pin →
+     *  last pin → pin1). */
+    function _defaultNewStripPin() {
+        const strips = stripStore.getStrips();
+        const sIdx = selection.getStripIdx();
+        if (sIdx !== null && sIdx >= 0 && sIdx < strips.length) {
+            return _pinOfStrip(strips[sIdx]);
+        }
+        if (strips.length > 0) return _pinOfStrip(strips[strips.length - 1]);
+        return 'pin1';
+    }
+
+    /**
+     * Apply a strip-repin action: set the strip's pin, clear the
+     * videoOffsetOverride (§1.4 — repin re-derives), and move the strip to
+     * the end of the destination pin's block so pins stay contiguous.
+     * Records `action.newStripIdx` for the inverse.
+     */
+    function _applyRepin(action) {
+        const strips = stripStore.getStrips();
+        const s = strips[action.stripIdx];
+        if (!s) return;
+        s.pin = action.newPin;
+        s.videoOffsetOverride = false;
+        // Target index: just after the last existing strip of newPin
+        // (excluding the strip itself); append at end for a brand-new pin.
+        let lastSame = -1;
+        for (let i = 0; i < strips.length; i++) {
+            if (i === action.stripIdx) continue;
+            if (_pinOfStrip(strips[i]) === action.newPin) lastSame = i;
+        }
+        let target;
+        if (lastSame < 0) target = strips.length - 1;
+        else target = lastSame > action.stripIdx ? lastSame : lastSame + 1;
+        if (target !== action.stripIdx) {
+            _reorderStripPoints(action.stripIdx, target);
+            selection.onStripReorder(action.stripIdx, target);
+        } else {
+            stripStore.recomputeDerivedVideoOffsets();
+        }
+        action.newStripIdx = target;
+    }
+
+    /** Inverse of _applyRepin: restore pin, position, override and value. */
+    function _revertRepin(action) {
+        const strips = stripStore.getStrips();
+        const fromIdx = typeof action.newStripIdx === 'number' ? action.newStripIdx : action.stripIdx;
+        const s = strips[fromIdx];
+        if (!s) return;
+        s.pin = action.oldPin;
+        s.videoOffsetOverride = action.oldOverride === true;
+        if (fromIdx !== action.stripIdx) {
+            _reorderStripPoints(fromIdx, action.stripIdx);
+            selection.onStripReorder(fromIdx, action.stripIdx);
+        } else {
+            stripStore.recomputeDerivedVideoOffsets();
+        }
+        if (action.oldOverride === true && typeof action.oldVideoOffset === 'number') {
+            stripStore.updateStrip(action.stripIdx, { video_offset: action.oldVideoOffset });
+        }
+    }
+
+    /**
+     * Rearrange strips[] (and the flat point arrays) so pins appear in
+     * `order`, preserving within-pin order. Pins missing from `order` are
+     * appended in their current first-appearance order.
+     */
+    function _applyPinOrder(order) {
+        const info = stripStore.get();
+        if (!info) return;
+        const strips = info.strips;
+        const selStrip = (() => {
+            const i = selection.getStripIdx();
+            return (i !== null && i >= 0 && i < strips.length) ? strips[i] : null;
+        })();
+        const groups = new Map();
+        for (let i = 0; i < strips.length; i++) {
+            const p = _pinOfStrip(strips[i]);
+            if (!groups.has(p)) groups.set(p, []);
+            groups.get(p).push(i);
+        }
+        const fullOrder = [...order];
+        for (const p of groups.keys()) {
+            if (!fullOrder.includes(p)) fullOrder.push(p);
+        }
+        const newIdxOrder = [];
+        for (const p of fullOrder) {
+            const g = groups.get(p);
+            if (g) newIdxOrder.push(...g);
+        }
+        if (newIdxOrder.length !== strips.length) return;
+        // Rebuild flat arrays + strips array in the new order.
+        const newScreen = [];
+        const newRaw = [];
+        const newStrips = [];
+        for (const idx of newIdxOrder) {
+            const st = strips[idx];
+            for (let k = st.offset; k < st.offset + st.count; k++) {
+                newScreen.push(screenmap_pts[k]);
+                newRaw.push(rawPts[k]);
+            }
+            newStrips.push(st);
+        }
+        screenmap_pts.length = 0;
+        screenmap_pts.push(...newScreen);
+        rawPts.length = 0;
+        rawPts.push(...newRaw);
+        strips.length = 0;
+        strips.push(...newStrips);
+        stripStore._recomputeOffsetsAndAllPoints();
+        // Re-select the same strip object at its new index.
+        if (selStrip) {
+            const newIdx = strips.indexOf(selStrip);
+            if (newIdx >= 0) selection.selectStrip(newIdx);
+        }
+    }
+
+    /** Rename pin `fromId` to `toId` on every strip that uses it. */
+    function _applyPinRename(fromId, toId) {
+        const strips = stripStore.getStrips();
+        for (const s of strips) {
+            if (_pinOfStrip(s) === fromId) s.pin = toId;
+        }
     }
 
     function applyAction(action) {
@@ -823,6 +1013,17 @@ export function init(container) {
             _reverseStripInPlace(action.stripIdx);
         } else if (action.type === 'strip-offset') {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.newValue });
+        } else if (action.type === 'strip-repin') {
+            _applyRepin(action);
+        } else if (action.type === 'pin-reorder') {
+            _applyPinOrder(action.newOrder);
+        } else if (action.type === 'pin-rename') {
+            _applyPinRename(action.oldId, action.newId);
+        } else if (action.type === 'vo-override-toggle') {
+            stripStore.updateStrip(action.stripIdx, {
+                videoOffsetOverride: action.newOverride,
+                video_offset: action.newValue,
+            });
         } else if (action.type === 'strip-translate') {
             _applyStripTranslate(action.stripIdx, action.sdx, action.sdy);
         } else if (action.type === 'paste-strips') {
@@ -868,6 +1069,17 @@ export function init(container) {
             _reverseStripInPlace(action.stripIdx);
         } else if (action.type === 'strip-offset') {
             stripStore.updateStrip(action.stripIdx, { video_offset: action.oldValue });
+        } else if (action.type === 'strip-repin') {
+            _revertRepin(action);
+        } else if (action.type === 'pin-reorder') {
+            _applyPinOrder(action.oldOrder);
+        } else if (action.type === 'pin-rename') {
+            _applyPinRename(action.newId, action.oldId);
+        } else if (action.type === 'vo-override-toggle') {
+            stripStore.updateStrip(action.stripIdx, {
+                videoOffsetOverride: action.oldOverride,
+                video_offset: action.oldValue,
+            });
         } else if (action.type === 'strip-translate') {
             _applyStripTranslate(action.stripIdx, -action.sdx, -action.sdy);
         } else if (action.type === 'paste-strips') {
@@ -899,8 +1111,26 @@ export function init(container) {
             || action.type === 'panel-place'
             || action.type === 'strip-reverse'
             || action.type === 'strip-offset'
+            || action.type === 'strip-repin'
+            || action.type === 'pin-reorder'
+            || action.type === 'pin-rename'
+            || action.type === 'vo-override-toggle'
             || action.type === 'strip-translate'
             || action.type === 'paste-strips'
+        );
+    }
+
+    /** Actions whose undo/redo can legitimately change the distinct pin
+     *  count — the persistence guard must be told before saving. */
+    function isPinMutationAction(action) {
+        return action && (
+            action.type === 'strip-repin'
+            || action.type === 'strip-delete'
+            || action.type === 'pin-reorder'
+            || action.type === 'pin-rename'
+            || action.type === 'panel-place'
+            || action.type === 'paste-strips'
+            || action.type === 'restore-backup'
         );
     }
 
@@ -911,6 +1141,7 @@ export function init(container) {
         redoStack.push(action);
         updateUndoRedoButtons();
         setNeedsGeometryUpdate();
+        if (isPinMutationAction(action)) notePinMutation();
         if (isStripAction(action)) {
             _persistMultiStrip();
             renderStripsPanel();
@@ -929,6 +1160,7 @@ export function init(container) {
         undoStack.push(action);
         updateUndoRedoButtons();
         setNeedsGeometryUpdate();
+        if (isPinMutationAction(action)) notePinMutation();
         if (isStripAction(action)) {
             _persistMultiStrip();
             renderStripsPanel();
@@ -1158,6 +1390,22 @@ export function init(container) {
         return colors[s];
     }
 
+    // Pins the user has collapsed in the panel (survives re-renders).
+    const collapsedPins = new Set();
+
+    /** Previous / next strip index sharing the same pin, or -1. */
+    function _withinPinNeighbor(stripIdx, dir) {
+        const strips = stripStore.getStrips();
+        if (stripIdx < 0 || stripIdx >= strips.length) return -1;
+        const pin = _pinOfStrip(strips[stripIdx]);
+        let i = stripIdx + dir;
+        while (i >= 0 && i < strips.length) {
+            if (_pinOfStrip(strips[i]) === pin) return i;
+            i += dir;
+        }
+        return -1;
+    }
+
     function renderStripsPanel() {
         if (!dom_strips_list) return;
         const strips = stripStore.getStrips();
@@ -1168,16 +1416,36 @@ export function init(container) {
         const haveBackup = !!getBackup();
         if (strips.length === 0) {
             dom_strips_panel.style.display = haveBackup ? '' : 'none';
+            renderSelectedStripRow();
             return;
         }
         dom_strips_panel.style.display = '';
         const selStripIdx = selection.getStripIdx();
         const total = strips.length;
+
+        // Group strip indices under pins in first-appearance order (§1.1).
+        const pinOrder = [];
+        const groups = new Map();
         for (let i = 0; i < strips.length; i++) {
+            const p = _pinOfStrip(strips[i]);
+            if (!groups.has(p)) { groups.set(p, []); pinOrder.push(p); }
+            groups.get(p).push(i);
+        }
+
+        const buildStripRow = (i) => {
             const s = strips[i];
             const row = document.createElement('div');
             row.className = 'strip-row' + (i === selStripIdx ? ' active' : '');
             row.dataset.stripIdx = String(i);
+            row.dataset.pinId = _pinOfStrip(s);
+
+            const grip = document.createElement('span');
+            grip.className = 'strip-grip';
+            grip.textContent = '⠿';
+            grip.title = 'Drag within pin to reorder | drag onto a pin header to repin';
+            grip.draggable = true;
+            grip.dataset.stripIdx = String(i);
+            row.appendChild(grip);
 
             const swatch = document.createElement('span');
             swatch.className = 'strip-swatch';
@@ -1206,26 +1474,93 @@ export function init(container) {
                 return b;
             };
 
-            row.appendChild(mkBtn('▲', 'Move up', 'up', i === 0));
-            row.appendChild(mkBtn('▼', 'Move down', 'down', i === strips.length - 1));
+            row.appendChild(mkBtn('▲', 'Move up within pin', 'up', _withinPinNeighbor(i, -1) < 0));
+            row.appendChild(mkBtn('▼', 'Move down within pin', 'down', _withinPinNeighbor(i, +1) < 0));
             row.appendChild(mkBtn('Rev', 'Reverse LED order', 'reverse', s.count < 2));
             row.appendChild(mkBtn('Rename', 'Rename strip', 'rename', false));
             row.appendChild(mkBtn('×', 'Delete strip', 'delete', strips.length <= 1));
 
-            // video_offset numeric input (small, last)
+            // video_offset display: read-only unless this strip's LOCK
+            // (videoOffsetOverride) is engaged (§1.4).
+            const overridden = s.videoOffsetOverride === true;
             const off = document.createElement('input');
             off.type = 'number';
-            off.className = 'strip-offset';
+            off.className = 'strip-offset' + (overridden ? '' : ' derived');
             off.min = '0';
             off.step = '1';
-            off.title = 'video_offset (frame index)';
+            off.title = overridden
+                ? 'video_offset (manual override)'
+                : 'video_offset (derived from pin order — engage LOCK to edit)';
             off.value = String(typeof s.video_offset === 'number' ? s.video_offset : s.offset);
             off.dataset.stripIdx = String(i);
             off.dataset.role = 'video-offset';
+            off.readOnly = !overridden;
             row.appendChild(off);
 
-            dom_strips_list.appendChild(row);
+            const lock = document.createElement('button');
+            lock.type = 'button';
+            lock.className = 'strip-btn strip-lock' + (overridden ? ' engaged' : '');
+            lock.textContent = overridden ? '🔒' : '🔓';
+            lock.title = overridden
+                ? 'Unlock: re-derive video_offset from pin order'
+                : 'Lock: override video_offset manually';
+            lock.dataset.action = 'lock';
+            lock.dataset.stripIdx = String(i);
+            lock.setAttribute('aria-pressed', overridden ? 'true' : 'false');
+            row.appendChild(lock);
+
+            return row;
+        };
+
+        for (const pin of pinOrder) {
+            const idxs = groups.get(pin);
+            const ledTotal = idxs.reduce((a, i) => a + strips[i].count, 0);
+            const det = document.createElement('details');
+            det.className = 'pin-group';
+            det.dataset.pinId = pin;
+            det.open = !collapsedPins.has(pin);
+            det.addEventListener('toggle', () => {
+                if (det.open) collapsedPins.delete(pin);
+                else collapsedPins.add(pin);
+            }, { signal });
+
+            const sum = document.createElement('summary');
+            sum.className = 'pin-header';
+            sum.dataset.pinId = pin;
+            sum.draggable = true;
+            sum.title = 'Drag to reorder pins | click name to rename';
+
+            const pinName = document.createElement('span');
+            pinName.className = 'pin-name';
+            pinName.textContent = pin;
+            pinName.dataset.pinId = pin;
+            pinName.title = 'Click to rename pin';
+            sum.appendChild(pinName);
+
+            const pinMeta = document.createElement('span');
+            pinMeta.className = 'pin-meta';
+            pinMeta.textContent = `${idxs.length} strip${idxs.length === 1 ? '' : 's'} · ${ledTotal} LED${ledTotal === 1 ? '' : 's'}`;
+            sum.appendChild(pinMeta);
+
+            const addStrip = document.createElement('button');
+            addStrip.type = 'button';
+            addStrip.className = 'strip-btn pin-add-strip';
+            addStrip.textContent = '+ strip';
+            addStrip.title = `Insert a new strip on ${pin}`;
+            addStrip.dataset.action = 'add-strip';
+            addStrip.dataset.pinId = pin;
+            sum.appendChild(addStrip);
+
+            det.appendChild(sum);
+
+            const body = document.createElement('div');
+            body.className = 'pin-strips';
+            for (const i of idxs) body.appendChild(buildStripRow(i));
+            det.appendChild(body);
+
+            dom_strips_list.appendChild(det);
         }
+        renderSelectedStripRow();
     }
 
     // ── Backup row inside #strips_panel ─────────────────────────────────
@@ -1276,13 +1611,28 @@ export function init(container) {
             const btn = e.target.closest('button[data-action]');
             if (btn) {
                 e.stopPropagation();
-                const idx = parseInt(btn.dataset.stripIdx, 10);
+                e.preventDefault();
                 const action = btn.dataset.action;
-                if (action === 'up') doReorderStrip(idx, idx - 1);
-                else if (action === 'down') doReorderStrip(idx, idx + 1);
+                if (action === 'add-strip') {
+                    pendingNewStripPin = btn.dataset.pinId || null;
+                    _openInsertDialog();
+                    return;
+                }
+                const idx = parseInt(btn.dataset.stripIdx, 10);
+                if (action === 'up') doReorderStrip(idx, _withinPinNeighbor(idx, -1));
+                else if (action === 'down') doReorderStrip(idx, _withinPinNeighbor(idx, +1));
                 else if (action === 'reverse') doReverseStrip(idx);
                 else if (action === 'rename') await doRenameStripPrompt(idx);
                 else if (action === 'delete') await doDeleteStripPrompt(idx);
+                else if (action === 'lock') doToggleVoLock(idx);
+                return;
+            }
+            // Pin name click → rename (don't toggle the <details>)
+            const pinName = e.target.closest('.pin-name');
+            if (pinName) {
+                e.preventDefault();
+                e.stopPropagation();
+                await doRenamePinPrompt(pinName.dataset.pinId);
                 return;
             }
             // Ignore clicks that target inputs (so they keep focus)
@@ -1297,9 +1647,134 @@ export function init(container) {
         dom_strips_list.addEventListener('change', (e) => {
             const t = e.target;
             if (t instanceof HTMLInputElement && t.dataset.role === 'video-offset') {
+                if (t.readOnly) return; // derived value — LOCK not engaged
                 const idx = parseInt(t.dataset.stripIdx, 10);
                 doSetVideoOffset(idx, t.value);
             }
+        }, { signal });
+
+        // ── Drag & drop: grip drag (reorder / repin) + pin header drag ──
+        /** @type {null | {kind:'strip', idx:number} | {kind:'pin', pinId:string}} */
+        let panelDragState = null;
+
+        const clearDragOver = () => {
+            for (const el of dom_strips_list.querySelectorAll('.drag-over')) {
+                el.classList.remove('drag-over');
+            }
+        };
+
+        dom_strips_list.addEventListener('dragstart', (e) => {
+            const grip = e.target.closest ? e.target.closest('.strip-grip') : null;
+            if (grip) {
+                panelDragState = { kind: 'strip', idx: parseInt(grip.dataset.stripIdx, 10) };
+                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+                return;
+            }
+            const header = e.target.closest ? e.target.closest('.pin-header') : null;
+            if (header) {
+                panelDragState = { kind: 'pin', pinId: header.dataset.pinId };
+                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+            }
+        }, { signal });
+
+        dom_strips_list.addEventListener('dragover', (e) => {
+            if (!panelDragState) return;
+            const target = e.target.closest
+                ? (e.target.closest('.strip-row') || e.target.closest('.pin-header'))
+                : null;
+            if (!target) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+            clearDragOver();
+            target.classList.add('drag-over');
+        }, { signal });
+
+        dom_strips_list.addEventListener('drop', (e) => {
+            if (!panelDragState) return;
+            e.preventDefault();
+            clearDragOver();
+            const drag = panelDragState;
+            panelDragState = null;
+            const rowTarget = e.target.closest ? e.target.closest('.strip-row') : null;
+            const headerTarget = e.target.closest ? e.target.closest('.pin-header') : null;
+            if (drag.kind === 'strip') {
+                if (rowTarget) {
+                    const toIdx = parseInt(rowTarget.dataset.stripIdx, 10);
+                    if (toIdx === drag.idx) return;
+                    const strips = stripStore.getStrips();
+                    const fromPin = strips[drag.idx] ? _pinOfStrip(strips[drag.idx]) : null;
+                    const toPin = rowTarget.dataset.pinId;
+                    if (fromPin === toPin) doReorderStrip(drag.idx, toIdx);
+                    else doRepinStrip(drag.idx, toPin);
+                } else if (headerTarget) {
+                    doRepinStrip(drag.idx, headerTarget.dataset.pinId);
+                }
+            } else if (drag.kind === 'pin' && headerTarget) {
+                const order = stripStore.getPinOrder();
+                const toIdx = order.indexOf(headerTarget.dataset.pinId);
+                if (toIdx >= 0) doReorderPin(drag.pinId, toIdx);
+            }
+        }, { signal });
+
+        dom_strips_list.addEventListener('dragend', () => {
+            panelDragState = null;
+            clearDragOver();
+        }, { signal });
+    }
+
+    // ── [+ Pin] button + selected-strip "Move to pin…" row ──────────────
+    const dom_strips_btn_add_pin = container.querySelector('#strips_btn_add_pin');
+    if (dom_strips_btn_add_pin) {
+        dom_strips_btn_add_pin.addEventListener('click', () => { doAddPin(); }, { signal });
+    }
+
+    const dom_strips_selected_row = container.querySelector('#strips_selected_row');
+    const dom_strips_selected_label = container.querySelector('#strips_selected_label');
+    const dom_strips_move_pin = container.querySelector('#strips_move_pin');
+
+    function renderSelectedStripRow() {
+        if (!dom_strips_selected_row) return;
+        const strips = stripStore.getStrips();
+        const sIdx = selection.getStripIdx();
+        if (sIdx === null || sIdx < 0 || sIdx >= strips.length) {
+            dom_strips_selected_row.style.display = 'none';
+            return;
+        }
+        const s = strips[sIdx];
+        const pin = _pinOfStrip(s);
+        dom_strips_selected_row.style.display = '';
+        if (dom_strips_selected_label) {
+            dom_strips_selected_label.textContent = `Selected: ${s.name} (${pin})`;
+        }
+        if (dom_strips_move_pin) {
+            dom_strips_move_pin.innerHTML = '';
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Move to pin…';
+            placeholder.selected = true;
+            placeholder.disabled = true;
+            dom_strips_move_pin.appendChild(placeholder);
+            for (const p of stripStore.getPinOrder()) {
+                if (p === pin) continue;
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = p;
+                dom_strips_move_pin.appendChild(opt);
+            }
+            const newOpt = document.createElement('option');
+            newOpt.value = '__new__';
+            newOpt.textContent = 'New pin…';
+            dom_strips_move_pin.appendChild(newOpt);
+        }
+    }
+
+    if (dom_strips_move_pin) {
+        dom_strips_move_pin.addEventListener('change', () => {
+            const sIdx = selection.getStripIdx();
+            const value = dom_strips_move_pin.value;
+            if (sIdx === null || sIdx < 0 || !value) return;
+            if (value === '__new__') doRepinStrip(sIdx, _nextFreePinId());
+            else doRepinStrip(sIdx, value);
         }, { signal });
     }
 
@@ -1358,6 +1833,145 @@ export function init(container) {
         _persistMultiStrip();
         renderStripsPanel();
         setNeedsRender();
+    }
+
+    // ── Pin operations (issue #24, Phase 2) ──────────────────────────────
+
+    /** One-shot toast shown on the first cross-pin move (§1.10). */
+    function _maybeShowRepinToast(stripName, newPin) {
+        try {
+            if (localStorage.getItem('lm:shapeeditor-repinToastShown')) return;
+            localStorage.setItem('lm:shapeeditor-repinToastShown', '1');
+        } catch { /* private mode */ }
+        _toastInfo(`Moved "${stripName}" to ${newPin}. vo: was reset; Undo to restore.`);
+    }
+
+    /**
+     * Move a strip to another pin. Clears its videoOffsetOverride and
+     * re-derives video_offset (§1.4). Emits a `strip-repin` undo action.
+     * Returns true when a move happened.
+     */
+    function doRepinStrip(stripIdx, newPinRaw) {
+        const strips = stripStore.getStrips();
+        if (stripIdx < 0 || stripIdx >= strips.length) return false;
+        const newPin = typeof newPinRaw === 'string' ? newPinRaw.trim() : '';
+        if (!newPin) return false;
+        const s = strips[stripIdx];
+        const oldPin = _pinOfStrip(s);
+        if (newPin === oldPin) return false;
+        const action = {
+            type: 'strip-repin',
+            stripIdx,
+            oldPin,
+            newPin,
+            oldWithinPinIdx: _withinPinIdx(stripIdx),
+            newWithinPinIdx: strips.filter((st) => _pinOfStrip(st) === newPin).length,
+            oldVideoOffset: typeof s.video_offset === 'number' ? s.video_offset : s.offset,
+            oldOverride: s.videoOffsetOverride === true,
+        };
+        _applyRepin(action);
+        pushUndo(action);
+        notePinMutation();
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+        _maybeShowRepinToast(s.name, newPin);
+        return true;
+    }
+
+    /**
+     * Toggle the per-strip [LOCK] (videoOffsetOverride). Locking keeps the
+     * current value and makes vo: editable; unlocking re-derives.
+     * Emits a `vo-override-toggle` undo action.
+     */
+    function doToggleVoLock(stripIdx) {
+        const strips = stripStore.getStrips();
+        if (stripIdx < 0 || stripIdx >= strips.length) return;
+        const s = strips[stripIdx];
+        const oldOverride = s.videoOffsetOverride === true;
+        const newOverride = !oldOverride;
+        const oldValue = typeof s.video_offset === 'number' ? s.video_offset : s.offset;
+        const newValue = newOverride ? oldValue : stripStore.getDerivedVideoOffset(stripIdx);
+        stripStore.updateStrip(stripIdx, { videoOffsetOverride: newOverride, video_offset: newValue });
+        pushUndo({ type: 'vo-override-toggle', stripIdx, oldOverride, newOverride, oldValue, newValue });
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsRender();
+    }
+
+    /** Rename a pin (core, no prompt). Returns true when applied. */
+    function doRenamePin(oldId, newIdRaw) {
+        const newId = typeof newIdRaw === 'string' ? newIdRaw.trim() : '';
+        if (!newId || newId === oldId) return false;
+        const pins = stripStore.getPinOrder();
+        if (!pins.includes(oldId)) return false;
+        if (pins.includes(newId)) return false;
+        _applyPinRename(oldId, newId);
+        pushUndo({ type: 'pin-rename', oldId, newId });
+        notePinMutation();
+        _persistMultiStrip();
+        renderStripsPanel();
+        return true;
+    }
+
+    async function doRenamePinPrompt(pinId) {
+        const pins = stripStore.getPinOrder();
+        if (!pins.includes(pinId)) return;
+        const Swal = (await import('sweetalert2')).default;
+        if (signal.aborted) return;
+        const { value } = await Swal.fire({
+            title: 'Rename Pin',
+            input: 'text',
+            inputValue: pinId,
+            inputLabel: `New name for "${pinId}" (labels only — export order determines addLeds order)`,
+            showCancelButton: true,
+            inputValidator: (v) => {
+                const name = (v || '').trim();
+                if (!name) return 'Pin name cannot be empty';
+                if (name !== pinId && pins.includes(name)) {
+                    return `A pin named "${name}" already exists`;
+                }
+                return null;
+            },
+        });
+        if (signal.aborted || typeof value !== 'string') return;
+        doRenamePin(pinId, value);
+    }
+
+    /** Move pin `pinId` to position `toIdx` in the pin order. */
+    function doReorderPin(pinId, toIdx) {
+        const oldOrder = stripStore.getPinOrder();
+        const fromIdx = oldOrder.indexOf(pinId);
+        if (fromIdx < 0) return false;
+        const clamped = Math.max(0, Math.min(oldOrder.length - 1, toIdx));
+        if (clamped === fromIdx) return false;
+        const newOrder = [...oldOrder];
+        newOrder.splice(fromIdx, 1);
+        newOrder.splice(clamped, 0, pinId);
+        _applyPinOrder(newOrder);
+        pushUndo({ type: 'pin-reorder', oldOrder, newOrder });
+        notePinMutation();
+        _persistMultiStrip();
+        renderStripsPanel();
+        setNeedsGeometryUpdate();
+        return true;
+    }
+
+    /**
+     * [+ Pin]: pins exist only through strips (§1.1), so creating a pin
+     * moves the SELECTED strip onto a fresh pinN. Returns the new pin id,
+     * or null when no strip is selected.
+     */
+    function doAddPin() {
+        const sIdx = selection.getStripIdx();
+        const strips = stripStore.getStrips();
+        if (sIdx === null || sIdx < 0 || sIdx >= strips.length) {
+            _toastInfo('Select a strip first — [+ Pin] moves it to a new pin');
+            return null;
+        }
+        const newPin = _nextFreePinId();
+        doRepinStrip(sIdx, newPin);
+        return newPin;
     }
 
     function doReorderStrip(fromIdx, toIdx) {
@@ -1429,6 +2043,7 @@ export function init(container) {
         selection.onStripRemove(stripIdx);
         selectedIdx = -1;
         pushUndo({ type: 'strip-delete', stripIdx, removed });
+        notePinMutation();
         _persistMultiStrip();
         renderStripsPanel();
         setNeedsGeometryUpdate();
@@ -1873,6 +2488,9 @@ export function init(container) {
 
         screenmap_pts = parse_screenmap_data(text);
         if (screenmap_pts.length === 0) return;
+        // Loading a new file is a user-initiated pin change — even if it has
+        // fewer pins than the previous working copy (guard grace window).
+        notePinMutation();
         saveScreenmap(text);
         try { renderBackupRow(); } catch { /* render is best-effort */ }
 
@@ -4383,6 +5001,11 @@ export function init(container) {
     /** @type {null | { entry:object, opts:object, localPts:Array<[number,number]>, ghostWorld:[number,number] | null }} */
     let placingState = null;
 
+    // Pin id requested by a per-pin [+ strip] button; consumed by the next
+    // placement commit (or cleared on cancel). Null = use default pin.
+    /** @type {string|null} */
+    let pendingNewStripPin = null;
+
     // Paste-pending state: parsed strips ghost together around their centroid
     // following the cursor; L-click commits, Esc/R-click cancels.
     /** @type {null | { strips:Array<{name:string,points:Array<[number,number]>,diameter?:number,video_offset:number,offsetsLocal:Array<[number,number]>}>, ghostWorld:[number,number]|null, totalCount:number }} */
@@ -4441,6 +5064,7 @@ export function init(container) {
 
     function _cancelPlacing() {
         placingState = null;
+        pendingNewStripPin = null;
         if (dom_pp_status) dom_pp_status.textContent = '';
         overlayCanvas.style.cursor = 'default';
         setNeedsRender();
@@ -4560,9 +5184,12 @@ export function init(container) {
             worldX: wx,
             worldY: wy,
             name,
+            pin: pendingNewStripPin || _defaultNewStripPin(),
         };
+        pendingNewStripPin = null;
         _doPanelPlace(action);
         pushUndo(action);
+        notePinMutation();
         _persistMultiStrip();
         renderStripsPanel();
         setNeedsGeometryUpdate();
@@ -4607,6 +5234,8 @@ export function init(container) {
             points: rawPtsAdd,
             diameter: typeof origDiameter === 'number' ? origDiameter : 0.5,
             video_offset: insertAt,
+            pin: (typeof action.pin === 'string' && action.pin) ? action.pin : 'pin1',
+            videoOffsetOverride: false,
         });
         stripInfo = stripStore.get();
         // origWidth/Height may still be 0 for fresh maps — recompute from rawPts
@@ -4662,9 +5291,12 @@ export function init(container) {
             worldX,
             worldY,
             name,
+            pin: pendingNewStripPin || _defaultNewStripPin(),
         };
+        pendingNewStripPin = null;
         _doPanelPlace(action);
         pushUndo(action);
+        notePinMutation();
         _persistMultiStrip();
         renderStripsPanel();
         setNeedsGeometryUpdate();
@@ -4808,6 +5440,7 @@ export function init(container) {
         const addedDescriptors = [];
         const base = stripStore.getTotalCount();
         let running = 0;
+        const pastePin = _defaultNewStripPin();
         for (const s of pasteState.strips) {
             const name = _uniqueNameAgainst(s.name, existingNames);
             existingNames.add(name);
@@ -4819,6 +5452,7 @@ export function init(container) {
                 rawPts: raw,
                 diameter: typeof s.diameter === 'number' ? s.diameter : (typeof origDiameter === 'number' ? origDiameter : 0.5),
                 video_offset: base + running,
+                pin: pastePin,
             });
             running += sm.length;
         }
@@ -4826,6 +5460,7 @@ export function init(container) {
         const action = { type: 'paste-strips', strips: addedDescriptors };
         _doPasteStrips(action);
         pushUndo(action);
+        notePinMutation();
         _persistMultiStrip();
         renderStripsPanel();
         setNeedsGeometryUpdate();
@@ -4866,6 +5501,8 @@ export function init(container) {
                 points: desc.rawPts,
                 diameter: desc.diameter,
                 video_offset: desc.video_offset,
+                pin: (typeof desc.pin === 'string' && desc.pin) ? desc.pin : 'pin1',
+                videoOffsetOverride: false,
             });
             desc._insertAt = insertAt;
             desc._count = desc.screenmapPts.length;
@@ -5132,7 +5769,7 @@ export function init(container) {
 
             if (signal.aborted) return null;
             const action = res.isConfirmed ? 'center' : (res.isDenied ? 'ghost' : null);
-            if (!action) return null;
+            if (!action) { pendingNewStripPin = null; return null; }
             const opts = (res.isConfirmed ? res.value : res.value) || _readInsertDialog();
             return _submitInsertDialog({ ...opts, place: action });
         } catch {

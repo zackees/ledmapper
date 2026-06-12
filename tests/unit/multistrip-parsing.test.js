@@ -249,20 +249,32 @@ describe('buildScreenmapMultiStripJson', () => {
         assert.strictEqual(parsed.map.strip2.diameter, 0.75);
     });
 
-    it('includes video_offset when non-sequential', () => {
+    it('includes video_offset (with override flag) when videoOffsetOverride is true', () => {
+        const strips = [
+            { name: 'strip1', points: [[0, 0]], diameter: 0.25, offset: 0, count: 1, video_offset: 0 },
+            { name: 'strip2', points: [[1, 1]], diameter: 0.5, offset: 1, count: 1, video_offset: 100, videoOffsetOverride: true },
+        ];
+        const json = buildScreenmapMultiStripJson(strips);
+        const parsed = JSON.parse(json);
+        assert.strictEqual(parsed.map.strip2.video_offset, 100);
+        assert.strictEqual(parsed.map.strip2.video_offset_override, true);
+    });
+
+    it('omits video_offset when videoOffsetOverride is false, even if non-sequential', () => {
         const strips = [
             { name: 'strip1', points: [[0, 0]], diameter: 0.25, offset: 0, count: 1, video_offset: 0 },
             { name: 'strip2', points: [[1, 1]], diameter: 0.5, offset: 1, count: 1, video_offset: 100 },
         ];
         const json = buildScreenmapMultiStripJson(strips);
         const parsed = JSON.parse(json);
-        assert.strictEqual(parsed.map.strip2.video_offset, 100);
+        assert.strictEqual(parsed.map.strip2.video_offset, undefined);
+        assert.strictEqual(parsed.map.strip2.video_offset_override, undefined);
     });
 
     it('round-trips through parseScreenmapMultiStrip', () => {
         const strips = [
             { name: 'strip1', points: [[0, 0], [1, 0]], diameter: 0.25, offset: 0, count: 2, video_offset: 0 },
-            { name: 'strip2', points: [[5, 5], [6, 6]], diameter: 0.5, offset: 2, count: 2, video_offset: 50 },
+            { name: 'strip2', points: [[5, 5], [6, 6]], diameter: 0.5, offset: 2, count: 2, video_offset: 50, videoOffsetOverride: true },
         ];
         const json = buildScreenmapMultiStripJson(strips);
         const result = parseScreenmapMultiStrip(json);
@@ -340,5 +352,111 @@ describe('getStripColors', () => {
     it('returns empty array for negative n', () => {
         const colors = getStripColors(-1);
         assert.deepStrictEqual(colors, []);
+    });
+});
+
+// ── Pins (issue #24): parse + emission rules ─────────────────────────
+
+describe('parseScreenmapMultiStrip — pins', () => {
+    it('defaults pin to "pin1" when absent', () => {
+        const result = parseScreenmapMultiStrip(JSON.stringify(TWO_STRIPS));
+        assert.strictEqual(result.strips[0].pin, 'pin1');
+        assert.strictEqual(result.strips[1].pin, 'pin1');
+    });
+
+    it('reads explicit pin strings, defaulting blank/missing to pin1', () => {
+        const blob = {
+            map: {
+                a: { x: [0], y: [0], pin: 'pin2' },
+                b: { x: [1], y: [0], pin: '  ' },
+                c: { x: [2], y: [0] },
+            }
+        };
+        const result = parseScreenmapMultiStrip(JSON.stringify(blob));
+        assert.strictEqual(result.strips[0].pin, 'pin2');
+        assert.strictEqual(result.strips[1].pin, 'pin1');
+        assert.strictEqual(result.strips[2].pin, 'pin1');
+    });
+
+    it('reads explicit video_offset_override flag', () => {
+        const blob = {
+            map: {
+                a: { x: [0, 1], y: [0, 0] },
+                b: { x: [2], y: [0], video_offset: 2, video_offset_override: true },
+            }
+        };
+        const result = parseScreenmapMultiStrip(JSON.stringify(blob));
+        assert.strictEqual(result.strips[0].videoOffsetOverride, false);
+        assert.strictEqual(result.strips[1].videoOffsetOverride, true);
+        assert.strictEqual(result.strips[1].video_offset, 2);
+    });
+
+    it('legacy migration: non-sequential video_offset without flag becomes override', () => {
+        const result = parseScreenmapMultiStrip(JSON.stringify(TWO_STRIPS_WITH_OFFSETS));
+        // strip1: video_offset 0 === sequential offset 0 → no override
+        assert.strictEqual(result.strips[0].videoOffsetOverride, false);
+        // strip2: video_offset 100 !== sequential offset 4 → migrated override
+        assert.strictEqual(result.strips[1].videoOffsetOverride, true);
+        assert.strictEqual(result.strips[1].video_offset, 100);
+    });
+
+    it('explicit override:false wins over legacy heuristic', () => {
+        const blob = {
+            map: {
+                a: { x: [0, 1], y: [0, 0] },
+                b: { x: [2], y: [0], video_offset: 99, video_offset_override: false },
+            }
+        };
+        const result = parseScreenmapMultiStrip(JSON.stringify(blob));
+        assert.strictEqual(result.strips[1].videoOffsetOverride, false);
+    });
+
+    it('CSV fallback strip gets pin1 and no override', () => {
+        const result = parseScreenmapMultiStrip('0,0\n1,0\n');
+        assert.strictEqual(result.strips[0].pin, 'pin1');
+        assert.strictEqual(result.strips[0].videoOffsetOverride, false);
+    });
+});
+
+describe('buildScreenmapMultiStripJson — pin emission', () => {
+    it('omits pin when every strip is on default pin1', () => {
+        const strips = [
+            { name: 'a', points: [[0, 0]], offset: 0, count: 1, video_offset: 0, pin: 'pin1' },
+            { name: 'b', points: [[1, 1]], offset: 1, count: 1, video_offset: 1, pin: 'pin1' },
+        ];
+        const parsed = JSON.parse(buildScreenmapMultiStripJson(strips));
+        assert.strictEqual(parsed.map.a.pin, undefined);
+        assert.strictEqual(parsed.map.b.pin, undefined);
+    });
+
+    it('emits pin on every strip when two distinct pins exist', () => {
+        const strips = [
+            { name: 'a', points: [[0, 0]], offset: 0, count: 1, video_offset: 0, pin: 'pin1' },
+            { name: 'b', points: [[1, 1]], offset: 1, count: 1, video_offset: 1, pin: 'pin2' },
+        ];
+        const parsed = JSON.parse(buildScreenmapMultiStripJson(strips));
+        assert.strictEqual(parsed.map.a.pin, 'pin1');
+        assert.strictEqual(parsed.map.b.pin, 'pin2');
+    });
+
+    it('emits pin when single non-default pin', () => {
+        const strips = [
+            { name: 'a', points: [[0, 0]], offset: 0, count: 1, video_offset: 0, pin: 'gpio5' },
+        ];
+        const parsed = JSON.parse(buildScreenmapMultiStripJson(strips));
+        assert.strictEqual(parsed.map.a.pin, 'gpio5');
+    });
+
+    it('pin + override round-trip through parseScreenmapMultiStrip', () => {
+        const strips = [
+            { name: 'a', points: [[0, 0], [1, 0]], offset: 0, count: 2, video_offset: 0, pin: 'pin1' },
+            { name: 'b', points: [[5, 5]], offset: 2, count: 1, video_offset: 7, pin: 'pin2', videoOffsetOverride: true },
+        ];
+        const result = parseScreenmapMultiStrip(buildScreenmapMultiStripJson(strips));
+        assert.strictEqual(result.strips[0].pin, 'pin1');
+        assert.strictEqual(result.strips[0].videoOffsetOverride, false);
+        assert.strictEqual(result.strips[1].pin, 'pin2');
+        assert.strictEqual(result.strips[1].videoOffsetOverride, true);
+        assert.strictEqual(result.strips[1].video_offset, 7);
     });
 });

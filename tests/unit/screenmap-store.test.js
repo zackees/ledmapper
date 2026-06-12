@@ -28,6 +28,8 @@ const {
     backfillMeta,
     savePresetSelection,
     getPresetSelection,
+    notePinMutation,
+    _resetPinMutationGuardForTests,
 } = await import('../../src/screenmap-store.js');
 
 function clearAll() {
@@ -250,5 +252,94 @@ describe('screenmap-store: saveScreenmapPoints delegates to gated writer', () =>
         for (let i = 0; i < MIN_AUTOSAVE_LEDS; i++) pts.push([i, 0]);
         saveScreenmapPoints(pts, 0.5);
         assert.ok(getScreenmap());
+    });
+});
+
+// ── Pins (issue #24): meta + pin-count regression guard ──────────────
+
+function makePinMap(stripSpecs) {
+    // stripSpecs: { name: { count, pin } }
+    const map = {};
+    for (const [name, spec] of Object.entries(stripSpecs)) {
+        const x = [], y = [];
+        for (let i = 0; i < spec.count; i++) { x.push(i); y.push(0); }
+        map[name] = { x, y, diameter: 0.5 };
+        if (spec.pin) map[name].pin = spec.pin;
+    }
+    return JSON.stringify({ map });
+}
+
+describe('screenmap-store: pinCount meta + regression guard', () => {
+    beforeEach(() => {
+        clearAll();
+        _resetPinMutationGuardForTests();
+    });
+
+    it('meta includes pinCount', () => {
+        const json = makePinMap({
+            a: { count: 4, pin: 'pin1' },
+            b: { count: 4, pin: 'pin2' },
+        });
+        assert.equal(saveScreenmapWithMeta(json, { source: 'save' }), true);
+        assert.equal(getScreenmapMeta().pinCount, 2);
+    });
+
+    it('pinCount defaults to 1 when strips have no pin field', () => {
+        assert.equal(saveScreenmapWithMeta(makeMap({ strip1: 8 }), { source: 'save' }), true);
+        assert.equal(getScreenmapMeta().pinCount, 1);
+    });
+
+    it('refuses a write that silently drops pin count (no recent mutation)', () => {
+        const twoPins = makePinMap({
+            a: { count: 4, pin: 'pin1' },
+            b: { count: 4, pin: 'pin2' },
+        });
+        notePinMutation();
+        assert.equal(saveScreenmapWithMeta(twoPins, { source: 'save' }), true);
+        _resetPinMutationGuardForTests();
+        const onePin = makePinMap({
+            a: { count: 4, pin: 'pin1' },
+            b: { count: 4, pin: 'pin1' },
+        });
+        const warnings = [];
+        const origWarn = console.warn;
+        console.warn = (...args) => warnings.push(args.join(' '));
+        try {
+            assert.equal(saveScreenmapWithMeta(onePin, { source: 'save' }), false);
+        } finally {
+            console.warn = origWarn;
+        }
+        // Working copy untouched
+        assert.equal(getScreenmap(), twoPins);
+        assert.ok(warnings.some((w) => /pin/i.test(w)), 'expected a console.warn mentioning pins');
+    });
+
+    it('allows pin-count drop within grace window after notePinMutation()', () => {
+        const twoPins = makePinMap({
+            a: { count: 4, pin: 'pin1' },
+            b: { count: 4, pin: 'pin2' },
+        });
+        notePinMutation();
+        assert.equal(saveScreenmapWithMeta(twoPins, { source: 'save' }), true);
+        const onePin = makePinMap({
+            a: { count: 4, pin: 'pin1' },
+            b: { count: 4, pin: 'pin1' },
+        });
+        notePinMutation();
+        assert.equal(saveScreenmapWithMeta(onePin, { source: 'save' }), true);
+        assert.equal(getScreenmap(), onePin);
+        assert.equal(getScreenmapMeta().pinCount, 1);
+    });
+
+    it('allows pin-count increases without mutation note', () => {
+        const onePin = makeMap({ strip1: 8 });
+        assert.equal(saveScreenmapWithMeta(onePin, { source: 'save' }), true);
+        _resetPinMutationGuardForTests();
+        const twoPins = makePinMap({
+            a: { count: 4, pin: 'pin1' },
+            b: { count: 4, pin: 'pin2' },
+        });
+        assert.equal(saveScreenmapWithMeta(twoPins, { source: 'save' }), true);
+        assert.equal(getScreenmapMeta().pinCount, 2);
     });
 });

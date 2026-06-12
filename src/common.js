@@ -82,7 +82,11 @@ export function parseScreenmapMultiStrip(text) {
     // CSV fallback — wrap in single strip
     const pts = parse_screenmap_data_csv(text);
     return {
-        strips: [{ name: 'strip1', points: pts, diameter: undefined, offset: 0, count: pts.length, video_offset: 0 }],
+        strips: [{
+            name: 'strip1', points: pts, diameter: undefined, offset: 0,
+            count: pts.length, video_offset: 0,
+            pin: 'pin1', videoOffsetOverride: false,
+        }],
         allPoints: pts,
         totalCount: pts.length,
     };
@@ -115,7 +119,19 @@ function _parseMultiStripJson(obj) {
         }
         const diameter = typeof strip["diameter"] === "number" ? strip["diameter"] : undefined;
         const video_offset = typeof strip["video_offset"] === "number" ? strip["video_offset"] : offset;
-        strips.push({ name: key, points, diameter, offset, count: points.length, video_offset });
+        // Pin grouping (issue #24): free-form string, default 'pin1'.
+        const rawPin = strip["pin"];
+        const pin = (typeof rawPin === "string" && rawPin.trim() !== "") ? rawPin : "pin1";
+        // videoOffsetOverride: explicit flag wins; legacy migration — a map
+        // saved before the override flag existed marks any manually-authored
+        // (non-sequential) video_offset as overridden so it survives resave.
+        const videoOffsetOverride = typeof strip["video_offset_override"] === "boolean"
+            ? strip["video_offset_override"]
+            : (typeof strip["video_offset"] === "number" && strip["video_offset"] !== offset);
+        strips.push({
+            name: key, points, diameter, offset, count: points.length,
+            video_offset, pin, videoOffsetOverride,
+        });
         offset += points.length;
     }
     return { strips, allPoints, totalCount: allPoints.length };
