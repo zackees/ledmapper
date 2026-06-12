@@ -37,12 +37,22 @@
             </div>
         </div>
 
-        <!-- Right section - Download buttons -->
+        <!-- Right section - Download buttons + Bloom -->
         <div class="flex flex-col items-center gap-2">
             <div class="flex flex-wrap gap-1.5 justify-center">
                 <button id="btn_download_screenmap">Download Screenmap</button>
                 <button id="btn_download_screenmap_16x16_serpentine">Download 16x16 Serpentine Screenmap</button>
                 <button id="btn_download_video">Download Mapped Video</button>
+            </div>
+            <div class="flex flex-col items-start gap-1.5 mt-1">
+                <label class="flex items-center gap-1.5 text-sm text-lm-text cursor-pointer">
+                    <input type="checkbox" id="chk_auto_bloom" checked> Auto bloom
+                </label>
+                <div id="bloom_strength_slider" class="flex items-center gap-2.5 opacity-50 pointer-events-none">
+                    <label for="rng_bloom_strength" class="text-sm text-lm-text-muted">Strength</label>
+                    <input type="range" min="0" max="100" value="50" class="slider" id="rng_bloom_strength" disabled>
+                    <span class="font-mono text-xs text-lm-text-muted min-w-10 text-right" id="txt_curr_bloom_strength">16.00</span>
+                </div>
             </div>
         </div>
     </div>

@@ -96,6 +96,20 @@
                     </div>
                 </div>
             </details>
+
+            <details class="panel" open>
+                <summary>Bloom</summary>
+                <div class="panel-body">
+                    <div class="control-group">
+                        <label class="checkbox-inline"><input type="checkbox" id="chk_auto_bloom" checked> Auto bloom</label>
+                        <div class="slider-container disabled" id="bloom_strength_slider">
+                            <label for="rng_bloom_strength">Strength</label>
+                            <input type="range" min="0" max="100" value="50" class="slider" id="rng_bloom_strength" disabled>
+                            <span id="txt_curr_bloom_strength">0.60</span>
+                        </div>
+                    </div>
+                </div>
+            </details>
         </aside>
 
         <main class="canvas-area drop-zone flex-1 flex justify-center items-center p-6 relative min-w-0 bg-lm-bg">
