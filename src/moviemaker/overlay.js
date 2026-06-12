@@ -3,6 +3,7 @@
  */
 
 import { getStripColors, stripStartEndLabels } from '../common.js';
+import { createLabelRenderer } from '../label-render.js';
 import { estimateLedSize } from './transforms.js';
 import { perfCount } from './perf.js';
 
@@ -25,31 +26,28 @@ function strokeRings(lctx, transformedPts, start, end, r, color) {
     lctx.stroke();
 }
 
-function drawStripLabel(lctx, text, pt, r, color) {
-    const x = pt[0] + r + 3;
-    const y = pt[1] - r - 3;
-    lctx.font = 'bold 12px monospace';
-    lctx.textAlign = 'left';
-    lctx.textBaseline = 'bottom';
-    lctx.lineWidth = 3;
-    lctx.strokeStyle = 'black';
-    lctx.strokeText(text, x, y);
-    lctx.fillStyle = color;
-    lctx.fillText(text, x, y);
-}
+// Labels are laid out by the greedy engine (issue #28) so 16+ strip maps
+// don't pile Start/End text at panel corners. Runs only on ring-layer
+// rebuilds (rotate/zoom/strips changes), never per frame.
+const labelRenderer = createLabelRenderer();
 
 function drawStripLabels(lctx, transformedPts, strips, r, colors) {
+    const items = [];
     for (let si = 0; si < strips.length; si++) {
         const strip = strips[si];
         const first = strip.offset;
         const last = strip.offset + strip.count - 1;
         if (first < 0 || last >= transformedPts.length || strip.count === 0) continue;
         const { start, end } = stripStartEndLabels(strip, si);
-        drawStripLabel(lctx, start, transformedPts[first], r, colors[si]);
+        items.push({ id: 'start:' + si, text: start, anchorX: transformedPts[first][0], anchorY: transformedPts[first][1], color: colors[si] });
         if (end !== null) {
-            drawStripLabel(lctx, end, transformedPts[last], r, colors[si]);
+            items.push({ id: 'end:' + si, text: end, anchorX: transformedPts[last][0], anchorY: transformedPts[last][1], color: colors[si] });
         }
     }
+    labelRenderer.draw(lctx, items, {
+        font: 'bold 12px monospace',
+        obstacles: () => transformedPts.map(([x, y]) => ({ x: x - r, y: y - r, w: r * 2, h: r * 2 })),
+    });
 }
 
 function getRingLayer(ctx, localPts, rotate, zoom, strips) {

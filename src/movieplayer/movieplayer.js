@@ -1,4 +1,5 @@
 import { parseScreenmapMultiStrip, centerAndFitPoints, getStripColors, stripStartEndLabels } from '../common.js';
+import { createLabelRenderer } from '../label-render.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import { saveScreenmap, getScreenmap, savePresetSelection, getPresetSelection } from '../screenmap-store.js';
 import { buildVideoChannelMap } from '../moviemaker/transforms.js';
@@ -77,33 +78,31 @@ export function init(container) {
     // Draw per-strip Start/End labels over the LED view. Multi-strip maps get
     // one color per strip (matching the moviemaker overlay); single-strip maps
     // use white. Redrawn only on screenmap load — positions are static.
+    const labelRenderer = createLabelRenderer();
+
     function drawStripLabels() {
         overlayCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
         if (screenmap_strips.length === 0 || screenmap_pts.length === 0) return;
         const colors = screenmap_strips.length > 1
             ? getStripColors(screenmap_strips.length)
             : ['white'];
-        overlayCtx.font = 'bold 18px monospace';
-        overlayCtx.textAlign = 'left';
-        overlayCtx.textBaseline = 'bottom';
+        const items = [];
         for (let si = 0; si < screenmap_strips.length; si++) {
             const strip = screenmap_strips[si];
             const first = strip.offset;
             const last = strip.offset + strip.count - 1;
             if (strip.count === 0 || last >= screenmap_pts.length) continue;
             const { start, end } = stripStartEndLabels(strip, si);
-            const targets = [[start, screenmap_pts[first]]];
-            if (end !== null) targets.push([end, screenmap_pts[last]]);
-            for (const [text, [x, y]] of targets) {
-                const lx = Math.min(x + 8, CANVAS_SIZE - 120);
-                const ly = Math.max(y - 8, 20);
-                overlayCtx.lineWidth = 4;
-                overlayCtx.strokeStyle = 'black';
-                overlayCtx.strokeText(text, lx, ly);
-                overlayCtx.fillStyle = colors[si];
-                overlayCtx.fillText(text, lx, ly);
+            items.push({ id: 'start:' + si, text: start, anchorX: screenmap_pts[first][0], anchorY: screenmap_pts[first][1], color: colors[si] });
+            if (end !== null) {
+                items.push({ id: 'end:' + si, text: end, anchorX: screenmap_pts[last][0], anchorY: screenmap_pts[last][1], color: colors[si] });
             }
         }
+        labelRenderer.draw(overlayCtx, items, {
+            font: 'bold 18px monospace',
+            bounds: { x: 0, y: 0, w: CANVAS_SIZE, h: CANVAS_SIZE },
+            obstacles: () => screenmap_pts.map(([x, y]) => ({ x: x - 3, y: y - 3, w: 6, h: 6 })),
+        });
     }
 
     function load_screenmap_data(text, { persist = true } = {}) {

@@ -16,6 +16,7 @@ import {
     DoubleSide,
 } from 'three';
 import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, getPinColors, stripStartEndLabels } from '../common.js';
+import { createLabelRenderer } from '../label-render.js';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop.js';
 import {
     saveScreenmap,
@@ -293,6 +294,10 @@ export function init(container) {
     let startHandleDrag = null;
     // Canvas-space geometry captured by drawChainArrows for hit-testing.
     const _chainGeom = { connectors: [], starts: [], ends: [], crossBadges: [] };
+
+    // Greedy non-overlapping placement for Start/End labels (issue #28).
+    const labelRenderer = createLabelRenderer();
+    window.__labelLayoutDebug = () => labelRenderer.debugDump();
 
     // Test/debug hook: expose strip state and computed Start/End labels so
     // E2E tests can assert on canvas-drawn labels that have no DOM presence.
@@ -3715,9 +3720,14 @@ export function init(container) {
         }
         _drawChainDragGhost();
 
-        // Start and end LEDs always visible (per strip when multi-strip)
+        // Start and end LEDs always visible (per strip when multi-strip).
+        // Labels go through the layout engine so 16+ strip maps stay readable:
+        // anchor dot at the LED, displaced label box, leader line when far.
         overlayCtx.globalAlpha = 1;
         const hasMultiStripLabels = stripInfo && stripInfo.strips.length > 1;
+        const labelItems = [];
+        const START_COLOR = 'rgba(0,255,0,1)';
+        const END_COLOR = 'rgba(255,0,0,1)';
         if (hasMultiStripLabels) {
             for (let s = 0; s < stripInfo.strips.length; s++) {
                 const st = stripInfo.strips[s];
@@ -3726,26 +3736,28 @@ export function init(container) {
                 const endIdx = st.offset + st.count - 1;
                 if (startIdx < 0 || endIdx >= pts.length) continue;
                 const labels = stripStartEndLabels(st, s);
-                fillCircle(pts[startIdx][0], pts[startIdx][1], 8, 'rgba(0,255,0,1)');
-                drawOutlinedLabel(labels.start, pts[startIdx][0] + 4, pts[startIdx][1]);
+                labelItems.push({ id: 'start:' + s, text: labels.start, anchorX: pts[startIdx][0], anchorY: pts[startIdx][1], color: START_COLOR, dotRadius: 4 });
                 if (labels.end !== null) {
-                    fillCircle(pts[endIdx][0], pts[endIdx][1], 8, 'rgba(255,0,0,1)');
-                    drawOutlinedLabel(labels.end, pts[endIdx][0] + 4, pts[endIdx][1]);
+                    labelItems.push({ id: 'end:' + s, text: labels.end, anchorX: pts[endIdx][0], anchorY: pts[endIdx][1], color: END_COLOR, dotRadius: 4 });
                 }
             }
         } else {
-            fillCircle(pts[0][0], pts[0][1], 8, 'rgba(0,255,0,1)');
             if (pts.length > 1) fillCircle(pts[1][0], pts[1][1], 6, 'rgba(0,255,0,0.5)');
             const singleStrip = (stripInfo && stripInfo.strips.length === 1)
                 ? { name: stripInfo.strips[0].name, count: pts.length }
                 : { name: '', count: pts.length };
             const labels = stripStartEndLabels(singleStrip, 0);
-            drawOutlinedLabel(labels.start, pts[0][0] + 4, pts[0][1]);
+            labelItems.push({ id: 'start:0', text: labels.start, anchorX: pts[0][0], anchorY: pts[0][1], color: START_COLOR, dotRadius: 4 });
             if (labels.end !== null) {
-                fillCircle(pts[pts.length - 1][0], pts[pts.length - 1][1], 8, 'rgba(255,0,0,1)');
-                drawOutlinedLabel(labels.end, pts[pts.length - 1][0] + 4, pts[pts.length - 1][1]);
+                labelItems.push({ id: 'end:0', text: labels.end, anchorX: pts[pts.length - 1][0], anchorY: pts[pts.length - 1][1], color: END_COLOR, dotRadius: 4 });
             }
         }
+        labelRenderer.draw(overlayCtx, labelItems, {
+            font: 'bold 13px "Outfit", system-ui, sans-serif',
+            textColor: '#fff',
+            bounds: { x: 0, y: 0, w: canvasW, h: canvasH },
+            obstacles: () => pts.map(([x, y]) => ({ x: x - 3, y: y - 3, w: 6, h: 6 })),
+        });
 
         // Strip selection bounding box (axis-aligned in canvas space)
         const selStripIdx = selection.getStripIdx();
@@ -3802,17 +3814,6 @@ export function init(container) {
         overlayCtx.beginPath();
         overlayCtx.arc(x, y, diameter / 2, 0, Math.PI * 2);
         overlayCtx.fill();
-    }
-
-    function drawOutlinedLabel(text, x, y) {
-        overlayCtx.font = 'bold 13px "Outfit", system-ui, sans-serif';
-        overlayCtx.textBaseline = 'middle';
-        overlayCtx.lineWidth = 3;
-        overlayCtx.strokeStyle = 'rgba(0,0,0,0.9)';
-        overlayCtx.lineJoin = 'round';
-        overlayCtx.strokeText(text, x, y);
-        overlayCtx.fillStyle = '#fff';
-        overlayCtx.fillText(text, x, y);
     }
 
     // ── Gizmo: geometry, hit-testing, drawing ─────────────────────────
