@@ -19,7 +19,7 @@ import {
     stepIrisAttackDecay,
     computeBloomStrength,
 } from './bloom-utils';
-import type { IrisState, BloomRange } from './types/domain';
+import type { IrisState, BloomStrengthRange } from './types/domain';
 
 export function createBloomComposer({
     renderer,
@@ -61,7 +61,7 @@ export function updateBloomIris(
     bloomPass: UnrealBloomPass,
     irisState: IrisState,
     rgbBytes: Uint8Array | number[],
-    range: BloomRange | null | undefined,
+    range: BloomStrengthRange | null | undefined,
     manualStrength: number | null = null,
     nowMs = performance.now(),
 ): void {

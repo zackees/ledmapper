@@ -158,11 +158,23 @@ export interface BloomRange {
     max: number;
 }
 
+/**
+ * Strength range plus the geometry-derived iris modulation depth.
+ * `blowoutRisk` in [0,1]: 1 = full brightness/density modulation (default,
+ * backward compatible), 0 = hold strength at `max` regardless of the frame
+ * (small/sparse dots that never wash out).
+ */
+export interface BloomStrengthRange extends BloomRange {
+    blowoutRisk?: number;
+}
+
 /** Output of bloomParamsForLedSize(). */
 export interface BloomParams {
     radius: number;
     minStrength: number;
     maxStrength: number;
+    /** Geometry-derived iris modulation depth in [0,1]; see BloomStrengthRange. */
+    blowoutRisk: number;
 }
 
 /** Iris state for updateBloomIris() — mutated in place. */
