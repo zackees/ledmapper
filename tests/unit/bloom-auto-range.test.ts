@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {
     computeAutoBloomRange,
     computeBloomStrength,
+    bloomParamsForLedSize,
     AUTO_BLOOM_SPACING_REF,
     PREVIEW_AUTO_FLOOR,
     PREVIEW_AUTO_MAX_DENSE,
@@ -121,5 +122,36 @@ describe('computeAutoBloomRange', () => {
     it('range.min is at least BLOOM_MIN_STRENGTH * 0.5 (no sub-floor)', () => {
         const range = computeAutoBloomRange({ ledSpacing: 0.05, sceneExtent: 1, profile: PREVIEW_PROFILE });
         assert.ok(range.min >= BLOOM_MIN_STRENGTH * 0.5 - 1e-9);
+    });
+});
+
+// Mirrors the effective-range combination in moviemaker/preview.ts render().
+describe('preview effective bloom range — dense map regression (issue #49)', () => {
+    // 32x32 quad serpentine: 64x64 grid, 4096 LEDs, spacing 0.7071,
+    // declared diameter 0.25, rotated 45°, rendered in the 400px pane.
+    const spacing = 0.7071, dia = 0.25, count = 4096, side = 400;
+    const extent = 63 * spacing * Math.SQRT2;
+    const half = (extent / 2 + dia / 2) * 1.05;
+    const ledPx = Math.max((dia / (half * 2)) * side, 0.75);
+    const params = bloomParamsForLedSize(ledPx, side, count, { bloomResolution: side });
+    const env = computeAutoBloomRange({ ledSpacing: spacing, sceneExtent: extent, profile: PREVIEW_PROFILE });
+    const effMax = Math.min(params.maxStrength, env.max);
+    const effMin = Math.min(Math.max(params.minStrength, env.min), effMax);
+
+    it('effective ceiling is high enough for a visible halo (was ~0.71)', () => {
+        assert.ok(effMax >= 1.5, `effMax ${effMax} < 1.5 — bloom imperceptible on dense maps`);
+    });
+
+    it('effective floor keeps the bloom-never-disabled minimum (was ~0.11)', () => {
+        assert.ok(effMin >= BLOOM_MIN_STRENGTH - 1e-9, `effMin ${effMin} below BLOOM_MIN_STRENGTH ${BLOOM_MIN_STRENGTH}`);
+    });
+
+    it('frame strength at the screenshot brightness (19%, ~60% lit) is clearly visible', () => {
+        const s = computeBloomStrength(0.19, 60, 100, { min: effMin, max: effMax });
+        assert.ok(s >= 1.5, `strength ${s} < 1.5 at typical brightness`);
+    });
+
+    it('floor never exceeds the ceiling', () => {
+        assert.ok(effMin <= effMax + 1e-12);
     });
 });

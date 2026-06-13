@@ -28,9 +28,11 @@ export const IRIS_MAX_DT = 0.25;
 
 export const AUTO_BLOOM_SPACING_REF = 0.10;
 
-export const PREVIEW_AUTO_FLOOR       = 0.15;
-export const PREVIEW_AUTO_MAX_DENSE   = 0.6;
-export const PREVIEW_AUTO_MAX_SPARSE  = 1.6;
+// Tuned for the 400px preview pane (issue #49): the density envelope is an
+// outer guard; bloomParamsForLedSize stays the binding ceiling on dense maps.
+export const PREVIEW_AUTO_FLOOR       = 0.6;
+export const PREVIEW_AUTO_MAX_DENSE   = 4;
+export const PREVIEW_AUTO_MAX_SPARSE  = 6;
 
 export const DEMO_AUTO_FLOOR          = 1.5;
 export const DEMO_AUTO_MAX_DENSE      = 16;
