@@ -194,8 +194,8 @@
 
 #previewPanel {
     @apply hidden shrink-0 overflow-hidden;
-    width: 200px;
-    height: 200px;
+    width: 400px;
+    height: 400px;
     border: 1px solid var(--color-lm-border);
     border-radius: 2px;
     background: #000;

@@ -80,7 +80,7 @@ export function init(container: HTMLElement) {
     if (!overlayCtxRaw) throw new Error('moviemaker: overlay canvas 2d context unavailable');
     const overlayCtx     = overlayCtxRaw;
     const previewPanel   = qe<HTMLElement>('#previewPanel');
-    const preview        = createLedPreview({ parent: previewPanel, side: 200 });
+    const preview        = createLedPreview({ parent: previewPanel, side: 400 });
 
     const ac = new AbortController();
     const { signal } = ac;
