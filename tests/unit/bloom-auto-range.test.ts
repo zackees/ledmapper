@@ -15,6 +15,7 @@ import {
     DEMO_AUTO_FLOOR,
     DEMO_AUTO_MAX_DENSE,
     DEMO_AUTO_MAX_SPARSE,
+    DEMO_BLOOM_MAX_STRENGTH,
     BLOOM_MIN_STRENGTH,
 } from '../../src/bloom-utils';
 
@@ -153,5 +154,31 @@ describe('preview effective bloom range — dense map regression (issue #49)', (
 
     it('floor never exceeds the ceiling', () => {
         assert.ok(effMin <= effMax + 1e-12);
+    });
+});
+
+// Mirrors the effective-range combination in demo/demo.ts onFrame(): the demo
+// auto ceiling must reach the manually-validated sweet spot (issue #51).
+describe('demo effective bloom range — small dot sweet spot (issue #51)', () => {
+    // 800px demo canvas, dense 4096-LED map, diameter slider at its lowest (1px).
+    const ledPx = 1, count = 4096, side = 800;
+    const params = bloomParamsForLedSize(ledPx, side, count, { baseMax: DEMO_BLOOM_MAX_STRENGTH });
+    // Density envelope is a non-binding outer guard at the demo ceiling.
+    const env = computeAutoBloomRange({ ledSpacing: 1, sceneExtent: 800, profile: DEMO_PROFILE });
+    const effMax = Math.min(params.maxStrength, env.max);
+    const effMin = Math.min(params.minStrength, effMax);
+
+    it('auto ceiling reaches the manual sweet spot (~36) for small dense dots', () => {
+        assert.ok(effMax >= DEMO_BLOOM_MAX_STRENGTH - 1e-9, `effMax ${effMax} below sweet spot ${DEMO_BLOOM_MAX_STRENGTH}`);
+    });
+
+    it('iris fully open (dark, all lit) reaches the sweet spot', () => {
+        const s = computeBloomStrength(0, count, count, { min: effMin, max: effMax });
+        assert.ok(Math.abs(s - DEMO_BLOOM_MAX_STRENGTH) < 1e-6, `dark-frame strength ${s} != ${DEMO_BLOOM_MAX_STRENGTH}`);
+    });
+
+    it('iris closes on bright frames (strength drops well below the ceiling)', () => {
+        const s = computeBloomStrength(0.9, count, count, { min: effMin, max: effMax });
+        assert.ok(s < DEMO_BLOOM_MAX_STRENGTH * 0.3, `bright-frame strength ${s} should be well below ceiling`);
     });
 });

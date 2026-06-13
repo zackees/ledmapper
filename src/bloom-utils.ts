@@ -5,10 +5,12 @@
  * Recipe copied from FastLED's graphics_manager_threejs.ts:
  * - UnrealBloomPass with threshold 0, strength up to 16, radius 1.
  * - An auto-bloom "iris": tracked brightness follows the frame's average LED
- *   brightness through FastLED's attack-decay filter
- *   (attack_decay_filter_impl.h) — fast attack so bloom constricts
- *   immediately on blowouts, slow exponential decay so it dilates gradually
- *   in dark scenes — and bloom strength scales inversely with it.
+ *   brightness (global light output) through FastLED's attack-decay filter
+ *   (attack_decay_filter_impl.h) — fast attack so the iris constricts
+ *   immediately on blowouts, ~10x slower decay so it dilates gradually in
+ *   dark scenes (mirrors human pupil dynamics, where dilation is several
+ *   times slower than constriction) — and bloom strength scales inversely
+ *   with it.
  * - Bloom kernel proportioned to the rendered LED size: small sparse dots
  *   keep a tight visible halo, large/dense dots don't white out the pane.
  *
@@ -23,7 +25,11 @@ export const BLOOM_RADIUS = 1;
 export const BLOOM_THRESHOLD = 0.0;
 
 export const IRIS_ATTACK_TAU = 0.08;
-export const IRIS_DECAY_TAU = 0.8;
+// Reopen the iris ~10x slower than it constricts — the idiomatic auto-exposure
+// asymmetry, and close to human pupil dynamics (dilation much slower than
+// constriction). Fast attack protects against blowout; slow decay dilates
+// gradually in dark scenes.
+export const IRIS_DECAY_TAU = IRIS_ATTACK_TAU * 10;
 export const IRIS_MAX_DT = 0.25;
 
 export const AUTO_BLOOM_SPACING_REF = 0.10;
@@ -34,9 +40,14 @@ export const PREVIEW_AUTO_FLOOR       = 0.6;
 export const PREVIEW_AUTO_MAX_DENSE   = 4;
 export const PREVIEW_AUTO_MAX_SPARSE  = 6;
 
+// Demo full-open iris ceiling — matches the manually-validated sweet spot
+// (diameter 1, strength 36) so auto-bloom can reach the same look (issue #51).
+export const DEMO_BLOOM_MAX_STRENGTH  = 36;
 export const DEMO_AUTO_FLOOR          = 1.5;
-export const DEMO_AUTO_MAX_DENSE      = 16;
-export const DEMO_AUTO_MAX_SPARSE     = 24;
+// Density envelope is a non-binding outer guard at the demo ceiling; the iris
+// and per-frame density factor still modulate strength within it.
+export const DEMO_AUTO_MAX_DENSE      = DEMO_BLOOM_MAX_STRENGTH;
+export const DEMO_AUTO_MAX_SPARSE     = DEMO_BLOOM_MAX_STRENGTH;
 
 export const LIT_EPSILON = 0.01;
 export const BLOOM_COVERAGE_REF = 0.02;
