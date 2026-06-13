@@ -1,4 +1,5 @@
 ﻿import { test, expect } from './fixtures.ts';
+import { mockWebcam } from '../helpers/webcam-mock.ts';
 import path from 'path';
 import { dropFile, dropFixture } from '../helpers/drag-drop.ts';
 
@@ -53,7 +54,11 @@ test.describe('Demo drag-and-drop', () => {
 
 test.describe('Moviemaker drag-and-drop', () => {
     test('dropping a screenmap onto the upload row clears the active preset', async ({ page }) => {
+        // Screenmap controls are gated until a source is loaded (issue #58).
+        await mockWebcam(page);
         await page.goto('/moviemaker/');
+        await page.locator('[data-trigger="btn_start_webcam"]').click();
+        await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 });
         // Activate a preset first so we can observe the drop clearing it
         await page.locator('#btn_preset_8x8_grid').click();
         await expect(page.locator('#btn_preset_8x8_grid')).toHaveClass(/active-preset/);

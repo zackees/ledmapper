@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures.ts';
+import { mockWebcam } from '../helpers/webcam-mock.ts';
 import path from 'path';
 import fs from 'fs';
 
@@ -28,7 +29,11 @@ test.describe('Multi-strip screenmap compatibility', () => {
     test('moviemaker: upload multi-strip screenmap enables controls', async ({ page }) => {
         const errors = [];
         page.on('pageerror', err => errors.push(err.message));
+        // Effect controls are gated until a source is loaded (issue #58).
+        await mockWebcam(page);
         await page.goto('/moviemaker/');
+        await page.locator('[data-trigger="btn_start_webcam"]').click();
+        await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 });
         const fileInput = page.locator('#btn_upload_screenmap');
         await fileInput.setInputFiles(MULTI_SCREENMAP_PATH);
         // After uploading, controls should become enabled (no error dialog)
@@ -50,7 +55,11 @@ test.describe('Multi-strip screenmap compatibility', () => {
         const consoleHandler = msg => { if (msg.type() === 'error') errors.push(msg.text()); };
         page.on('console', consoleHandler);
 
+        // Effect controls are gated until a source is loaded (issue #58).
+        await mockWebcam(page);
         await page.goto('/moviemaker/');
+        await page.locator('[data-trigger="btn_start_webcam"]').click();
+        await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 });
         await page.locator('#btn_upload_screenmap').setInputFiles(MULTI_SCREENMAP_PATH);
         await expect(page.locator('#rng_blur')).toBeEnabled({ timeout: 10000 });
 

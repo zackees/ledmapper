@@ -316,10 +316,15 @@
 
 .control-group {
     @apply flex flex-col gap-2;
+    transition: opacity 250ms ease;
 }
 
 .control-group.disabled {
     @apply opacity-30 pointer-events-none;
+}
+
+#screenmap_gate_hint.hidden {
+    @apply hidden;
 }
 
 /* ── Buttons ────────────────────────────────────────────────── */
