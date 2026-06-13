@@ -11,6 +11,7 @@ import {
     DEMO_AUTO_FLOOR,
     DEMO_AUTO_MAX_DENSE,
     DEMO_AUTO_MAX_SPARSE,
+    DEMO_BLOOM_MAX_STRENGTH,
     BLOOM_MIN_STRENGTH,
 } from '../bloom-utils';
 import { estimateLedSize } from '../moviemaker/transforms';
@@ -99,8 +100,10 @@ export function init(container: HTMLElement) {
     function updateBloomParams() {
         if (!pointsMaterial) return;
         // PointsMaterial.size is in CSS pixels (the renderer applies its
-        // pixelRatio to the size uniform internally).
-        const params = bloomParamsForLedSize(pointsMaterial.size, CANVAS_SIZE, screenmap_pts.length);
+        // pixelRatio to the size uniform internally). baseMax is the demo's
+        // full-open iris ceiling (the manual sweet spot); size scaling still
+        // drops it for large dots to prevent white-out.
+        const params = bloomParamsForLedSize(pointsMaterial.size, CANVAS_SIZE, screenmap_pts.length, { baseMax: DEMO_BLOOM_MAX_STRENGTH });
         bloom.bloomPass.radius = params.radius;
         bloomRange.min = params.minStrength;
         bloomRange.max = params.maxStrength;
@@ -131,7 +134,7 @@ export function init(container: HTMLElement) {
     function _sliderToDemoBloomStrength(rngVal: number): number {
         const t = (rngVal / 100) ** 2;
         const S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
-        const S_MAX = DEMO_AUTO_MAX_SPARSE * 1.5;
+        const S_MAX = DEMO_BLOOM_MAX_STRENGTH;
         return S_MIN + (S_MAX - S_MIN) * t;
     }
 
