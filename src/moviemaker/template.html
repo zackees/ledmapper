@@ -169,7 +169,13 @@
                         <canvas id="renderCanvas"></canvas>
                         <canvas id="overlayCanvas"></canvas>
                     </div>
-                    <div id="previewPanel"></div>
+                    <div class="preview-column flex flex-col gap-2">
+                        <div id="previewPanel"></div>
+                        <div id="preview-options" class="preview-options">
+                            <label class="checkbox-inline"><input type="checkbox" id="chk_preview_rotate" checked> Rotate view</label>
+                            <label class="checkbox-inline"><input type="checkbox" id="chk_preview_bloom" checked> Bloom</label>
+                        </div>
+                    </div>
                 </div>
             </div>
         </main>

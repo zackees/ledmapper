@@ -83,6 +83,9 @@ export function init(container: HTMLElement) {
     const overlayCtx     = overlayCtxRaw;
     const previewPanel   = qe<HTMLElement>('#previewPanel');
     const preview        = createLedPreview({ parent: previewPanel, side: 400 });
+    const dom_preview_options = qe<HTMLElement>('#preview-options');
+    const dom_chk_preview_rotate = qei('#chk_preview_rotate');
+    const dom_chk_preview_bloom  = qei('#chk_preview_bloom');
 
     const ac = new AbortController();
     const { signal } = ac;
@@ -188,6 +191,7 @@ export function init(container: HTMLElement) {
         if (toolbar) toolbar.classList.add('visible');
 
         previewPanel.classList.add('visible');
+        dom_preview_options.classList.add('visible');
 
         // Show/hide video-only controls (play button is inside progress bar)
         const isVideo = videoSource.sourceType === 'video';
@@ -440,6 +444,7 @@ export function init(container: HTMLElement) {
 
         dom_video_progress.classList.remove('visible');
         previewPanel.classList.remove('visible');
+        dom_preview_options.classList.remove('visible');
 
         const welcomeEl = container.querySelector('#welcome-overlay');
         if (welcomeEl) welcomeEl.classList.remove('hidden');
@@ -617,6 +622,27 @@ export function init(container: HTMLElement) {
         dom_txt_bloom_strength.innerText = _bloomStrengthToLabel(s);
     }, { signal });
 
+    // ── Preview panel options (rotate view / bloom) ─────────────────────────────
+    const PREVIEW_ROTATE_LS_KEY = 'ledmapper.moviemaker.previewRotate';
+    const PREVIEW_BLOOM_LS_KEY  = 'ledmapper.moviemaker.previewBloom';
+
+    const _prevRotateStored = localStorage.getItem(PREVIEW_ROTATE_LS_KEY);
+    dom_chk_preview_rotate.checked = _prevRotateStored === null ? true : _prevRotateStored === 'true';
+
+    const _prevBloomStored = localStorage.getItem(PREVIEW_BLOOM_LS_KEY);
+    const _prevBloomInit = _prevBloomStored === null ? true : _prevBloomStored === 'true';
+    dom_chk_preview_bloom.checked = _prevBloomInit;
+    preview.setBloomEnabled(_prevBloomInit);
+
+    dom_chk_preview_rotate.addEventListener('change', () => {
+        localStorage.setItem(PREVIEW_ROTATE_LS_KEY, String(dom_chk_preview_rotate.checked));
+    }, { signal });
+
+    dom_chk_preview_bloom.addEventListener('change', () => {
+        localStorage.setItem(PREVIEW_BLOOM_LS_KEY, String(dom_chk_preview_bloom.checked));
+        preview.setBloomEnabled(dom_chk_preview_bloom.checked);
+    }, { signal });
+
     // Recording toggle
     dom_btn_toggle_record.addEventListener('click', () => {
         if (!recording.isActive && screenmap_pts.length < 2) {
@@ -765,7 +791,8 @@ export function init(container: HTMLElement) {
         }
 
         drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter);
-        preview.render(screenmap_pts, curr_rotate, lastSample, previewLedDiameter);
+        const previewRotate = dom_chk_preview_rotate.checked ? curr_rotate : 0;
+        preview.render(screenmap_pts, previewRotate, lastSample, previewLedDiameter);
 
         // Update progress bar for video sources
         if (videoSource.sourceType === 'video' && !isScrubbing) {
