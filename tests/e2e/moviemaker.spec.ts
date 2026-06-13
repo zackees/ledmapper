@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures.ts';
+import { mockWebcam } from '../helpers/webcam-mock.ts';
 import path from 'path';
 
 test.describe('Video Maker', () => {
@@ -64,11 +65,26 @@ test.describe('Video Maker', () => {
     });
 
     test('screenmap upload activates controls', async ({ page }) => {
+        // Effect controls are gated until BOTH a video source and a valid
+        // screenmap are present (issue #58). Start a webcam first so the
+        // source gate is satisfied, then upload a screenmap.
+        await mockWebcam(page);
         await page.goto('/moviemaker/');
+        await page.locator('[data-trigger="btn_start_webcam"]').click();
+        await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 });
         const fileInput = page.locator('#btn_upload_screenmap');
         const fixturePath = path.resolve('tests/fixtures/test-screenmap.json');
         await fileInput.setInputFiles(fixturePath);
         // After uploading, controls should be enabled
         await expect(page.locator('#rng_blur')).toBeEnabled({ timeout: 10000 });
+    });
+
+    test('screenmap presets are gated until a source is loaded', async ({ page }) => {
+        await page.goto('/moviemaker/');
+        // The Screenmap presets group is dimmed/non-interactive and the gate
+        // hint is visible before any source is loaded.
+        const group = page.locator('.preset-buttons').locator('xpath=ancestor::*[contains(@class,"control-group")][1]');
+        await expect(group).toHaveClass(/disabled/);
+        await expect(page.locator('#screenmap_gate_hint')).not.toHaveClass(/hidden/);
     });
 });

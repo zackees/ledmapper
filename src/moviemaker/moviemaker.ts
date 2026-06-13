@@ -40,6 +40,8 @@ export function init(container: HTMLElement) {
     const dom_btn_start_webcam  = qe<HTMLButtonElement>('#btn_start_webcam');
     const dom_btn_upload_screenmap  = qei('#btn_upload_screenmap');
     const dom_preset_buttons = container.querySelector('.preset-buttons');
+    const dom_screenmap_group = dom_preset_buttons?.closest('.control-group');
+    const dom_source_hint = container.querySelector('#screenmap_gate_hint');
     const dom_btn_unload_source = qe<HTMLButtonElement>('#btn_unload_source');
     const dom_btn_play_pause    = qe<HTMLButtonElement>('#btn_play_pause');
     const dom_video_progress    = qe('#video-progress');
@@ -205,14 +207,20 @@ export function init(container: HTMLElement) {
             dom_rng_rotation, dom_rng_brightness, dom_rng_gamma,
             dom_rng_blur, dom_rng_blur_sigma, dom_rng_zoom
         ];
+        const ready = sourceActive && screenmapValid;
         sliders.forEach(el => {
-            el.disabled = !screenmapValid;
+            el.disabled = !ready;
             const cg = el.closest('.control-group');
-            if (cg) cg.classList.toggle('disabled', !screenmapValid);
+            if (cg) cg.classList.toggle('disabled', !ready);
         });
         dom_btn_toggle_record.disabled = !sourceActive || !screenmapValid;
         const cg = dom_btn_toggle_record.closest('.control-group');
         if (cg) cg.classList.toggle('disabled', dom_btn_toggle_record.disabled);
+        // Gate the Screenmap presets + upload until a source is loaded. The
+        // default screenmap still auto-loads via presetButtons[0].click() since
+        // pointer-events does not block programmatic clicks.
+        dom_screenmap_group?.classList.toggle('disabled', !sourceActive);
+        dom_source_hint?.classList.toggle('hidden', sourceActive);
     }
 
     updateElementStates();
