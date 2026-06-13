@@ -96,6 +96,9 @@ export function init(container: HTMLElement) {
     // Strength range / radius proportioned to the rendered dot size
     // (updated in updateBloomParams whenever the diameter changes).
     const bloomRange = { min: 0, max: 0 };
+    // Geometry-derived iris modulation depth (0 = small/sparse dots hold full
+    // bloom always, 1 = large/dense dots get full brightness modulation).
+    let bloomBlowoutRisk = 1;
 
     // Proportion the bloom kernel to the rendered LED size so small dots
     // keep a tight halo and large dots don't white out the canvas.
@@ -113,6 +116,7 @@ export function init(container: HTMLElement) {
         bloom.bloomPass.radius = params.radius;
         bloomRange.min = params.minStrength;
         bloomRange.max = params.maxStrength;
+        bloomBlowoutRisk = params.blowoutRisk;
     }
 
     /** Demo bloom profile constants. */
@@ -720,7 +724,7 @@ export function init(container: HTMLElement) {
                 const effMax = Math.min(bloomRange.max, demoBloomRange.max);
                 const effMin = Math.min(bloomRange.min, effMax);
                 const override = demoAutoBloomEnabled ? null : demoManualBloomStrength;
-                updateBloomIris(bloom.bloomPass, irisState, curr_frame, { min: effMin, max: effMax }, override);
+                updateBloomIris(bloom.bloomPass, irisState, curr_frame, { min: effMin, max: effMax, blowoutRisk: bloomBlowoutRisk }, override);
             }
             bloom.render();
         },

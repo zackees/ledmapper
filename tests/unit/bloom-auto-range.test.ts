@@ -217,3 +217,66 @@ describe('demo large-dot regime is tamed (issue #53)', () => {
         assert.ok(small >= mid && mid >= large, `expected ${small} >= ${mid} >= ${large}`);
     });
 });
+
+// The iris modulation depth must track blow-out risk, which is a geometric
+// property: small/sparse dots tolerate full bloom on every frame, large/dense
+// dots need full constriction (issue #55).
+describe('geometry-aware iris modulation depth (issue #55)', () => {
+    const count = 4096, side = 800;
+    const demoOpts = {
+        baseMax: DEMO_BLOOM_MAX_STRENGTH,
+        baseRadius: DEMO_BLOOM_RADIUS,
+        refArea: DEMO_BLOOM_AREA_REF,
+    };
+
+    it('blowoutRisk is ~0 for tiny dots and ~1 for large dense dots', () => {
+        const small = bloomParamsForLedSize(1, side, count, demoOpts).blowoutRisk;
+        const large = bloomParamsForLedSize(16, side, count, demoOpts).blowoutRisk;
+        assert.ok(small < 1e-9, `tiny-dot risk ${small} should be ~0`);
+        assert.ok(large > 0.95, `large-dot risk ${large} should be ~1`);
+    });
+
+    it('default blowoutRisk (1) reproduces the original modulated formula', () => {
+        // Old formula: min + (max-min)*(1-bri)*densityFactor.
+        const min = 0.75, max = 36, bri = 0.4, lit = 3000, total = 4096;
+        const expected = min + (max - min) * (1 - bri) * (lit / total);
+        const got = computeBloomStrength(bri, lit, total, { min, max });
+        assert.ok(Math.abs(got - expected) < 1e-9, `default risk changed behavior: ${got} != ${expected}`);
+    });
+
+    it('risk 0 holds strength at max regardless of frame brightness/density', () => {
+        const opts = { min: 0.75, max: 36, blowoutRisk: 0 };
+        const dark = computeBloomStrength(0, 4096, 4096, opts);
+        const bright = computeBloomStrength(0.95, 4096, 4096, opts);
+        const sparse = computeBloomStrength(0.5, 10, 4096, opts);
+        assert.ok(Math.abs(dark - 36) < 1e-9, `dark ${dark} != 36`);
+        assert.ok(Math.abs(bright - 36) < 1e-9, `bright ${bright} != 36`);
+        assert.ok(Math.abs(sparse - 36) < 1e-9, `sparse ${sparse} != 36`);
+    });
+
+    it('diameter 1 demo: strength is a constant ~36 across all frames', () => {
+        const p = bloomParamsForLedSize(1, side, count, demoOpts);
+        const opts = { min: p.minStrength, max: p.maxStrength, blowoutRisk: p.blowoutRisk };
+        for (const [bri, lit] of [[0, 4096], [0.5, 2048], [0.95, 4096]] as const) {
+            const s = computeBloomStrength(bri, lit, count, opts);
+            assert.ok(Math.abs(s - DEMO_BLOOM_MAX_STRENGTH) < 1e-6, `bri ${bri}: strength ${s} != ${DEMO_BLOOM_MAX_STRENGTH}`);
+        }
+    });
+
+    it('diameter 16 demo: iris still constricts on bright frames', () => {
+        const p = bloomParamsForLedSize(16, side, count, demoOpts);
+        const opts = { min: p.minStrength, max: p.maxStrength, blowoutRisk: p.blowoutRisk };
+        const dark = computeBloomStrength(0, count, count, opts);
+        const bright = computeBloomStrength(0.95, count, count, opts);
+        assert.ok(bright < dark, `expected bright ${bright} < dark ${dark}`);
+        assert.ok(dark <= DEMO_BLOOM_RADIUS + 1e-9, `large-dot ceiling ${dark} should stay tame`);
+    });
+
+    it('modulation depth increases monotonically with blowoutRisk', () => {
+        const min = 0.75, max = 36, bri = 0.7, lit = 4096, total = 4096;
+        const s0 = computeBloomStrength(bri, lit, total, { min, max, blowoutRisk: 0 });
+        const s5 = computeBloomStrength(bri, lit, total, { min, max, blowoutRisk: 0.5 });
+        const s1 = computeBloomStrength(bri, lit, total, { min, max, blowoutRisk: 1 });
+        assert.ok(s0 > s5 && s5 > s1, `expected ${s0} > ${s5} > ${s1}`);
+    });
+});

@@ -105,13 +105,21 @@ export function computeBloomStrength(
     currentBrightness: number,
     litCount: number,
     totalCount: number,
-    { min = BLOOM_MIN_STRENGTH, max = BLOOM_MAX_STRENGTH }: { min?: number; max?: number } = {},
+    { min = BLOOM_MIN_STRENGTH, max = BLOOM_MAX_STRENGTH, blowoutRisk = 1 }:
+        { min?: number; max?: number; blowoutRisk?: number } = {},
 ): number {
     const bri = Math.min(Math.max(currentBrightness, 0), 1);
     const densityFactor = totalCount > 0
         ? Math.min(Math.max(litCount / totalCount, 0), 1)
         : 0;
-    const strength = min + (max - min) * (1 - bri) * densityFactor;
+    // Fully brightness/density-modulated strength (the original iris formula).
+    const modulated = min + (max - min) * (1 - bri) * densityFactor;
+    // The iris only needs to constrict in proportion to how likely the frame
+    // is to wash out the panel. blowoutRisk is a geometry-derived scalar
+    // (bloomParamsForLedSize): small/sparse dots (risk→0) hold full bloom
+    // regardless of the frame; large/dense dots (risk→1) get full modulation.
+    const risk = Math.min(Math.max(blowoutRisk, 0), 1);
+    const strength = max - risk * (max - modulated);
     return Math.min(Math.max(strength, min), max);
 }
 
@@ -205,9 +213,16 @@ export function bloomParamsForLedSize(
         ? Math.min(Math.max(bloomResolution, 1) / refResolution, 1)
         : 1;
     const strengthScale = areaScale * perDotScale * resScale;
+    // Coverage headroom drives how much the iris must modulate: when the lit
+    // dots and their halos occupy little of the panel (areaScale*perDotScale→1)
+    // there is no blow-out risk, so the iris can stay wide open; when they fill
+    // it (→0) the iris must fully constrict on bright frames. Resolution is a
+    // rendering detail, not a blow-out driver, so it is excluded here.
+    const blowoutRisk = Math.min(Math.max(1 - areaScale * perDotScale, 0), 1);
     return {
         radius,
         minStrength: baseMin * strengthScale,
         maxStrength: baseMax * strengthScale,
+        blowoutRisk,
     };
 }
