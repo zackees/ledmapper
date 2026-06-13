@@ -198,3 +198,15 @@ export function estimateLedSize(pts: StripPoint[]): number {
     const dx = b[0] - a[0], dy = b[1] - a[1];
     return Math.max(Math.sqrt(dx * dx + dy * dy), 1.0);
 }
+
+/**
+ * Ring radius for the editor overlay: the screenmap's declared diameter
+ * (already in localPts units) wins; the spacing heuristic is only a
+ * fallback for maps that declare none — same precedence as the preview.
+ */
+export function overlayLedRadius(localPts: StripPoint[], zoom: number, ledDiameter: number | null): number {
+    const dia = (typeof ledDiameter === 'number' && ledDiameter > 0)
+        ? ledDiameter
+        : estimateLedSize(localPts);
+    return (dia * zoom) / 2;
+}

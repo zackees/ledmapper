@@ -756,7 +756,7 @@ export function init(container: HTMLElement) {
             recording.resetCapture();
         }
 
-        drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips);
+        drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter);
         preview.render(screenmap_pts, curr_rotate, lastSample, previewLedDiameter);
 
         // Update progress bar for video sources
