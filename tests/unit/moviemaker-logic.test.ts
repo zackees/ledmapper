@@ -10,6 +10,7 @@ import {
     samplePixels,
     computeFps,
     estimateLedSize,
+    overlayLedRadius,
     scaleToMaxDimension,
 } from '../../src/moviemaker/transforms';
 
@@ -351,5 +352,27 @@ describe('scaleToMaxDimension', () => {
 
     it('handles negative maxDim as native', () => {
         assert.deepStrictEqual(scaleToMaxDimension(640, 480, -1), { width: 640, height: 480 });
+    });
+});
+
+describe('overlayLedRadius', () => {
+    const pts: [number, number][] = [[0, 0], [10, 0], [20, 0]];
+
+    it('uses the declared diameter when present (issue #47)', () => {
+        // diameter 4 at zoom 1 -> radius 2, NOT spacing/2 = 5
+        assert.strictEqual(overlayLedRadius(pts, 1, 4), 2);
+    });
+
+    it('scales the declared diameter with zoom', () => {
+        assert.strictEqual(overlayLedRadius(pts, 3, 4), 6);
+    });
+
+    it('falls back to the spacing heuristic when diameter is null', () => {
+        assert.strictEqual(overlayLedRadius(pts, 1, null), 5);
+    });
+
+    it('ignores non-positive declared diameters', () => {
+        assert.strictEqual(overlayLedRadius(pts, 1, 0), 5);
+        assert.strictEqual(overlayLedRadius(pts, 1, -2), 5);
     });
 });

@@ -4,7 +4,7 @@
 
 import { getStripColors, stripStartEndLabels } from '../common';
 import { createLabelRenderer } from '../label-render';
-import { estimateLedSize } from './transforms';
+import { overlayLedRadius } from './transforms';
 import { perfCount } from './perf';
 import type { ParsedStrip, StripPoint } from '../types/domain';
 
@@ -18,6 +18,7 @@ interface RingLayerEntry {
     rotate: number;
     zoom: number;
     strips: ParsedStrip[] | null;
+    ledDiameter: number | null;
     layer: HTMLCanvasElement;
     ox: number;
     oy: number;
@@ -65,10 +66,11 @@ function drawStripLabels(lctx: CanvasRenderingContext2D, transformedPts: StripPo
     });
 }
 
-function getRingLayer(ctx: CanvasRenderingContext2D, localPts: StripPoint[], rotate: number, zoom: number, strips: ParsedStrip[] | null): RingLayerEntry {
+function getRingLayer(ctx: CanvasRenderingContext2D, localPts: StripPoint[], rotate: number, zoom: number, strips: ParsedStrip[] | null, ledDiameter: number | null): RingLayerEntry {
     const cached = ringLayerCache.get(ctx);
     if (cached?.pts === localPts && cached.rotate === rotate &&
-        cached.zoom === zoom && cached.strips === strips) {
+        cached.zoom === zoom && cached.strips === strips &&
+        cached.ledDiameter === ledDiameter) {
         return cached;
     }
     perfCount('ringLayerRebuilds');
@@ -81,7 +83,7 @@ function getRingLayer(ctx: CanvasRenderingContext2D, localPts: StripPoint[], rot
     ]);
 
     // Rotation preserves distances, so the ring radius only scales with zoom.
-    const r = (estimateLedSize(localPts) * zoom) / 2;
+    const r = overlayLedRadius(localPts, zoom, ledDiameter);
 
     let xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
     for (const [x, y] of pts) {
@@ -119,7 +121,7 @@ function getRingLayer(ctx: CanvasRenderingContext2D, localPts: StripPoint[], rot
         }
     }
 
-    const entry: RingLayerEntry = { pts: localPts, rotate, zoom, strips, layer, ox, oy };
+    const entry: RingLayerEntry = { pts: localPts, rotate, zoom, strips, ledDiameter, layer, ox, oy };
     ringLayerCache.set(ctx, entry);
     return entry;
 }
@@ -137,12 +139,13 @@ export function drawMoviemakerOverlay(
     fps: number,
     showLeds = true,
     strips: ParsedStrip[] | null = null,
+    ledDiameter: number | null = null,
 ): void {
     ctx.clearRect(0, 0, videoWidth, videoHeight);
     if (localPts.length === 0) return;
 
     if (showLeds) {
-        const { layer, ox, oy } = getRingLayer(ctx, localPts, rotate, zoom, strips);
+        const { layer, ox, oy } = getRingLayer(ctx, localPts, rotate, zoom, strips, ledDiameter);
         ctx.drawImage(layer, translateX + ox, translateY + oy);
     }
 
