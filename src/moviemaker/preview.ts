@@ -79,6 +79,7 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
     // Auto-bloom state: density-based envelope, recomputed on screenmap change.
     let currentRange = { min: PREVIEW_AUTO_FLOOR * 0.5, max: PREVIEW_AUTO_MAX_DENSE };
     let autoBloomEnabled = true;
+    let bloomEnabled = true; // false = render scene without the bloom pass
     let manualBloomStrength: number | null = null; // null = use auto
     // Strength range and bloom radius proportioned to the rendered LED size
     // in fitCamera() (bloomParamsForLedSize). The effective auto range is the
@@ -214,6 +215,14 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         }
         meshData.colorAttribute.needsUpdate = true;
 
+        // Bloom disabled: render the points straight to the canvas, bypassing
+        // the composer so there's no glow at all.
+        if (!bloomEnabled) {
+            renderer.setRenderTarget(null);
+            renderer.render(scene, camera);
+            return;
+        }
+
         // Effective auto range: neither ceiling is exceeded, but the floor is
         // the HIGHER of the two minimums (clamped to the ceiling) so the
         // bloom-never-disabled floor survives — taking the lower floor let
@@ -236,6 +245,14 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
             // Resume iris-guided envelope — no snap.
             manualBloomStrength = null;
         }
+    }
+
+    /**
+     * Enable or disable the bloom pass entirely for the preview.
+     * @param {boolean} enabled
+     */
+    function setBloomEnabled(enabled: boolean) {
+        bloomEnabled = enabled;
     }
 
     /**
@@ -267,5 +284,5 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         renderer.domElement.remove();
     }
 
-    return { render, dispose, domElement: renderer.domElement, setAutoBloom, setManualBloomStrength, getCurrentBloomStrength };
+    return { render, dispose, domElement: renderer.domElement, setAutoBloom, setBloomEnabled, setManualBloomStrength, getCurrentBloomStrength };
 }
