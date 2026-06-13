@@ -16,6 +16,9 @@ import {
     DEMO_AUTO_MAX_DENSE,
     DEMO_AUTO_MAX_SPARSE,
     DEMO_BLOOM_MAX_STRENGTH,
+    DEMO_BLOOM_RADIUS,
+    DEMO_BLOOM_AREA_REF,
+    BLOOM_RADIUS_MIN,
     BLOOM_MIN_STRENGTH,
 } from '../../src/bloom-utils';
 
@@ -180,5 +183,37 @@ describe('demo effective bloom range — small dot sweet spot (issue #51)', () =
     it('iris closes on bright frames (strength drops well below the ceiling)', () => {
         const s = computeBloomStrength(0.9, count, count, { min: effMin, max: effMax });
         assert.ok(s < DEMO_BLOOM_MAX_STRENGTH * 0.3, `bright-frame strength ${s} should be well below ceiling`);
+    });
+});
+
+// At large LED diameters the demo dots already cover the panel; the default
+// radius-1 / wide-area kernel washed it out (issue #53). The demo-only radius
+// and area overrides must tame the large-dot regime while leaving the
+// diameter-1 sweet spot from issue #51 intact.
+describe('demo large-dot regime is tamed (issue #53)', () => {
+    const count = 4096, side = 800;
+    const demoOpts = {
+        baseMax: DEMO_BLOOM_MAX_STRENGTH,
+        baseRadius: DEMO_BLOOM_RADIUS,
+        refArea: DEMO_BLOOM_AREA_REF,
+    };
+
+    it('large dots (diameter 16) get a halved radius and a low ceiling', () => {
+        const params = bloomParamsForLedSize(16, side, count, demoOpts);
+        assert.ok(Math.abs(params.radius - DEMO_BLOOM_RADIUS) < 1e-9, `radius ${params.radius} != ${DEMO_BLOOM_RADIUS}`);
+        assert.ok(params.maxStrength <= DEMO_BLOOM_RADIUS, `large-dot ceiling ${params.maxStrength} should be tame`);
+    });
+
+    it('small dots (diameter 1) keep the issue #51 sweet spot', () => {
+        const params = bloomParamsForLedSize(1, side, count, demoOpts);
+        assert.ok(Math.abs(params.radius - BLOOM_RADIUS_MIN) < 1e-9, `radius ${params.radius} != ${BLOOM_RADIUS_MIN}`);
+        assert.ok(Math.abs(params.maxStrength - DEMO_BLOOM_MAX_STRENGTH) < 1e-6, `ceiling ${params.maxStrength} != ${DEMO_BLOOM_MAX_STRENGTH}`);
+    });
+
+    it('the ceiling falls monotonically as dots grow', () => {
+        const small = bloomParamsForLedSize(1, side, count, demoOpts).maxStrength;
+        const mid = bloomParamsForLedSize(4, side, count, demoOpts).maxStrength;
+        const large = bloomParamsForLedSize(16, side, count, demoOpts).maxStrength;
+        assert.ok(small >= mid && mid >= large, `expected ${small} >= ${mid} >= ${large}`);
     });
 });

@@ -49,6 +49,16 @@ export const DEMO_AUTO_FLOOR          = 1.5;
 export const DEMO_AUTO_MAX_DENSE      = DEMO_BLOOM_MAX_STRENGTH;
 export const DEMO_AUTO_MAX_SPARSE     = DEMO_BLOOM_MAX_STRENGTH;
 
+// Large-dot regime taming (issue #53): at large LED diameters the demo's dots
+// already cover much of the panel, so the default radius-1.0 / wide-area kernel
+// produces halos that wash out the whole display. These demo-only overrides
+// halve the bloom radius and the area reference so the strength ceiling drops
+// off faster as dots grow, while leaving the diameter-1 sweet spot untouched.
+// Passed per-call to bloomParamsForLedSize so the preview pane keeps the shared
+// defaults.
+export const DEMO_BLOOM_RADIUS        = 0.5;
+export const DEMO_BLOOM_AREA_REF      = 0.0125;
+
 export const LIT_EPSILON = 0.01;
 export const BLOOM_COVERAGE_REF = 0.02;
 export const BLOOM_AREA_REF = 0.025;

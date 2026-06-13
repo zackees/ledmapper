@@ -12,6 +12,8 @@ import {
     DEMO_AUTO_MAX_DENSE,
     DEMO_AUTO_MAX_SPARSE,
     DEMO_BLOOM_MAX_STRENGTH,
+    DEMO_BLOOM_RADIUS,
+    DEMO_BLOOM_AREA_REF,
     BLOOM_MIN_STRENGTH,
 } from '../bloom-utils';
 import { estimateLedSize } from '../moviemaker/transforms';
@@ -103,7 +105,11 @@ export function init(container: HTMLElement) {
         // pixelRatio to the size uniform internally). baseMax is the demo's
         // full-open iris ceiling (the manual sweet spot); size scaling still
         // drops it for large dots to prevent white-out.
-        const params = bloomParamsForLedSize(pointsMaterial.size, CANVAS_SIZE, screenmap_pts.length, { baseMax: DEMO_BLOOM_MAX_STRENGTH });
+        const params = bloomParamsForLedSize(pointsMaterial.size, CANVAS_SIZE, screenmap_pts.length, {
+            baseMax: DEMO_BLOOM_MAX_STRENGTH,
+            baseRadius: DEMO_BLOOM_RADIUS,
+            refArea: DEMO_BLOOM_AREA_REF,
+        });
         bloom.bloomPass.radius = params.radius;
         bloomRange.min = params.minStrength;
         bloomRange.max = params.maxStrength;
