@@ -8,10 +8,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint src/ tests/ --max-warnings 0 && node scripts/check-moviemaker-presets.mjs",
+    "lint": "eslint src/ tests/ --max-warnings 0 --cache --cache-location node_modules/.cache/eslint/ && node scripts/check-moviemaker-presets.mjs",
     "check:presets": "node scripts/check-moviemaker-presets.mjs",
-    "test": "playwright test",
+    "test": "node --import tsx --test tests/unit/*.test.ts",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
+    "test:integration": "playwright test",
     "typecheck": "tsc --noEmit"
   },
   "repository": {
