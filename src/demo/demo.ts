@@ -16,7 +16,9 @@ import {
     BLOOM_RENDER_PX,
     IRIS_DIAMETER_GAIN,
 } from '../bloom-utils';
-import { estimateLedSize } from '../moviemaker/transforms';
+import { applyBloomGeometry } from '../render/bloom-geometry';
+import { wireBloomControls } from '../render/bloom-ui';
+import { parseRgbFrames } from '../render/rgb-video';
 import type { MultiStripParseResult, StripPoint, RendererContextWithOverlay } from '../types/domain';
 import type { BufferGeometry, PointsMaterial, Points, Float32BufferAttribute } from 'three';
 import templateHtml from './template.html?raw';
@@ -105,80 +107,37 @@ export function init(container: HTMLElement) {
         useBlowoutRisk: true,
         diameterGain: IRIS_DIAMETER_GAIN,
     });
-    let demoManualBloomStrength: number | null = null;
-
     // Reproportion the bloom kernel + density envelope to the current geometry.
     // PointsMaterial.size is in CSS pixels (the renderer applies its pixelRatio
     // to the size uniform internally).
     function updateBloomGeometry() {
-        if (!pointsMaterial || screenmap_pts.length < 2) return;
-        const spacing = estimateLedSize(screenmap_pts);
-        let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-        for (const [x, y] of screenmap_pts) {
-            if (x < xmin) xmin = x; if (x > xmax) xmax = x;
-            if (y < ymin) ymin = y; if (y > ymax) ymax = y;
-        }
-        const extent = Math.max(xmax - xmin, ymax - ymin, 1e-6);
-        bloom.setGeometry({
-            ledPx: pointsMaterial.size,
-            panePx: CANVAS_SIZE,
-            ledCount: screenmap_pts.length,
-            ledSpacing: spacing,
-            sceneExtent: extent,
-        });
+        if (!pointsMaterial) return;
+        applyBloomGeometry(bloom, screenmap_pts, { ledPx: pointsMaterial.size, panePx: CANVAS_SIZE });
     }
 
-    const DEMO_BLOOM_LS_KEY = 'ledmapper.demo.autoBloom';
-
-    function _sliderToDemoBloomStrength(rngVal: number): number {
-        const t = (rngVal / 100) ** 2;
-        const S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
-        const S_MAX = DEMO_BLOOM_MAX_STRENGTH;
-        return S_MIN + (S_MAX - S_MIN) * t;
-    }
-
-    function _applyDemoBloomAutoState(enabled: boolean) {
-        dom_rng_bloom_strength.disabled = enabled;
-        if (enabled) {
-            dom_bloom_strength_slider.classList.add('opacity-50', 'pointer-events-none');
-            dom_bloom_strength_slider.classList.remove('opacity-100');
-        } else {
-            dom_bloom_strength_slider.classList.remove('opacity-50', 'pointer-events-none');
-            dom_bloom_strength_slider.classList.add('opacity-100');
-        }
-        bloom.setAuto(enabled);
-        if (enabled) demoManualBloomStrength = null;
-    }
-
-    // Restore persisted auto-bloom state (default: on).
-    const _demoAutoStored = localStorage.getItem(DEMO_BLOOM_LS_KEY);
-    const _demoAutoInit = _demoAutoStored === null ? true : _demoAutoStored === 'true';
-    dom_chk_auto_bloom.checked = _demoAutoInit;
-    _applyDemoBloomAutoState(_demoAutoInit);
-
-    dom_chk_auto_bloom.addEventListener('change', () => {
-        const enabled = dom_chk_auto_bloom.checked;
-        localStorage.setItem(DEMO_BLOOM_LS_KEY, String(enabled));
-        if (!enabled) {
-            // Seed slider from current bloom strength.
-            const curr = bloom.getStrength();
-            const S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
-            const S_MAX = DEMO_AUTO_MAX_SPARSE * 1.5;
-            const raw = (curr - S_MIN) / (S_MAX - S_MIN);
-            const rngVal = Math.round(Math.sqrt(Math.max(raw, 0)) * 100);
-            dom_rng_bloom_strength.value = String(Math.min(Math.max(rngVal, 0), 100));
-            demoManualBloomStrength = _sliderToDemoBloomStrength(parseInt(dom_rng_bloom_strength.value));
-            dom_txt_bloom_strength.innerText = demoManualBloomStrength.toFixed(2);
-            bloom.setManualStrength(demoManualBloomStrength);
-        }
-        _applyDemoBloomAutoState(enabled);
-    }, { signal });
-
-    dom_rng_bloom_strength.addEventListener('input', () => {
-        demoManualBloomStrength = _sliderToDemoBloomStrength(parseInt(dom_rng_bloom_strength.value));
-        dom_txt_bloom_strength.innerText = demoManualBloomStrength.toFixed(2);
-        bloom.setManualStrength(demoManualBloomStrength);
-    }, { signal });
+    // --- Bloom UI: auto checkbox + manual strength slider ---
+    const DEMO_BLOOM_S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
+    wireBloomControls({
+        chk: dom_chk_auto_bloom,
+        slider: dom_rng_bloom_strength,
+        sliderWrap: dom_bloom_strength_slider,
+        label: dom_txt_bloom_strength,
+        lsKey: 'ledmapper.demo.autoBloom',
+        adapter: {
+            setAuto: (e) => { bloom.setAuto(e); },
+            getStrength: () => bloom.getStrength(),
+            setManualStrength: (s) => { bloom.setManualStrength(s); },
+        },
+        strengthFromSlider: (rngVal) =>
+            DEMO_BLOOM_S_MIN + (DEMO_BLOOM_MAX_STRENGTH - DEMO_BLOOM_S_MIN) * (rngVal / 100) ** 2,
+        sliderFromStrength: (curr) => {
+            const sMax = DEMO_AUTO_MAX_SPARSE * 1.5;
+            const raw = (curr - DEMO_BLOOM_S_MIN) / (sMax - DEMO_BLOOM_S_MIN);
+            return Math.round(Math.sqrt(Math.max(raw, 0)) * 100);
+        },
+        disabledStyle: 'opacity',
+        signal,
+    });
 
     // Configure overlay for hover/touch fade behavior
     overlayCanvas.style.opacity = '0';
@@ -353,19 +312,15 @@ export function init(container: HTMLElement) {
             return;
         }
         const uint8_array = new Uint8Array(arrayBuffer);
-        const num_pixels = uint8_array.length / 3;
-        if (num_pixels % screenmap_pts.length !== 0) {
+        const { frames, notMultiple } = parseRgbFrames(uint8_array, screenmap_pts.length);
+        if (notMultiple) {
             alert('Frame size should be a multiple of the number of screenmap points!');
             return;
         }
         stopVideoStream();
         movie_frames.length = 0;
         curr_frame_idx = 0;
-        const frameSize = screenmap_pts.length * 3;
-        const n_frames = num_pixels / screenmap_pts.length;
-        for (let i = 0; i < n_frames; i++) {
-            movie_frames.push(uint8_array.slice(i * frameSize, (i + 1) * frameSize));
-        }
+        for (const frame of frames) movie_frames.push(frame);
         dom_btn_play.disabled = false;
         set_dom_btn_play(true);
     }
