@@ -5,5 +5,5 @@ echo "=== Running unit tests ==="
 npm run test:unit
 
 echo ""
-echo "=== Running e2e tests ==="
-npm test
+echo "=== Running integration tests (Playwright) ==="
+npm run test:integration

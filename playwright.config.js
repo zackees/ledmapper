@@ -7,9 +7,11 @@ const hasHttps = fs.existsSync(certPath);
 const protocol = hasHttps ? 'https' : 'http';
 
 export default defineConfig({
-  testDir: './tests/e2e',
+  testDir: './tests/integration',
   testMatch: '*.spec.ts',
-  workers: 2,
+  // 4 workers matches the GitHub-hosted ubuntu-latest core count.
+  // Local runs benefit too — most boxes have at least 4 cores.
+  workers: process.env.CI ? 4 : undefined,
   timeout: 30000,
   expect: {
     timeout: 10000,

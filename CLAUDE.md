@@ -24,8 +24,11 @@ npm run preview
 # Lint
 npm run lint
 
-# Run E2E tests (starts dev server automatically)
+# Run unit tests (340 tests, ~5s)
 npm test
+
+# Run Playwright integration tests on demand (starts dev server)
+npm run test:integration
 ```
 
 ## Architecture
@@ -53,7 +56,8 @@ public/           # Static assets (served as-is by Vite)
   demo/           # Sample data files (.rgb, .json)
   examples/       # Example projects
 tests/
-  e2e/            # Playwright E2E tests
+  integration/    # Playwright integration tests (on-demand via `npm run test:integration`)
+  unit/           # Fast unit tests (`npm test`)
   fixtures/       # Test data files
   helpers/        # Test utilities (webcam mock, etc.)
 ```
