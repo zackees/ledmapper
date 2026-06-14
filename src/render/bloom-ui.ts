@@ -6,10 +6,12 @@
  * tool keeps its exact mapping/constants while this module owns the glue
  * (persistence, disabled-state styling, the seed-on-toggle dance, readout).
  *
- * Returns a small controller behind a stable signature so the rendering
- * internals can later be swapped (e.g. reactive signals, see #72) without
- * touching callers.
+ * State lives in two signals (auto on/off, slider position); effects own the
+ * state->DOM and state->controller sync so there are no hand-written "when X
+ * changes also update Y and Z" sites (see #72). The public signature is
+ * unchanged, so callers don't know the internals went reactive.
  */
+import { effect, signal } from '../ui/signal';
 
 /** The bloom controller surface this wiring drives (auto-bloom or preview). */
 export interface BloomControlsAdapter {
@@ -57,57 +59,59 @@ export function wireBloomControls(cfg: BloomControlsConfig): BloomControls {
         strengthFromSlider, sliderFromStrength,
         disabledStyle = 'opacity',
         formatLabel = (s: number) => s.toFixed(2),
-        signal,
+        signal: abortSignal,
     } = cfg;
 
-    function applyAutoState(enabled: boolean) {
+    const clampSlider = (v: number) => Math.min(Math.max(v, 0), 100);
+
+    // Restore persisted auto-bloom state (default: on).
+    const stored = localStorage.getItem(lsKey);
+    const auto = signal(stored === null ? true : stored === 'true');
+    const sliderVal = signal(clampSlider(parseInt(slider.value) || 0));
+
+    // auto state -> checkbox, disabled styling, controller.
+    effect(() => {
+        const enabled = auto.get();
+        chk.checked = enabled;
         slider.disabled = enabled;
         if (disabledStyle === 'opacity') {
-            if (enabled) {
-                sliderWrap.classList.add('opacity-50', 'pointer-events-none');
-                sliderWrap.classList.remove('opacity-100');
-            } else {
-                sliderWrap.classList.remove('opacity-50', 'pointer-events-none');
-                sliderWrap.classList.add('opacity-100');
-            }
+            sliderWrap.classList.toggle('opacity-50', enabled);
+            sliderWrap.classList.toggle('pointer-events-none', enabled);
+            sliderWrap.classList.toggle('opacity-100', !enabled);
         } else {
             sliderWrap.classList.toggle('disabled', enabled);
         }
         adapter.setAuto(enabled);
-    }
+    });
 
-    function applyManualFromSlider() {
-        const strength = strengthFromSlider(parseInt(slider.value));
+    // slider position -> readout, and -> manual strength while in manual mode.
+    effect(() => {
+        const strength = strengthFromSlider(sliderVal.get());
         label.innerText = formatLabel(strength);
-        adapter.setManualStrength(strength);
-    }
+        if (!auto.get()) adapter.setManualStrength(strength);
+    });
 
-    // Restore persisted auto-bloom state (default: on).
-    const stored = localStorage.getItem(lsKey);
-    const init = stored === null ? true : stored === 'true';
-    chk.checked = init;
-    applyAutoState(init);
-
-    const listenerOpts: AddEventListenerOptions = signal ? { signal } : {};
+    const listenerOpts: AddEventListenerOptions = abortSignal ? { signal: abortSignal } : {};
 
     chk.addEventListener('change', () => {
         const enabled = chk.checked;
         localStorage.setItem(lsKey, String(enabled));
         if (!enabled) {
             // Seed the slider from the current strength so there's no jump.
-            const seed = sliderFromStrength(adapter.getStrength());
-            slider.value = String(Math.min(Math.max(seed, 0), 100));
-            applyManualFromSlider();
+            const seed = clampSlider(sliderFromStrength(adapter.getStrength()));
+            slider.value = String(seed);
+            sliderVal.set(seed);
         }
-        applyAutoState(enabled);
+        auto.set(enabled);
     }, listenerOpts);
 
-    slider.addEventListener('input', applyManualFromSlider, listenerOpts);
+    slider.addEventListener('input', () => {
+        sliderVal.set(clampSlider(parseInt(slider.value) || 0));
+    }, listenerOpts);
 
     function setAuto(enabled: boolean) {
-        chk.checked = enabled;
         localStorage.setItem(lsKey, String(enabled));
-        applyAutoState(enabled);
+        auto.set(enabled);
     }
 
     return { setAuto };
