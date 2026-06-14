@@ -7,9 +7,8 @@ const tools = [
 
 let navEl: HTMLElement | null = null;
 
-export function initNav(onNavigate: ((href: string) => void) | null) {
+export function initNav() {
     if (navEl) {
-        // Nav already exists, just re-attach navigate handler
         updateActiveLink(window.location.pathname);
         return;
     }
@@ -40,16 +39,8 @@ export function initNav(onNavigate: ((href: string) => void) | null) {
     navEl = nav;
 
     updateActiveLink(window.location.pathname);
-
-    // Intercept clicks on nav links for SPA navigation
-    nav.addEventListener('click', (e) => {
-        const a = (e.target as Element).closest('a');
-        if (!a) return;
-        const href = a.getAttribute('href');
-        if (!href || href.startsWith('http')) return;
-        e.preventDefault();
-        if (onNavigate) onNavigate(href);
-    });
+    // Link clicks are handled by the router's delegated document click handler,
+    // so no per-nav listener is needed here.
 }
 
 export function updateActiveLink(path: string) {

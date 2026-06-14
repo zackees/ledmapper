@@ -263,11 +263,38 @@ export interface ScreenmapPresetManifestEntry {
 }
 
 // ---------------------------------------------------------------------------
+// SPA history / navigation API
+// ---------------------------------------------------------------------------
+
+/**
+ * SPA navigation + browser-history facade. Route changes push real history
+ * entries so the browser Back/Forward buttons move between tools. Tools can
+ * also push *in-tool* view boundaries (same URL) with pushView/onPopView so the
+ * Back button "goes back" within a tool without leaving the SPA.
+ */
+export interface SpaHistory {
+    /** Navigate to a route path (pushes a history entry). */
+    navigate: (path: string) => void;
+    /** Push an in-tool view boundary on the current route (same URL). */
+    pushView: (view: string, data?: unknown) => void;
+    /** Replace the current history entry's in-tool view state. */
+    replaceView: (view: string, data?: unknown) => void;
+    /** Programmatic Back (equivalent to the browser Back button). */
+    back: () => void;
+    /**
+     * Register a handler invoked when Back/Forward lands on the current route
+     * (an in-tool view boundary). Returns an unsubscribe function. Cleared
+     * automatically when the tool is torn down.
+     */
+    onPopView: (handler: (view: string | null, data: unknown) => void) => () => void;
+}
+
+// ---------------------------------------------------------------------------
 // Tool init function type
 // ---------------------------------------------------------------------------
 
 /** Common signature for all tool entry points. */
-export type ToolInitFn = (container: HTMLElement) => (() => void) | undefined;
+export type ToolInitFn = (container: HTMLElement, nav?: SpaHistory) => (() => void) | undefined;
 
 // ---------------------------------------------------------------------------
 // Debug globals interfaces

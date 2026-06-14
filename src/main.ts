@@ -11,7 +11,7 @@ if (redirect) {
 const appEl = document.getElementById('app');
 if (!appEl) throw new Error('Missing #app element');
 const router = createRouter(appEl);
-initNav((path) => { router.navigate(path); });
+initNav();
 
 // Load initial route
 router.start();
