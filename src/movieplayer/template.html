@@ -1,25 +1,44 @@
 <div class="controls">
     <h1>Video Player</h1>
     <p>See Fastled/examples/FxSdCard/data/ for video.rgb and screenmap.json examples</p>
-    <div>
+    <div class="mb-2">
         <span class="block text-xs text-lm-text-muted mb-1.5">Screenmap presets:</span>
-        <div class="preset-buttons" id="preset_buttons"></div>
+        <div class="preset-buttons justify-center" id="preset_buttons"></div>
     </div>
-    <div class="upload-row" id="screenmap_drop_target">
-        <label for="btn_upload_screenmap">Upload Screenmap (*.json):</label>
-        <input type="file" id="btn_upload_screenmap" accept=".json">
-    </div>
-    <div class="upload-row" id="movie_drop_target">
-        <label for="btn_load_movie">Upload Video (*.rgb):</label>
-        <input type="file" id="btn_load_movie" accept=".rgb">
-    </div>
-    <div>
-        <input type="button" id="btn_play" value="Play">
-    </div>
-    <div class="flex items-center gap-2.5 mt-1">
-        <label for="rng_diameter">LED Diameter:</label>
-        <input type="range" min="1" max="20" value="6" step="1" class="slider" id="rng_diameter">
-        <span class="font-mono text-xs text-lm-text-muted min-w-6 text-right" id="txt_curr_diameter">6</span>
+    <div class="controls-container flex justify-center items-start gap-6 flex-wrap mt-2">
+        <!-- Uploads -->
+        <div class="flex flex-col items-start gap-2">
+            <div class="upload-row" id="screenmap_drop_target">
+                <label for="btn_upload_screenmap">Upload Screenmap (*.json):</label>
+                <input type="file" id="btn_upload_screenmap" accept=".json">
+            </div>
+            <div class="upload-row" id="movie_drop_target">
+                <label for="btn_load_movie">Upload Video (*.rgb):</label>
+                <input type="file" id="btn_load_movie" accept=".rgb">
+            </div>
+        </div>
+
+        <!-- Playback + diameter -->
+        <div class="flex flex-col items-center gap-2">
+            <input type="button" id="btn_play" value="Play">
+            <div class="flex items-center gap-2.5">
+                <label for="rng_diameter">LED Diameter:</label>
+                <input type="range" min="1" max="20" value="6" step="1" class="slider" id="rng_diameter">
+                <span class="font-mono text-xs text-lm-text-muted min-w-6 text-right" id="txt_curr_diameter">6</span>
+            </div>
+        </div>
+
+        <!-- Bloom -->
+        <div class="flex flex-col items-start gap-1.5">
+            <label class="flex items-center gap-1.5 text-sm text-lm-text cursor-pointer">
+                <input type="checkbox" id="chk_auto_bloom" checked> Auto bloom
+            </label>
+            <div id="bloom_strength_slider" class="flex items-center gap-2.5 opacity-50 pointer-events-none">
+                <label for="rng_bloom_strength" class="text-sm text-lm-text-muted">Strength</label>
+                <input type="range" min="0" max="100" value="50" class="slider" id="rng_bloom_strength" disabled>
+                <span class="font-mono text-xs text-lm-text-muted min-w-10 text-right" id="txt_curr_bloom_strength">16.00</span>
+            </div>
+        </div>
     </div>
 </div>
 <main>

@@ -2,12 +2,10 @@ import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file, p
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
-import { createBloomComposer, updateBloomIris } from '../three-bloom';
+import { createAutoBloom } from '../auto-bloom';
 import {
-    computeAutoBloomRange,
     resolveLedDiameter,
     computeFitScale,
-    bloomParamsForLedSize,
     DEMO_AUTO_FLOOR,
     DEMO_AUTO_MAX_DENSE,
     DEMO_AUTO_MAX_SPARSE,
@@ -15,6 +13,7 @@ import {
     DEMO_BLOOM_RADIUS,
     DEMO_BLOOM_AREA_REF,
     BLOOM_MIN_STRENGTH,
+    IRIS_DIAMETER_GAIN,
 } from '../bloom-utils';
 import { estimateLedSize } from '../moviemaker/transforms';
 import type { MultiStripParseResult, StripPoint, RendererContextWithOverlay } from '../types/domain';
@@ -87,56 +86,44 @@ export function init(container: HTMLElement) {
         enableOverlay: true,
     }) as RendererContextWithOverlay;
 
-    // FastLED-style bloom: UnrealBloomPass with auto-bloom iris.
-    const bloom = createBloomComposer({
+    // FastLED-style bloom via the shared controller. The demo uses the
+    // size-kernel floor (minFloorMode 'size') and the geometry-derived iris
+    // modulation depth (useBlowoutRisk) so small/sparse dots hold full bloom.
+    const DEMO_PROFILE = { floor: DEMO_AUTO_FLOOR, maxDense: DEMO_AUTO_MAX_DENSE, maxSparse: DEMO_AUTO_MAX_SPARSE };
+    const bloom = createAutoBloom({
         renderer, scene, camera,
         width: CANVAS_SIZE, height: CANVAS_SIZE,
-    });
-    const irisState = { currentBrightness: 0 };
-    // Strength range / radius proportioned to the rendered dot size
-    // (updated in updateBloomParams whenever the diameter changes).
-    const bloomRange = { min: 0, max: 0 };
-    // Geometry-derived iris modulation depth (0 = small/sparse dots hold full
-    // bloom always, 1 = large/dense dots get full brightness modulation).
-    let bloomBlowoutRisk = 1;
-
-    // Proportion the bloom kernel to the rendered LED size so small dots
-    // keep a tight halo and large dots don't white out the canvas.
-    function updateBloomParams() {
-        if (!pointsMaterial) return;
-        // PointsMaterial.size is in CSS pixels (the renderer applies its
-        // pixelRatio to the size uniform internally). baseMax is the demo's
-        // full-open iris ceiling (the manual sweet spot); size scaling still
-        // drops it for large dots to prevent white-out.
-        const params = bloomParamsForLedSize(pointsMaterial.size, CANVAS_SIZE, screenmap_pts.length, {
+        profile: DEMO_PROFILE,
+        paramOverrides: {
             baseMax: DEMO_BLOOM_MAX_STRENGTH,
             baseRadius: DEMO_BLOOM_RADIUS,
             refArea: DEMO_BLOOM_AREA_REF,
-        });
-        bloom.bloomPass.radius = params.radius;
-        bloomRange.min = params.minStrength;
-        bloomRange.max = params.maxStrength;
-        bloomBlowoutRisk = params.blowoutRisk;
-    }
-
-    /** Demo bloom profile constants. */
-    const DEMO_PROFILE = { floor: DEMO_AUTO_FLOOR, maxDense: DEMO_AUTO_MAX_DENSE, maxSparse: DEMO_AUTO_MAX_SPARSE };
-    let demoBloomRange = { min: Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5), max: DEMO_AUTO_MAX_DENSE };
-    let demoAutoBloomEnabled = true;
+        },
+        minFloorMode: 'size',
+        useBlowoutRisk: true,
+        diameterGain: IRIS_DIAMETER_GAIN,
+    });
     let demoManualBloomStrength: number | null = null;
 
-    /** Recompute bloom envelope from the current screenmap geometry. */
-    function _recomputeDemoBloomRange() {
-        if (screenmap_pts.length < 2) return;
+    // Reproportion the bloom kernel + density envelope to the current geometry.
+    // PointsMaterial.size is in CSS pixels (the renderer applies its pixelRatio
+    // to the size uniform internally).
+    function updateBloomGeometry() {
+        if (!pointsMaterial || screenmap_pts.length < 2) return;
         const spacing = estimateLedSize(screenmap_pts);
-        // sceneExtent: bounding box max dimension of screen-space pts
         let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
         for (const [x, y] of screenmap_pts) {
             if (x < xmin) xmin = x; if (x > xmax) xmax = x;
             if (y < ymin) ymin = y; if (y > ymax) ymax = y;
         }
         const extent = Math.max(xmax - xmin, ymax - ymin, 1e-6);
-        demoBloomRange = computeAutoBloomRange({ ledSpacing: spacing, sceneExtent: extent, profile: DEMO_PROFILE });
+        bloom.setGeometry({
+            ledPx: pointsMaterial.size,
+            panePx: CANVAS_SIZE,
+            ledCount: screenmap_pts.length,
+            ledSpacing: spacing,
+            sceneExtent: extent,
+        });
     }
 
     const DEMO_BLOOM_LS_KEY = 'ledmapper.demo.autoBloom';
@@ -157,7 +144,7 @@ export function init(container: HTMLElement) {
             dom_bloom_strength_slider.classList.remove('opacity-50', 'pointer-events-none');
             dom_bloom_strength_slider.classList.add('opacity-100');
         }
-        demoAutoBloomEnabled = enabled;
+        bloom.setAuto(enabled);
         if (enabled) demoManualBloomStrength = null;
     }
 
@@ -172,7 +159,7 @@ export function init(container: HTMLElement) {
         localStorage.setItem(DEMO_BLOOM_LS_KEY, String(enabled));
         if (!enabled) {
             // Seed slider from current bloom strength.
-            const curr = bloom.bloomPass.strength;
+            const curr = bloom.getStrength();
             const S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
             const S_MAX = DEMO_AUTO_MAX_SPARSE * 1.5;
             const raw = (curr - S_MIN) / (S_MAX - S_MIN);
@@ -180,6 +167,7 @@ export function init(container: HTMLElement) {
             dom_rng_bloom_strength.value = String(Math.min(Math.max(rngVal, 0), 100));
             demoManualBloomStrength = _sliderToDemoBloomStrength(parseInt(dom_rng_bloom_strength.value));
             dom_txt_bloom_strength.innerText = demoManualBloomStrength.toFixed(2);
+            bloom.setManualStrength(demoManualBloomStrength);
         }
         _applyDemoBloomAutoState(enabled);
     }, { signal });
@@ -187,6 +175,7 @@ export function init(container: HTMLElement) {
     dom_rng_bloom_strength.addEventListener('input', () => {
         demoManualBloomStrength = _sliderToDemoBloomStrength(parseInt(dom_rng_bloom_strength.value));
         dom_txt_bloom_strength.innerText = demoManualBloomStrength.toFixed(2);
+        bloom.setManualStrength(demoManualBloomStrength);
     }, { signal });
 
     // Configure overlay for hover/touch fade behavior
@@ -296,9 +285,8 @@ export function init(container: HTMLElement) {
         screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
         stripInfo = parseScreenmapMultiStrip(jsonBlob);
         buildPoints();
-        _recomputeDemoBloomRange();
         applyScreenmapDiameter();
-        updateBloomParams();
+        updateBloomGeometry();
         drawOverlay();
         dom_btn_play.disabled = false;
     }
@@ -487,7 +475,7 @@ export function init(container: HTMLElement) {
         signal,
     });
     // Re-proportion the bloom after wireDiameterSlider applies the new size.
-    dom_rng_diameter.addEventListener('input', updateBloomParams, { signal });
+    dom_rng_diameter.addEventListener('input', updateBloomGeometry, { signal });
 
     // --- Frame rate ---
     let targetFPS = parseInt(dom_sel_framerate.value);
@@ -718,14 +706,10 @@ export function init(container: HTMLElement) {
             }
 
             if (curr_frame) {
-                // Conservative combination of the size-proportional range and
-                // the density envelope: neither ceiling is exceeded, and the
-                // floor stays strictly positive without rising above it.
-                const effMax = Math.min(bloomRange.max, demoBloomRange.max);
-                const effMin = Math.min(bloomRange.min, effMax);
-                const override = demoAutoBloomEnabled ? null : demoManualBloomStrength;
-                updateBloomIris(bloom.bloomPass, irisState, curr_frame, { min: effMin, max: effMax, blowoutRisk: bloomBlowoutRisk }, override);
+                bloom.frame(curr_frame);
             }
+            // Iris diameter modulation: dots open up on bright frames in sparse maps.
+            if (pointsMaterial) pointsMaterial.size = getDiameter() * bloom.getDiameterScale();
             bloom.render();
         },
     });

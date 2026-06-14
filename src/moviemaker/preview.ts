@@ -3,7 +3,7 @@
  *
  * Replaces the old Canvas2D fillRect preview with a points mesh using the
  * shared circle sprite (same look as the demo page) plus FastLED-style
- * UnrealBloomPass bloom with an auto-bloom iris.
+ * UnrealBloomPass bloom with an auto-bloom iris (shared createAutoBloom).
  *
  * The mesh is rebuilt only when the screenmap points change (array identity);
  * per frame only the color attribute is updated from the GPU gather sample.
@@ -14,13 +14,12 @@
 import { WebGLRenderer, Scene, OrthographicCamera } from 'three';
 import { createCircleTexture, rebuildPointsMesh } from '../three-utils';
 import type { PointsMeshResult, StripPoint } from '../types/domain';
-import { createBloomComposer, updateBloomIris } from '../three-bloom';
+import { createAutoBloom } from '../auto-bloom';
 import {
-    computeAutoBloomRange,
-    bloomParamsForLedSize,
     PREVIEW_AUTO_FLOOR,
     PREVIEW_AUTO_MAX_DENSE,
     PREVIEW_AUTO_MAX_SPARSE,
+    IRIS_DIAMETER_GAIN,
 } from '../bloom-utils';
 import { estimateLedSize } from './transforms';
 
@@ -29,7 +28,7 @@ const INV_255 = 1 / 255;
 // FastLED's aesthetic camera margin so edge LEDs aren't clipped.
 const AESTHETIC_MARGIN = 1.05;
 
-/** Preview profile constants for computeAutoBloomRange. */
+/** Preview density envelope (issue #49 keeps the floor binding on dense maps). */
 const PREVIEW_PROFILE = {
     floor:     PREVIEW_AUTO_FLOOR,
     maxDense:  PREVIEW_AUTO_MAX_DENSE,
@@ -70,21 +69,18 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
     camera.position.z = 1;
 
     const circleTexture = createCircleTexture(64);
-    const bloom = createBloomComposer({
+    // Shared auto-bloom controller. bloomResolution is the pane size; the
+    // density floor stays binding on dense maps (minFloorMode 'density'), and
+    // the preview always fully modulates the iris (no geometry blowout term).
+    const bloom = createAutoBloom({
         renderer, scene, camera,
         width: side, height: side,
+        profile: PREVIEW_PROFILE,
+        paramOverrides: { bloomResolution: side },
+        minFloorMode: 'density',
+        useBlowoutRisk: false,
+        diameterGain: IRIS_DIAMETER_GAIN,
     });
-    const irisState = { currentBrightness: 0 };
-
-    // Auto-bloom state: density-based envelope, recomputed on screenmap change.
-    let currentRange = { min: PREVIEW_AUTO_FLOOR * 0.5, max: PREVIEW_AUTO_MAX_DENSE };
-    let autoBloomEnabled = true;
-    let bloomEnabled = true; // false = render scene without the bloom pass
-    let manualBloomStrength: number | null = null; // null = use auto
-    // Strength range and bloom radius proportioned to the rendered LED size
-    // in fitCamera() (bloomParamsForLedSize). The effective auto range is the
-    // conservative combination of this and the density envelope above.
-    const bloomRange = { min: 0, max: 0 };
 
     let meshData: PointsMeshResult | null = null;
     let cachedPts: StripPoint[] | null = null;
@@ -93,6 +89,8 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
     let ledWorldRadius = 0.5;
     let ledSpacing = 1;
     let sceneExtent = 1;
+    // Base dot size (CSS px) before the iris diameter modulation is applied.
+    let baseLedPx = 0.75;
 
     function rebuild(localPts: StripPoint[], ledDiameter: number | null) {
         meshData = rebuildPointsMesh({
@@ -110,20 +108,6 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
             ? ledDiameter
             : ledSpacing;
         ledWorldRadius = dia / 2;
-        _recomputeAutoRange();
-    }
-
-    /**
-     * Recompute the density-based bloom envelope whenever the screenmap
-     * geometry changes. sceneExtent is set in fitCamera(); we call this
-     * after ledSpacing is updated.
-     */
-    function _recomputeAutoRange() {
-        currentRange = computeAutoBloomRange({
-            ledSpacing,
-            sceneExtent,
-            profile: PREVIEW_PROFILE,
-        });
     }
 
     /**
@@ -163,17 +147,17 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         // PointsMaterial.size is in CSS pixels: the renderer multiplies the
         // size uniform by its pixelRatio internally, so the world→pixel
         // mapping must use the CSS pane size, not the drawing-buffer size.
-        meshData.material.size = Math.max((ledWorldRadius * 2 / (half * 2)) * side, 0.75);
+        baseLedPx = Math.max((ledWorldRadius * 2 / (half * 2)) * side, 0.75);
+        meshData.material.size = baseLedPx;
 
-        // Proportion the bloom kernel to the rendered dot size so sparse
-        // small dots keep a tight halo and large dots don't white out.
-        const params = bloomParamsForLedSize(meshData.material.size, side, localPts.length, { bloomResolution: side });
-        bloom.bloomPass.radius = params.radius;
-        bloomRange.min = params.minStrength;
-        bloomRange.max = params.maxStrength;
-
-        // Re-derive the density envelope now that sceneExtent is up to date.
-        _recomputeAutoRange();
+        // Reproportion the bloom kernel + density envelope to the rendered dots.
+        bloom.setGeometry({
+            ledPx: baseLedPx,
+            panePx: side,
+            ledCount: localPts.length,
+            ledSpacing,
+            sceneExtent,
+        });
     }
 
     /**
@@ -215,23 +199,9 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         }
         meshData.colorAttribute.needsUpdate = true;
 
-        // Bloom disabled: render the points straight to the canvas, bypassing
-        // the composer so there's no glow at all.
-        if (!bloomEnabled) {
-            renderer.setRenderTarget(null);
-            renderer.render(scene, camera);
-            return;
-        }
-
-        // Effective auto range: neither ceiling is exceeded, but the floor is
-        // the HIGHER of the two minimums (clamped to the ceiling) so the
-        // bloom-never-disabled floor survives — taking the lower floor let
-        // dense maps collapse to an imperceptible ~0.1 strength (issue #49).
-        const effMax = Math.min(bloomRange.max, currentRange.max);
-        const effMin = Math.min(Math.max(bloomRange.min, currentRange.min), effMax);
-        // Pass manualStrength only when auto is disabled.
-        const override = autoBloomEnabled ? null : manualBloomStrength;
-        updateBloomIris(bloom.bloomPass, irisState, src, { min: effMin, max: effMax }, override);
+        bloom.frame(src);
+        // Iris diameter modulation: dots open up on bright frames in sparse maps.
+        meshData.material.size = baseLedPx * bloom.getDiameterScale();
         bloom.render();
     }
 
@@ -240,11 +210,7 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
      * @param {boolean} enabled
      */
     function setAutoBloom(enabled: boolean) {
-        autoBloomEnabled = enabled;
-        if (enabled) {
-            // Resume iris-guided envelope — no snap.
-            manualBloomStrength = null;
-        }
+        bloom.setAuto(enabled);
     }
 
     /**
@@ -252,7 +218,7 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
      * @param {boolean} enabled
      */
     function setBloomEnabled(enabled: boolean) {
-        bloomEnabled = enabled;
+        bloom.setEnabled(enabled);
     }
 
     /**
@@ -260,7 +226,7 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
      * @param {number} strength
      */
     function setManualBloomStrength(strength: number) {
-        manualBloomStrength = strength;
+        bloom.setManualStrength(strength);
     }
 
     /**
@@ -268,7 +234,7 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
      * @returns {number}
      */
     function getCurrentBloomStrength() {
-        return bloom.bloomPass.strength;
+        return bloom.getStrength();
     }
 
     function dispose() {

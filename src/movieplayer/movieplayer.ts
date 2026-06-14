@@ -5,6 +5,18 @@ import { saveScreenmap, getScreenmap, savePresetSelection, getPresetSelection } 
 import { buildVideoChannelMap } from '../moviemaker/transforms';
 import { loadPresetText, loadPresetManifest } from '../preset-loader';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
+import { createAutoBloom } from '../auto-bloom';
+import { estimateLedSize } from '../moviemaker/transforms';
+import {
+    DEMO_AUTO_FLOOR,
+    DEMO_AUTO_MAX_DENSE,
+    DEMO_AUTO_MAX_SPARSE,
+    DEMO_BLOOM_MAX_STRENGTH,
+    DEMO_BLOOM_RADIUS,
+    DEMO_BLOOM_AREA_REF,
+    BLOOM_MIN_STRENGTH,
+    IRIS_DIAMETER_GAIN,
+} from '../bloom-utils';
 import type { ParsedStrip, RendererContextWithOverlay } from '../types/domain';
 import type { BufferGeometry, PointsMaterial, Points, Float32BufferAttribute } from 'three';
 import templateHtml from './template.html?raw';
@@ -27,6 +39,10 @@ export function init(container: HTMLElement) {
     const dom_screenmap_drop_target = qe<HTMLElement>(container, '#screenmap_drop_target');
     const dom_movie_drop_target = qe<HTMLElement>(container, '#movie_drop_target');
     const dom_preset_buttons = qe<HTMLElement>(container, '#preset_buttons');
+    const dom_chk_auto_bloom        = qe<HTMLInputElement>(container, '#chk_auto_bloom');
+    const dom_bloom_strength_slider = qe<HTMLElement>(container, '#bloom_strength_slider');
+    const dom_rng_bloom_strength    = qe<HTMLInputElement>(container, '#rng_bloom_strength');
+    const dom_txt_bloom_strength    = qe<HTMLElement>(container, '#txt_curr_bloom_strength');
 
     dom_btn_load_movie.disabled = true;
     dom_btn_play.disabled = true;
@@ -63,12 +79,104 @@ export function init(container: HTMLElement) {
     const ac = new AbortController();
     const { signal } = ac;
 
+    // FastLED-style bloom via the shared controller. The player is a playback
+    // view like the demo, so it uses the same configuration: the size-kernel
+    // floor (minFloorMode 'size') and the geometry-derived iris modulation
+    // depth (useBlowoutRisk) so small/sparse dots hold full bloom.
+    const PLAYER_PROFILE = { floor: DEMO_AUTO_FLOOR, maxDense: DEMO_AUTO_MAX_DENSE, maxSparse: DEMO_AUTO_MAX_SPARSE };
+    const bloom = createAutoBloom({
+        renderer, scene, camera,
+        width: CANVAS_SIZE, height: CANVAS_SIZE,
+        profile: PLAYER_PROFILE,
+        paramOverrides: {
+            baseMax: DEMO_BLOOM_MAX_STRENGTH,
+            baseRadius: DEMO_BLOOM_RADIUS,
+            refArea: DEMO_BLOOM_AREA_REF,
+        },
+        minFloorMode: 'size',
+        useBlowoutRisk: true,
+        diameterGain: IRIS_DIAMETER_GAIN,
+    });
+    let playerManualBloomStrength: number | null = null;
+
     const getDiameter = wireDiameterSlider({
         slider: dom_rng_diameter,
         label: dom_txt_curr_diameter,
         getMaterial: () => pointsMaterial ?? null,
         signal,
     });
+
+    // Reproportion the bloom kernel + density envelope to the current geometry.
+    function updateBloomGeometry() {
+        if (!pointsMaterial || screenmap_pts.length < 2) return;
+        const spacing = estimateLedSize(screenmap_pts);
+        let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+        for (const [x, y] of screenmap_pts) {
+            if (x < xmin) xmin = x; if (x > xmax) xmax = x;
+            if (y < ymin) ymin = y; if (y > ymax) ymax = y;
+        }
+        const extent = Math.max(xmax - xmin, ymax - ymin, 1e-6);
+        bloom.setGeometry({
+            ledPx: pointsMaterial.size,
+            panePx: CANVAS_SIZE,
+            ledCount: screenmap_pts.length,
+            ledSpacing: spacing,
+            sceneExtent: extent,
+        });
+    }
+    dom_rng_diameter.addEventListener('input', updateBloomGeometry, { signal });
+
+    // --- Bloom UI: auto checkbox + manual strength slider ---
+    const PLAYER_BLOOM_LS_KEY = 'ledmapper.movieplayer.autoBloom';
+
+    function _sliderToBloomStrength(rngVal: number): number {
+        const t = (rngVal / 100) ** 2;
+        const S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
+        const S_MAX = DEMO_BLOOM_MAX_STRENGTH;
+        return S_MIN + (S_MAX - S_MIN) * t;
+    }
+
+    function _applyBloomAutoState(enabled: boolean) {
+        dom_rng_bloom_strength.disabled = enabled;
+        if (enabled) {
+            dom_bloom_strength_slider.classList.add('opacity-50', 'pointer-events-none');
+            dom_bloom_strength_slider.classList.remove('opacity-100');
+        } else {
+            dom_bloom_strength_slider.classList.remove('opacity-50', 'pointer-events-none');
+            dom_bloom_strength_slider.classList.add('opacity-100');
+        }
+        bloom.setAuto(enabled);
+        if (enabled) playerManualBloomStrength = null;
+    }
+
+    const _playerAutoStored = localStorage.getItem(PLAYER_BLOOM_LS_KEY);
+    const _playerAutoInit = _playerAutoStored === null ? true : _playerAutoStored === 'true';
+    dom_chk_auto_bloom.checked = _playerAutoInit;
+    _applyBloomAutoState(_playerAutoInit);
+
+    dom_chk_auto_bloom.addEventListener('change', () => {
+        const enabled = dom_chk_auto_bloom.checked;
+        localStorage.setItem(PLAYER_BLOOM_LS_KEY, String(enabled));
+        if (!enabled) {
+            // Seed slider from current bloom strength.
+            const curr = bloom.getStrength();
+            const S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
+            const S_MAX = DEMO_AUTO_MAX_SPARSE * 1.5;
+            const raw = (curr - S_MIN) / (S_MAX - S_MIN);
+            const rngVal = Math.round(Math.sqrt(Math.max(raw, 0)) * 100);
+            dom_rng_bloom_strength.value = String(Math.min(Math.max(rngVal, 0), 100));
+            playerManualBloomStrength = _sliderToBloomStrength(parseInt(dom_rng_bloom_strength.value));
+            dom_txt_bloom_strength.innerText = playerManualBloomStrength.toFixed(2);
+            bloom.setManualStrength(playerManualBloomStrength);
+        }
+        _applyBloomAutoState(enabled);
+    }, { signal });
+
+    dom_rng_bloom_strength.addEventListener('input', () => {
+        playerManualBloomStrength = _sliderToBloomStrength(parseInt(dom_rng_bloom_strength.value));
+        dom_txt_bloom_strength.innerText = playerManualBloomStrength.toFixed(2);
+        bloom.setManualStrength(playerManualBloomStrength);
+    }, { signal });
 
     function buildPoints() {
         const previous = (pointsMesh && pointsGeometry && pointsMaterial && colorAttribute) ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial, colorAttribute } : null;
@@ -135,6 +243,7 @@ export function init(container: HTMLElement) {
         if (persist) saveScreenmap(text);
         screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
         buildPoints();
+        updateBloomGeometry();
         drawStripLabels();
     }
 
@@ -294,7 +403,12 @@ export function init(container: HTMLElement) {
                 colorAttribute.needsUpdate = true;
             }
 
-            renderer.render(scene, camera);
+            if (curr_frame) {
+                bloom.frame(curr_frame);
+            }
+            // Iris diameter modulation: dots open up on bright frames in sparse maps.
+            if (pointsMaterial) pointsMaterial.size = getDiameter() * bloom.getDiameterScale();
+            bloom.render();
         }
     });
 
@@ -307,6 +421,7 @@ export function init(container: HTMLElement) {
             pointsMaterial?.dispose();
         }
         circleTexture.dispose();
+        bloom.dispose();
         renderer.dispose();
     };
 }
