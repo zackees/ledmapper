@@ -28,8 +28,11 @@ export function createCircleTexture(size: number): CanvasTexture {
 }
 
 /** Create a WebGLRenderer, orthographic camera (y-down), and optional overlay canvas. */
-export function createRendererAndScene({ width, height, parent, clearColor = 0x000000, enableOverlay = false, renderPx }: { width: number; height: number; parent: HTMLElement; clearColor?: number; enableOverlay?: boolean; renderPx?: number }): RendererContextWithOverlay | RendererContext {
-    const renderer = new WebGLRenderer({ antialias: false });
+export function createRendererAndScene({ width, height, parent, clearColor = 0x000000, enableOverlay = false, renderPx, preserveDrawingBuffer = false }: { width: number; height: number; parent: HTMLElement; clearColor?: number; enableOverlay?: boolean; renderPx?: number; preserveDrawingBuffer?: boolean }): RendererContextWithOverlay | RendererContext {
+    // preserveDrawingBuffer keeps the backbuffer readable after compositing so
+    // consumers can drawImage()/readback the canvas outside the draw call (e.g.
+    // the Movie Player's frame-grab recorder). Slightly costlier; off by default.
+    const renderer = new WebGLRenderer({ antialias: false, preserveDrawingBuffer });
     renderer.setSize(width, height);
     // When renderPx is given, render to a fixed backing-buffer size (renderPx²)
     // regardless of window.devicePixelRatio, so bloom output is identical across
