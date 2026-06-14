@@ -88,6 +88,8 @@ export function wireBloomControls(cfg: BloomControlsConfig): BloomControls {
     chk.checked = init;
     applyAutoState(init);
 
+    const listenerOpts: AddEventListenerOptions = signal ? { signal } : {};
+
     chk.addEventListener('change', () => {
         const enabled = chk.checked;
         localStorage.setItem(lsKey, String(enabled));
@@ -98,9 +100,9 @@ export function wireBloomControls(cfg: BloomControlsConfig): BloomControls {
             applyManualFromSlider();
         }
         applyAutoState(enabled);
-    }, { signal });
+    }, listenerOpts);
 
-    slider.addEventListener('input', applyManualFromSlider, { signal });
+    slider.addEventListener('input', applyManualFromSlider, listenerOpts);
 
     function setAuto(enabled: boolean) {
         chk.checked = enabled;
