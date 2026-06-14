@@ -17,5 +17,5 @@ export { default as css } from './shapeeditor.css?url';
 export function init(container: HTMLElement) {
     const editor = new ShapeEditor(container);
     editor.start();
-    return () => editor.destroy();
+    return () => { editor.destroy(); };
 }

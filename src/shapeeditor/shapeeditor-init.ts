@@ -2,76 +2,24 @@
 // Constructor body, start(), and destroy() installed on ShapeEditor prototype.
 
 import { ShapeEditor } from './shapeeditor-class';
-import {
-    WebGLRenderer,
-    Scene,
-    OrthographicCamera,
-    BufferGeometry,
-    Float32BufferAttribute,
-    DynamicDrawUsage,
-    LineSegments,
-    LineBasicMaterial,
-    Line,
-    TextureLoader,
-    PlaneGeometry,
-    MeshBasicMaterial,
-    Mesh,
-    SRGBColorSpace,
-    DoubleSide,
-    type Points,
-    type BufferAttribute,
-    type Texture,
-    type PointsMaterial,
-    type Material,
-} from 'three';
-import type { StripEntry, StripSnapshot, StripInfo } from './strips-model';
-import type { CatalogEntry, PanelOpts, WiringStyle, DataInCorner, RotationDeg } from './panel-catalog';
-import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, getPinColors, stripStartEndLabels } from '../common';
-import type { PointArrayWithDiameter } from '../common';
+import { type Material } from 'three';
+
+import type { PanelOpts } from './panel-catalog';
+import { stripStartEndLabels } from '../common';
+
 import { createLabelRenderer } from '../label-render';
-import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
-import {
-    saveScreenmap,
-    getScreenmap,
-    saveScreenmapMultiStrip,
-    buildScreenmapMultiStripJson,
-    getScreenmapMeta,
-    getBackup,
-    promoteToBackup,
-    restoreBackup,
-    backfillMeta,
-    isDegenerate,
-    notePinMutation,
-} from '../screenmap-store';
-import type { BackupMeta } from '../screenmap-store';
-import { createCircleTexture, buildPointsMesh } from '../three-utils';
+import { wireFileDropTarget } from '../drag-drop';
+import { getBackup, promoteToBackup } from '../screenmap-store';
+
+import { createCircleTexture } from '../three-utils';
 import { StripStore } from './strips-model';
 import { Selection } from './selection';
-import { PANEL_CATALOG, getCatalogEntry, generatePanelPoints } from './panel-catalog';
-import { snapToGrid } from './grid-snap';
-import { hintTextFor } from './hints';
-import { parsePastedScreenmap, planPasteMerge } from './paste-parse';
+import { PANEL_CATALOG } from './panel-catalog';
+
 import templateHtml from './template.html?raw';
-import type {
-    UndoAction,
-    InsertDialogOpts,
-    OBBox,
-    GizmoDragStart,
-    BgGizmoDragStart,
-    BgImageBBox,
-    GizmoHandle,
-    RulerDragStart,
-    ConnectorDrag,
-    StartHandleDrag,
-    PlacingState,
-    PasteStateItem,
-    PasteStateActive,
-    StripDragPt,
-    PresetEntry,
-} from './shapeeditor-types';
+import type { InsertDialogOpts } from './shapeeditor-types';
 
 ShapeEditor.prototype._construct = function (this: ShapeEditor): void {
-    const container = this.container;
 this.container.innerHTML = templateHtml;
 this.container.style.display = 'flex';
 this.container.style.flexDirection = 'column';

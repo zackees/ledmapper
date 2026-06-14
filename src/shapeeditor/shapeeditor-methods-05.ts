@@ -2,73 +2,10 @@
 // Prototype-installed methods (chunk 5/8).
 
 import { ShapeEditor } from './shapeeditor-class';
-import {
-    WebGLRenderer,
-    Scene,
-    OrthographicCamera,
-    BufferGeometry,
-    Float32BufferAttribute,
-    DynamicDrawUsage,
-    LineSegments,
-    LineBasicMaterial,
-    Line,
-    TextureLoader,
-    PlaneGeometry,
-    MeshBasicMaterial,
-    Mesh,
-    SRGBColorSpace,
-    DoubleSide,
-    type Points,
-    type BufferAttribute,
-    type Texture,
-    type PointsMaterial,
-    type Material,
-} from 'three';
-import type { StripEntry, StripSnapshot, StripInfo } from './strips-model';
-import type { CatalogEntry, PanelOpts, WiringStyle, DataInCorner, RotationDeg } from './panel-catalog';
-import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, getPinColors, stripStartEndLabels } from '../common';
-import type { PointArrayWithDiameter } from '../common';
-import { createLabelRenderer } from '../label-render';
-import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
-import {
-    saveScreenmap,
-    getScreenmap,
-    saveScreenmapMultiStrip,
-    buildScreenmapMultiStripJson,
-    getScreenmapMeta,
-    getBackup,
-    promoteToBackup,
-    restoreBackup,
-    backfillMeta,
-    isDegenerate,
-    notePinMutation,
-} from '../screenmap-store';
-import type { BackupMeta } from '../screenmap-store';
-import { createCircleTexture, buildPointsMesh } from '../three-utils';
-import { StripStore } from './strips-model';
-import { Selection } from './selection';
-import { PANEL_CATALOG, getCatalogEntry, generatePanelPoints } from './panel-catalog';
-import { snapToGrid } from './grid-snap';
-import { hintTextFor } from './hints';
-import { parsePastedScreenmap, planPasteMerge } from './paste-parse';
-import templateHtml from './template.html?raw';
-import type {
-    UndoAction,
-    InsertDialogOpts,
-    OBBox,
-    GizmoDragStart,
-    BgGizmoDragStart,
-    BgImageBBox,
-    GizmoHandle,
-    RulerDragStart,
-    ConnectorDrag,
-    StartHandleDrag,
-    PlacingState,
-    PasteStateItem,
-    PasteStateActive,
-    StripDragPt,
-    PresetEntry,
-} from './shapeeditor-types';
+
+import { getStripColors, stripStartEndLabels } from '../common';
+
+import type { GizmoHandle } from './shapeeditor-types';
 
 ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
     const self = this;
@@ -359,7 +296,6 @@ ShapeEditor.prototype.fillCircle = function (this: ShapeEditor, x: number, y: nu
     };
 
 ShapeEditor.prototype.obbToCanvas = function (this: ShapeEditor, bbox: { cx: number; cy: number; cos: number; sin: number }, lx: number, ly: number) {
-    const self = this;
 
         const { cx, cy, cos, sin } = bbox;
         return { x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos };
@@ -396,7 +332,6 @@ ShapeEditor.prototype.computeGizmoHandles = function (this: ShapeEditor, bbox: {
     };
 
 ShapeEditor.prototype.canvasToObbLocal = function (this: ShapeEditor, bbox: { cx: number; cy: number; cos: number; sin: number } | null | undefined, canvasX: number, canvasY: number): [number, number] {
-    const self = this;
 
         if (!bbox) return [0, 0];
         const dx = canvasX - bbox.cx;
@@ -437,7 +372,6 @@ ShapeEditor.prototype.hitTestGizmo = function (this: ShapeEditor, canvasX: numbe
     };
 
 ShapeEditor.prototype.getCursorForGizmo = function (this: ShapeEditor, handleId: string | null) {
-    const self = this;
 
         if (!handleId) return 'default';
         if (handleId === 'rotate') return 'grab';
