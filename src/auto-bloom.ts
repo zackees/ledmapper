@@ -25,6 +25,8 @@ import { createBloomComposer, updateBloomIris } from './three-bloom';
 import {
     computeAutoBloomRange,
     bloomParamsForLedSize,
+    computeDiameterHeadroom,
+    computeIrisDiameterScale,
     BLOOM_MIN_STRENGTH,
 } from './bloom-utils';
 import type { BloomProfile, BloomRange } from './types/domain';
@@ -49,6 +51,13 @@ export interface AutoBloomOptions {
     minFloorMode?: 'size' | 'density';
     /** Pass the geometry-derived iris modulation depth. Default false. */
     useBlowoutRisk?: boolean;
+    /**
+     * Max fractional LED-diameter growth at full brightness on a fully sparse
+     * layout (the iris "opening up" its aperture). 0 disables diameter
+     * modulation. The effect is gated by layout geometry, so dense maps barely
+     * grow even when this is set. Default 0.
+     */
+    diameterGain?: number;
 }
 
 /** Geometry inputs needed to (re)proportion the bloom kernel and envelope. */
@@ -75,6 +84,7 @@ export function createAutoBloom({
     paramOverrides = {},
     minFloorMode = 'size',
     useBlowoutRisk = false,
+    diameterGain = 0,
 }: AutoBloomOptions) {
     const bloom = createBloomComposer({ renderer, scene, camera, width, height });
     const irisState = { currentBrightness: 0 };
@@ -91,6 +101,8 @@ export function createAutoBloom({
     let autoEnabled = true;
     let manualStrength: number | null = null;
     let bloomEnabled = true; // false = render the scene without the bloom pass
+    // Geometric room for the iris to grow the dot diameter (0 dense → 1 sparse).
+    let diameterHeadroom = 0;
 
     /** Reproportion the kernel and density envelope to the current geometry. */
     function setGeometry({ ledPx, panePx, ledCount, ledSpacing, sceneExtent }: AutoBloomGeometry) {
@@ -100,6 +112,17 @@ export function createAutoBloom({
         sizeRange.max = params.maxStrength;
         blowoutRisk = params.blowoutRisk;
         densityRange = computeAutoBloomRange({ ledSpacing, sceneExtent, profile });
+        diameterHeadroom = computeDiameterHeadroom(ledPx, panePx, ledSpacing, sceneExtent);
+    }
+
+    /**
+     * LED diameter multiplier (>= 1) for the current iris state. The dots open
+     * up as the (smoothed) frame brightens, scaled by the geometric headroom so
+     * dense layouts stay put. Only active in auto mode with the bloom pass on.
+     */
+    function getDiameterScale() {
+        if (diameterGain <= 0 || !bloomEnabled || !autoEnabled) return 1;
+        return computeIrisDiameterScale(diameterHeadroom, irisState.currentBrightness, diameterGain);
     }
 
     /** Update the iris/strength from one frame's RGB bytes. */
@@ -155,6 +178,7 @@ export function createAutoBloom({
     return {
         bloomPass: bloom.bloomPass,
         setGeometry,
+        getDiameterScale,
         frame,
         render,
         setAuto,

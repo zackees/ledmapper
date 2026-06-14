@@ -7,6 +7,9 @@ import {
     resolveLedDiameter,
     computeFitScale,
     bloomParamsForLedSize,
+    computeDiameterHeadroom,
+    computeIrisDiameterScale,
+    IRIS_DIAMETER_GAIN,
     BLOOM_MIN_STRENGTH,
     BLOOM_MAX_STRENGTH,
     BLOOM_RADIUS,
@@ -179,6 +182,63 @@ describe('computeFitScale', () => {
         assert.equal(computeFitScale([], []), 1);
         assert.equal(computeFitScale([[1, 1]], [[5, 5]]), 1);
         assert.equal(computeFitScale([[0, 0], [0, 0]], [[0, 0], [1, 1]]), 1);
+    });
+});
+
+describe('computeDiameterHeadroom', () => {
+    // A layout fit to its pane: sceneExtent ≈ panePx, so spacingFraction is the
+    // spacing in pane units and dotFraction is the dot size in pane units.
+    const PANE = 800;
+
+    it('dots that exactly meet their neighbours have no headroom', () => {
+        // ledPx == spacing → coverage 1 → headroom 0
+        assert.equal(computeDiameterHeadroom(50, PANE, 50, PANE), 0);
+    });
+
+    it('overlapping dots clamp to zero headroom', () => {
+        assert.equal(computeDiameterHeadroom(120, PANE, 50, PANE), 0);
+    });
+
+    it('tiny dots on wide spacing approach full headroom', () => {
+        // ledPx=2, spacing=80 → coverage 0.025 → headroom 0.975
+        const h = computeDiameterHeadroom(2, PANE, 80, PANE);
+        assert.ok(h > 0.95 && h <= 1, `expected near 1, got ${h}`);
+    });
+
+    it('a dense grid self-rejects to near-zero headroom', () => {
+        // 16x16 fit to 800px: spacing ≈ 53px, dot fills most of it (ledPx 48)
+        const h = computeDiameterHeadroom(48, PANE, 53.3, PANE);
+        assert.ok(h < 0.15, `dense grid should barely grow, got ${h}`);
+    });
+
+    it('returns 0 for degenerate spacing or pane', () => {
+        assert.equal(computeDiameterHeadroom(10, PANE, 0, PANE), 0);
+        assert.equal(computeDiameterHeadroom(10, 0, 50, PANE), 1); // no dot coverage → full headroom
+    });
+});
+
+describe('computeIrisDiameterScale', () => {
+    it('is identity (1x) in the dark regardless of headroom', () => {
+        assert.equal(computeIrisDiameterScale(1, 0), 1);
+        assert.equal(computeIrisDiameterScale(0.5, 0), 1);
+    });
+
+    it('is identity (1x) with no headroom regardless of brightness', () => {
+        assert.equal(computeIrisDiameterScale(0, 1), 1);
+    });
+
+    it('full headroom + full brightness → 1 + gain', () => {
+        assert.ok(Math.abs(computeIrisDiameterScale(1, 1) - (1 + IRIS_DIAMETER_GAIN)) < 1e-12);
+    });
+
+    it('scales linearly in both headroom and brightness', () => {
+        const s = computeIrisDiameterScale(0.5, 0.5, 0.8);
+        assert.ok(Math.abs(s - (1 + 0.8 * 0.25)) < 1e-12);
+    });
+
+    it('never shrinks below 1 and clamps out-of-range inputs', () => {
+        assert.ok(computeIrisDiameterScale(-1, 2) >= 1);
+        assert.ok(computeIrisDiameterScale(5, 5) <= 1 + IRIS_DIAMETER_GAIN + 1e-9);
     });
 });
 

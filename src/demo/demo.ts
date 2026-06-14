@@ -13,6 +13,7 @@ import {
     DEMO_BLOOM_RADIUS,
     DEMO_BLOOM_AREA_REF,
     BLOOM_MIN_STRENGTH,
+    IRIS_DIAMETER_GAIN,
 } from '../bloom-utils';
 import { estimateLedSize } from '../moviemaker/transforms';
 import type { MultiStripParseResult, StripPoint, RendererContextWithOverlay } from '../types/domain';
@@ -100,6 +101,7 @@ export function init(container: HTMLElement) {
         },
         minFloorMode: 'size',
         useBlowoutRisk: true,
+        diameterGain: IRIS_DIAMETER_GAIN,
     });
     let demoManualBloomStrength: number | null = null;
 
@@ -706,6 +708,8 @@ export function init(container: HTMLElement) {
             if (curr_frame) {
                 bloom.frame(curr_frame);
             }
+            // Iris diameter modulation: dots open up on bright frames in sparse maps.
+            if (pointsMaterial) pointsMaterial.size = getDiameter() * bloom.getDiameterScale();
             bloom.render();
         },
     });

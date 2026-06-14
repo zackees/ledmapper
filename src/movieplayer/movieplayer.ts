@@ -15,6 +15,7 @@ import {
     DEMO_BLOOM_RADIUS,
     DEMO_BLOOM_AREA_REF,
     BLOOM_MIN_STRENGTH,
+    IRIS_DIAMETER_GAIN,
 } from '../bloom-utils';
 import type { ParsedStrip, RendererContextWithOverlay } from '../types/domain';
 import type { BufferGeometry, PointsMaterial, Points, Float32BufferAttribute } from 'three';
@@ -94,6 +95,7 @@ export function init(container: HTMLElement) {
         },
         minFloorMode: 'size',
         useBlowoutRisk: true,
+        diameterGain: IRIS_DIAMETER_GAIN,
     });
     let playerManualBloomStrength: number | null = null;
 
@@ -404,6 +406,8 @@ export function init(container: HTMLElement) {
             if (curr_frame) {
                 bloom.frame(curr_frame);
             }
+            // Iris diameter modulation: dots open up on bright frames in sparse maps.
+            if (pointsMaterial) pointsMaterial.size = getDiameter() * bloom.getDiameterScale();
             bloom.render();
         }
     });

@@ -19,6 +19,7 @@ import {
     PREVIEW_AUTO_FLOOR,
     PREVIEW_AUTO_MAX_DENSE,
     PREVIEW_AUTO_MAX_SPARSE,
+    IRIS_DIAMETER_GAIN,
 } from '../bloom-utils';
 import { estimateLedSize } from './transforms';
 
@@ -78,6 +79,7 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         paramOverrides: { bloomResolution: side },
         minFloorMode: 'density',
         useBlowoutRisk: false,
+        diameterGain: IRIS_DIAMETER_GAIN,
     });
 
     let meshData: PointsMeshResult | null = null;
@@ -87,6 +89,8 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
     let ledWorldRadius = 0.5;
     let ledSpacing = 1;
     let sceneExtent = 1;
+    // Base dot size (CSS px) before the iris diameter modulation is applied.
+    let baseLedPx = 0.75;
 
     function rebuild(localPts: StripPoint[], ledDiameter: number | null) {
         meshData = rebuildPointsMesh({
@@ -143,11 +147,12 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         // PointsMaterial.size is in CSS pixels: the renderer multiplies the
         // size uniform by its pixelRatio internally, so the world→pixel
         // mapping must use the CSS pane size, not the drawing-buffer size.
-        meshData.material.size = Math.max((ledWorldRadius * 2 / (half * 2)) * side, 0.75);
+        baseLedPx = Math.max((ledWorldRadius * 2 / (half * 2)) * side, 0.75);
+        meshData.material.size = baseLedPx;
 
         // Reproportion the bloom kernel + density envelope to the rendered dots.
         bloom.setGeometry({
-            ledPx: meshData.material.size,
+            ledPx: baseLedPx,
             panePx: side,
             ledCount: localPts.length,
             ledSpacing,
@@ -195,6 +200,8 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         meshData.colorAttribute.needsUpdate = true;
 
         bloom.frame(src);
+        // Iris diameter modulation: dots open up on bright frames in sparse maps.
+        meshData.material.size = baseLedPx * bloom.getDiameterScale();
         bloom.render();
     }
 

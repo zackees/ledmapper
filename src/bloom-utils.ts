@@ -59,6 +59,14 @@ export const DEMO_AUTO_MAX_SPARSE     = DEMO_BLOOM_MAX_STRENGTH;
 export const DEMO_BLOOM_RADIUS        = 0.5;
 export const DEMO_BLOOM_AREA_REF      = 0.0125;
 
+// Iris diameter modulation: on layouts whose rendered dots leave gaps between
+// neighbours, the auto-bloom iris also grows the dot diameter as the frame
+// brightens — like an aperture opening to admit more light (issue: sparse maps
+// open up). The growth is a continuous function of geometry, so a dense layout
+// (dots already filling the inter-LED spacing) self-rejects to ~no growth
+// without any special-casing. 0.8 = sparse dots grow up to 1.8x at full bright.
+export const IRIS_DIAMETER_GAIN = 0.8;
+
 export const LIT_EPSILON = 0.01;
 export const BLOOM_COVERAGE_REF = 0.02;
 export const BLOOM_AREA_REF = 0.025;
@@ -141,6 +149,42 @@ export function computeAutoBloomRange({
         min: Math.max(BLOOM_MIN_STRENGTH, floor * 0.5),
         max: autoMax,
     };
+}
+
+/**
+ * Geometric headroom for diameter growth, in [0, 1]. Compares the rendered dot
+ * size to the inter-LED spacing: 0 = dots already meet/overlap their neighbours
+ * (dense — no room to grow), 1 = dots are tiny relative to their spacing
+ * (sparse — lots of empty space to fill). This is the "geometry functor" that a
+ * dense map self-rejects through, so no sparse/dense branch is needed.
+ */
+export function computeDiameterHeadroom(
+    ledPx: number,
+    panePx: number,
+    ledSpacing: number,
+    sceneExtent: number,
+): number {
+    const extent = Math.max(sceneExtent, 1e-9);
+    const dotFraction = panePx > 0 ? ledPx / panePx : 0;
+    const spacingFraction = ledSpacing / extent;
+    if (!(spacingFraction > 0)) return 0;
+    const coverage = dotFraction / spacingFraction; // 1 = dots touch, >1 = overlap
+    return Math.min(Math.max(1 - coverage, 0), 1);
+}
+
+/**
+ * LED diameter multiplier (>= 1) for the current iris state. Grows with the
+ * smoothed frame brightness, scaled by the geometric headroom so dense layouts
+ * barely move while sparse ones open up.
+ */
+export function computeIrisDiameterScale(
+    headroom: number,
+    brightness: number,
+    gain = IRIS_DIAMETER_GAIN,
+): number {
+    const h = Math.min(Math.max(headroom, 0), 1);
+    const b = Math.min(Math.max(brightness, 0), 1);
+    return 1 + gain * h * b;
 }
 
 export function resolveLedDiameter(
