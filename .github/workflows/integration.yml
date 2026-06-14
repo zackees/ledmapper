@@ -1,0 +1,68 @@
+name: Integration tests (Playwright)
+
+# On-demand only:
+#   - workflow_dispatch: manual trigger from the Actions tab
+#   - pull_request labeled 'integration': add the label to a PR to run
+#
+# The default push/PR path runs lint + build + unit in ci.yml under a
+# minute. Playwright is heavy enough that we don't gate every PR on it.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Only run on labeled PRs (or manual dispatch). The `synchronize` trigger
+    # re-runs when new commits land on a PR that already has the label.
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'integration')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium --with-deps
+
+      - name: Install Playwright system deps (when browsers are cached)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - run: npm run build
+
+      - name: Run integration tests (shard ${{ matrix.shard }}/4)
+        run: npx playwright test --shard=${{ matrix.shard }}/4
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-shard-${{ matrix.shard }}
+          path: playwright-report/
+          retention-days: 7

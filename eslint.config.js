@@ -14,7 +14,7 @@ export default tseslint.config(
       parserOptions: {
         projectService: {
           allowDefaultProject: [
-            'tests/e2e/*.ts',
+            'tests/integration/*.ts',
             'tests/helpers/*.ts',
           ],
           defaultProject: './tsconfig.tests.json',

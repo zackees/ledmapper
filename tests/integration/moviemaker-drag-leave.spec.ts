@@ -7,7 +7,7 @@
  *
  * Skipped in CI (headless Chromium / no GPU) because the moviemaker WebGL
  * pipeline requires a real GPU context. Run locally with:
- *   npx playwright test tests/e2e/moviemaker-drag-leave.spec.js
+ *   npx playwright test tests/integration/moviemaker-drag-leave.spec.ts
  */
 import { test, expect } from './fixtures.ts';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
