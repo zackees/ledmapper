@@ -70,7 +70,7 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         });
         await gotoEditor(page);
         await page.keyboard.press('F1');
-        const modal = page.locator('.swal2-popup');
+        const modal = page.locator('.swal2-popup:not(.swal2-toast)');
         await expect(modal).toBeVisible({ timeout: 5000 });
         await expect(modal).toContainText(/Keyboard help/i);
         await expect(modal.locator('#help_dont_show')).toBeVisible();
@@ -82,7 +82,7 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         });
         await gotoEditor(page);
         await page.keyboard.press('F1');
-        const modal = page.locator('.swal2-popup');
+        const modal = page.locator('.swal2-popup:not(.swal2-toast)');
         await expect(modal).toBeVisible({ timeout: 5000 });
         // Uncheck "Don't show on launch" — confirm must still close the modal
         await modal.locator('#help_dont_show').uncheck();
@@ -98,7 +98,7 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         });
         await gotoEditor(page);
         await page.keyboard.press('F1');
-        const modal = page.locator('.swal2-popup');
+        const modal = page.locator('.swal2-popup:not(.swal2-toast)');
         await expect(modal).toBeVisible({ timeout: 5000 });
         await modal.locator('#help_dont_show').check();
         await page.locator('.swal2-confirm').click();
@@ -113,7 +113,7 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         });
         await gotoEditor(page);
         await page.keyboard.press('?');
-        await expect(page.locator('.swal2-popup')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.swal2-popup:not(.swal2-toast)')).toBeVisible({ timeout: 5000 });
     });
 
     test('first-run auto-opens the help overlay when no dismissal key', async ({ page }) => {
@@ -123,7 +123,7 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         });
         await gotoEditor(page);
         // Modal should auto-open within ~1s of presets loading
-        await expect(page.locator('.swal2-popup')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.swal2-popup:not(.swal2-toast)')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('#help_dont_show')).toBeVisible();
         await dismissFirstRunModalIfOpen(page);
     });
@@ -156,7 +156,7 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         });
         await gotoEditor(page);
         await page.keyboard.press('F1');
-        const modal = page.locator('.swal2-popup');
+        const modal = page.locator('.swal2-popup:not(.swal2-toast)');
         await expect(modal).toBeVisible({ timeout: 5000 });
         await expect(modal.locator('#help_chains_pins')).toBeVisible();
         await expect(modal).toContainText('Chains and Pins');
@@ -186,6 +186,6 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         await gotoEditor(page);
         // Wait a bit for any potential auto-open to fire
         await page.waitForTimeout(800);
-        await expect(page.locator('.swal2-popup')).toBeHidden();
+        await expect(page.locator('.swal2-popup:not(.swal2-toast)')).toBeHidden();
     });
 });
