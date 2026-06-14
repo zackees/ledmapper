@@ -227,7 +227,7 @@ test.describe('Shapeeditor autosave + backup restore', () => {
             if (btn) btn.click();
         });
         // Dismiss any toast that might be visible.
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(150);
         const stored = await page.evaluate(() => localStorage.getItem('lm:screenmap'));
         expect(stored).toBeNull();
         const backup = await page.evaluate(() => localStorage.getItem('lm:screenmap-backup'));

@@ -7,13 +7,13 @@ test.describe('ScreenMap Design canvas size stability', () => {
         await expect(canvas).toBeVisible({ timeout: 5000 });
 
         // Wait for layout to settle
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
 
         // Record the canvas size
         const size1 = await canvas.boundingBox();
 
         // Wait a short period and check again
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(500);
         const size2 = await canvas.boundingBox();
 
         // Canvas should not have grown

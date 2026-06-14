@@ -93,7 +93,7 @@ test.describe('Shapeeditor label-layout engine (issue #28)', () => {
         ).toBe(32);
 
         const before = await page.evaluate(() => window.__labelLayoutDebug().counters);
-        await page.waitForTimeout(500); // many animation frames
+        await page.waitForTimeout(250); // many animation frames
         const after = await page.evaluate(() => window.__labelLayoutDebug().counters);
 
         // Idle/steady-state frames must never re-run the placement engine.

@@ -242,7 +242,7 @@ test.describe('Shapeeditor gesture-notice toast', () => {
             if (t) t.remove();
         });
         await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
-        await page.waitForTimeout(400);
+        await page.waitForTimeout(200);
         await expect(page.locator('.swal2-toast')).toBeHidden();
     });
 });

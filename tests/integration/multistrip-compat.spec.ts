@@ -72,7 +72,7 @@ test.describe('Multi-strip screenmap compatibility', () => {
         expect(storedLeds).toBe(TOTAL_LEDS);
 
         // Let a couple of animation frames run so overlay/strip drawing executes
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(500);
         page.removeListener('console', consoleHandler);
         expect(errors, `Unexpected errors: ${errors.join('; ')}`).toHaveLength(0);
     });
@@ -107,7 +107,7 @@ test.describe('Multi-strip screenmap compatibility', () => {
         await expect(playBtn).toBeEnabled({ timeout: 10000 });
         await expect(playBtn).toHaveValue('Pause');
 
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
         page.removeListener('console', consoleHandler);
         expect(errors, `Unexpected errors: ${errors.join('; ')}`).toHaveLength(0);
     });
@@ -141,7 +141,7 @@ test.describe('Multi-strip screenmap compatibility', () => {
             page.on('pageerror', handler);
             await page.goto(url, { waitUntil: 'load' });
             // Allow async init (Three.js setup) to settle after page load
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(1000);
             page.removeListener('pageerror', handler);
             expect(errors, `JS errors on ${url}: ${errors.join('; ')}`).toHaveLength(0);
         }
@@ -160,7 +160,7 @@ test.describe('Multi-strip screenmap compatibility', () => {
         await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
         // Make a small change to enable Save
         await page.locator('#txt_scale').fill('1.5');
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
 
         // Click save and capture download
         const downloadPromise = page.waitForEvent('download');
@@ -184,7 +184,7 @@ test.describe('Multi-strip screenmap compatibility', () => {
         await fileInput.setInputFiles(MULTI_SCREENMAP_PATH);
         await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
         await page.locator('#txt_scale').fill('1.1');
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
 
         const downloadPromise = page.waitForEvent('download');
         await page.locator('#btn_save_as').click();

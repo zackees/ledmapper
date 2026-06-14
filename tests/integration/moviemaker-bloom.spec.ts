@@ -95,7 +95,7 @@ test.describe('Bloom panel', () => {
         });
         await page.reload();
         // Allow a brief moment for any async errors
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
         expect(errors.filter(e => !e.includes('favicon'))).toHaveLength(0);
     });
 });

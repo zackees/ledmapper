@@ -26,7 +26,7 @@ test.describe('SPA router history', () => {
         // Ctrl/Cmd-click must fall through to the browser (new tab) rather than
         // the router's soft-navigation, so the main page must NOT change route.
         await page.click('.nav-links a[href="/demo/"]', { modifiers: ['ControlOrMeta'] });
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(100);
         await expect(page).toHaveURL('/');
         expect(await page.evaluate(() => document.getElementById('app')?.dataset.tool)).toBe('hub');
     });

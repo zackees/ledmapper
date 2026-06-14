@@ -252,7 +252,7 @@ test.describe('Moviemaker Recording Workflow', () => {
                 await sigma.dispatchEvent('input');
 
                 // Let settings take effect and a few frames render
-                await pg.waitForTimeout(1000);
+                await pg.waitForTimeout(500);
 
                 return await recordAndDownload(pg, recordMs);
             }

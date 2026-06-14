@@ -59,7 +59,7 @@ async function measureRecordingFps(page, presetSelector) {
     await expect(recordBtn).toHaveValue('Stop Recording');
 
     // Let the pipeline reach steady state before measuring
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
     const fps = await measureFps(page, 4000);
 
     await recordBtn.click();
