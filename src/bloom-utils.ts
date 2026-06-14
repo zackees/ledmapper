@@ -73,6 +73,16 @@ export const BLOOM_AREA_REF = 0.025;
 export const BLOOM_RADIUS_MIN = 0.15;
 export const BLOOM_RESOLUTION_REF = 800;
 
+/**
+ * Canonical bloom render resolution: the backing-buffer dimension (in device
+ * pixels) the scene + bloom chain renders at, independent of
+ * window.devicePixelRatio. Fixing this makes the UnrealBloomPass mip pyramid see
+ * the same pixel count on Mac/Windows/Linux, so bloom output is identical across
+ * platforms and displays. Chosen >= typical on-screen sizes so the canvas
+ * downsamples (clean) rather than upsamples (soft).
+ */
+export const BLOOM_RENDER_PX = 2000;
+
 export function computeFrameBrightness(rgbBytes: Uint8Array | number[]): FrameBrightnessResult {
     const totalCount = Math.floor(rgbBytes.length / 3);
     if (totalCount === 0) return { avgBrightness: 0, litCount: 0, totalCount: 0 };

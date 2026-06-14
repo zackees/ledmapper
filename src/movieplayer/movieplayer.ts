@@ -15,6 +15,7 @@ import {
     DEMO_BLOOM_RADIUS,
     DEMO_BLOOM_AREA_REF,
     BLOOM_MIN_STRENGTH,
+    BLOOM_RENDER_PX,
     IRIS_DIAMETER_GAIN,
 } from '../bloom-utils';
 import type { ParsedStrip, RendererContextWithOverlay } from '../types/domain';
@@ -72,6 +73,7 @@ export function init(container: HTMLElement) {
         height: CANVAS_SIZE,
         parent: main,
         enableOverlay: true,
+        renderPx: BLOOM_RENDER_PX,
     }) as RendererContextWithOverlay;
     // Labels only — let mouse events fall through to the renderer canvas.
     overlayCanvas.style.pointerEvents = 'none';

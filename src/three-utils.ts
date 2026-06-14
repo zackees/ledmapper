@@ -28,10 +28,17 @@ export function createCircleTexture(size: number): CanvasTexture {
 }
 
 /** Create a WebGLRenderer, orthographic camera (y-down), and optional overlay canvas. */
-export function createRendererAndScene({ width, height, parent, clearColor = 0x000000, enableOverlay = false }: { width: number; height: number; parent: HTMLElement; clearColor?: number; enableOverlay?: boolean }): RendererContextWithOverlay | RendererContext {
+export function createRendererAndScene({ width, height, parent, clearColor = 0x000000, enableOverlay = false, renderPx }: { width: number; height: number; parent: HTMLElement; clearColor?: number; enableOverlay?: boolean; renderPx?: number }): RendererContextWithOverlay | RendererContext {
     const renderer = new WebGLRenderer({ antialias: false });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    // When renderPx is given, render to a fixed backing-buffer size (renderPx²)
+    // regardless of window.devicePixelRatio, so bloom output is identical across
+    // platforms/displays (the canvas downsamples to its CSS size). Falls back to
+    // devicePixelRatio for non-bloom consumers.
+    const pixelRatio = (typeof renderPx === 'number' && renderPx > 0)
+        ? renderPx / width
+        : window.devicePixelRatio;
+    renderer.setPixelRatio(pixelRatio);
     renderer.setClearColor(clearColor, 1);
 
     const scene = new Scene();
