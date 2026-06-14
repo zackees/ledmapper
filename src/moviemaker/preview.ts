@@ -20,6 +20,7 @@ import {
     PREVIEW_AUTO_MAX_DENSE,
     PREVIEW_AUTO_MAX_SPARSE,
     IRIS_DIAMETER_GAIN,
+    BLOOM_RENDER_PX,
 } from '../bloom-utils';
 import { estimateLedSize } from './transforms';
 
@@ -52,8 +53,10 @@ const PREVIEW_PROFILE = {
  * }}
  */
 export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: { parent: HTMLElement; side?: number; maxBufferSize?: number }) {
-    // Supersample at 2x devicePixelRatio (capped) so circles stay crisp.
-    const pixelRatio = Math.min((window.devicePixelRatio || 1) * 2, maxBufferSize / side);
+    // Render to a fixed backing-buffer size (independent of devicePixelRatio) so
+    // bloom output is identical across platforms; capped at maxBufferSize. The
+    // canvas downsamples to its CSS size, keeping circles crisp.
+    const pixelRatio = Math.min(BLOOM_RENDER_PX, maxBufferSize) / side;
 
     const renderer = new WebGLRenderer({ antialias: false });
     renderer.setPixelRatio(pixelRatio);

@@ -13,6 +13,7 @@ import {
     DEMO_BLOOM_RADIUS,
     DEMO_BLOOM_AREA_REF,
     BLOOM_MIN_STRENGTH,
+    BLOOM_RENDER_PX,
     IRIS_DIAMETER_GAIN,
 } from '../bloom-utils';
 import { estimateLedSize } from '../moviemaker/transforms';
@@ -84,6 +85,7 @@ export function init(container: HTMLElement) {
         height: CANVAS_SIZE,
         parent: main,
         enableOverlay: true,
+        renderPx: BLOOM_RENDER_PX,
     }) as RendererContextWithOverlay;
 
     // FastLED-style bloom via the shared controller. The demo uses the
