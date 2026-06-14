@@ -5,7 +5,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 .controls {
-    max-width: 600px;
+    @apply text-center;
     background: linear-gradient(to bottom, var(--color-lm-surface-1), var(--color-lm-bg));
     border-bottom: 1px solid var(--color-lm-border);
     padding: 16px 24px;
