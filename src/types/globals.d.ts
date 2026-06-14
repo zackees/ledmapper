@@ -3,6 +3,7 @@ import type {
     PerfCounters,
     LabelLayoutDebugHooks,
     ShapeeditorDebugHooks,
+    SpaHistory,
 } from './domain';
 
 export {};
@@ -13,5 +14,6 @@ declare global {
         __perf?: PerfCounters;
         __labelLayoutDebug?: LabelLayoutDebugHooks;
         __shapeeditorDebug?: ShapeeditorDebugHooks;
+        spaHistory?: SpaHistory;
     }
 }
