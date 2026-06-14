@@ -2,6 +2,7 @@ import { parseScreenmapMultiStrip, centerAndFitPoints, getStripColors, stripStar
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
 import { saveScreenmap, getScreenmap, savePresetSelection, getPresetSelection } from '../screenmap-store';
+import { saveVideo, getVideo, clearVideo } from '../video-store';
 import { buildVideoChannelMap } from '../moviemaker/transforms';
 import { loadPresetText, loadPresetManifest } from '../preset-loader';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
@@ -68,7 +69,7 @@ export function init(container: HTMLElement) {
     const circleTexture = createCircleTexture(64);
 
     const main = qe<HTMLElement>(container, 'main');
-    const { renderer, scene, camera, overlayCanvas, overlayCtx } = createRendererAndScene({
+    const { renderer, scene, camera, wrapper, overlayCanvas, overlayCtx } = createRendererAndScene({
         width: CANVAS_SIZE,
         height: CANVAS_SIZE,
         parent: main,
@@ -80,6 +81,39 @@ export function init(container: HTMLElement) {
 
     const ac = new AbortController();
     const { signal } = ac;
+
+    // Size the wrapper to the largest square that fits the available area so the
+    // canvas never overflows the viewport vertically (issue #66). The drawing
+    // buffer is fixed (BLOOM_RENDER_PX); only the CSS display size changes, so
+    // downscaling stays crisp. Both canvases fill the wrapper at 100%.
+    function fitWrapper() {
+        const cs = getComputedStyle(main);
+        const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+        // Bound the height by the viewport (main's top is fixed by the nav +
+        // control bar above it, independent of the canvas) so the square can
+        // never push the page taller than the viewport.
+        const rectTop = main.getBoundingClientRect().top;
+        const availW = main.clientWidth - padX;
+        const availH = window.innerHeight - rectTop - padY;
+        const size = Math.max(Math.floor(Math.min(availW, availH)), 1);
+        wrapper.style.width = `${String(size)}px`;
+        wrapper.style.height = `${String(size)}px`;
+    }
+    fitWrapper();
+    const resizeObserver = new ResizeObserver(() => { fitWrapper(); });
+    resizeObserver.observe(main);
+    window.addEventListener('resize', fitWrapper, { signal });
+
+    // Canvas-overlay play/pause button — the primary playback affordance. It is
+    // shown only once a video is loaded and mirrors the playing state.
+    const dom_btn_play_overlay = document.createElement('button');
+    dom_btn_play_overlay.type = 'button';
+    dom_btn_play_overlay.id = 'btn_play_overlay';
+    dom_btn_play_overlay.className = 'play-overlay';
+    dom_btn_play_overlay.setAttribute('aria-label', 'Play');
+    dom_btn_play_overlay.hidden = true;
+    wrapper.appendChild(dom_btn_play_overlay);
 
     // FastLED-style bloom via the shared controller. The player is a playback
     // view like the demo, so it uses the same configuration: the size-kernel
@@ -228,6 +262,16 @@ export function init(container: HTMLElement) {
         });
     }
 
+    // Strip lines + Start/End markers are hidden during playback; they are
+    // revealed only while the pointer is over the canvas (issue #66).
+    let overlayHovered = false;
+    function refreshStripOverlay() {
+        if (overlayHovered) drawStripLabels();
+        else overlayCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    }
+    wrapper.addEventListener('mouseenter', () => { overlayHovered = true; refreshStripOverlay(); }, { signal });
+    wrapper.addEventListener('mouseleave', () => { overlayHovered = false; refreshStripOverlay(); }, { signal });
+
     function load_screenmap_data(text: string, { persist = true } = {}) {
         let parsed;
         try {
@@ -246,7 +290,7 @@ export function init(container: HTMLElement) {
         screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
         buildPoints();
         updateBloomGeometry();
-        drawStripLabels();
+        refreshStripOverlay();
     }
 
     function loadScreenmapFile(file: File | null | undefined) {
@@ -326,28 +370,48 @@ export function init(container: HTMLElement) {
     const storedScreenmap = getScreenmap();
     if (storedScreenmap) load_screenmap_data(storedScreenmap, { persist: false });
 
+    // Restore a previously loaded video (persisted in IndexedDB) so it survives
+    // navigating away and back. Loaded paused; dropped silently if it no longer
+    // matches the restored screenmap.
+    void getVideo().then((bytes) => {
+        if (bytes && screenmap_pts.length > 0) {
+            load_movie_data(bytes.slice().buffer, { persist: false, autoplay: false, silent: true });
+        }
+    });
+
     function set_dom_btn_play(on: boolean) {
         playing = on;
         dom_btn_play.value = playing ? "Pause" : "Play";
+        // The overlay button only appears once a video is loaded; it reflects
+        // the playing state (pause icon while playing, play icon while paused).
+        dom_btn_play_overlay.hidden = movie_frames.length === 0;
+        dom_btn_play_overlay.classList.toggle('is-playing', playing);
+        dom_btn_play_overlay.setAttribute('aria-label', playing ? 'Pause' : 'Play');
     }
 
     dom_btn_play.addEventListener('click', () => {
         set_dom_btn_play(!playing);
     }, { signal });
 
-    function load_movie_data(array_buffer: ArrayBuffer) {
+    dom_btn_play_overlay.addEventListener('click', () => {
+        if (movie_frames.length === 0) return;
+        set_dom_btn_play(!playing);
+    }, { signal });
+
+    function load_movie_data(array_buffer: ArrayBuffer, { persist = true, autoplay = true, silent = false } = {}) {
         const uint8_array = new Uint8Array(array_buffer);
         if (screenmap_pts.length === 0) {
-            alert("No screenmap is loaded!");
+            if (!silent) alert("No screenmap is loaded!");
             return;
         }
         const num_pixels = uint8_array.length / 3;
         if (num_pixels % screenmap_pts.length !== 0) {
+            // A restored video that no longer matches the screenmap is dropped
+            // silently (and forgotten); a user upload still gets the alert.
+            if (silent) { void clearVideo(); return; }
             alert("Frame size should be a multiple of the number of screenmap points!");
             return;
         }
-        dom_btn_play.disabled = false;
-        set_dom_btn_play(false);
         const frames: Uint8Array[] = [];
         const n_frames = num_pixels / screenmap_pts.length;
         for (let i = 0; i < n_frames; ++i) {
@@ -357,7 +421,11 @@ export function init(container: HTMLElement) {
             frames.push(frame);
         }
         movie_frames = frames;
-        dom_btn_play.click();
+        curr_frame_idx = 0;
+        dom_btn_play.disabled = false;
+        if (persist) void saveVideo(uint8_array);
+        set_dom_btn_play(false);
+        if (autoplay) dom_btn_play.click();
     }
 
     dom_btn_load_movie.addEventListener('change', () => {
@@ -416,6 +484,7 @@ export function init(container: HTMLElement) {
 
     return function destroy() {
         ac.abort();
+        resizeObserver.disconnect();
         animLoop.stop();
         if (pointsMesh) {
             scene.remove(pointsMesh);
