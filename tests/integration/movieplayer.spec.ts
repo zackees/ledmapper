@@ -105,7 +105,7 @@ test.describe('Video Player', () => {
         await expect(record).toHaveClass(/recording/);
 
         // Capture a short clip, then stop — toggling off must fire a download.
-        await page.waitForTimeout(800);
+        await page.waitForTimeout(400);
         const downloadPromise = page.waitForEvent('download', { timeout: 10000 });
         await record.click();
         await expect(record).toHaveValue('Record');

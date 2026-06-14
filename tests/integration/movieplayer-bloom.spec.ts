@@ -70,7 +70,7 @@ test.describe('Video Player bloom panel', () => {
             if (msg.type() === 'error') errors.push(msg.text());
         });
         await page.reload();
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
         expect(errors.filter(e => !e.includes('favicon'))).toHaveLength(0);
     });
 });

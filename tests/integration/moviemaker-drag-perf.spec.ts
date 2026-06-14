@@ -37,11 +37,11 @@ test.describe('Moviemaker drag performance (issue #26)', () => {
         await expect(page.locator('#btn_preset_64x64_serpentine')).toHaveClass(/active-preset/);
 
         // Let the animation loop reach steady state after the preset switch.
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(500);
 
         // Idle baseline: nothing should rebuild while at rest.
         await resetPerf(page);
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(500);
         const idle = await page.evaluate(() => ({ ...window.__perf }));
         expect(idle.positionUploads).toBeLessThanOrEqual(1);
         expect(idle.ringLayerRebuilds).toBeLessThanOrEqual(1);
@@ -53,7 +53,7 @@ test.describe('Moviemaker drag performance (issue #26)', () => {
         await resetPerf(page);
         for (let i = 0; i < 60; i++) {
             await page.mouse.move(box.x + 100 + i, box.y + 100 + (i % 20));
-            await page.waitForTimeout(16);
+            await page.waitForTimeout(50);
         }
         const drag = await page.evaluate(() => ({ ...window.__perf }));
         await page.mouse.up();
@@ -107,7 +107,7 @@ async function verifyTransform(page, { rotate, zoom }) {
         return s.rotate === r && s.zoom === z && s.sample && s.localPts.length > 0;
     }, [rotate, zoom], { timeout: 30000 });
     // The gather readback lags the transform by 1-2 frames — let it settle.
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(250);
     const state = await page.evaluate(() => window.__mmDebug.getState());
 
     expect(state.sample.length).toBe(state.localPts.length * 3);

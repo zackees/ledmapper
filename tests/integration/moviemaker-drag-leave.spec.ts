@@ -65,7 +65,7 @@ test.describe('Moviemaker overlay drag — off-canvas release (issue #31)', () =
         // Load a screenmap so drag gestures are active.
         await page.locator('#btn_preset_64x64_serpentine').click();
         await expect(page.locator('#btn_preset_64x64_serpentine')).toHaveClass(/active-preset/);
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
 
         const box = await page.locator('#overlayCanvas').boundingBox();
         const cx = box.x + box.width / 2;
@@ -121,7 +121,7 @@ test.describe('Moviemaker overlay drag — off-canvas release (issue #31)', () =
 
         await page.locator('#btn_preset_64x64_serpentine').click();
         await expect(page.locator('#btn_preset_64x64_serpentine')).toHaveClass(/active-preset/);
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
 
         const box = await page.locator('#overlayCanvas').boundingBox();
         const cx = box.x + box.width / 2;
@@ -157,7 +157,7 @@ test.describe('Moviemaker overlay drag — off-canvas release (issue #31)', () =
 
         await page.locator('#btn_preset_64x64_serpentine').click();
         await expect(page.locator('#btn_preset_64x64_serpentine')).toHaveClass(/active-preset/);
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
 
         const box = await page.locator('#overlayCanvas').boundingBox();
         const cx = box.x + box.width / 2;

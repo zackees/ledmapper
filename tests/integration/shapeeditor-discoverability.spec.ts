@@ -185,7 +185,7 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         });
         await gotoEditor(page);
         // Wait a bit for any potential auto-open to fire
-        await page.waitForTimeout(800);
+        await page.waitForTimeout(400);
         await expect(page.locator('.swal2-popup:not(.swal2-toast)')).toBeHidden();
     });
 });

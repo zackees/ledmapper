@@ -54,12 +54,12 @@ test.describe('Screenmap Maker Multi-Strip', () => {
     test('switching strips preserves points in previous strip', async ({ page }) => {
         // Take snapshot first so we can add points
         await page.locator('#btn_snapshot').click();
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
 
         // Add a point to strip1 by clicking on the canvas
         const canvas = page.locator('canvas');
         await canvas.click({ position: { x: 100, y: 100 } });
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(100);
 
         // Switch to strip2
         await page.locator('#btn_add_strip').click();
@@ -80,17 +80,17 @@ test.describe('Screenmap Maker Multi-Strip', () => {
     test('download JSON contains all strips', async ({ page }) => {
         // Take snapshot
         await page.locator('#btn_snapshot').click();
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
 
         // Add point to strip1
         const canvas = page.locator('canvas');
         await canvas.click({ position: { x: 100, y: 100 } });
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(100);
 
         // Add strip2 and add a point
         await page.locator('#btn_add_strip').click();
         await canvas.click({ position: { x: 200, y: 200 } });
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(100);
 
         // Download
         const downloadPromise = page.waitForEvent('download');
@@ -109,12 +109,12 @@ test.describe('Screenmap Maker Multi-Strip', () => {
     test('single strip download matches existing format', async ({ page }) => {
         // Take snapshot
         await page.locator('#btn_snapshot').click();
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
 
         // Add point to strip1
         const canvas = page.locator('canvas');
         await canvas.click({ position: { x: 150, y: 150 } });
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(100);
 
         // Download
         const downloadPromise = page.waitForEvent('download');
@@ -142,13 +142,13 @@ test.describe('Screenmap Maker Multi-Strip', () => {
         // so seed enough points for the persisted-localStorage assertion below
         // to find a real autosave entry.
         await page.locator('#btn_snapshot').click();
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
         const canvas = page.locator('canvas');
         await canvas.click({ position: { x: 120, y: 120 } });
         await canvas.click({ position: { x: 140, y: 120 } });
         await canvas.click({ position: { x: 160, y: 120 } });
         await canvas.click({ position: { x: 180, y: 120 } });
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(100);
 
         // Rename strip1 -> left_panel via the Rename button (SweetAlert2 prompt)
         await page.locator('#btn_rename_strip').click();

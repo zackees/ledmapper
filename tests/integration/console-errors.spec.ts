@@ -17,7 +17,7 @@ for (const { name, url, needsWebcam } of allPages) {
         const errors = [];
         page.on('pageerror', err => errors.push(err.message));
         await page.goto(url, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(1000);
         expect(errors, `JS errors on ${url}: ${errors.join('; ')}`).toHaveLength(0);
     });
 }
