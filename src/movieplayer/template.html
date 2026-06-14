@@ -21,6 +21,16 @@
         <input type="range" min="1" max="20" value="6" step="1" class="slider" id="rng_diameter">
         <span class="font-mono text-xs text-lm-text-muted min-w-6 text-right" id="txt_curr_diameter">6</span>
     </div>
+    <div class="flex flex-col items-start gap-1.5 mt-1">
+        <label class="flex items-center gap-1.5 text-sm text-lm-text cursor-pointer">
+            <input type="checkbox" id="chk_auto_bloom" checked> Auto bloom
+        </label>
+        <div id="bloom_strength_slider" class="flex items-center gap-2.5 opacity-50 pointer-events-none">
+            <label for="rng_bloom_strength" class="text-sm text-lm-text-muted">Strength</label>
+            <input type="range" min="0" max="100" value="50" class="slider" id="rng_bloom_strength" disabled>
+            <span class="font-mono text-xs text-lm-text-muted min-w-10 text-right" id="txt_curr_bloom_strength">16.00</span>
+        </div>
+    </div>
 </div>
 <main>
     <!-- Canvas target -->
