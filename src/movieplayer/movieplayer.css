@@ -82,6 +82,21 @@
     }
 }
 
+/* ── Record button (active state) ───────────────────────────────
+   While recording, the button turns red and gently pulses so the active
+   capture is unmistakable. */
+#btn_record.recording {
+    background: var(--color-mm-danger, #ef4444);
+    border-color: var(--color-mm-danger, #ef4444);
+    color: #fff;
+    animation: record-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes record-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
 /* ── Canvas containment (issue #66) ─────────────────────────────
    The renderer wrapper/canvas is created at a fixed 1000px. JS (fitWrapper)
    sizes the wrapper to the largest square fitting the available area so it never
