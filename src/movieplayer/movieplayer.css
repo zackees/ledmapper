@@ -81,3 +81,85 @@
         max-width: 100%;
     }
 }
+
+/* ── Canvas containment (issue #66) ─────────────────────────────
+   The renderer wrapper/canvas is created at a fixed 1000px. JS (fitWrapper)
+   sizes the wrapper to the largest square fitting the available area so it never
+   overflows the viewport vertically; both canvases fill that square. The drawing
+   buffer stays at BLOOM_RENDER_PX, so shrinking the CSS box just downsamples
+   cleanly (crisp). min-height:0 lets the flex child shrink. */
+main {
+    min-height: 0;
+    overflow: hidden;
+}
+
+main > div > canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+/* ── Canvas play/pause overlay (issue #66) ──────────────────────
+   Primary playback affordance, centered over the canvas. Shown only once a
+   video is loaded (toggled via the [hidden] attribute in JS). */
+.play-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 84px;
+    height: 84px;
+    border-radius: 9999px;
+    border: none;
+    cursor: pointer;
+    background: rgba(10, 10, 10, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+    transition: opacity 160ms ease, background-color 160ms ease, transform 120ms ease;
+    z-index: 2;
+}
+
+.play-overlay[hidden] {
+    display: none;
+}
+
+.play-overlay:hover {
+    background: rgba(20, 20, 20, 0.8);
+}
+
+/* Pause icon (two bars) fades the button while playing so it doesn't cover the
+   video; it returns to full opacity on hover. */
+.play-overlay.is-playing {
+    opacity: 0;
+}
+
+main > div:hover .play-overlay.is-playing {
+    opacity: 0.85;
+}
+
+/* Play triangle (default state). */
+.play-overlay::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 53%;
+    transform: translate(-50%, -50%);
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 18px 0 18px 30px;
+    border-color: transparent transparent transparent #fff;
+}
+
+/* Pause bars (playing state) replace the triangle. */
+.play-overlay.is-playing::before {
+    content: "";
+    left: 50%;
+    width: 26px;
+    height: 32px;
+    border: none;
+    background:
+        linear-gradient(#fff, #fff) left / 9px 100% no-repeat,
+        linear-gradient(#fff, #fff) right / 9px 100% no-repeat;
+}
