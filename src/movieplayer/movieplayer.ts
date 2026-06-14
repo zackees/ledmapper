@@ -77,6 +77,9 @@ export function init(container: HTMLElement) {
         parent: main,
         enableOverlay: true,
         renderPx: BLOOM_RENDER_PX,
+        // Keep the backbuffer readable so the recorder can drawImage() the
+        // rendered frame into its 1080p capture canvas.
+        preserveDrawingBuffer: true,
     }) as RendererContextWithOverlay;
     // Labels only — let mouse events fall through to the renderer canvas.
     overlayCanvas.style.pointerEvents = 'none';
@@ -500,6 +503,10 @@ export function init(container: HTMLElement) {
             // Iris diameter modulation: dots open up on bright frames in sparse maps.
             if (pointsMaterial) pointsMaterial.size = getDiameter() * bloom.getDiameterScale();
             bloom.render();
+            // Blit the freshly rendered frame into the recorder's 1080p capture
+            // canvas (no-op when not recording). Done here, in the same tick as
+            // the GL draw, so the backbuffer is still intact for drawImage.
+            recorder.captureFrame();
         }
     });
 

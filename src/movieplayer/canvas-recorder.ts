@@ -1,24 +1,37 @@
 /**
  * Native canvas video recorder for the Movie Player.
  *
- * Captures the live WebGL canvas with the browser's native MediaRecorder over
- * canvas.captureStream(fps). The browser samples + encodes the canvas off the
- * main thread, so the render loop does zero extra work per frame — recording
- * on vs. off makes no difference to render FPS. When not recording, nothing is
- * allocated and there is no overhead at all.
+ * Records H.264/MP4 (falling back to WebM only where H.264 is unavailable) at a
+ * fixed 1080x1080 so the output is easy to use downstream. The live WebGL
+ * canvas renders at a larger fixed buffer (BLOOM_RENDER_PX), so each recorded
+ * frame is a high-quality downscale: the host calls captureFrame() once per
+ * render frame — right after the GL draw, while the backbuffer is still intact —
+ * which blits the WebGL canvas into a 1080x1080 2D canvas. MediaRecorder then
+ * encodes that canvas's stream off the main thread.
  *
- * Output is a WebM (or MP4 where WebM is unavailable) downloaded on stop.
+ * When not recording, captureFrame() is a no-op and nothing is allocated, so
+ * render-loop cost is unchanged whether recording is on or off.
  */
 
 import { download_blob_as_file } from '../common';
 
-// Preferred container/codec order. The first supported entry wins.
+// Preferred container/codec order. H.264 first (broadly usable, hardware
+// decode everywhere); WebM only as a fallback. The first supported entry wins.
 const CANDIDATE_TYPES = [
+    'video/mp4;codecs=avc1.640028', // H.264 High@4.0
+    'video/mp4;codecs=avc1.42E01E', // H.264 Baseline
+    'video/mp4',
+    'video/webm;codecs=h264',
     'video/webm;codecs=vp9',
     'video/webm;codecs=vp8',
     'video/webm',
-    'video/mp4',
 ];
+
+// MediaRecorder has no CRF (constant-quality) mode, only a target bitrate, so
+// CRF 18 ("visually lossless") is approximated with a generous bits-per-pixel
+// budget. LED footage is mostly dark and compresses far below this under VBR,
+// so the real files stay small while detail is preserved.
+const TARGET_BPP = 0.4;
 
 function pickMimeType(): string | null {
     if (typeof MediaRecorder === 'undefined') return null;
@@ -39,26 +52,51 @@ export interface CanvasRecorder {
     toggle: () => boolean;
     start: () => boolean;
     stop: () => void;
+    /**
+     * Blit the source canvas into the capture canvas for the current frame.
+     * Call once per render frame, immediately after drawing, while recording.
+     * No-op when inactive.
+     */
+    captureFrame: () => void;
     readonly isActive: boolean;
     readonly isSupported: boolean;
 }
 
 /**
- * @param canvas The WebGL canvas to capture.
- * @param fps    Capture frame rate (default 60).
+ * @param canvas  The WebGL canvas to capture.
+ * @param width   Output width in pixels (default 1080).
+ * @param height  Output height in pixels (default 1080).
+ * @param fps     Capture frame rate (default 30, matching the render loop).
  * @param onError Optional callback invoked with a user-facing message on failure.
  */
 export function createCanvasRecorder({
     canvas,
-    fps = 60,
+    width = 1080,
+    height = 1080,
+    fps = 30,
     onError,
 }: {
     canvas: HTMLCanvasElement;
+    width?: number;
+    height?: number;
     fps?: number;
     onError?: (message: string) => void;
 }): CanvasRecorder {
     const mimeType = pickMimeType();
-    const supported = mimeType !== null && typeof canvas.captureStream === 'function';
+
+    // Fixed-resolution intermediate the recorded stream is taken from. Created
+    // up front (cheap, idle) so start() has nothing to allocate.
+    const captureCanvas = document.createElement('canvas');
+    captureCanvas.width = width;
+    captureCanvas.height = height;
+    const cctx = captureCanvas.getContext('2d');
+    if (cctx) {
+        cctx.imageSmoothingEnabled = true;
+        cctx.imageSmoothingQuality = 'high';
+    }
+
+    const supported = mimeType !== null && cctx !== null
+        && typeof captureCanvas.captureStream === 'function';
 
     let recorder: MediaRecorder | null = null;
     let stream: MediaStream | null = null;
@@ -74,21 +112,29 @@ export function createCanvasRecorder({
         if (onError) onError(message);
     }
 
+    function captureFrame(): void {
+        if (!active || !cctx) return;
+        try {
+            cctx.drawImage(canvas, 0, 0, width, height);
+        } catch { /* transient draw failure — skip this frame */ }
+    }
+
     function start(): boolean {
         if (active) return true;
-        if (mimeType === null || typeof canvas.captureStream !== 'function') {
+        if (mimeType === null || cctx === null || typeof captureCanvas.captureStream !== 'function') {
             if (onError) onError('Canvas recording is not supported in this browser.');
             return false;
         }
         try {
-            stream = canvas.captureStream(fps);
+            stream = captureCanvas.captureStream(fps);
         } catch {
             fail('Failed to capture the canvas stream.');
             return false;
         }
         chunks = [];
+        const videoBitsPerSecond = Math.round(width * height * fps * TARGET_BPP);
         try {
-            recorder = new MediaRecorder(stream, { mimeType });
+            recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
         } catch {
             fail('Failed to start the media recorder.');
             return false;
@@ -110,9 +156,11 @@ export function createCanvasRecorder({
             download_blob_as_file(blob, `ledmapper-recording${String(downloadIndex)}.${extForMime(mimeType)}`);
             downloadIndex++;
         };
+        active = true;
+        // Seed the capture canvas with the current frame before the first sample.
+        captureFrame();
         // Timeslice keeps memory bounded by flushing chunks periodically.
         recorder.start(1000);
-        active = true;
         return true;
     }
 
@@ -135,6 +183,7 @@ export function createCanvasRecorder({
         toggle,
         start,
         stop,
+        captureFrame,
         get isActive() { return active; },
         get isSupported() { return supported; },
     };
