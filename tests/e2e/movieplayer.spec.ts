@@ -83,6 +83,36 @@ test.describe('Video Player', () => {
         await slider.fill('15');
         await expect(page.locator('#txt_curr_diameter')).toHaveText('15');
     });
+
+    test('record button exists', async ({ page }) => {
+        await page.goto('/movieplayer/');
+        await expect(page.locator('#btn_record')).toBeVisible();
+        await expect(page.locator('#btn_record')).toHaveValue('Record');
+    });
+
+    test('record button toggles and downloads a video', async ({ page }) => {
+        await page.goto('/movieplayer/');
+        await page.locator('#btn_upload_screenmap')
+            .setInputFiles(path.resolve('tests/fixtures/test-screenmap.json'));
+        await expect(page.locator('#btn_load_movie')).toBeEnabled();
+        await page.locator('#btn_load_movie')
+            .setInputFiles(path.resolve('tests/fixtures/test-video.rgb'));
+        await expect(page.locator('#btn_play')).toBeEnabled();
+
+        const record = page.locator('#btn_record');
+        await record.click();
+        await expect(record).toHaveValue('Stop');
+        await expect(record).toHaveClass(/recording/);
+
+        // Capture a short clip, then stop — toggling off must fire a download.
+        await page.waitForTimeout(800);
+        const downloadPromise = page.waitForEvent('download', { timeout: 10000 });
+        await record.click();
+        await expect(record).toHaveValue('Record');
+        await expect(record).not.toHaveClass(/recording/);
+        const download = await downloadPromise;
+        expect(download.suggestedFilename()).toMatch(/ledmapper-recording\d+\.(webm|mp4)/);
+    });
 });
 
 test.describe('Video Player screenmap presets', () => {

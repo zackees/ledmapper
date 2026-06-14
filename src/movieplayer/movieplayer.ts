@@ -7,6 +7,7 @@ import { buildVideoChannelMap } from '../moviemaker/transforms';
 import { loadPresetText, loadPresetManifest } from '../preset-loader';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
 import { createAutoBloom } from '../auto-bloom';
+import { createCanvasRecorder } from './canvas-recorder';
 import { estimateLedSize } from '../moviemaker/transforms';
 import {
     DEMO_AUTO_FLOOR,
@@ -36,6 +37,7 @@ export function init(container: HTMLElement) {
     const dom_btn_upload_screenmap = qe<HTMLInputElement>(container, '#btn_upload_screenmap');
     const dom_btn_load_movie = qe<HTMLInputElement>(container, '#btn_load_movie');
     const dom_btn_play = qe<HTMLInputElement>(container, '#btn_play');
+    const dom_btn_record = qe<HTMLInputElement>(container, '#btn_record');
     const dom_rng_diameter = qe<HTMLInputElement>(container, '#rng_diameter');
     const dom_txt_curr_diameter = qe<HTMLElement>(container, '#txt_curr_diameter');
     const dom_screenmap_drop_target = qe<HTMLElement>(container, '#screenmap_drop_target');
@@ -398,6 +400,25 @@ export function init(container: HTMLElement) {
         set_dom_btn_play(!playing);
     }, { signal });
 
+    // Native canvas recording (issue: video player canvas capture). Encoding
+    // runs off the main thread via MediaRecorder + captureStream, so the render
+    // loop does zero extra work per frame — recording on vs. off is identical.
+    const recorder = createCanvasRecorder({
+        canvas: renderer.domElement,
+        fps: 60,
+        onError: (m) => { alert(m); },
+    });
+    if (!recorder.isSupported) dom_btn_record.disabled = true;
+
+    function set_dom_btn_record(on: boolean) {
+        dom_btn_record.value = on ? 'Stop' : 'Record';
+        dom_btn_record.classList.toggle('recording', on);
+    }
+
+    dom_btn_record.addEventListener('click', () => {
+        set_dom_btn_record(recorder.toggle());
+    }, { signal });
+
     function load_movie_data(array_buffer: ArrayBuffer, { persist = true, autoplay = true, silent = false } = {}) {
         const uint8_array = new Uint8Array(array_buffer);
         if (screenmap_pts.length === 0) {
@@ -484,6 +505,7 @@ export function init(container: HTMLElement) {
 
     return function destroy() {
         ac.abort();
+        recorder.stop();
         resizeObserver.disconnect();
         animLoop.stop();
         if (pointsMesh) {
