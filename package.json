@@ -17,6 +17,7 @@
     "test": "node --import tsx --test tests/unit/*.test.ts",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
     "test:integration": "playwright test",
+    "test:smoke": "vite build && playwright test --config playwright.smoke.config.js",
     "typecheck": "tsc --noEmit"
   },
   "repository": {

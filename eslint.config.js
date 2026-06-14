@@ -15,6 +15,7 @@ export default tseslint.config(
         projectService: {
           allowDefaultProject: [
             'tests/integration/*.ts',
+            'tests/smoke/*.ts',
             'tests/helpers/*.ts',
           ],
           defaultProject: './tsconfig.tests.json',
