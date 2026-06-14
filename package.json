@@ -2,7 +2,11 @@
   "name": "ledmapper",
   "version": "1.0.0",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/shapeeditor/shapeeditor-init.ts",
+    "./src/shapeeditor/shapeeditor-methods-*.ts",
+    "**/*.css"
+  ],
   "description": "FastLED Video Mapper - map video content to physical LED arrays",
   "scripts": {
     "dev": "vite",
