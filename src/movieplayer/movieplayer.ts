@@ -8,7 +8,9 @@ import { loadPresetText, loadPresetManifest } from '../preset-loader';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
 import { createAutoBloom } from '../auto-bloom';
 import { createCanvasRecorder } from './canvas-recorder';
-import { estimateLedSize } from '../moviemaker/transforms';
+import { applyBloomGeometry } from '../render/bloom-geometry';
+import { wireBloomControls } from '../render/bloom-ui';
+import { parseRgbFrames } from '../render/rgb-video';
 import {
     DEMO_AUTO_FLOOR,
     DEMO_AUTO_MAX_DENSE,
@@ -138,8 +140,6 @@ export function init(container: HTMLElement) {
         useBlowoutRisk: true,
         diameterGain: IRIS_DIAMETER_GAIN,
     });
-    let playerManualBloomStrength: number | null = null;
-
     const getDiameter = wireDiameterSlider({
         slider: dom_rng_diameter,
         label: dom_txt_curr_diameter,
@@ -149,75 +149,34 @@ export function init(container: HTMLElement) {
 
     // Reproportion the bloom kernel + density envelope to the current geometry.
     function updateBloomGeometry() {
-        if (!pointsMaterial || screenmap_pts.length < 2) return;
-        const spacing = estimateLedSize(screenmap_pts);
-        let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-        for (const [x, y] of screenmap_pts) {
-            if (x < xmin) xmin = x; if (x > xmax) xmax = x;
-            if (y < ymin) ymin = y; if (y > ymax) ymax = y;
-        }
-        const extent = Math.max(xmax - xmin, ymax - ymin, 1e-6);
-        bloom.setGeometry({
-            ledPx: pointsMaterial.size,
-            panePx: CANVAS_SIZE,
-            ledCount: screenmap_pts.length,
-            ledSpacing: spacing,
-            sceneExtent: extent,
-        });
+        if (!pointsMaterial) return;
+        applyBloomGeometry(bloom, screenmap_pts, { ledPx: pointsMaterial.size, panePx: CANVAS_SIZE });
     }
     dom_rng_diameter.addEventListener('input', updateBloomGeometry, { signal });
 
     // --- Bloom UI: auto checkbox + manual strength slider ---
-    const PLAYER_BLOOM_LS_KEY = 'ledmapper.movieplayer.autoBloom';
-
-    function _sliderToBloomStrength(rngVal: number): number {
-        const t = (rngVal / 100) ** 2;
-        const S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
-        const S_MAX = DEMO_BLOOM_MAX_STRENGTH;
-        return S_MIN + (S_MAX - S_MIN) * t;
-    }
-
-    function _applyBloomAutoState(enabled: boolean) {
-        dom_rng_bloom_strength.disabled = enabled;
-        if (enabled) {
-            dom_bloom_strength_slider.classList.add('opacity-50', 'pointer-events-none');
-            dom_bloom_strength_slider.classList.remove('opacity-100');
-        } else {
-            dom_bloom_strength_slider.classList.remove('opacity-50', 'pointer-events-none');
-            dom_bloom_strength_slider.classList.add('opacity-100');
-        }
-        bloom.setAuto(enabled);
-        if (enabled) playerManualBloomStrength = null;
-    }
-
-    const _playerAutoStored = localStorage.getItem(PLAYER_BLOOM_LS_KEY);
-    const _playerAutoInit = _playerAutoStored === null ? true : _playerAutoStored === 'true';
-    dom_chk_auto_bloom.checked = _playerAutoInit;
-    _applyBloomAutoState(_playerAutoInit);
-
-    dom_chk_auto_bloom.addEventListener('change', () => {
-        const enabled = dom_chk_auto_bloom.checked;
-        localStorage.setItem(PLAYER_BLOOM_LS_KEY, String(enabled));
-        if (!enabled) {
-            // Seed slider from current bloom strength.
-            const curr = bloom.getStrength();
-            const S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
-            const S_MAX = DEMO_AUTO_MAX_SPARSE * 1.5;
-            const raw = (curr - S_MIN) / (S_MAX - S_MIN);
-            const rngVal = Math.round(Math.sqrt(Math.max(raw, 0)) * 100);
-            dom_rng_bloom_strength.value = String(Math.min(Math.max(rngVal, 0), 100));
-            playerManualBloomStrength = _sliderToBloomStrength(parseInt(dom_rng_bloom_strength.value));
-            dom_txt_bloom_strength.innerText = playerManualBloomStrength.toFixed(2);
-            bloom.setManualStrength(playerManualBloomStrength);
-        }
-        _applyBloomAutoState(enabled);
-    }, { signal });
-
-    dom_rng_bloom_strength.addEventListener('input', () => {
-        playerManualBloomStrength = _sliderToBloomStrength(parseInt(dom_rng_bloom_strength.value));
-        dom_txt_bloom_strength.innerText = playerManualBloomStrength.toFixed(2);
-        bloom.setManualStrength(playerManualBloomStrength);
-    }, { signal });
+    const PLAYER_BLOOM_S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
+    wireBloomControls({
+        chk: dom_chk_auto_bloom,
+        slider: dom_rng_bloom_strength,
+        sliderWrap: dom_bloom_strength_slider,
+        label: dom_txt_bloom_strength,
+        lsKey: 'ledmapper.movieplayer.autoBloom',
+        adapter: {
+            setAuto: (e) => { bloom.setAuto(e); },
+            getStrength: () => bloom.getStrength(),
+            setManualStrength: (s) => { bloom.setManualStrength(s); },
+        },
+        strengthFromSlider: (rngVal) =>
+            PLAYER_BLOOM_S_MIN + (DEMO_BLOOM_MAX_STRENGTH - PLAYER_BLOOM_S_MIN) * (rngVal / 100) ** 2,
+        sliderFromStrength: (curr) => {
+            const sMax = DEMO_AUTO_MAX_SPARSE * 1.5;
+            const raw = (curr - PLAYER_BLOOM_S_MIN) / (sMax - PLAYER_BLOOM_S_MIN);
+            return Math.round(Math.sqrt(Math.max(raw, 0)) * 100);
+        },
+        disabledStyle: 'opacity',
+        signal,
+    });
 
     function buildPoints() {
         const previous = (pointsMesh && pointsGeometry && pointsMaterial && colorAttribute) ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial, colorAttribute } : null;
@@ -428,21 +387,13 @@ export function init(container: HTMLElement) {
             if (!silent) alert("No screenmap is loaded!");
             return;
         }
-        const num_pixels = uint8_array.length / 3;
-        if (num_pixels % screenmap_pts.length !== 0) {
+        const { frames, notMultiple } = parseRgbFrames(uint8_array, screenmap_pts.length);
+        if (notMultiple) {
             // A restored video that no longer matches the screenmap is dropped
             // silently (and forgotten); a user upload still gets the alert.
             if (silent) { void clearVideo(); return; }
             alert("Frame size should be a multiple of the number of screenmap points!");
             return;
-        }
-        const frames: Uint8Array[] = [];
-        const n_frames = num_pixels / screenmap_pts.length;
-        for (let i = 0; i < n_frames; ++i) {
-            const start = i * screenmap_pts.length * 3;
-            const end = (i + 1) * screenmap_pts.length * 3;
-            const frame = uint8_array.slice(start, end);
-            frames.push(frame);
         }
         movie_frames = frames;
         curr_frame_idx = 0;
