@@ -37,7 +37,7 @@ test.describe('Shapeeditor Insert Panel dialog', () => {
     test('I key opens the Insert dialog', async ({ page }) => {
         await freshEditor(page);
         await page.keyboard.press('i');
-        const modal = page.locator('.swal2-popup');
+        const modal = page.locator('.swal2-popup:not(.swal2-toast)');
         await expect(modal).toBeVisible({ timeout: 5000 });
         await expect(modal).toContainText(/Insert Panel/i);
         await expect(page.locator('#ins_catalog')).toBeVisible();
