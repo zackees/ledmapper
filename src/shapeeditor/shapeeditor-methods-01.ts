@@ -2,73 +2,17 @@
 // Prototype-installed methods (chunk 1/8).
 
 import { ShapeEditor } from './shapeeditor-class';
-import {
-    WebGLRenderer,
-    Scene,
-    OrthographicCamera,
-    BufferGeometry,
-    Float32BufferAttribute,
-    DynamicDrawUsage,
-    LineSegments,
-    LineBasicMaterial,
-    Line,
-    TextureLoader,
-    PlaneGeometry,
-    MeshBasicMaterial,
-    Mesh,
-    SRGBColorSpace,
-    DoubleSide,
-    type Points,
-    type BufferAttribute,
-    type Texture,
-    type PointsMaterial,
-    type Material,
-} from 'three';
-import type { StripEntry, StripSnapshot, StripInfo } from './strips-model';
-import type { CatalogEntry, PanelOpts, WiringStyle, DataInCorner, RotationDeg } from './panel-catalog';
-import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, getPinColors, stripStartEndLabels } from '../common';
-import type { PointArrayWithDiameter } from '../common';
-import { createLabelRenderer } from '../label-render';
-import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
-import {
-    saveScreenmap,
-    getScreenmap,
-    saveScreenmapMultiStrip,
-    buildScreenmapMultiStripJson,
-    getScreenmapMeta,
-    getBackup,
-    promoteToBackup,
-    restoreBackup,
-    backfillMeta,
-    isDegenerate,
-    notePinMutation,
-} from '../screenmap-store';
+import { type WebGLRenderer, type Scene, type OrthographicCamera, type Line } from 'three';
+import type { StripEntry, StripInfo } from './strips-model';
+
+import { download_text_as_file } from '../common';
+
+import { saveScreenmap, getScreenmap, saveScreenmapMultiStrip, buildScreenmapMultiStripJson, getScreenmapMeta, getBackup, restoreBackup, backfillMeta, isDegenerate } from '../screenmap-store';
 import type { BackupMeta } from '../screenmap-store';
-import { createCircleTexture, buildPointsMesh } from '../three-utils';
+
 import { StripStore } from './strips-model';
-import { Selection } from './selection';
-import { PANEL_CATALOG, getCatalogEntry, generatePanelPoints } from './panel-catalog';
-import { snapToGrid } from './grid-snap';
-import { hintTextFor } from './hints';
-import { parsePastedScreenmap, planPasteMerge } from './paste-parse';
-import templateHtml from './template.html?raw';
-import type {
-    UndoAction,
-    InsertDialogOpts,
-    OBBox,
-    GizmoDragStart,
-    BgGizmoDragStart,
-    BgImageBBox,
-    GizmoHandle,
-    RulerDragStart,
-    ConnectorDrag,
-    StartHandleDrag,
-    PlacingState,
-    PasteStateItem,
-    PasteStateActive,
-    StripDragPt,
-    PresetEntry,
-} from './shapeeditor-types';
+
+import type { UndoAction } from './shapeeditor-types';
 
 ShapeEditor.prototype.qe = function <T extends HTMLElement>(this: ShapeEditor, sel: string, _cast?: (e: Element) => T): T {
     const self = this;
@@ -79,7 +23,6 @@ ShapeEditor.prototype.qe = function <T extends HTMLElement>(this: ShapeEditor, s
     };
 
 ShapeEditor.prototype.nn = function <T>(this: ShapeEditor, v: T | null | undefined, msg?: string): T {
-    const self = this;
 
         if (v === null || v === undefined) throw new Error(msg ?? 'unexpected null/undefined');
         return v;
@@ -206,7 +149,6 @@ ShapeEditor.prototype.writeScale = function (this: ShapeEditor, txt: HTMLInputEl
     };
 
 ShapeEditor.prototype.clampRotate = function (this: ShapeEditor, v: number | string) {
-    const self = this;
 
         const n = typeof v === 'number' ? v : parseInt(v);
         return isNaN(n) ? 0 : Math.max(-180, Math.min(180, n));
@@ -219,7 +161,6 @@ ShapeEditor.prototype.setRotate = function (this: ShapeEditor, rawVal: number | 
     };
 
 ShapeEditor.prototype.clampTranslate = function (this: ShapeEditor, v: number | string) {
-    const self = this;
 
         const n = parseFloat(String(v));
         return isNaN(n) ? 0 : Math.max(-500, Math.min(500, Math.round(n)));
@@ -248,7 +189,6 @@ ShapeEditor.prototype.wireTransformUndo = function (this: ShapeEditor, controlNa
     };
 
 ShapeEditor.prototype._relativeTime = function (this: ShapeEditor, savedAt: number) {
-    const self = this;
 
         const ms = Math.max(0, Date.now() - savedAt);
         const sec = Math.floor(ms / 1000);
@@ -417,7 +357,6 @@ ShapeEditor.prototype._autoloadOnLaunch = function (this: ShapeEditor) {
     };
 
 ShapeEditor.prototype.hslStringToRgb = function (this: ShapeEditor, hslStr: string) {
-    const self = this;
 
         const m = /hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/.exec(hslStr);
         if (!m?.[1] || !m[2] || !m[3]) return [1, 1, 1];
@@ -616,7 +555,6 @@ ShapeEditor.prototype._persistMultiStrip = function (this: ShapeEditor) {
     };
 
 ShapeEditor.prototype._spliceArray = function <T>(this: ShapeEditor, arr: T[], idx: number, count: number): T[] {
-    const self = this;
 
         return arr.splice(idx, count);
     };
@@ -685,7 +623,6 @@ ShapeEditor.prototype._reorderStripPoints = function (this: ShapeEditor, fromIdx
     };
 
 ShapeEditor.prototype._pinOfStrip = function (this: ShapeEditor, s: StripEntry) {
-    const self = this;
 
         return StripStore.pinOf(s);
     };

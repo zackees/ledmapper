@@ -2,73 +2,14 @@
 // Prototype-installed methods (chunk 2/8).
 
 import { ShapeEditor } from './shapeeditor-class';
-import {
-    WebGLRenderer,
-    Scene,
-    OrthographicCamera,
-    BufferGeometry,
-    Float32BufferAttribute,
-    DynamicDrawUsage,
-    LineSegments,
-    LineBasicMaterial,
-    Line,
-    TextureLoader,
-    PlaneGeometry,
-    MeshBasicMaterial,
-    Mesh,
-    SRGBColorSpace,
-    DoubleSide,
-    type Points,
-    type BufferAttribute,
-    type Texture,
-    type PointsMaterial,
-    type Material,
-} from 'three';
-import type { StripEntry, StripSnapshot, StripInfo } from './strips-model';
-import type { CatalogEntry, PanelOpts, WiringStyle, DataInCorner, RotationDeg } from './panel-catalog';
-import { parse_screenmap_data, centerAndFitPoints, download_text_as_file, parseScreenmapMultiStrip, getStripColors, getPinColors, stripStartEndLabels } from '../common';
-import type { PointArrayWithDiameter } from '../common';
-import { createLabelRenderer } from '../label-render';
-import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
-import {
-    saveScreenmap,
-    getScreenmap,
-    saveScreenmapMultiStrip,
-    buildScreenmapMultiStripJson,
-    getScreenmapMeta,
-    getBackup,
-    promoteToBackup,
-    restoreBackup,
-    backfillMeta,
-    isDegenerate,
-    notePinMutation,
-} from '../screenmap-store';
-import type { BackupMeta } from '../screenmap-store';
-import { createCircleTexture, buildPointsMesh } from '../three-utils';
-import { StripStore } from './strips-model';
-import { Selection } from './selection';
-import { PANEL_CATALOG, getCatalogEntry, generatePanelPoints } from './panel-catalog';
-import { snapToGrid } from './grid-snap';
-import { hintTextFor } from './hints';
-import { parsePastedScreenmap, planPasteMerge } from './paste-parse';
-import templateHtml from './template.html?raw';
-import type {
-    UndoAction,
-    InsertDialogOpts,
-    OBBox,
-    GizmoDragStart,
-    BgGizmoDragStart,
-    BgImageBBox,
-    GizmoHandle,
-    RulerDragStart,
-    ConnectorDrag,
-    StartHandleDrag,
-    PlacingState,
-    PasteStateItem,
-    PasteStateActive,
-    StripDragPt,
-    PresetEntry,
-} from './shapeeditor-types';
+
+import type { StripSnapshot } from './strips-model';
+
+import { getStripColors } from '../common';
+
+import { getScreenmap, getBackup, restoreBackup, notePinMutation } from '../screenmap-store';
+
+import type { UndoAction } from './shapeeditor-types';
 
 ShapeEditor.prototype.applyAction = function (this: ShapeEditor, action: UndoAction) {
     const self = this;
@@ -213,7 +154,6 @@ ShapeEditor.prototype.applyInverse = function (this: ShapeEditor, action: UndoAc
     };
 
 ShapeEditor.prototype.isStripAction = function (this: ShapeEditor, action: UndoAction | null | undefined) {
-    const self = this;
 
         return action && (
             action.type === 'strip-rename'
@@ -233,7 +173,6 @@ ShapeEditor.prototype.isStripAction = function (this: ShapeEditor, action: UndoA
     };
 
 ShapeEditor.prototype.isPinMutationAction = function (this: ShapeEditor, action: UndoAction | null | undefined) {
-    const self = this;
 
         return action && (
             action.type === 'strip-repin'
@@ -524,7 +463,6 @@ ShapeEditor.prototype.hideContextMenu = function (this: ShapeEditor) {
     };
 
 ShapeEditor.prototype.hslAccentForStrip = function (this: ShapeEditor, s: number, total: number): string {
-    const self = this;
 
         if (total <= 1) return '#3b82f6';
         const colors = getStripColors(total);
