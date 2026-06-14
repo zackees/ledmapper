@@ -626,8 +626,10 @@ export function init(container: HTMLElement) {
     const PREVIEW_ROTATE_LS_KEY = 'ledmapper.moviemaker.previewRotate';
     const PREVIEW_BLOOM_LS_KEY  = 'ledmapper.moviemaker.previewBloom';
 
+    // Rotate view is opt-in: the preview stays locked to the screenmap's
+    // native orientation unless the user explicitly enables rotation.
     const _prevRotateStored = localStorage.getItem(PREVIEW_ROTATE_LS_KEY);
-    dom_chk_preview_rotate.checked = _prevRotateStored === null ? true : _prevRotateStored === 'true';
+    dom_chk_preview_rotate.checked = _prevRotateStored === null ? false : _prevRotateStored === 'true';
 
     const _prevBloomStored = localStorage.getItem(PREVIEW_BLOOM_LS_KEY);
     const _prevBloomInit = _prevBloomStored === null ? true : _prevBloomStored === 'true';
