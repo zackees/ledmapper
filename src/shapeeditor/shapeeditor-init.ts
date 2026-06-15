@@ -293,6 +293,7 @@ window.__shapeeditorDebug = {
         this.stripDragStartRaw = null;
         this.stripDragLastSdx = 0;
         this.stripDragLastSdy = 0;
+        this.stripSnapActive = false;
         this.altQuasimode = false;
         this.ctxMenu = null;
         this.ctxMenuIdx = -1;

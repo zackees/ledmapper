@@ -302,6 +302,7 @@ export class ShapeEditor {
     declare stripDragStartRaw: StripDragPt[] | null;
     declare stripDragLastSdx: number;
     declare stripDragLastSdy: number;
+    declare stripSnapActive: boolean;
     declare altQuasimode: boolean;
     declare ctxMenu: HTMLElement | null;
     declare ctxMenuIdx: number;
