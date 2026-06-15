@@ -2,6 +2,7 @@
 // Prototype-installed methods (chunk 6/8).
 
 import { ShapeEditor } from './shapeeditor-class';
+import { computeStripSnapTargets } from './strip-snap-targets';
 
 ShapeEditor.prototype.onContextMenu = function (this: ShapeEditor, e: MouseEvent) {
     const self = this;
@@ -244,29 +245,17 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
                 }
                 self.stripDragLastSdx = 0;
                 self.stripDragLastSdy = 0;
-                // ── Center-to-center snap precompute (issue #105) ───
-                // Walk every strip OTHER than the one being dragged and
-                // record its world-space center (mean of its
-                // `screenmap_pts`). Centers are rotation-invariant
-                // because the points are already post-transform.
-                self.stripSnapXTargets = [];
-                self.stripSnapYTargets = [];
-                const stripsAll = self._si().strips;
-                for (let si = 0; si < stripsAll.length; si++) {
-                    if (si === hitStripIdx) continue;
-                    const s = stripsAll[si];
-                    if (!s || s.count <= 0) continue;
-                    let sx = 0, sy = 0, cnt = 0;
-                    for (let k = s.offset; k < s.offset + s.count; k++) {
-                        const p = self.screenmap_pts[k];
-                        if (!p) continue;
-                        sx += p[0]; sy += p[1]; cnt++;
-                    }
-                    if (cnt > 0) {
-                        self.stripSnapXTargets.push(sx / cnt);
-                        self.stripSnapYTargets.push(sy / cnt);
-                    }
-                }
+                // ── Strip-drag snap precompute (issues #105, #110) ───
+                // For every strip OTHER than the dragged one, emit center-
+                // to-center targets (#105, k=0) AND ±k·pitch targets for
+                // k ∈ {1, 2, 3} (#110, bricklayer snap). Pitch is the
+                // median LED-to-LED distance in the neighbor strip.
+                // Rotation is already folded into `screenmap_pts`.
+                const { xTargets, yTargets } = computeStripSnapTargets(
+                    self._si().strips, hitStripIdx, self.screenmap_pts,
+                );
+                self.stripSnapXTargets = xTargets;
+                self.stripSnapYTargets = yTargets;
                 // Dragged strip's starting center (rotation-aware: mean of
                 // its already-transformed `screenmap_pts`).
                 let cx0 = 0, cy0 = 0, cn0 = 0;
