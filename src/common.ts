@@ -1,4 +1,5 @@
 import type { ScreenmapJson, StripPoint, MultiStripParseResult, ParsedStrip } from './types/domain';
+import { detectScreenmapVersion, parseScreenmapV2, v2ToMultiStripResult } from './screenmap-v2';
 
 /** Array of [x,y] points with an optional diameter side-property. */
 export type PointArrayWithDiameter = StripPoint[] & { diameter?: number };
@@ -76,10 +77,10 @@ export function parse_screenmap_data_json(jsonBlob: string | ScreenmapJson): Poi
  */
 export function parseScreenmapMultiStrip(text: string | ScreenmapJson): MultiStripParseResult {
     if (typeof text === 'object') {
-        return _parseMultiStripJson(text);
+        return _routeMultiStrip(text);
     }
     if (is_json_str(text)) {
-        return _parseMultiStripJson(JSON.parse(text) as ScreenmapJson);
+        return _routeMultiStrip(JSON.parse(text) as ScreenmapJson);
     }
     // CSV fallback — wrap in single strip
     const pts = parse_screenmap_data_csv(text);
@@ -92,6 +93,18 @@ export function parseScreenmapMultiStrip(text: string | ScreenmapJson): MultiStr
         allPoints: pts,
         totalCount: pts.length,
     };
+}
+
+/**
+ * Dispatch on detected version. v2 documents are converted onto the
+ * v1-style MultiStripParseResult so downstream tools keep working unchanged.
+ */
+function _routeMultiStrip(obj: ScreenmapJson): MultiStripParseResult {
+    const version = detectScreenmapVersion(obj);
+    if (version === 2) {
+        return v2ToMultiStripResult(parseScreenmapV2(obj));
+    }
+    return _parseMultiStripJson(obj);
 }
 
 function _parseMultiStripJson(obj: ScreenmapJson): MultiStripParseResult {
