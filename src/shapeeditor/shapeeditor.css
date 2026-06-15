@@ -18,18 +18,24 @@
     top: 8px;
     left: 8px;
     z-index: 900;
-    background: rgba(17, 17, 17, 0.85);
-    backdrop-filter: blur(12px);
+    background: rgba(17, 17, 17, 0.65);
+    backdrop-filter: blur(8px);
     border: 1px solid var(--color-lm-border);
     border-radius: 8px;
-    padding: 8px 12px;
+    padding: 6px 10px;
+    /* Hug content (no fixed 420px box) but cap so a wildly-wide accordion can't
+       eat the canvas. */
+    width: fit-content;
     max-width: 420px;
     pointer-events: auto;
-    transition: opacity 0.15s ease;
+    opacity: 0.35;
+    transition: opacity 0.18s ease, background 0.18s ease;
 }
 
-.transform-overlay:hover {
+.transform-overlay:hover,
+.transform-overlay:focus-within {
     background: rgba(17, 17, 17, 0.95);
+    opacity: 1;
 }
 
 .slider-row > label {
