@@ -57,3 +57,14 @@ export function updateActiveLink(path: string) {
         }
     });
 }
+
+/**
+ * Show / hide the top nav. The layered app shell (#133) replaces it with
+ * a bottom mode bar, so the shell calls `setNavVisible(false)` on activation
+ * and `setNavVisible(true)` on tear-down. Legacy per-tool routes still
+ * have the top nav for now.
+ */
+export function setNavVisible(visible: boolean) {
+    if (!navEl) return;
+    navEl.style.display = visible ? '' : 'none';
+}

@@ -12,6 +12,7 @@
  */
 
 import type { SpaHistory, ToolInitFn } from '../types/domain';
+import { setNavVisible } from '../nav';
 import templateHtml from './template.html?raw';
 
 export { default as css } from './app.css?url';
@@ -45,6 +46,9 @@ const modeTitles: Record<AppMode, string> = {
  */
 export function init(container: HTMLElement, nav?: SpaHistory): () => void {
     container.innerHTML = templateHtml;
+    // The shell's bottom mode bar replaces the legacy top nav — hide it
+    // while the shell is mounted. Legacy per-tool routes keep their nav.
+    setNavVisible(false);
     const contentElRaw = container.querySelector<HTMLElement>('#app-content');
     const modeBarElRaw = container.querySelector<HTMLElement>('#app-mode-bar');
     if (!contentElRaw || !modeBarElRaw) throw new Error('app shell template missing required elements');
@@ -106,5 +110,6 @@ export function init(container: HTMLElement, nav?: SpaHistory): () => void {
         }
         currentMode = null;
         contentEl.innerHTML = '';
+        setNavVisible(true);
     };
 }
