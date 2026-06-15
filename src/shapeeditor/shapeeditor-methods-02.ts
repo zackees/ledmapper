@@ -65,6 +65,8 @@ ShapeEditor.prototype.applyAction = function (this: ShapeEditor, action: UndoAct
             });
         } else if (action.type === 'strip-translate') {
             self._applyStripTranslate(a.stripIdx as number, a.sdx as number, a.sdy as number);
+        } else if (action.type === 'multi-translate') {
+            self._applyMultiTranslate(a.idxs as number[], a.sdx as number, a.sdy as number);
         } else if (action.type === 'strip-rotate') {
             const deg = a.deltaDeg as number;
             self._applyStripRotate(
@@ -140,6 +142,8 @@ ShapeEditor.prototype.applyInverse = function (this: ShapeEditor, action: UndoAc
             });
         } else if (action.type === 'strip-translate') {
             self._applyStripTranslate(a.stripIdx as number, -(a.sdx as number), -(a.sdy as number));
+        } else if (action.type === 'multi-translate') {
+            self._applyMultiTranslate(a.idxs as number[], -(a.sdx as number), -(a.sdy as number));
         } else if (action.type === 'strip-rotate') {
             const deg = a.deltaDeg as number;
             self._applyStripRotate(
@@ -436,6 +440,14 @@ ShapeEditor.prototype.clearEditingState = function (this: ShapeEditor) {
         self.gizmoActive = null;
         self.gizmoHover = null;
         self.gizmoDragStart = null;
+        self.multiSelectedIdxs = new Set<number>();
+        self.marqueeActive = false;
+        self._marqueeBaseSelection = new Set<number>();
+        self.multiDragActive = false;
+        self.multiDragStartScreenmap = new Map<number, [number, number]>();
+        self.multiDragStartRaw = new Map<number, [number, number]>();
+        self.multiDragLastSdx = 0;
+        self.multiDragLastSdy = 0;
         self.camPanX = 0;
         self.camPanY = 0;
         self.camZoom = 1;

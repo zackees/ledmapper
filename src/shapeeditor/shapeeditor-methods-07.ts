@@ -169,6 +169,12 @@ ShapeEditor.prototype.onMouseLeave = function (this: ShapeEditor) {
         if (self.stripDragActive) {
             self._finalizeStripDrag();
         }
+        if (self.marqueeActive) {
+            self._commitMarquee();
+        }
+        if (self.multiDragActive) {
+            self._finalizeMultiDrag();
+        }
         self.isHovering = false;
         self.tooltipLedIdx = -1;
         self._tooltip().style.opacity = '0';
@@ -355,7 +361,15 @@ ShapeEditor.prototype.buildScreenmap = function (this: ShapeEditor, transformedP
             }
             // First LED green
             colors[0] = 76 / 255; colors[1] = 175 / 255; colors[2] = 80 / 255;
-            // Selected LED cyan
+            // Marquee multi-selection: paint every selected LED cyan.
+            if (self.multiSelectedIdxs.size > 0) {
+                for (const i of self.multiSelectedIdxs) {
+                    if (i < 0 || i >= count) continue;
+                    const ci = i * 3;
+                    colors[ci] = 0; colors[ci + 1] = 1; colors[ci + 2] = 1;
+                }
+            }
+            // Single selected LED cyan (existing single-selection highlight)
             if (self.selectedIdx > 0 && self.selectedIdx < count) {
                 const ci = self.selectedIdx * 3;
                 colors[ci] = 0; colors[ci + 1] = 1; colors[ci + 2] = 1;
