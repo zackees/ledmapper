@@ -448,6 +448,7 @@ ShapeEditor.prototype.clearEditingState = function (this: ShapeEditor) {
         self.multiDragStartRaw = new Map<number, [number, number]>();
         self.multiDragLastSdx = 0;
         self.multiDragLastSdy = 0;
+        self._pendingMarquee = null;
         self.camPanX = 0;
         self.camPanY = 0;
         self.camZoom = 1;

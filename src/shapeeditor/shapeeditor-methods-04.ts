@@ -34,6 +34,8 @@ ShapeEditor.prototype._openHelpOverlay = async function (this: ShapeEditor) {
                             <li>Corner/edge/rotate handles: scale &amp; rotate layout</li>
                             <li>Shift + click edge: insert between</li>
                             <li>Ctrl + click: extend (append LED)</li>
+                            <li>Ctrl + drag: shape select (rubber-band)</li>
+                            <li>Ctrl + click LED: toggle in shape selection</li>
                             <li>Right-click: context menu</li>
                         </ul>
                     </div>

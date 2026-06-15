@@ -437,6 +437,7 @@ window.__shapeeditorDebug = {
         this.marqueeCurCy = 0;
         this.marqueeMode = 'replace';
         this._marqueeBaseSelection = new Set<number>();
+        this._pendingMarquee = null;
         this.multiDragActive = false;
         this.multiDragStartCanvasX = 0;
         this.multiDragStartCanvasY = 0;

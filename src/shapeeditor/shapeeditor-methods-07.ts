@@ -175,6 +175,9 @@ ShapeEditor.prototype.onMouseLeave = function (this: ShapeEditor) {
         if (self.multiDragActive) {
             self._finalizeMultiDrag();
         }
+        // Drop a half-resolved Ctrl+mousedown without firing append
+        // (the cursor left the canvas — we can't tell click vs. drag).
+        self._pendingMarquee = null;
         self.isHovering = false;
         self.tooltipLedIdx = -1;
         self._tooltip().style.opacity = '0';

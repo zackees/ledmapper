@@ -193,6 +193,11 @@ export class ShapeEditor {
     declare marqueeCurCy: number;
     declare marqueeMode: 'replace' | 'add' | 'toggle';
     declare _marqueeBaseSelection: Set<number>;
+    // Ctrl+mousedown on empty area is ambiguous: a click means "append point"
+    // (existing power-user shortcut) and a drag means marquee select. Defer
+    // the decision to mousemove (drag past threshold → marquee) / mouseup
+    // (no movement → append).
+    declare _pendingMarquee: { cx: number; cy: number; mode: 'replace' | 'add' | 'toggle'; appendOnClick: boolean } | null;
     declare multiDragActive: boolean;
     declare multiDragStartCanvasX: number;
     declare multiDragStartCanvasY: number;
