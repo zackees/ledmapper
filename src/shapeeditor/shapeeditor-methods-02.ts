@@ -8,6 +8,7 @@ import type { StripSnapshot } from './strips-model';
 import { getStripColors } from '../common';
 
 import { getScreenmap, getBackup, restoreBackup, notePinMutation } from '../screenmap-store';
+import { safeStorage } from '../services/storage';
 
 import type { UndoAction } from './shapeeditor-types';
 
@@ -159,10 +160,8 @@ ShapeEditor.prototype.applyInverse = function (this: ShapeEditor, action: UndoAc
                 self.load_screenmap_data(a.beforeJson);
             } else {
                 // No prior working copy — clear back to a fresh empty state.
-                try {
-                    localStorage.removeItem('lm:screenmap');
-                    localStorage.removeItem('lm:screenmap-meta');
-                } catch { /* ignore */ }
+                safeStorage.remove('lm:screenmap');
+                safeStorage.remove('lm:screenmap-meta');
                 self.stripStore.load(null);
                 self.screenmap_pts = [[0, 0]];
                 self.rawPts = [[0, 0]];
