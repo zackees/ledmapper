@@ -283,6 +283,31 @@ main {
     min-width: 0;
 }
 
+/* ── LED canvas wrapper (canvas fit redesign) ─────────────────
+   The shared <div> created by `createRendererAndScene` carries the
+   WebGL render canvas + optional 2D overlay canvas. Sizing is
+   declarative: `aspect-ratio: 1` + `max-inline-size: 100%` +
+   `max-block-size: 100%` let the browser pick the largest square
+   that fits the flex parent. The WebGL drawing buffer stays at
+   the caller's render resolution (BLOOM_RENDER_PX = 2048) and the
+   canvas's CSS `width/height: 100%` downsamples it to the wrapper.
+   No JS measurement / ResizeObserver / window-resize listener.
+   ────────────────────────────────────────────────────────────── */
+
+.lm-canvas-wrapper {
+    position: relative;
+    aspect-ratio: 1;
+    max-inline-size: 100%;
+    max-block-size: 100%;
+    /* Hard ceiling at the render resolution. Above this we'd
+       upscale a fixed-resolution drawing buffer onto a larger
+       display (fuzzy). Always downscale. Keep in sync with
+       BLOOM_RENDER_PX in src/bloom-utils.ts. */
+    max-width: 2048px;
+    max-height: 2048px;
+    margin: 0 auto;
+}
+
 /* ── Canvas ─────────────────────────────────────────────────── */
 
 canvas {

@@ -5,42 +5,63 @@
    ═══════════════════════════════════════════════════════════════ */
 
 .controls {
-    @apply text-center;
+    @apply shrink-0;
     background: linear-gradient(to bottom, var(--color-lm-surface-1), var(--color-lm-bg));
     border-bottom: 1px solid var(--color-lm-border);
-    padding: 16px 24px;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-}
-
-.controls h1 {
-    font-size: 1.2rem;
-    font-weight: 500;
-    margin-bottom: 4px;
-    letter-spacing: -0.01em;
-}
-
-.controls p {
-    font-size: 0.8rem;
-    color: var(--color-lm-text-muted);
-    margin: 2px 0;
-}
-
-.controls p a {
-    font-size: 0.78rem;
+    padding: 6px 12px;
 }
 
 #btn_play {
-    min-width: 80px;
+    min-width: 64px;
+    padding: 4px 12px;
+    font-size: 0.78rem;
 }
 
 select {
-    max-width: 160px;
-    width: 100%;
+    max-width: 80px;
+    font-size: 0.78rem;
 }
 
-@media (max-width: 600px) {
+/* Kebab "More…" pop-over so the resting toolbar stays one row. */
+.demo-more {
+    position: relative;
+}
+.demo-more > summary {
+    @apply cursor-pointer select-none;
+    font-size: 0.78rem;
+    color: var(--color-lm-text-muted);
+    padding: 4px 8px;
+    border-radius: var(--radius-lm);
+    list-style: none;
+}
+.demo-more > summary::-webkit-details-marker { display: none; }
+.demo-more > summary:hover {
+    color: var(--color-lm-text);
+    background: var(--color-lm-surface-2);
+}
+.demo-more-body {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 10;
+    background: var(--color-lm-surface-2);
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm);
+    padding: 8px 10px;
+    min-width: 260px;
+    text-align: left;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+}
+.demo-more-body p {
+    margin: 0 0 4px 0;
+}
+
+@media (max-width: 800px) {
     .controls-container {
         flex-direction: column;
+        gap: 6px;
+    }
+    .demo-more {
+        align-self: flex-end;
     }
 }

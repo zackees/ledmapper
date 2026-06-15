@@ -51,19 +51,27 @@ export function createRendererAndScene({ width, height, parent, clearColor = 0x0
     camera.position.z = 1;
 
     const wrapper = document.createElement('div');
-    wrapper.style.position = 'relative';
-    wrapper.style.width = `${String(width)}px`;
-    wrapper.style.margin = '0 auto';
+    // Display geometry is driven entirely by CSS now — see
+    // `.lm-canvas-wrapper` in global.css. `aspect-ratio: 1` plus
+    // `max-block-size: 100%` and `max-inline-size: 100%` make the
+    // browser pick the largest square that fits the wrapper's flex
+    // parent. The WebGL drawing buffer below stays at `renderPx`
+    // (= BLOOM_RENDER_PX) — the canvas's `width/height: 100%` rescales
+    // that fixed buffer down to whatever the wrapper's computed size
+    // is. Same picture, any viewport.
+    wrapper.className = 'lm-canvas-wrapper';
     parent.appendChild(wrapper);
 
     renderer.domElement.style.display = 'block';
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
     wrapper.appendChild(renderer.domElement);
 
     if (enableOverlay) {
         const overlayCanvas = document.createElement('canvas');
         overlayCanvas.width = width;
         overlayCanvas.height = height;
-        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;';
+        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
         wrapper.appendChild(overlayCanvas);
         const overlayCtx = overlayCanvas.getContext('2d');
         if (!overlayCtx) throw new Error('createRendererAndScene: overlay 2d context unavailable');
@@ -142,68 +150,26 @@ export function wireDiameterSlider({ slider, label, getMaterial, signal }: { sli
 }
 
 /**
- * Size `wrapper` to the largest square that fits inside `parent`. The
- * WebGL drawing buffer is left at the caller's fixed render resolution
- * (e.g. `BLOOM_RENDER_PX`); only the wrapper's CSS size changes — so
- * the final on-screen size is always a sharp DOWNSCALE of a single
- * fixed-resolution intermediate. The display result is identical
- * across screen sizes and zoom levels.
+ * Deprecated, no-op. The canvas wrapper now sizes itself via CSS
+ * (`.lm-canvas-wrapper` in global.css uses `aspect-ratio: 1` +
+ * `max-block-size: 100%` + `max-inline-size: 100%`) — the browser
+ * computes the largest fitting square automatically, with the
+ * WebGL drawing buffer downsampling to the wrapper's CSS size.
+ * No JS measurement / ResizeObserver / window-resize listener
+ * needed.
  *
- * `maxSize` caps the CSS size at the render resolution so we never
- * UPSCALE on a 4K display.
- *
- * Two ceilings drive the fit:
- *   - `parent.clientHeight - padY` — the flex container's contracted
- *     height; what the layout wants the canvas to fill.
- *   - `document.documentElement.clientHeight - rect.top - padY` — the
- *     visible viewport relative to where the wrapper sits; prevents
- *     the wrapper from stretching its ancestors past the fold.
- *
- * Re-fits on parent resize (`ResizeObserver`) and window resize.
- * Used by `/play` (demo), `/movieplayer/`, and any future shell-hosted
- * Three.js canvas. See issue #141.
+ * Kept as an exported no-op for one release so external consumers
+ * (e.g. legacy embeds, the upcoming `@fastled/gfx` package, #137)
+ * can drop the call site without an import error. Slated for
+ * removal once the package extracts.
  */
-export function wireResponsiveCanvas({
-    wrapper,
-    parent,
-    maxSize,
-    signal,
-}: {
+export function wireResponsiveCanvas(_opts: {
     wrapper: HTMLElement;
     parent: HTMLElement;
-    /** Cap the CSS size at this many pixels so we never upscale past
-     *  the fixed render resolution. Usually `BLOOM_RENDER_PX`. */
     maxSize?: number;
     signal?: AbortSignal;
 }): void {
-    function fit() {
-        // Neutralize the wrapper before measuring so a previous (possibly
-        // too-large) size doesn't keep the parent stretched. The parent's
-        // flex contract then reflects the actual constrained space.
-        wrapper.style.width = '0px';
-        wrapper.style.height = '0px';
-        const cs = getComputedStyle(parent);
-        const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-        const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
-        const rect = parent.getBoundingClientRect();
-        const viewportH = document.documentElement.clientHeight;
-        const flexAvailH = parent.clientHeight - padY;
-        const viewportAvailH = viewportH - rect.top - padY;
-        const availW = parent.clientWidth - padX;
-        const availH = Math.min(flexAvailH, viewportAvailH);
-        const cap = maxSize ?? Number.POSITIVE_INFINITY;
-        const size = Math.max(Math.floor(Math.min(availW, availH, cap)), 1);
-        wrapper.style.width = `${String(size)}px`;
-        wrapper.style.height = `${String(size)}px`;
-    }
-    fit();
-    const observer = new ResizeObserver(() => { fit(); });
-    observer.observe(parent);
-    const listenerOpts: AddEventListenerOptions = signal !== undefined ? { signal } : {};
-    window.addEventListener('resize', fit, listenerOpts);
-    if (signal !== undefined) {
-        signal.addEventListener('abort', () => { observer.disconnect(); }, { once: true });
-    }
+    /* intentionally empty — see docstring */
 }
 
 /** Start a frame-rate-limited requestAnimationFrame loop. */
