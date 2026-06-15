@@ -13,6 +13,18 @@ const SCREENMAP_LED_COUNT = Object.values(screenmap.map)
     .reduce((sum, strip) => sum + strip.x.length, 0);
 
 /**
+ * Strip the FLED v1 header from a recorded buffer, returning just the
+ * frame payload. See docs/fled-format.md for the layout.
+ */
+function fledPayload(data) {
+    expect(data.length).toBeGreaterThan(12);
+    expect(String.fromCharCode(data[0], data[1], data[2], data[3])).toBe('FLED');
+    expect(data[4]).toBe(1); // version
+    const jsonLength = data.readUInt32LE(8);
+    return data.subarray(12 + jsonLength);
+}
+
+/**
  * Wait for the moviemaker's Three.js renderer to be active.
  * The welcome overlay hides once a source is loaded.
  */
@@ -35,12 +47,13 @@ async function recordAndDownload(page, durationMs = 2000) {
     // Let frames accumulate
     await page.waitForTimeout(durationMs);
 
-    // Stop recording â€” triggers .rgb file download
+    // Stop recording â€” triggers .fled file download (FLED container with
+    // embedded screenmap; see docs/fled-format.md)
     await recordBtn.click();
     await expect(recordBtn).toHaveValue('Start Recording');
 
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/^video\d+\.rgb$/);
+    expect(download.suggestedFilename()).toMatch(/^video\d+\.fled$/);
 
     // Save to temp path and read bytes
     const savePath = path.join(
@@ -74,7 +87,7 @@ test.describe('Moviemaker Recording Workflow', () => {
         });
     });
     test.describe('Video file loading and recording', () => {
-        test('loads video via file chooser, records, and downloads .rgb', async ({ page }) => {
+        test('loads video via file chooser, records, and downloads .fled', async ({ page }) => {
             test.setTimeout(60000);
 
             const errors = [];
@@ -105,12 +118,13 @@ test.describe('Moviemaker Recording Workflow', () => {
             // Record for 2 seconds
             const data = await recordAndDownload(page, 2000);
 
-            // Validate .rgb file: must have data, and be a multiple of (ledCount * 3)
-            expect(data.length).toBeGreaterThan(0);
+            // Validate .fled file: header + JSON + payload of whole frames.
+            const payload = fledPayload(data);
+            expect(payload.length).toBeGreaterThan(0);
             const bytesPerFrame = 256 * 3; // 16x16 grid = 256 LEDs, 3 bytes each
-            expect(data.length % bytesPerFrame).toBe(0);
+            expect(payload.length % bytesPerFrame).toBe(0);
 
-            const frameCount = data.length / bytesPerFrame;
+            const frameCount = payload.length / bytesPerFrame;
             expect(frameCount).toBeGreaterThanOrEqual(1);
 
             // No JS errors
@@ -123,7 +137,7 @@ test.describe('Moviemaker Recording Workflow', () => {
             await mockWebcam(page);
         });
 
-        test('records webcam feed and downloads valid .rgb file', async ({ page }) => {
+        test('records webcam feed and downloads valid .fled file', async ({ page }) => {
             test.setTimeout(60000);
 
             await page.goto('/moviemaker/');
@@ -139,9 +153,10 @@ test.describe('Moviemaker Recording Workflow', () => {
             // Record
             const data = await recordAndDownload(page, 2000);
 
+            const payload = fledPayload(data);
             const bytesPerFrame = 256 * 3;
-            expect(data.length).toBeGreaterThan(0);
-            expect(data.length % bytesPerFrame).toBe(0);
+            expect(payload.length).toBeGreaterThan(0);
+            expect(payload.length % bytesPerFrame).toBe(0);
         });
 
         test('max brightness limit clamps recorded output', async ({ page }) => {
@@ -159,11 +174,14 @@ test.describe('Moviemaker Recording Workflow', () => {
             await expect(page.locator('#txt_curr_max_bri')).toHaveText('50%');
 
             const data = await recordAndDownload(page, 1500);
-            expect(data.length).toBeGreaterThan(0);
+            const payload = fledPayload(data);
+            expect(payload.length).toBeGreaterThan(0);
 
-            // 50% cap: subtraction clamp guarantees no channel exceeds ~128
+            // 50% cap: subtraction clamp guarantees no channel exceeds ~128.
+            // Scan the payload only — the JSON header contains '"' etc. and
+            // would skew the max check.
             let maxByte = 0;
-            for (const b of data) maxByte = Math.max(maxByte, b);
+            for (const b of payload) maxByte = Math.max(maxByte, b);
             expect(maxByte).toBeLessThanOrEqual(130);
         });
 
@@ -180,9 +198,10 @@ test.describe('Moviemaker Recording Workflow', () => {
 
             const data = await recordAndDownload(page, 1500);
 
+            const payload = fledPayload(data);
             const bytesPerFrame = 64 * 3; // 8x8 = 64 LEDs
-            expect(data.length).toBeGreaterThan(0);
-            expect(data.length % bytesPerFrame).toBe(0);
+            expect(payload.length).toBeGreaterThan(0);
+            expect(payload.length % bytesPerFrame).toBe(0);
         });
 
         test('records with custom screenmap upload', async ({ page }) => {
@@ -198,9 +217,10 @@ test.describe('Moviemaker Recording Workflow', () => {
 
             const data = await recordAndDownload(page, 1500);
 
+            const payload = fledPayload(data);
             const bytesPerFrame = SCREENMAP_LED_COUNT * 3; // 4 LEDs Ã— 3 bytes
-            expect(data.length).toBeGreaterThan(0);
-            expect(data.length % bytesPerFrame).toBe(0);
+            expect(payload.length).toBeGreaterThan(0);
+            expect(payload.length % bytesPerFrame).toBe(0);
         });
 
         test('records with multi-strip screenmap (frame size = total LED count)', async ({ page }) => {
@@ -220,9 +240,10 @@ test.describe('Moviemaker Recording Workflow', () => {
 
             const data = await recordAndDownload(page, 1500);
 
+            const payload = fledPayload(data);
             const bytesPerFrame = MULTI_TOTAL * 3; // 7 LEDs Ã— 3 bytes
-            expect(data.length).toBeGreaterThan(0);
-            expect(data.length % bytesPerFrame).toBe(0);
+            expect(payload.length).toBeGreaterThan(0);
+            expect(payload.length % bytesPerFrame).toBe(0);
         });
     });
 
@@ -264,15 +285,17 @@ test.describe('Moviemaker Recording Workflow', () => {
             const blurData = await setupAndRecord(page, 50, 50, 3000);
 
             // Both recordings should have valid data
+            const noBlurPayload = fledPayload(noBlurData);
+            const blurPayload = fledPayload(blurData);
             const bytesPerFrame = 64 * 3; // 8x8 = 64 LEDs
-            expect(noBlurData.length).toBeGreaterThan(0);
-            expect(noBlurData.length % bytesPerFrame).toBe(0);
-            expect(blurData.length).toBeGreaterThan(0);
-            expect(blurData.length % bytesPerFrame).toBe(0);
+            expect(noBlurPayload.length).toBeGreaterThan(0);
+            expect(noBlurPayload.length % bytesPerFrame).toBe(0);
+            expect(blurPayload.length).toBeGreaterThan(0);
+            expect(blurPayload.length % bytesPerFrame).toBe(0);
 
             // Compare first frame of each recording
-            const noBlurFrame = noBlurData.subarray(0, bytesPerFrame);
-            const blurFrame = blurData.subarray(0, bytesPerFrame);
+            const noBlurFrame = noBlurPayload.subarray(0, bytesPerFrame);
+            const blurFrame = blurPayload.subarray(0, bytesPerFrame);
 
             // Calculate per-pixel average difference across the frame
             let totalDiff = 0;

@@ -51,6 +51,21 @@
     color: var(--color-lm-accent);
 }
 
+/* ── Screenmap status line ─────────────────────────────────────
+   Tells the user which map is active. The native file input can't be
+   programmatically populated, and a preset click otherwise leaves it
+   stuck on "No file chosen" — this status replaces that ambiguity. */
+.screenmap-status {
+    @apply font-mono text-xs;
+    color: var(--color-lm-text-muted);
+    padding: 2px 8px;
+    margin-left: -8px;
+}
+
+.screenmap-status.loaded {
+    color: var(--color-lm-accent);
+}
+
 .upload-row {
     display: flex;
     align-items: center;

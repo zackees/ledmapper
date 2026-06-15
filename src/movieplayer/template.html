@@ -1,20 +1,13 @@
 <div class="controls">
     <h1>Video Player</h1>
-    <p>See Fastled/examples/FxSdCard/data/ for video.rgb and screenmap.json examples</p>
-    <div class="mb-2">
-        <span class="block text-xs text-lm-text-muted mb-1.5">Screenmap presets:</span>
-        <div class="button-row preset-buttons justify-center" id="preset_buttons"></div>
-    </div>
+    <p>Drop a <code>.fled</code> video recorded by the Mapped Video Maker — the screenmap travels inside the file.</p>
     <div class="controls-container control-bar-start mt-2">
         <!-- Uploads -->
         <div class="control-stack-start">
-            <div class="upload-row" id="screenmap_drop_target">
-                <label for="btn_upload_screenmap">Upload Screenmap (*.json):</label>
-                <input type="file" id="btn_upload_screenmap" accept=".json">
-            </div>
+            <div class="screenmap-status" id="screenmap_status" aria-live="polite">No video loaded</div>
             <div class="upload-row" id="movie_drop_target">
-                <label for="btn_load_movie">Upload Video (*.rgb):</label>
-                <input type="file" id="btn_load_movie" accept=".rgb">
+                <label for="btn_load_movie">Upload Video (*.fled):</label>
+                <input type="file" id="btn_load_movie" accept=".fled">
             </div>
         </div>
 

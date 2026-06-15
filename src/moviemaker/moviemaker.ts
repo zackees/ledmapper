@@ -138,6 +138,7 @@ export function init(container: HTMLElement) {
 
     const recording = createRecording({
         getSwal,
+        getScreenmapJson: () => getScreenmap(),
     });
 
     // ── Helpers ─────────────────────────────────────────────────────────────────
