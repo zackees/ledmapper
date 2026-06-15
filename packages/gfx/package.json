@@ -1,0 +1,45 @@
+{
+  "name": "@fastled/gfx",
+  "version": "0.1.0",
+  "description": "FastLED-compatible LED renderer (Three.js + UnrealBloom). Shared by FastLED wasm-compiler and ledmapper.com. See https://github.com/zackees/ledmapper.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/packages/gfx/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/packages/gfx/src/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "peerDependencies": {
+    "three": ">=0.170 <0.190"
+  },
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zackees/ledmapper.git",
+    "directory": "packages/gfx"
+  },
+  "homepage": "https://github.com/zackees/ledmapper/tree/main/packages/gfx",
+  "bugs": {
+    "url": "https://github.com/zackees/ledmapper/issues"
+  },
+  "keywords": [
+    "fastled",
+    "led",
+    "renderer",
+    "three.js",
+    "webgl",
+    "bloom"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
