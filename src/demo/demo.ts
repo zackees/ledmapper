@@ -2,7 +2,7 @@ import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file, p
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, wireFilePicker, fileHasExtension } from '../drag-drop';
 import { errorDialog } from '../ui/dialogs';
-import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
+import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop, wireResponsiveCanvas } from '../three-utils';
 import {
     resolveLedDiameter,
     computeFitScale,
@@ -79,6 +79,11 @@ export function init(container: HTMLElement) {
         enableOverlay: true,
         renderPx: BLOOM_RENDER_PX,
     }) as RendererContextWithOverlay;
+    // CANVAS_SIZE above seeds the renderer's CSS dimensions. The actual
+    // displayed size is then driven by `wireResponsiveCanvas` so the
+    // bloom canvas fills the available shell-content slot without
+    // clipping (issue #141). The drawing buffer stays at BLOOM_RENDER_PX.
+    wireResponsiveCanvas({ wrapper, parent: main, signal });
 
     // FastLED-style bloom via the shared setup helper (see issue #119).
     const bloom = setupDemoStyleBloom({
