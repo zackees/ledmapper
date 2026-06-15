@@ -1,0 +1,30 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
+    "rootDir": "../..",
+    "composite": false,
+    "isolatedModules": true
+  },
+  "include": [
+    "src/index.ts",
+    "../../src/gfx/**/*.ts",
+    "../../src/auto-bloom.ts",
+    "../../src/bloom-utils.ts",
+    "../../src/common.ts",
+    "../../src/screenmap-v2.ts",
+    "../../src/three-utils.ts",
+    "../../src/three-bloom.ts",
+    "../../src/ui/sliders.ts",
+    "../../src/ui/signal.ts",
+    "../../src/render/bloom-geometry.ts",
+    "../../src/render/bloom-ui.ts",
+    "../../src/render/demo-bloom-setup.ts",
+    "../../src/render/rgb-video.ts",
+    "../../src/types/domain.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}
