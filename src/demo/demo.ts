@@ -80,10 +80,12 @@ export function init(container: HTMLElement) {
         renderPx: BLOOM_RENDER_PX,
     }) as RendererContextWithOverlay;
     // CANVAS_SIZE above seeds the renderer's CSS dimensions. The actual
-    // displayed size is then driven by `wireResponsiveCanvas` so the
-    // bloom canvas fills the available shell-content slot without
-    // clipping (issue #141). The drawing buffer stays at BLOOM_RENDER_PX.
-    wireResponsiveCanvas({ wrapper, parent: main, signal });
+    // displayed size is then driven by `wireResponsiveCanvas`: the
+    // WebGL drawing buffer stays at BLOOM_RENDER_PX and the wrapper's
+    // CSS size is downscaled to fit the available shell-content slot,
+    // capped at BLOOM_RENDER_PX so we never upscale a small render
+    // buffer past its native resolution (issue #141).
+    wireResponsiveCanvas({ wrapper, parent: main, maxSize: BLOOM_RENDER_PX, signal });
 
     // FastLED-style bloom via the shared setup helper (see issue #119).
     const bloom = setupDemoStyleBloom({
