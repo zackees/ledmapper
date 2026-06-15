@@ -396,6 +396,7 @@ ShapeEditor.prototype.clearEditingState = function (this: ShapeEditor) {
         self.stripDragIdx = -1;
         self.stripDragStartScreenmap = null;
         self.stripDragStartRaw = null;
+        self.stripSnapActive = false;
         self.altQuasimode = false;
         self.isDragging = false;
         self.isPanning = false;

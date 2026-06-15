@@ -440,7 +440,21 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
         if (self.stripDragActive && self.stripDragIdx >= 0 && self.stripInfo) {
             const dx = cx - self.dragStartCanvasX;
             const dy = cy - self.dragStartCanvasY;
-            const [sdx, sdy] = self.canvasDeltaToScreenmapDelta(dx, dy);
+            let [sdx, sdy] = self.canvasDeltaToScreenmapDelta(dx, dy);
+            // ── Magnetic snap-back to original position ─────────────────
+            // When the drag has only moved the cursor a few pixels from the
+            // initial mousedown point, zero out the delta so the strip
+            // visibly snaps back to its starting place. The threshold is in
+            // canvas pixels (not cm) so it stays the same on screen at any
+            // zoom level.
+            const STRIP_SNAP_BACK_PX = 12;
+            const wasSnapped = self.stripSnapActive;
+            self.stripSnapActive = Math.hypot(dx, dy) < STRIP_SNAP_BACK_PX;
+            if (self.stripSnapActive) {
+                sdx = 0;
+                sdy = 0;
+            }
+            if (self.stripSnapActive !== wasSnapped) self.setNeedsRender();
             const strip = self.nn(self.stripInfo.strips[self.stripDragIdx]);
             for (let k = 0; k < strip.count; k++) {
                 const base = strip.offset + k;
@@ -464,7 +478,7 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
         // Ruler hover cursor
         const rulerHoverHit = self.hitTestRuler(cx, cy);
         if (rulerHoverHit) {
-            self._oc().style.cursor = rulerHoverHit === 'body' ? 'move' : 'grab';
+            self._oc().style.cursor = rulerHoverHit.kind === 'body' ? 'move' : 'grab';
             self.tooltipLedIdx = -1;
             self._tooltip().style.opacity = '0';
             // still update gizmo/bbox hover state below so rendering stays correct
@@ -660,6 +674,7 @@ ShapeEditor.prototype._finalizeStripDrag = function (this: ShapeEditor) {
         self.stripDragIdx = -1;
         self.stripDragStartScreenmap = null;
         self.stripDragStartRaw = null;
+        self.stripSnapActive = false;
         self.stripDragLastSdx = 0;
         self.stripDragLastSdy = 0;
     };
@@ -725,6 +740,7 @@ ShapeEditor.prototype._cancelSingleTouchGesture = function (this: ShapeEditor) {
             self.stripDragIdx = -1;
             self.stripDragStartScreenmap = null;
             self.stripDragStartRaw = null;
+            self.stripSnapActive = false;
             self.stripDragLastSdx = 0;
             self.stripDragLastSdy = 0;
         }
