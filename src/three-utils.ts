@@ -194,8 +194,28 @@ export function wireResponsiveCanvas({
         const cs = getComputedStyle(parent);
         const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
         const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
-        const availW = r.width - padX;
-        const availH = r.height - padY;
+        // Step 3: subtract sibling space. When `parent` is a flex
+        // column that also holds a controls strip / toolbar (above
+        // or below the canvas), those siblings eat into the room
+        // the wrapper can use. Without this the helper picks
+        // `min(parent.width, parent.height)` and lets the wrapper
+        // overflow past the mode bar — it never noticed the controls
+        // were stealing 44px. Direction of subtraction follows the
+        // parent's flex-direction; gap is also accounted for.
+        const flexDirection = cs.flexDirection;
+        const isRow = flexDirection === 'row' || flexDirection === 'row-reverse';
+        let siblingMain = 0;
+        let siblingCount = 0;
+        for (const child of Array.from(parent.children)) {
+            if (child === wrapper) continue;
+            const cr = (child as HTMLElement).getBoundingClientRect();
+            siblingMain += isRow ? cr.width : cr.height;
+            siblingCount++;
+        }
+        const gap = parseFloat(cs.rowGap || cs.gap || '0') || 0;
+        const totalGap = siblingCount > 0 ? gap * siblingCount : 0;
+        const availW = r.width - padX - (isRow ? siblingMain + totalGap : 0);
+        const availH = r.height - padY - (isRow ? 0 : siblingMain + totalGap);
         const cap = maxSize ?? Number.POSITIVE_INFINITY;
         const size = Math.max(Math.floor(Math.min(availW, availH, cap)), 1);
         wrapper.style.width = `${String(size)}px`;

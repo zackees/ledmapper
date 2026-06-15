@@ -17,6 +17,7 @@ export default tseslint.config(
             'tests/integration/*.ts',
             'tests/smoke/*.ts',
             'tests/helpers/*.ts',
+            'tests/canvas-fit/*.ts',
           ],
           defaultProject: './tsconfig.tests.json',
           maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 100,
