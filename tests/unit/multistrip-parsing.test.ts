@@ -215,29 +215,40 @@ describe('parseScreenmapMultiStrip', () => {
 });
 
 // ── buildScreenmapMultiStripJson (persistence) ──────────────────────
+//
+// As of issue #143, emitter shape switched from v1 `{ map: { ... } }` to
+// v2 `{ version: 2, groups, segments: [...] }`. The parser side stays
+// bilingual so existing on-disk v1 JSON keeps loading.
+
+function segmentById(parsedJson: { segments: { id: string }[] }, id: string) {
+    return parsedJson.segments.find((s) => s.id === id);
+}
 
 describe('buildScreenmapMultiStripJson', () => {
-    it('single strip produces valid JSON matching existing format', () => {
+    it('single strip produces a v2 segment with the right coords', () => {
         const strips = [{ name: 'strip1', points: [[0, 0], [1, 0]], diameter: 0.25, offset: 0, count: 2, video_offset: 0 }];
         const json = buildScreenmapMultiStripJson(strips);
         const parsed = JSON.parse(json);
-        assert.ok(parsed.map.strip1);
-        assert.deepStrictEqual(parsed.map.strip1.x, [0, 1]);
-        assert.deepStrictEqual(parsed.map.strip1.y, [0, 0]);
-        assert.strictEqual(parsed.map.strip1.diameter, 0.25);
+        assert.strictEqual(parsed.version, 2);
+        const seg = segmentById(parsed, 'strip1');
+        assert.ok(seg);
+        assert.deepStrictEqual(seg.x, [0, 1]);
+        assert.deepStrictEqual(seg.y, [0, 0]);
+        assert.strictEqual(seg.diameter, 0.25);
     });
 
-    it('two strips produces correct JSON with both strips', () => {
+    it('two strips produces correct JSON with both segments', () => {
         const strips = [
             { name: 'strip1', points: [[0, 0], [1, 0]], diameter: 0.25, offset: 0, count: 2, video_offset: 0 },
             { name: 'strip2', points: [[5, 5]], diameter: 0.5, offset: 2, count: 1, video_offset: 2 },
         ];
         const json = buildScreenmapMultiStripJson(strips);
         const parsed = JSON.parse(json);
-        assert.ok(parsed.map.strip1);
-        assert.ok(parsed.map.strip2);
-        assert.deepStrictEqual(parsed.map.strip2.x, [5]);
-        assert.deepStrictEqual(parsed.map.strip2.y, [5]);
+        assert.strictEqual(parsed.segments.length, 2);
+        const s2 = segmentById(parsed, 'strip2');
+        assert.ok(s2);
+        assert.deepStrictEqual(s2.x, [5]);
+        assert.deepStrictEqual(s2.y, [5]);
     });
 
     it('preserves per-strip diameter', () => {
@@ -247,8 +258,8 @@ describe('buildScreenmapMultiStripJson', () => {
         ];
         const json = buildScreenmapMultiStripJson(strips);
         const parsed = JSON.parse(json);
-        assert.strictEqual(parsed.map.strip1.diameter, 0.25);
-        assert.strictEqual(parsed.map.strip2.diameter, 0.75);
+        assert.strictEqual(segmentById(parsed, 'strip1')!.diameter, 0.25);
+        assert.strictEqual(segmentById(parsed, 'strip2')!.diameter, 0.75);
     });
 
     it('includes video_offset (with override flag) when videoOffsetOverride is true', () => {
@@ -259,8 +270,9 @@ describe('buildScreenmapMultiStripJson', () => {
         ];
         const json = buildScreenmapMultiStripJson(strips);
         const parsed = JSON.parse(json);
-        assert.strictEqual(parsed.map.strip2.video_offset, 100);
-        assert.strictEqual(parsed.map.strip2.video_offset_override, true);
+        const s2 = segmentById(parsed, 'strip2')!;
+        assert.strictEqual(s2.video_offset, 100);
+        assert.strictEqual(s2.video_offset_override, true);
     });
 
     it('omits video_offset when videoOffsetOverride is false, even if non-sequential', () => {
@@ -270,8 +282,9 @@ describe('buildScreenmapMultiStripJson', () => {
         ];
         const json = buildScreenmapMultiStripJson(strips);
         const parsed = JSON.parse(json);
-        assert.strictEqual(parsed.map.strip2.video_offset, undefined);
-        assert.strictEqual(parsed.map.strip2.video_offset_override, undefined);
+        const s2 = segmentById(parsed, 'strip2')!;
+        assert.strictEqual(s2.video_offset, undefined);
+        assert.strictEqual(s2.video_offset_override, undefined);
     });
 
     it('round-trips through parseScreenmapMultiStrip', () => {
@@ -297,8 +310,8 @@ describe('buildScreenmapMultiStripJson', () => {
         const json = buildScreenmapMultiStripJson(strips);
         const parsed = JSON.parse(json);
         // When video_offset matches sequential offset, it should be omitted for cleaner JSON
-        assert.strictEqual(parsed.map.strip1.video_offset, undefined);
-        assert.strictEqual(parsed.map.strip2.video_offset, undefined);
+        assert.strictEqual(segmentById(parsed, 'strip1')!.video_offset, undefined);
+        assert.strictEqual(segmentById(parsed, 'strip2')!.video_offset, undefined);
     });
 
     it('throws on empty strips array', () => {
@@ -324,8 +337,9 @@ describe('buildScreenmapMultiStripJson', () => {
         const strips = [{ name: 'strip1', points: [[0, 0]], diameter: undefined, offset: 0, count: 1, video_offset: 0 }] as unknown as ParsedStrip[];
         const json = buildScreenmapMultiStripJson(strips);
         const parsed = JSON.parse(json);
-        assert.strictEqual(parsed.map.strip1.diameter, undefined);
-        assert.deepStrictEqual(parsed.map.strip1.x, [0]);
+        const seg = segmentById(parsed, 'strip1')!;
+        assert.strictEqual(seg.diameter, undefined);
+        assert.deepStrictEqual(seg.x, [0]);
     });
 });
 
@@ -423,24 +437,28 @@ describe('parseScreenmapMultiStrip — pins', () => {
 });
 
 describe('buildScreenmapMultiStripJson — pin emission', () => {
-    it('omits pin when every strip is on default pin1', () => {
+    // v2 requires `pin` on every segment (no omit-when-default).
+    // The default value when the caller doesn't set one is 'pin1',
+    // matching v1's implicit default.
+
+    it('emits pin1 on every segment when no caller pin was set', () => {
         const strips = [
             { name: 'a', points: [[0, 0]], offset: 0, count: 1, video_offset: 0, pin: 'pin1' },
             { name: 'b', points: [[1, 1]], offset: 1, count: 1, video_offset: 1, pin: 'pin1' },
         ];
         const parsed = JSON.parse(buildScreenmapMultiStripJson(strips));
-        assert.strictEqual(parsed.map.a.pin, undefined);
-        assert.strictEqual(parsed.map.b.pin, undefined);
+        assert.strictEqual(segmentById(parsed, 'a')!.pin, 'pin1');
+        assert.strictEqual(segmentById(parsed, 'b')!.pin, 'pin1');
     });
 
-    it('emits pin on every strip when two distinct pins exist', () => {
+    it('emits each segment\'s pin when distinct', () => {
         const strips = [
             { name: 'a', points: [[0, 0]], offset: 0, count: 1, video_offset: 0, pin: 'pin1' },
             { name: 'b', points: [[1, 1]], offset: 1, count: 1, video_offset: 1, pin: 'pin2' },
         ];
         const parsed = JSON.parse(buildScreenmapMultiStripJson(strips));
-        assert.strictEqual(parsed.map.a.pin, 'pin1');
-        assert.strictEqual(parsed.map.b.pin, 'pin2');
+        assert.strictEqual(segmentById(parsed, 'a')!.pin, 'pin1');
+        assert.strictEqual(segmentById(parsed, 'b')!.pin, 'pin2');
     });
 
     it('emits pin when single non-default pin', () => {
@@ -448,7 +466,7 @@ describe('buildScreenmapMultiStripJson — pin emission', () => {
             { name: 'a', points: [[0, 0]], offset: 0, count: 1, video_offset: 0, pin: 'gpio5' },
         ];
         const parsed = JSON.parse(buildScreenmapMultiStripJson(strips));
-        assert.strictEqual(parsed.map.a.pin, 'gpio5');
+        assert.strictEqual(segmentById(parsed, 'a')!.pin, 'gpio5');
     });
 
     it('pin + override round-trip through parseScreenmapMultiStrip', () => {

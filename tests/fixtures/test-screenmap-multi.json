@@ -1,14 +1,29 @@
 {
-  "map": {
+  "version": 2,
+  "groups": {
     "strip1": {
+      "color": "#3b82f6"
+    },
+    "strip2": {
+      "color": "#10b981"
+    }
+  },
+  "segments": [
+    {
+      "id": "strip1",
+      "pin": "pin1",
+      "group": "strip1",
       "x": [0, 1, 2, 3],
       "y": [0, 0, 0, 0],
       "diameter": 0.25
     },
-    "strip2": {
+    {
+      "id": "strip2",
+      "pin": "pin2",
+      "group": "strip2",
       "x": [0, 1, 2],
       "y": [1, 1, 1],
       "diameter": 0.5
     }
-  }
+  ]
 }

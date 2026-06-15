@@ -60,7 +60,28 @@ function _countMap(jsonText: string): MapCounts | null {
     let obj: unknown;
     try { obj = JSON.parse(jsonText) as unknown; } catch { return null; }
     if (!obj || typeof obj !== 'object') return null;
-    const map = (obj as Record<string, unknown>).map as Record<string, { x?: unknown[]; points?: unknown[]; pin?: string }> | undefined;
+
+    // v2: top-level "segments" array OR explicit "version": 2.
+    const top = obj as Record<string, unknown>;
+    const isV2 = top.version === 2 || Array.isArray(top.segments);
+    if (isV2) {
+        const segments = Array.isArray(top.segments) ? top.segments : [];
+        let ledCount = 0;
+        const pinSet = new Set<string>();
+        for (const seg of segments) {
+            if (!seg || typeof seg !== 'object') continue;
+            const s = seg as { x?: unknown[]; pin?: unknown };
+            if (Array.isArray(s.x)) ledCount += s.x.length;
+            const pinKey = (typeof s.pin === 'string' || typeof s.pin === 'number')
+                ? String(s.pin)
+                : 'pin1';
+            pinSet.add(pinKey);
+        }
+        return { stripCount: segments.length, ledCount, pinCount: pinSet.size };
+    }
+
+    // v1: legacy `map` object keyed by strip name.
+    const map = top.map as Record<string, { x?: unknown[]; points?: unknown[]; pin?: string }> | undefined;
     if (!map || typeof map !== 'object') return null;
     const stripNames = Object.keys(map);
     let ledCount = 0;
@@ -109,10 +130,15 @@ export function saveScreenmap(jsonText: string): void {
  * @param {number} [diameter]
  */
 export function saveScreenmapPoints(pts: [number, number][] | number[][], diameter: number | undefined): void {
-    const strip1: { x: number[]; y: number[]; diameter?: number } = { x: (pts as [number,number][]).map((p) => p[0]), y: (pts as [number,number][]).map((p) => p[1]) };
-    if (typeof diameter === 'number') strip1.diameter = diameter;
-    const obj = { map: { strip1 } };
-    saveScreenmap(JSON.stringify(obj));
+    // Round-trip through buildScreenmapMultiStripJson so this path emits v2
+    // with the same shape (groups + segments) as multi-strip saves.
+    saveScreenmap(buildScreenmapMultiStripJson([{
+        name: 'strip1',
+        points: pts,
+        diameter,
+        offset: 0,
+        count: pts.length,
+    }]));
 }
 
 /**
@@ -141,50 +167,61 @@ export function getPresetSelection() {
 
 /**
  * Build a screenmap JSON string from a multi-strip structured result.
- * Produces the canonical {map: {stripName: {x:[], y:[], diameter, pin?, video_offset?, video_offset_override?}}} format.
+ * Emits the v2 schema (issue #92) — `{ version: 2, groups, segments: [...] }`.
+ * The v1 `{ map: { stripName: {...} } }` format is no longer produced.
  *
- * `pin` is emitted whenever any strip has a pin other than 'pin1' OR the
- * distinct pin count is >= 2 (issue #24 §1.3). `video_offset` (plus
- * `video_offset_override: true`) is emitted ONLY when the strip's
- * `videoOffsetOverride` flag is true — the old "omit when sequential"
- * heuristic is removed; the override flag is the sole gate.
+ * Bilingual readers (`parse_screenmap_data_json`, FastLED's `ScreenMap::ParseJson`,
+ * `_countMap` above) still accept v1 input, so older recordings and third-party
+ * files keep working.
+ *
+ * - Every strip gets its own group keyed by name. Group color cycles through a
+ *   small palette so the editor visually distinguishes strips without needing
+ *   to assign one manually.
+ * - `pin` is required by v2. It defaults to `'pin1'` when the caller didn't set
+ *   one, matching v1's implicit default.
+ * - `video_offset` (plus `video_offset_override: true`) is preserved per-strip
+ *   only when the caller's `videoOffsetOverride` flag is true. Same gate as v1.
  *
  * @param {Array<{name:string, points:Array<[number,number]>, diameter:number|undefined, offset:number, count:number, video_offset:number, pin?:string, videoOffsetOverride?:boolean}>} strips
- * @returns {string} JSON string
+ * @returns {string} JSON string in v2 shape
  */
+const V2_GROUP_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
+
 export function buildScreenmapMultiStripJson(strips: { name: string; points: [number, number][] | number[][]; diameter?: number | undefined; offset: number; count: number; video_offset?: number | undefined; pin?: string | undefined; videoOffsetOverride?: boolean | undefined }[]): string {
     if (!Array.isArray(strips) || strips.length === 0) {
         throw new Error('strips must be a non-empty array');
     }
-    interface StripEntry { x: number[]; y: number[]; diameter?: number; pin?: string; video_offset?: number; video_offset_override?: boolean }
+    interface V2Segment { id: string; pin: string; group: string; x: number[]; y: number[]; diameter?: number; video_offset?: number; video_offset_override?: boolean }
     const pinOf = (s: { pin?: string | undefined }) => (typeof s.pin === 'string' && s.pin.trim() !== '') ? s.pin : 'pin1';
-    const distinctPins = new Set(strips.map(pinOf));
-    const emitPin = distinctPins.size >= 2 || strips.some((s) => pinOf(s) !== 'pin1');
-    const map: Record<string, StripEntry> = {};
-    for (const s of strips) {
+    const groups: Record<string, { color: string }> = {};
+    const segments: V2Segment[] = [];
+    for (let i = 0; i < strips.length; i++) {
+        const s = strips[i];
+        if (!s) continue;
         if (!Array.isArray(s.points)) {
             throw new Error(`Strip "${s.name}" has no points array`);
         }
         if (s.points.length === 0) {
             throw new Error(`Strip "${s.name}" has 0 points`);
         }
-        const entry: StripEntry = {
+        groups[s.name] = { color: V2_GROUP_COLORS[i % V2_GROUP_COLORS.length] ?? V2_GROUP_COLORS[0] ?? '#3b82f6' };
+        const seg: V2Segment = {
+            id: s.name,
+            pin: pinOf(s),
+            group: s.name,
             x: s.points.map((p) => p[0]),
             y: s.points.map((p) => p[1]),
         };
         if (typeof s.diameter === 'number') {
-            entry.diameter = s.diameter;
-        }
-        if (emitPin) {
-            entry.pin = pinOf(s);
+            seg.diameter = s.diameter;
         }
         if (s.videoOffsetOverride === true && typeof s.video_offset === 'number') {
-            entry.video_offset = s.video_offset;
-            entry.video_offset_override = true;
+            seg.video_offset = s.video_offset;
+            seg.video_offset_override = true;
         }
-        map[s.name] = entry;
+        segments.push(seg);
     }
-    return JSON.stringify({ map }, null, 2);
+    return JSON.stringify({ version: 2, groups, segments }, null, 2);
 }
 
 /**

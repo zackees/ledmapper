@@ -139,15 +139,16 @@ export function v2ToMultiStripResult(v2: ScreenmapV2): MultiStripParseResult {
             points.push(pt);
             allPoints.push(pt);
         }
+        const overrideOn = seg.video_offset_override === true && typeof seg.video_offset === 'number';
         strips.push({
             name: seg.id,
             points,
             diameter: seg.diameter,
             offset: flatOffset,
             count: points.length,
-            video_offset: flatOffset,
+            video_offset: overrideOn ? (seg.video_offset ?? flatOffset) : flatOffset,
             pin: typeof seg.pin === 'string' ? seg.pin : String(seg.pin),
-            videoOffsetOverride: false,
+            videoOffsetOverride: overrideOn,
         });
         flatOffset += points.length;
     }
@@ -250,6 +251,22 @@ function parseSegment(raw: unknown, idx: number, _groups: Record<string, Screenm
         } else {
             throw new Error(`Segment '${id}' 'offset' must be integer or null`);
         }
+    }
+
+    // Ledmapper-specific extension (not part of canonical v2): per-segment
+    // recorded-video offset override. Round-trips through the editor and the
+    // moviemaker but isn't required by the schema; firmware ignores it.
+    if (raw.video_offset !== undefined) {
+        if (typeof raw.video_offset !== 'number' || !Number.isFinite(raw.video_offset)) {
+            throw new Error(`Segment '${id}' 'video_offset' must be a finite number`);
+        }
+        out.video_offset = raw.video_offset;
+    }
+    if (raw.video_offset_override !== undefined) {
+        if (typeof raw.video_offset_override !== 'boolean') {
+            throw new Error(`Segment '${id}' 'video_offset_override' must be boolean`);
+        }
+        out.video_offset_override = raw.video_offset_override;
     }
 
     return out;
