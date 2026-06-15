@@ -47,6 +47,7 @@ export async function createGfxFromFled(opts: CreateGfxFromFledOptions): Promise
         ...(opts.diameter !== undefined ? { diameter: opts.diameter } : {}),
         ...(opts.targetFPS !== undefined ? { targetFPS: opts.targetFPS } : {}),
         ...(opts.enableOverlay !== undefined ? { enableOverlay: opts.enableOverlay } : {}),
+        ...(opts.showFps !== undefined ? { showFps: opts.showFps } : {}),
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
     });
 
@@ -71,6 +72,10 @@ export async function createGfxFromFled(opts: CreateGfxFromFledOptions): Promise
         getDiameter: () => gfx.getDiameter(),
         setTargetFPS: (fps: number) => { gfx.setTargetFPS(fps); },
         getStats: () => gfx.getStats(),
+        mountFpsCounter: (el: HTMLElement) => { gfx.mountFpsCounter(el); },
+        unmountFpsCounter: () => { gfx.unmountFpsCounter(); },
+        setFpsVisible: (v: boolean) => { gfx.setFpsVisible(v); },
+        isFpsVisible: () => gfx.isFpsVisible(),
         dispose() {
             player.pause();
             player.unmountControls();
