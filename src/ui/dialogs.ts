@@ -6,11 +6,11 @@
  * '#1a1a1a', color: '#e5e7eb' }` theme that every Swal call site
  * pastes alongside its options.
  *
- * The migration is byte-for-byte UX equivalent: every callsite still
- * fires the same Swal popup with the same theme, just via one shared
- * entry point. Replacing existing `alert()` calls with `errorDialog`
- * IS a UX change (different popup styling) and is deferred to a
- * separate PR.
+ * `fireDialog` is byte-for-byte UX equivalent for the existing
+ * `Swal.fire` callsites — same theme, just via one shared entry point.
+ * `errorDialog` replaces the previously-scattered browser-native
+ * `alert()` calls with the themed Swal popup (issue #128 follow-up to
+ * the wrapper itself).
  */
 
 import type SweetAlert2 from 'sweetalert2';

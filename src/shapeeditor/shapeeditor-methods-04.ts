@@ -10,7 +10,7 @@ import { parse_screenmap_data, centerAndFitPoints, parseScreenmapMultiStrip, get
 import { fileHasExtension } from '../drag-drop';
 import { saveScreenmap, notePinMutation } from '../screenmap-store';
 import { safeStorage } from '../services/storage';
-import { fireDialog } from '../ui/dialogs';
+import { fireDialog, errorDialog } from '../ui/dialogs';
 
 import type { PresetEntry } from './shapeeditor-types';
 
@@ -228,12 +228,12 @@ ShapeEditor.prototype.loadScreenmapFile = function (this: ShapeEditor, file: Fil
 
         if (!file) return;
         if (!fileHasExtension(file, ['.json'])) {
-            alert('Please choose a .json screenmap file.');
+            void errorDialog('Wrong file type', 'Please choose a .json screenmap file.');
             return;
         }
         self.dom_sel_preset.value = '';
         file.text().then((arg: any) => self.load_screenmap_data(arg)).catch((error: unknown) => {
-            alert(`Error reading screenmap file: ${String(error)}`);
+            void errorDialog('Error reading screenmap file', String(error));
         });
     };
 

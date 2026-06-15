@@ -1,4 +1,4 @@
-import { fireDialog, errorDialog, getSwal } from '../ui/dialogs';
+import { errorDialog, fireDialog, getSwal } from '../ui/dialogs';
 import type { ParsedStrip, MultiStripParseResult } from '../types/domain';
 import { parseScreenmapMultiStrip } from '../common';
 import { wireFileDropTarget, wireFileSource, fileHasExtension } from '../drag-drop';
@@ -294,7 +294,7 @@ export function init(container: HTMLElement) {
                     try {
                         loadScreenmapFromParsed(parseScreenmapMultiStrip(await loadPresetText(presetFile)));
                     } catch (error) {
-                        alert(`Error loading preset: ${String(error)}`);
+                        void errorDialog('Error loading preset', String(error));
                     }
                 })();
             }, { signal });
@@ -462,7 +462,7 @@ export function init(container: HTMLElement) {
     function loadScreenmapFile(file: File | null | undefined) {
         if (!file) return;
         if (!fileHasExtension(file, ['.csv', '.json'])) {
-            alert('Please choose a .csv or .json screenmap file.');
+            void errorDialog('Wrong file type', 'Please choose a .csv or .json screenmap file.');
             return;
         }
         clearPresetActive();
@@ -472,7 +472,7 @@ export function init(container: HTMLElement) {
             loadScreenmapFromParsed(parseScreenmapMultiStrip(text));
             saveScreenmap(text);
         }).catch((error: unknown) => {
-            alert(`Error reading screenmap file: ${String(error)}`);
+            void errorDialog('Error reading screenmap file', String(error));
         });
     }
 
@@ -488,7 +488,7 @@ export function init(container: HTMLElement) {
         onFile: (file) => {
             if (!file) return;
             if (!file.type.startsWith('video/')) {
-                alert('Please drop a video file.');
+                void errorDialog('Wrong file type', 'Please drop a video file.');
                 return;
             }
             videoSource.loadVideoFile(file);
@@ -670,7 +670,7 @@ export function init(container: HTMLElement) {
     // Recording toggle
     dom_btn_toggle_record.addEventListener('click', () => {
         if (!recording.isActive && screenmap_pts.length < 2) {
-            alert('Please load a valid screenmap first of size >= 2');
+            void errorDialog('Screenmap required', 'Please load a valid screenmap first (size >= 2).');
             return;
         }
         void recording.toggle().then(active => {

@@ -1,6 +1,7 @@
 import { parseScreenmapMultiStrip, centerAndFitPoints, getStripColors, stripStartEndLabels } from '../common';
 import { createLabelRenderer } from '../label-render';
 import { wireFileSource, fileHasExtension } from '../drag-drop';
+import { errorDialog } from '../ui/dialogs';
 import { saveVideo, getVideo, clearVideo } from '../video-store';
 import { buildVideoChannelMap } from '../moviemaker/transforms';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
@@ -221,11 +222,11 @@ export function init(container: HTMLElement) {
         if (!file) return;
         set_dom_btn_play(false);
         if (!fileHasExtension(file, ['.fled'])) {
-            alert('Please choose a .fled video file (recorded by the Mapped Video Maker).');
+            void errorDialog('Wrong file type', 'Please choose a .fled video file (recorded by the Mapped Video Maker).');
             return;
         }
         void file.arrayBuffer().then((buf) => { load_movie_data(buf); }).catch((error: unknown) => {
-            alert(`Error reading video file: ${String(error)}`);
+            void errorDialog('Error reading video file', String(error));
         });
     }
 
@@ -266,7 +267,7 @@ export function init(container: HTMLElement) {
     const recorder = createCanvasRecorder({
         canvas: renderer.domElement,
         fps: 60,
-        onError: (m) => { alert(m); },
+        onError: (m) => { void errorDialog('Recording error', m); },
     });
     if (!recorder.isSupported) dom_btn_record.disabled = true;
 
@@ -281,30 +282,29 @@ export function init(container: HTMLElement) {
 
     function load_movie_data(array_buffer: ArrayBuffer, { persist = true, autoplay = true, silent = false } = {}) {
         const uint8_array = new Uint8Array(array_buffer);
-
         // Two-pass parse: (1) peek the header to extract embedded JSON, derive
         // ledCount from it, (2) re-slice frames against the derived ledCount.
         const peek = parseRgbFrames(uint8_array, 0);
         if (!peek.isFled || peek.embeddedJson === null) {
             if (silent) { void clearVideo(); return; }
-            alert('This video has no embedded screenmap. Re-record with the latest Mapped Video Maker.');
+            void errorDialog('No embedded screenmap', 'This video has no embedded screenmap. Re-record with the latest Mapped Video Maker.');
             return;
         }
         if (peek.fledError !== null) {
             if (silent) { void clearVideo(); return; }
-            alert(`Unsupported video file (${peek.fledError}).`);
+            void errorDialog('Unsupported video file', peek.fledError);
             return;
         }
         if (!applyEmbeddedScreenmap(peek.embeddedJson)) {
             if (silent) { void clearVideo(); return; }
-            alert('Embedded screenmap in this video is invalid or empty.');
+            void errorDialog('Invalid embedded screenmap', 'Embedded screenmap in this video is invalid or empty.');
             return;
         }
 
         const parsed = parseRgbFrames(uint8_array, screenmap_pts.length);
         if (parsed.notMultiple) {
             if (silent) { void clearVideo(); return; }
-            alert('Video payload does not match the embedded screenmap — file may be corrupted.');
+            void errorDialog('Corrupted video', 'Video payload does not match the embedded screenmap — file may be corrupted.');
             return;
         }
         movie_frames = parsed.frames;

@@ -73,12 +73,10 @@ export function parse_screenmap_data_json(jsonBlob: string | ScreenmapJson): Poi
         }
         return out;
     } catch (e) {
-        const msg = `Error parsing JSON: ${String(e)}`;
-        if (typeof alert === "function") {
-            alert(msg);
-        } else {
-            console.error(msg);
-        }
+        // Callers handle the user-facing error path (each tool catches and
+        // shows its own dialog with appropriate context). Just rethrow so
+        // common.ts stays presentation-free.
+        console.error(`Error parsing JSON: ${String(e)}`);
         throw e;
     }
 }
