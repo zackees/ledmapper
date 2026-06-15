@@ -80,8 +80,15 @@ export const BLOOM_RESOLUTION_REF = 800;
  * the same pixel count on Mac/Windows/Linux, so bloom output is identical across
  * platforms and displays. Chosen >= typical on-screen sizes so the canvas
  * downsamples (clean) rather than upsamples (soft).
+ *
+ * Power of two: UnrealBloomPass halves the render target at each mip level.
+ * 2048 → 1024 → 512 → 256 → 128 → 64 → 32 → 16 — exact integer halves the
+ * whole way down. The previous 2000 broke at level 4 (125 → 62, half-pixel
+ * loss) which softened the high-mip bloom on every frame. 2048 also aligns
+ * with the GPU's POT page size so the render target doesn't quietly cost
+ * more VRAM than its dimension suggests.
  */
-export const BLOOM_RENDER_PX = 2000;
+export const BLOOM_RENDER_PX = 2048;
 
 export function computeFrameBrightness(rgbBytes: Uint8Array | number[]): FrameBrightnessResult {
     const totalCount = Math.floor(rgbBytes.length / 3);
