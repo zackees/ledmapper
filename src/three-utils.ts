@@ -150,26 +150,65 @@ export function wireDiameterSlider({ slider, label, getMaterial, signal }: { sli
 }
 
 /**
- * Deprecated, no-op. The canvas wrapper now sizes itself via CSS
- * (`.lm-canvas-wrapper` in global.css uses `aspect-ratio: 1` +
- * `max-block-size: 100%` + `max-inline-size: 100%`) — the browser
- * computes the largest fitting square automatically, with the
- * WebGL drawing buffer downsampling to the wrapper's CSS size.
- * No JS measurement / ResizeObserver / window-resize listener
- * needed.
+ * Resize `wrapper` to the largest square that fits inside `parent`.
  *
- * Kept as an exported no-op for one release so external consumers
- * (e.g. legacy embeds, the upcoming `@fastled/gfx` package, #137)
- * can drop the call site without an import error. Slated for
- * removal once the package extracts.
+ * Why JS instead of pure CSS: when the parent is flex-sized with
+ * `min-height: 0`, percent rules on the child (`max-block-size: 100%`)
+ * don't see a "definite" containing-block height and silently fall
+ * back to `auto`, letting the wrapper grow past its flex slot. The
+ * JS path is bullet-proof: neutralize the wrapper to 0×0 (so it
+ * stops dragging the parent's intrinsic-size around), read
+ * `parent.getBoundingClientRect()` (the actual flex-allocated rect),
+ * pick `min(width, height)` as the new square side.
+ *
+ * The WebGL drawing buffer is NOT touched — callers keep their fixed
+ * render resolution (e.g. `BLOOM_RENDER_PX`). The canvas's CSS
+ * `width: 100%; height: 100%` downsamples that buffer to the wrapper.
+ *
+ * `maxSize` caps the CSS size so we never UPSCALE a fixed-resolution
+ * intermediate.
+ *
+ * Re-fits on parent resize (`ResizeObserver`) and window resize.
+ * Listeners detach on `signal.abort()`.
  */
-export function wireResponsiveCanvas(_opts: {
+export function wireResponsiveCanvas({
+    wrapper,
+    parent,
+    maxSize,
+    signal,
+}: {
     wrapper: HTMLElement;
     parent: HTMLElement;
+    /** Cap the CSS side at this many pixels. Usually `BLOOM_RENDER_PX`. */
     maxSize?: number;
     signal?: AbortSignal;
 }): void {
-    /* intentionally empty — see docstring */
+    function fit() {
+        // Step 1: shrink the wrapper so its content stops contributing
+        // to the parent's intrinsic-size calculation. The parent then
+        // sizes to its pure flex contract.
+        wrapper.style.width = '0px';
+        wrapper.style.height = '0px';
+        // Step 2: read the parent's actual rendered rect.
+        const r = parent.getBoundingClientRect();
+        const cs = getComputedStyle(parent);
+        const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+        const availW = r.width - padX;
+        const availH = r.height - padY;
+        const cap = maxSize ?? Number.POSITIVE_INFINITY;
+        const size = Math.max(Math.floor(Math.min(availW, availH, cap)), 1);
+        wrapper.style.width = `${String(size)}px`;
+        wrapper.style.height = `${String(size)}px`;
+    }
+    fit();
+    const observer = new ResizeObserver(() => { fit(); });
+    observer.observe(parent);
+    const listenerOpts: AddEventListenerOptions = signal !== undefined ? { signal } : {};
+    window.addEventListener('resize', fit, listenerOpts);
+    if (signal !== undefined) {
+        signal.addEventListener('abort', () => { observer.disconnect(); }, { once: true });
+    }
 }
 
 /** Start a frame-rate-limited requestAnimationFrame loop. */

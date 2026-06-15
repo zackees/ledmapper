@@ -10,6 +10,7 @@ dist/
 test-results/
 playwright-report/
 playwright/.cache/
+tests/canvas-fit/output/
 
 .claude/worktrees/
 .claude/projects/
