@@ -149,8 +149,15 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
             return;
         }
 
-        // Shift+Left-click: insert a new point between two existing points
-        if (e.shiftKey && self.screenmap_pts.length >= 2) {
+        // Shift/Ctrl/Meta on an LED ↦ multi-selection modifier (handled in
+        // the LED-hit branch below). Skip the insert/append paths when the
+        // cursor is over a LED so multi-select stays usable.
+        const hitLedForModCheck = (e.shiftKey || e.ctrlKey || e.metaKey)
+            ? self.hitTestLED(cx, cy)
+            : -1;
+
+        // Shift+Left-click on empty area: insert a new point between two existing points
+        if (e.shiftKey && self.screenmap_pts.length >= 2 && hitLedForModCheck < 0) {
             const edge = self.findNearestEdge(cx, cy);
             if (edge) {
                 const { idx, t } = edge;
@@ -169,8 +176,8 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
             }
         }
 
-        // Ctrl+Left-click: extend — append a new point at the click location
-        if ((e.ctrlKey || e.metaKey) && self.screenmap_pts.length > 0) {
+        // Ctrl+Left-click on empty area: extend — append a new point at the click location
+        if ((e.ctrlKey || e.metaKey) && self.screenmap_pts.length > 0 && hitLedForModCheck < 0) {
             const newScreenmapPt = self.canvasToScreenmapCoords(cx, cy);
             const newRawPt = self.screenmapToRawCoords(newScreenmapPt[0], newScreenmapPt[1]);
             self.insertPointAt(self.screenmap_pts.length, newScreenmapPt, newRawPt);
@@ -258,6 +265,32 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
         // Priority 2: LED point hit test
         const idx = self.hitTestLED(cx, cy);
         if (idx >= 0) {
+            // Multi-selection modifiers: ctrl/meta toggles, shift adds.
+            // Both consume the click — no drag is started so the user can
+            // adjust the selection before initiating a group move.
+            if (e.ctrlKey || e.metaKey) {
+                if (self.multiSelectedIdxs.has(idx)) self.multiSelectedIdxs.delete(idx);
+                else self.multiSelectedIdxs.add(idx);
+                self.setNeedsGeometryUpdate();
+                return;
+            }
+            if (e.shiftKey) {
+                self.multiSelectedIdxs.add(idx);
+                self.setNeedsGeometryUpdate();
+                return;
+            }
+            // Plain click on an already multi-selected LED: start a group drag.
+            if (self.multiSelectedIdxs.has(idx)) {
+                self._startMultiDrag(cx, cy);
+                return;
+            }
+            // Plain click on a non-selected LED: clear any prior multi-selection
+            // before falling through to the strip / single-LED drag path.
+            if (self.multiSelectedIdxs.size > 0) {
+                self.multiSelectedIdxs.clear();
+                self.setNeedsGeometryUpdate();
+            }
+
             self.selectedIdx = idx;
             self.syncPointSelection(idx);
             self.highlightedEdgeIdx = -1;
@@ -333,6 +366,35 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
             }
         }
         if (self.highlightedEdgeIdx >= 0) { self.highlightedEdgeIdx = -1; self.setNeedsRender(); }
+
+        // Priority 3.5: Marquee selection.
+        // Left-drag on empty area starts a rubber-band selection over the
+        // LEDs. Modifiers: shift = add, ctrl/meta = toggle, none = replace.
+        // Inside the screenmap bbox a translate-gizmo drag still wins unless
+        // a selection modifier is held, so the existing "move the whole
+        // screenmap" UX is preserved.
+        const hasLeds = self.screenmap_pts.length > 0;
+        const hasMod = e.shiftKey || e.ctrlKey || e.metaKey;
+        const startMarquee = hasLeds && (gizmoHit !== 'translate' || hasMod);
+        if (startMarquee) {
+            self.marqueeActive = true;
+            self.marqueeStartCx = cx;
+            self.marqueeStartCy = cy;
+            self.marqueeCurCx = cx;
+            self.marqueeCurCy = cy;
+            self.marqueeMode = e.shiftKey
+                ? 'add'
+                : (e.ctrlKey || e.metaKey) ? 'toggle' : 'replace';
+            // Snapshot the current selection so add/toggle modes can apply
+            // their delta against a stable baseline as the marquee grows.
+            self._marqueeBaseSelection = new Set(self.multiSelectedIdxs);
+            if (self.marqueeMode === 'replace') {
+                self.multiSelectedIdxs.clear();
+                self.setNeedsGeometryUpdate();
+            }
+            self._oc().style.cursor = 'crosshair';
+            return;
+        }
 
         // Priority 4: Translate (inside bbox, no LED hit)
         if (gizmoHit === 'translate') {
@@ -520,6 +582,35 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
             self.camPanX = self.panStartCamX + dx / self.camZoom;
             self.camPanY = self.panStartCamY + dy / self.camZoom;
             self.setNeedsRender();
+            return;
+        }
+
+        // Marquee drag: live LED hit-test against the rectangle, eagerly
+        // updating the multi-selection so the user sees what they'll get.
+        if (self.marqueeActive) {
+            self.marqueeCurCx = cx;
+            self.marqueeCurCy = cy;
+            self._updateMarqueeSelection();
+            self.setNeedsGeometryUpdate();
+            return;
+        }
+
+        // Multi-LED group drag: same canvas→screenmap delta math as
+        // single-LED / strip drag, applied to every multi-selected index.
+        if (self.multiDragActive) {
+            const dx = cx - self.multiDragStartCanvasX;
+            const dy = cy - self.multiDragStartCanvasY;
+            const [sdx, sdy] = self.canvasDeltaToScreenmapDelta(dx, dy);
+            for (const i of self.multiSelectedIdxs) {
+                const startSm = self.multiDragStartScreenmap.get(i);
+                const startRw = self.multiDragStartRaw.get(i);
+                if (!startSm || !startRw) continue;
+                self.screenmap_pts[i] = [startSm[0] + sdx, startSm[1] + sdy];
+                self.rawPts[i] = [startRw[0] + sdx / self.fitScale, startRw[1] + sdy / self.fitScale];
+            }
+            self.multiDragLastSdx = sdx;
+            self.multiDragLastSdy = sdy;
+            self.setNeedsGeometryUpdate();
             return;
         }
 
@@ -787,6 +878,18 @@ ShapeEditor.prototype.onMouseUp = function (this: ShapeEditor, e: MouseEvent) {
             return;
         }
 
+        if (self.marqueeActive) {
+            self._commitMarquee();
+            self._oc().style.cursor = 'default';
+            return;
+        }
+
+        if (self.multiDragActive) {
+            self._finalizeMultiDrag();
+            self._oc().style.cursor = 'grab';
+            return;
+        }
+
         if (self.isDragging && self.selectedIdx >= 0) {
             const newScreenmapPt = [...self.nn(self.screenmap_pts[self.selectedIdx])];
             const newRawPt = [...self.nn(self.rawPts[self.selectedIdx])];
@@ -1021,3 +1124,120 @@ ShapeEditor.prototype._doLongPress = function (this: ShapeEditor, canvasX: numbe
         }
         self.touchMode = 'longpress-fired';
     };
+
+// ── Marquee + multi-LED group drag ──────────────────────────────────────
+//
+// Walks `lastTransformedPts` once and projects each LED to canvas space
+// inline (instead of allocating a fresh canvas-coords array via map())
+// so the marquee stays cheap even on a 64x64 grid.
+ShapeEditor.prototype._ledIdxsInCanvasRect = function (this: ShapeEditor, c1x: number, c1y: number, c2x: number, c2y: number): Set<number> {
+    const self = this;
+    const minX = Math.min(c1x, c2x);
+    const maxX = Math.max(c1x, c2x);
+    const minY = Math.min(c1y, c2y);
+    const maxY = Math.max(c1y, c2y);
+    const out = new Set<number>();
+    const camPanX = self.camPanX;
+    const camPanY = self.camPanY;
+    const z = self.camZoom;
+    const hw = self.canvasW / 2;
+    const hh = self.canvasH / 2;
+    const pts = self.lastTransformedPts;
+    for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        if (!p) continue;
+        const cx = (p[0] + camPanX) * z + hw;
+        const cy = (p[1] + camPanY) * z + hh;
+        if (cx >= minX && cx <= maxX && cy >= minY && cy <= maxY) out.add(i);
+    }
+    return out;
+};
+
+ShapeEditor.prototype._updateMarqueeSelection = function (this: ShapeEditor) {
+    const self = this;
+    const hits = self._ledIdxsInCanvasRect(self.marqueeStartCx, self.marqueeStartCy, self.marqueeCurCx, self.marqueeCurCy);
+    const base = self._marqueeBaseSelection;
+    let next: Set<number>;
+    if (self.marqueeMode === 'replace') {
+        next = hits;
+    } else if (self.marqueeMode === 'add') {
+        next = new Set(base);
+        for (const i of hits) next.add(i);
+    } else { // toggle: symmetric difference
+        next = new Set(base);
+        for (const i of hits) {
+            if (next.has(i)) next.delete(i);
+            else next.add(i);
+        }
+    }
+    self.multiSelectedIdxs = next;
+};
+
+ShapeEditor.prototype._commitMarquee = function (this: ShapeEditor) {
+    const self = this;
+    // Selection was updated eagerly during mousemove; just clear the drag state.
+    self.marqueeActive = false;
+    self._marqueeBaseSelection = new Set<number>();
+    self.setNeedsGeometryUpdate();
+};
+
+ShapeEditor.prototype._cancelMarquee = function (this: ShapeEditor) {
+    const self = this;
+    if (!self.marqueeActive) return;
+    // Restore the pre-drag selection.
+    self.multiSelectedIdxs = new Set(self._marqueeBaseSelection);
+    self.marqueeActive = false;
+    self._marqueeBaseSelection = new Set<number>();
+    self.setNeedsGeometryUpdate();
+};
+
+ShapeEditor.prototype._startMultiDrag = function (this: ShapeEditor, cx: number, cy: number) {
+    const self = this;
+    self.multiDragActive = true;
+    self.multiDragStartCanvasX = cx;
+    self.multiDragStartCanvasY = cy;
+    self.multiDragLastSdx = 0;
+    self.multiDragLastSdy = 0;
+    self.multiDragStartScreenmap = new Map<number, [number, number]>();
+    self.multiDragStartRaw = new Map<number, [number, number]>();
+    for (const i of self.multiSelectedIdxs) {
+        const sm = self.screenmap_pts[i];
+        const rw = self.rawPts[i];
+        if (!sm || !rw) continue;
+        self.multiDragStartScreenmap.set(i, [sm[0], sm[1]]);
+        self.multiDragStartRaw.set(i, [rw[0], rw[1]]);
+    }
+    self._oc().style.cursor = 'grabbing';
+};
+
+ShapeEditor.prototype._finalizeMultiDrag = function (this: ShapeEditor) {
+    const self = this;
+    if (!self.multiDragActive) return;
+    const sdx = self.multiDragLastSdx;
+    const sdy = self.multiDragLastSdy;
+    if ((sdx !== 0 || sdy !== 0) && self.multiSelectedIdxs.size > 0) {
+        self.pushUndo({
+            type: 'multi-translate',
+            idxs: [...self.multiSelectedIdxs],
+            sdx,
+            sdy,
+        });
+        self._persistMultiStrip();
+    }
+    self.multiDragActive = false;
+    self.multiDragStartScreenmap = new Map<number, [number, number]>();
+    self.multiDragStartRaw = new Map<number, [number, number]>();
+    self.multiDragLastSdx = 0;
+    self.multiDragLastSdy = 0;
+};
+
+ShapeEditor.prototype._applyMultiTranslate = function (this: ShapeEditor, idxs: number[], sdx: number, sdy: number) {
+    const self = this;
+    for (const i of idxs) {
+        const sm = self.screenmap_pts[i];
+        const rw = self.rawPts[i];
+        if (!sm || !rw) continue;
+        self.screenmap_pts[i] = [sm[0] + sdx, sm[1] + sdy];
+        self.rawPts[i] = [rw[0] + sdx / self.fitScale, rw[1] + sdy / self.fitScale];
+    }
+};

@@ -110,6 +110,7 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
             self.drawRuler();
             self._drawSnapGuides();
             self._drawStripRotateHandle();
+            self._drawMarqueeRect();
             self._drawPlacingGhost();
             self._drawPasteGhost();
             return;
@@ -298,6 +299,7 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
         self.drawRuler();
         self._drawSnapGuides();
         self._drawStripRotateHandle();
+        self._drawMarqueeRect();
         self._drawPlacingGhost();
         self._drawPasteGhost();
     };
@@ -844,6 +846,31 @@ ShapeEditor.prototype.commitGizmoDrag = function (this: ShapeEditor) {
         // null and reset mesh transforms before the rebuild.
         self.setNeedsGeometryUpdate();
     };
+
+// Dashed cyan rubber-band rectangle while a marquee selection is in flight.
+// LEDs covered by the rectangle are already highlighted (the per-vertex
+// cyan in the points mesh is updated eagerly during the drag), so this is
+// purely a visual cue for "what you're selecting".
+ShapeEditor.prototype._drawMarqueeRect = function (this: ShapeEditor) {
+    const self = this;
+    if (!self.marqueeActive || !self.overlayCtx) return;
+    const ctx = self.overlayCtx;
+    const x = Math.min(self.marqueeStartCx, self.marqueeCurCx);
+    const y = Math.min(self.marqueeStartCy, self.marqueeCurCy);
+    const w = Math.abs(self.marqueeCurCx - self.marqueeStartCx);
+    const h = Math.abs(self.marqueeCurCy - self.marqueeStartCy);
+    if (w < 1 && h < 1) return;
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(0, 200, 255, 0.10)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#00c8ff';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 4]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    ctx.restore();
+};
 
 // Issue #111: scene-transform drag preview helpers.
 //
