@@ -2,7 +2,7 @@ import type SweetAlert2 from 'sweetalert2';
 const Swal: Promise<typeof SweetAlert2> = import('sweetalert2').then(m => m.default);
 import type { ParsedStrip, MultiStripParseResult } from '../types/domain';
 import { parseScreenmapMultiStrip } from '../common';
-import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
+import { wireFileDropTarget, wireFileSource, fileHasExtension } from '../drag-drop';
 import { saveScreenmap, getScreenmap } from '../screenmap-store';
 import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension, buildVideoChannelMap } from './transforms';
 import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
@@ -475,13 +475,9 @@ export function init(container: HTMLElement) {
         });
     }
 
-    dom_btn_upload_screenmap.addEventListener('change', () => {
-        loadScreenmapFile(dom_btn_upload_screenmap.files?.[0] ?? null);
-    }, { signal });
-
-    wireFileDropTarget({
-        target: qeFrom(container, '#screenmap_drop_target'),
+    wireFileSource({
         input: dom_btn_upload_screenmap,
+        target: qeFrom(container, '#screenmap_drop_target'),
         onFile: loadScreenmapFile,
         signal,
     });

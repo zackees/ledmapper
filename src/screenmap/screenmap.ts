@@ -1,5 +1,6 @@
 import { download_text_as_file, getStripColors, stripStartEndLabels } from '../common';
 import { saveScreenmap } from '../screenmap-store';
+import { wireFileSource } from '../drag-drop';
 import templateHtml from './template.html?raw';
 export { default as css } from './screenmap.css?url';
 
@@ -32,29 +33,16 @@ export function init(container: HTMLElement) {
         fileInput.click();
     }, { signal });
 
-    fileInput.addEventListener('change', () => {
-        const file = fileInput.files?.[0];
-        if (file) loadImageFile(file);
-    }, { signal });
-
-    // Drag and drop on the upload card
-    btnUpload.addEventListener('dragover', (e: DragEvent) => {
-        e.preventDefault();
-        btnUpload.classList.add('drag-over');
-    }, { signal });
-
-    btnUpload.addEventListener('dragleave', () => {
-        btnUpload.classList.remove('drag-over');
-    }, { signal });
-
-    btnUpload.addEventListener('drop', (e: DragEvent) => {
-        e.preventDefault();
-        btnUpload.classList.remove('drag-over');
-        const file = e.dataTransfer?.files[0];
-        if (file?.type.startsWith('image/')) {
-            loadImageFile(file);
-        }
-    }, { signal });
+    wireFileSource({
+        input: fileInput,
+        target: btnUpload,
+        onFile: (file) => {
+            // Only load image-typed files; dropping a non-image is silently
+            // ignored to match the previous hand-rolled behavior.
+            if (file?.type.startsWith('image/')) loadImageFile(file);
+        },
+        signal,
+    });
 
     function loadImageFile(file: File) {
         const img = new Image();
