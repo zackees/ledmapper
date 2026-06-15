@@ -23,6 +23,8 @@ export class ShapeEditor {
     declare markDirtyAndGeometry: () => any;
     declare resetTransforms: () => any;
     declare saveAs: () => any;
+    declare _buildCurrentScreenmapJson: () => string;
+    declare _openInspectJsonDialog: () => Promise<void>;
     declare clampScale: (v: number | string) => any;
     declare writeScale: (txt: HTMLInputElement, val: number | string) => any;
     declare clampRotate: (v: number | string) => any;

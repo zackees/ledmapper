@@ -65,72 +65,162 @@ ShapeEditor.prototype.resetTransforms = function (this: ShapeEditor) {
         self.setNeedsGeometryUpdate();
     };
 
+/**
+ * Build the canonical screenmap JSON for the CURRENT editor state
+ * (raw points transformed by the on-screen scale / rotate / translate).
+ * Returns '' when there's nothing to serialize.
+ *
+ * Extracted from saveAs() so the Inspect-JSON modal can show the same
+ * text that would land on disk if the user hit Save As.
+ */
+ShapeEditor.prototype._buildCurrentScreenmapJson = function (this: ShapeEditor): string {
+    const self = this;
+
+    if (self.rawPts.length === 0) return '';
+
+    const scaleGlobal = parseFloat(self.dom_txt_scale.value) || 1;
+    const sX = (parseFloat(self.dom_txt_scale_x.value) || 1) * scaleGlobal;
+    const sY = (parseFloat(self.dom_txt_scale_y.value) || 1) * scaleGlobal;
+    const rotateDeg = parseInt(self.dom_txt_rotate.value) || 0;
+    const rotateRad = rotateDeg * Math.PI / 180;
+    const cosR = Math.cos(rotateRad);
+    const sinR = Math.sin(rotateRad);
+    // Translation is in world-pixel space; convert to cm for export
+    const txCm = (parseFloat(self.dom_txt_translate_x.value) || 0) / self.fitScale;
+    const tyCm = (parseFloat(self.dom_txt_translate_y.value) || 0) / self.fitScale;
+    const fallbackDiameter = parseFloat(self.dom_txt_diameter.value) || 0.25;
+
+    const transformPoint = ([x, y]: [number, number]) => {
+        const rx = x * sX;
+        const ry = y * sY;
+        return [
+            +(rx * cosR - ry * sinR + txCm).toFixed(4),
+            +(rx * sinR + ry * cosR + tyCm).toFixed(4),
+        ];
+    };
+
+    if (self.stripInfo && self.stripInfo.strips.length >= 1
+        && self.stripInfo.totalCount === self.rawPts.length) {
+        const stripsOut = self.stripInfo.strips.map((strip: StripEntry) => {
+            const pts = [];
+            for (let i = strip.offset; i < strip.offset + strip.count; i++) {
+                pts.push(transformPoint(self.rawPts[i] ?? [0, 0]));
+            }
+            const d = typeof strip.diameter === 'number' ? strip.diameter : fallbackDiameter;
+            return {
+                name: strip.name,
+                points: pts,
+                diameter: d,
+                offset: strip.offset,
+                count: strip.count,
+                video_offset: typeof strip.video_offset === 'number' ? strip.video_offset : strip.offset,
+                pin: typeof strip.pin === 'string' ? strip.pin : 'pin1',
+                videoOffsetOverride: strip.videoOffsetOverride,
+            };
+        });
+        return buildScreenmapMultiStripJson(stripsOut);
+    }
+
+    const xArr = [];
+    const yArr = [];
+    for (const pt of self.rawPts) {
+        const [tx, ty] = transformPoint(pt);
+        xArr.push(tx);
+        yArr.push(ty);
+    }
+    const map = { strip1: { x: xArr, y: yArr, diameter: fallbackDiameter } };
+    return JSON.stringify({ map }, null, 2);
+};
+
 ShapeEditor.prototype.saveAs = function (this: ShapeEditor) {
     const self = this;
 
-        if (self.rawPts.length === 0) return;
+    const json = self._buildCurrentScreenmapJson();
+    if (!json) return;
 
-        const scaleGlobal = parseFloat(self.dom_txt_scale.value) || 1;
-        const sX = (parseFloat(self.dom_txt_scale_x.value) || 1) * scaleGlobal;
-        const sY = (parseFloat(self.dom_txt_scale_y.value) || 1) * scaleGlobal;
-        const rotateDeg = parseInt(self.dom_txt_rotate.value) || 0;
-        const rotateRad = rotateDeg * Math.PI / 180;
-        const cosR = Math.cos(rotateRad);
-        const sinR = Math.sin(rotateRad);
-        // Translation is in world-pixel space; convert to cm for export
-        const txCm = (parseFloat(self.dom_txt_translate_x.value) || 0) / self.fitScale;
-        const tyCm = (parseFloat(self.dom_txt_translate_y.value) || 0) / self.fitScale;
-        const fallbackDiameter = parseFloat(self.dom_txt_diameter.value) || 0.25;
+    saveScreenmap(json);
+    download_text_as_file(json, 'screenmap.json', { type: 'application/json' });
+    self.clearDirty();
+    try { self.renderBackupRow(); } catch { /* render is best-effort */ }
+};
 
-        const transformPoint = ([x, y]: [number, number]) => {
-            const rx = x * sX;
-            const ry = y * sY;
-            return [
-                +(rx * cosR - ry * sinR + txCm).toFixed(4),
-                +(rx * sinR + ry * cosR + tyCm).toFixed(4),
-            ];
-        };
+/**
+ * Open the Inspect JSON modal. Shows the current screenmap JSON in an
+ * editable textarea. On "Apply" the textarea is re-loaded via
+ * load_screenmap_data; "Close" dismisses without changes.
+ *
+ * Triggered from the canvas right-click context menu.
+ */
+ShapeEditor.prototype._openInspectJsonDialog = async function (this: ShapeEditor): Promise<void> {
+    const self = this;
 
-        let json;
-        if (self.stripInfo && self.stripInfo.strips.length >= 1
-            && self.stripInfo.totalCount === self.rawPts.length) {
-            // Preserve multi-strip structure (including non-sequential video_offset)
-            // via the shared builder.
-            const stripsOut = self.stripInfo.strips.map((strip: StripEntry) => {
-                const pts = [];
-                for (let i = strip.offset; i < strip.offset + strip.count; i++) {
-                    pts.push(transformPoint(self.rawPts[i] ?? [0, 0]));
-                }
-                const d = typeof strip.diameter === 'number' ? strip.diameter : fallbackDiameter;
-                return {
-                    name: strip.name,
-                    points: pts,
-                    diameter: d,
-                    offset: strip.offset,
-                    count: strip.count,
-                    video_offset: typeof strip.video_offset === 'number' ? strip.video_offset : strip.offset,
-                    pin: typeof strip.pin === 'string' ? strip.pin : 'pin1',
-                    videoOffsetOverride: strip.videoOffsetOverride,
-                };
-            });
-            json = buildScreenmapMultiStripJson(stripsOut);
-        } else {
-            const xArr = [];
-            const yArr = [];
-            for (const pt of self.rawPts) {
-                const [tx, ty] = transformPoint(pt);
-                xArr.push(tx);
-                yArr.push(ty);
+    let json = self._buildCurrentScreenmapJson();
+    if (!json) {
+        json = '{\n  "map": {}\n}\n';
+    }
+
+    let Swal;
+    try {
+        Swal = (await import('sweetalert2')).default;
+    } catch {
+        return;
+    }
+    if (self.signal.aborted) return;
+
+    const res = await Swal.fire({
+        title: 'Inspect / Edit Screenmap JSON',
+        html: `
+            <div style="text-align:left;font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#cbd5e1;margin-bottom:6px;">
+                Edit and Apply to reload the editor with the modified JSON, or Copy to clipboard.
+            </div>
+            <textarea id="inspect_json_text" rows="22"
+                style="width:100%;box-sizing:border-box;background:#0a0a0a;color:#e5e7eb;border:1px solid #444;
+                       padding:8px;font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+                       white-space:pre;overflow:auto;resize:vertical;">${escapeForTextarea(json)}</textarea>
+        `,
+        width: '80vw',
+        background: '#1a1a1a',
+        color: '#e5e7eb',
+        showConfirmButton: true,
+        showDenyButton: true,
+        showCancelButton: true,
+        confirmButtonText: 'Apply',
+        denyButtonText: 'Copy to clipboard',
+        cancelButtonText: 'Close',
+        focusCancel: true,
+        preConfirm: () => {
+            const ta = document.getElementById('inspect_json_text') as HTMLTextAreaElement | null;
+            const next = ta?.value ?? '';
+            try {
+                JSON.parse(next);
+            } catch (e) {
+                Swal.showValidationMessage(`Invalid JSON: ${String(e instanceof Error ? e.message : e)}`);
+                return false;
             }
-            const map = { strip1: { x: xArr, y: yArr, diameter: fallbackDiameter } };
-            json = JSON.stringify({ map }, null, 2);
-        }
+            return next;
+        },
+    });
 
-        saveScreenmap(json);
-        download_text_as_file(json, 'screenmap.json', { type: 'application/json' });
-        self.clearDirty();
-        try { self.renderBackupRow(); } catch { /* render is best-effort */ }
-    };
+    if (res.isConfirmed && typeof res.value === 'string') {
+        try {
+            self.load_screenmap_data(res.value);
+        } catch (e) {
+            console.warn('Inspect JSON: failed to load edited JSON', e);
+        }
+    } else if (res.isDenied) {
+        const ta = document.getElementById('inspect_json_text') as HTMLTextAreaElement | null;
+        const text = ta?.value ?? json;
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (e) {
+            console.warn('Inspect JSON: clipboard write failed', e);
+        }
+    }
+};
+
+function escapeForTextarea(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 ShapeEditor.prototype.clampScale = function (this: ShapeEditor, v: number | string) {
     const self = this;
