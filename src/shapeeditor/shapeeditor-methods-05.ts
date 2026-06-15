@@ -288,31 +288,44 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
     };
 
 /**
- * Magenta dashed alignment lines, shown while a strip drag has snapped
- * center-to-center with another strip. v1: world-AABB center alignment
- * only (see issue #105). Rotated strips snap correctly because their
- * `screenmap_pts` already reflect the rotation — we average those
- * world-space points to get each strip's center, which is the AABB
- * center of the rotated rectangle.
+ * Snap-line guides shown while a strip drag is in progress.
+ *
+ * While dragging, EVERY candidate target line (every other strip's
+ * center on each axis) is drawn faintly so the user can see all
+ * available snap points (issue #107). The line the dragged strip is
+ * currently snapped to (if any) is promoted to deep red 80% opacity.
+ *
+ * Rotated strips snap correctly because each strip's center is the
+ * mean of its already-transformed `screenmap_pts`, which reflects
+ * any rotation (issue #105).
  */
 ShapeEditor.prototype._drawSnapGuides = function (this: ShapeEditor) {
     const self = this;
     if (!self.overlayCtx) return;
-    if (self.stripSnapEngagedX === null && self.stripSnapEngagedY === null) return;
+    // Only draw the candidates while a strip drag is in flight. Outside a
+    // drag there are no targets to show.
+    if (!self.stripDragActive) return;
+    if (self.stripSnapXTargets.length === 0 && self.stripSnapYTargets.length === 0) return;
     const ctx = self.overlayCtx;
+    const INACTIVE = 'rgba(220, 80, 80, 0.18)';  // greyed red
+    const ACTIVE   = 'rgba(220, 38, 38, 0.80)';  // deep red, 80% opacity
     ctx.save();
-    ctx.strokeStyle = 'rgba(236, 72, 153, 0.85)'; // tailwind pink-500
-    ctx.lineWidth = 1;
     ctx.setLineDash([6, 4]);
-    if (self.stripSnapEngagedX !== null) {
-        const [cx] = self.toCanvasCoords(self.stripSnapEngagedX, 0);
+    for (const tx of self.stripSnapXTargets) {
+        const isActive = tx === self.stripSnapEngagedX;
+        ctx.strokeStyle = isActive ? ACTIVE : INACTIVE;
+        ctx.lineWidth = isActive ? 1.5 : 1;
+        const [cx] = self.toCanvasCoords(tx, 0);
         ctx.beginPath();
         ctx.moveTo(cx, 0);
         ctx.lineTo(cx, self.canvasH);
         ctx.stroke();
     }
-    if (self.stripSnapEngagedY !== null) {
-        const [, cy] = self.toCanvasCoords(0, self.stripSnapEngagedY);
+    for (const ty of self.stripSnapYTargets) {
+        const isActive = ty === self.stripSnapEngagedY;
+        ctx.strokeStyle = isActive ? ACTIVE : INACTIVE;
+        ctx.lineWidth = isActive ? 1.5 : 1;
+        const [, cy] = self.toCanvasCoords(0, ty);
         ctx.beginPath();
         ctx.moveTo(0, cy);
         ctx.lineTo(self.canvasW, cy);

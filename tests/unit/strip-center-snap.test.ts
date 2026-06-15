@@ -55,9 +55,10 @@ describe('strip center snap (issue #105)', () => {
         // points (mean of the 4 rotated corners) should still equal (5, 3)
         // because the AABB center is rotation-invariant about the centroid.
         const cx = 5, cy = 3;
-        const corners: [number, number][] = [
+        const cornerOffsets: [number, number][] = [
             [-5, -2], [5, -2], [5, 2], [-5, 2],
-        ].map(([x, y]) => [x + cx, y + cy] as [number, number]);
+        ];
+        const corners: [number, number][] = cornerOffsets.map(([x, y]) => [x + cx, y + cy] as [number, number]);
 
         const theta = (30 * Math.PI) / 180;
         const cos = Math.cos(theta), sin = Math.sin(theta);
