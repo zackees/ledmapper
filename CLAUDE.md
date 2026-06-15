@@ -69,7 +69,7 @@ tests/
 | `demo/` | Demo | Three.js (`three-utils.js`) | Visualize mapped video playback with sample data |
 | `screenmap/` | Screenmap Maker | Canvas 2D | Interactively map physical LED positions, export JSON |
 | `moviemaker/` | Mapped Video Maker | Three.js + GLSL | Load video files or webcam, GPU blur, record mapped LED output |
-| `movieplayer/` | Movie Player | Three.js (`three-utils.js`) | Play back pre-recorded .rgb LED video files |
+| `movieplayer/` | Movie Player | Three.js (`three-utils.js`) | Play back pre-recorded .fled LED video files |
 | `shapeeditor/` | Screenmap Editor | Three.js points mesh + Canvas 2D overlay | View and transform screenmap.json files |
 
 ### Shared Code
@@ -104,7 +104,7 @@ tests/
 }
 ```
 
-**Video files** (`.rgb`): Raw binary — sequential RGB triplets (3 bytes per LED per frame). Frame count = `total_bytes / (led_count * 3)`.
+**Video files** (`.fled`): Self-describing container — 12-byte header + UTF-8 JSON metadata (embedded screenmap) + raw payload. Pixel formats include `rgb8` (3 bytes / LED). The legacy headerless `.rgb` format is no longer produced or accepted by any tool (issue #133).
 
 ### Styling — Tailwind CSS v4
 

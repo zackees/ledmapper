@@ -98,7 +98,7 @@ export interface MultiStripParseResult {
 // RGB video format
 // ---------------------------------------------------------------------------
 
-/** Header metadata for a .rgb video file. */
+/** Header metadata derived from a .fled video file's payload. */
 export interface RgbVideoHeader {
     ledCount: number;
     frameCount: number;
