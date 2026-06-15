@@ -34,6 +34,7 @@ import {
 import { normalizeScreenmap } from './screenmap';
 import type { CreateGfxOptions, Gfx, BloomConfig, Screenmap } from './types';
 import type { RendererContextWithOverlay } from '../types/domain';
+import { FpsMeter, mountFpsWidget, resolveInitialVisibility, persistVisibility, isTypingTarget } from './fps';
 
 const INV_255 = 1 / 255;
 const DEFAULT_PANE_SIZE = 800;
@@ -115,10 +116,12 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
 
     let lastFrame: Uint8Array | null = null;
     let framesRendered = 0;
+    const renderMeter = new FpsMeter();
+    const pushMeter = new FpsMeter();
 
     const animLoop = createAnimationLoop({
         targetFPS: opts.targetFPS ?? 60,
-        onFrame() {
+        onFrame(time: number) {
             if (!colorAttribute || screenmap.points.length === 0) return;
             if (lastFrame) {
                 const arr = colorAttribute.array as Float32Array;
@@ -135,11 +138,13 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
             if (pointsMaterial) pointsMaterial.size = diameter * bloom.getDiameterScale();
             bloom.render();
             framesRendered++;
+            renderMeter.tick(time);
         },
     });
 
     function pushFrame(rgb: Uint8Array): void {
         lastFrame = rgb;
+        pushMeter.tick(performance.now());
     }
 
     function setBloom(cfg: BloomConfig): void {
@@ -168,12 +173,64 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
         animLoop.setTargetFPS(fps);
     }
 
-    function getStats(): { fps: number; framesRendered: number } {
-        return { fps: 60, framesRendered };
+    function getStats(): { renderFps: number; pushFps: number; frameTimeMs: number; framesRendered: number } {
+        return {
+            renderFps: renderMeter.getFps(),
+            pushFps: pushMeter.getFps(),
+            frameTimeMs: renderMeter.getMedianFrameMs(),
+            framesRendered,
+        };
     }
+
+    // FPS counter widget — mounted into gfx.wrapper at the top-right.
+    // Toggle state persists via localStorage; an `f`-key shortcut and
+    // click-to-hide are wired here so consumers don't have to.
+    let fpsVisible = resolveInitialVisibility(opts.showFps);
+    let fpsWidget: { el: HTMLElement; dispose: () => void } | null = null;
+    function refreshWidgetState() {
+        if (fpsVisible && !fpsWidget) {
+            fpsWidget = mountFpsWidget({
+                wrapper, getStats,
+                onClickHide: () => { setFpsVisible(false); },
+            });
+        } else if (!fpsVisible && fpsWidget) {
+            fpsWidget.dispose();
+            fpsWidget = null;
+        }
+    }
+    function mountFpsCounter(el: HTMLElement): void {
+        if (fpsWidget) fpsWidget.dispose();
+        fpsWidget = mountFpsWidget({
+            wrapper: el, getStats,
+            onClickHide: () => { setFpsVisible(false); },
+        });
+        fpsVisible = true;
+    }
+    function unmountFpsCounter(): void {
+        if (fpsWidget) { fpsWidget.dispose(); fpsWidget = null; }
+        fpsVisible = false;
+    }
+    function setFpsVisible(v: boolean): void {
+        fpsVisible = v;
+        persistVisibility(v);
+        refreshWidgetState();
+    }
+    function isFpsVisible(): boolean { return fpsVisible; }
+
+    const onKey = (e: KeyboardEvent) => {
+        if (e.key !== 'f' && e.key !== 'F') return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (isTypingTarget(e.target)) return;
+        setFpsVisible(!fpsVisible);
+    };
+    document.addEventListener('keydown', onKey, { signal });
+
+    refreshWidgetState();
 
     function dispose(): void {
         animLoop.stop();
+        if (fpsWidget) { fpsWidget.dispose(); fpsWidget = null; }
+        document.removeEventListener('keydown', onKey);
         if (pointsMesh) {
             scene.remove(pointsMesh);
             pointsGeometry?.dispose();
@@ -198,6 +255,10 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
         getDiameter,
         setTargetFPS,
         getStats,
+        mountFpsCounter,
+        unmountFpsCounter,
+        setFpsVisible,
+        isFpsVisible,
         dispose,
     };
     return gfx;

@@ -58,6 +58,10 @@ export interface GfxBaseOptions {
      *  when this is true. Useful for connection-line / label drawing
      *  that the consumer owns. */
     enableOverlay?: boolean;
+    /** Initial visibility of the FPS counter overlay. localStorage value
+     *  at `gfx.fps.visible` (set by `f`-key toggle / click-to-hide)
+     *  overrides this whenever it's present. Default `false`. */
+    showFps?: boolean;
     /** Abort signal to dispose of the renderer + detach listeners. */
     signal?: AbortSignal;
 }
@@ -101,8 +105,23 @@ export interface Gfx {
     getDiameter(): number;
     /** Change the animation-loop target FPS on the fly. */
     setTargetFPS(fps: number): void;
-    /** Snapshot of runtime stats. */
-    getStats(): { fps: number; framesRendered: number };
+    /** Snapshot of runtime stats. Three signals:
+     *  - `renderFps`: rate of internal animation-loop completed frames
+     *  - `pushFps`:   rate at which `pushFrame()` was called
+     *  - `frameTimeMs`: median inter-frame delta (P50, recent window)
+     *  - `framesRendered`: monotonic counter
+     */
+    getStats(): { renderFps: number; pushFps: number; frameTimeMs: number; framesRendered: number };
+    /** Mount the FPS counter widget into a custom element. By default
+     *  the package mounts it inside `gfx.wrapper` already; use this
+     *  only if you want it in a different parent. */
+    mountFpsCounter(el: HTMLElement): void;
+    /** Tear down a previously-mounted (or auto-mounted) FPS counter. */
+    unmountFpsCounter(): void;
+    /** Show/hide the FPS counter at runtime. Persists to localStorage. */
+    setFpsVisible(v: boolean): void;
+    /** Whether the FPS counter is currently visible. */
+    isFpsVisible(): boolean;
     /** Stop the render loop, dispose GPU resources, detach listeners. */
     dispose(): void;
 }

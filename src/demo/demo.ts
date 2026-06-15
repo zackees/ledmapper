@@ -66,6 +66,7 @@ export function init(container: HTMLElement) {
         parent: main,
         paneSize: CANVAS_SIZE,
         enableOverlay: true,
+        showFps: true,
         signal,
     });
     if (!gfx.overlayCanvas || !gfx.overlayCtx) {
