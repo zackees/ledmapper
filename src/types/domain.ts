@@ -53,6 +53,9 @@ export interface ScreenmapV2Segment {
     x: number[];
     y: number[];
     z?: number[];
+    /** LED diameter in cm. Preserved from v1 conversions; the editor's
+     *  preview / FastLED ScreenMap export read it. Optional. */
+    diameter?: number;
     parent?: string;
     offset?: number | null;
 }
