@@ -6,6 +6,7 @@ import { type WebGLRenderer, type Scene, type OrthographicCamera, type Line } fr
 import type { StripEntry, StripInfo } from './strips-model';
 
 import { download_text_as_file } from '../common';
+import { formatCompactJson } from '../json-compact';
 
 import { saveScreenmap, getScreenmap, saveScreenmapMultiStrip, buildScreenmapMultiStripJson, getScreenmapMeta, getBackup, restoreBackup, backfillMeta, isDegenerate } from '../screenmap-store';
 import type { BackupMeta } from '../screenmap-store';
@@ -157,6 +158,15 @@ ShapeEditor.prototype._openInspectJsonDialog = async function (this: ShapeEditor
     let json = self._buildCurrentScreenmapJson();
     if (!json) {
         json = '{\n  "map": {}\n}\n';
+    }
+
+    // Reformat with the compact-aware pretty printer so per-LED numeric arrays
+    // (x[], y[], z[]) stay inline rather than blowing up into one line per LED.
+    try {
+        json = formatCompactJson(JSON.parse(json));
+    } catch {
+        // Leave the original `json` as-is if it isn't parseable for any reason
+        // (shouldn't happen, but keep the dialog functional).
     }
 
     let Swal;
