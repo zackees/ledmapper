@@ -8,14 +8,22 @@ test.describe('Video Player', () => {
         await expect(page.locator('h1')).toContainText('Video Player');
     });
 
-    test('has screenmap upload input', async ({ page }) => {
-        await page.goto('/movieplayer/');
-        await expect(page.locator('#btn_upload_screenmap')).toBeVisible();
-    });
-
     test('has movie upload input', async ({ page }) => {
         await page.goto('/movieplayer/');
         await expect(page.locator('#btn_load_movie')).toBeVisible();
+    });
+
+    test('movie upload only accepts .fled', async ({ page }) => {
+        await page.goto('/movieplayer/');
+        await expect(page.locator('#btn_load_movie')).toHaveAttribute('accept', '.fled');
+    });
+
+    test('no separate screenmap upload affordance', async ({ page }) => {
+        await page.goto('/movieplayer/');
+        // The screenmap arrives embedded in the .fled file; there is no
+        // sidecar JSON upload in this player anymore.
+        await expect(page.locator('#btn_upload_screenmap')).toHaveCount(0);
+        await expect(page.locator('#preset_buttons')).toHaveCount(0);
     });
 
     test('has LED diameter slider', async ({ page }) => {
@@ -25,51 +33,38 @@ test.describe('Video Player', () => {
         await expect(slider).toHaveValue('6');
     });
 
-    test('screenmap upload enables movie upload flow', async ({ page }) => {
+    test('loading a .fled file populates the scene from the embedded screenmap', async ({ page }) => {
         await page.goto('/movieplayer/');
-        const fileInput = page.locator('#btn_upload_screenmap');
-        const fixturePath = path.resolve('tests/fixtures/test-screenmap.json');
-        await fileInput.setInputFiles(fixturePath);
-        // Canvas should render after screenmap upload (renderer canvas plus
-        // the strip-label overlay canvas — assert on the first one)
-        const canvas = page.locator('canvas').first();
-        await expect(canvas).toBeVisible({ timeout: 10000 });
+        await page.locator('#btn_load_movie')
+            .setInputFiles(path.resolve('tests/fixtures/test-video.fled'));
+        // Canvas renders once the embedded screenmap is applied + frames sliced.
+        await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('#screenmap_status')).toContainText('4 LEDs');
+        await expect(page.locator('#btn_play')).toBeEnabled();
     });
 
-    test('screenmap can be dragged onto upload screenmap row', async ({ page }) => {
+    test('.fled can be dropped onto the movie drop target', async ({ page }) => {
         await page.goto('/movieplayer/');
-        await dropFixture(
-            page,
-            '#screenmap_drop_target',
-            path.resolve('tests/fixtures/test-screenmap.json'),
-            'test-screenmap.json',
-            'application/json',
-        );
-
-        await expect(page.locator('#btn_load_movie')).toBeEnabled();
-    });
-
-    test('movie can be dragged onto upload video row after screenmap load', async ({ page }) => {
-        await page.goto('/movieplayer/');
-        await dropFixture(
-            page,
-            '#screenmap_drop_target',
-            path.resolve('tests/fixtures/test-screenmap.json'),
-            'test-screenmap.json',
-            'application/json',
-        );
-        await expect(page.locator('#btn_load_movie')).toBeEnabled();
-
         await dropFixture(
             page,
             '#movie_drop_target',
-            path.resolve('tests/fixtures/test-video.rgb'),
-            'test-video.rgb',
+            path.resolve('tests/fixtures/test-video.fled'),
+            'test-video.fled',
             'application/octet-stream',
         );
-
         await expect(page.locator('#btn_play')).toBeEnabled();
         await expect(page.locator('#btn_play')).toHaveValue('Pause');
+    });
+
+    test('headerless legacy .rgb files are rejected', async ({ page }) => {
+        await page.goto('/movieplayer/');
+        // Force-load a pre-FLED file via the (now `.fled`-only) input;
+        // movieplayer should alert and refuse to play.
+        page.on('dialog', (d) => { void d.accept(); });
+        await page.locator('#btn_load_movie')
+            .setInputFiles(path.resolve('tests/fixtures/test-video.rgb'));
+        // Play button stays disabled because the load was rejected.
+        await expect(page.locator('#btn_play')).toBeDisabled();
     });
 
     test('play button exists', async ({ page }) => {
@@ -92,11 +87,8 @@ test.describe('Video Player', () => {
 
     test('record button toggles and downloads a video', async ({ page }) => {
         await page.goto('/movieplayer/');
-        await page.locator('#btn_upload_screenmap')
-            .setInputFiles(path.resolve('tests/fixtures/test-screenmap.json'));
-        await expect(page.locator('#btn_load_movie')).toBeEnabled();
         await page.locator('#btn_load_movie')
-            .setInputFiles(path.resolve('tests/fixtures/test-video.rgb'));
+            .setInputFiles(path.resolve('tests/fixtures/test-video.fled'));
         await expect(page.locator('#btn_play')).toBeEnabled();
 
         const record = page.locator('#btn_record');
@@ -112,44 +104,5 @@ test.describe('Video Player', () => {
         await expect(record).not.toHaveClass(/recording/);
         const download = await downloadPromise;
         expect(download.suggestedFilename()).toMatch(/ledmapper-recording\d+\.(webm|mp4)/);
-    });
-});
-
-test.describe('Video Player screenmap presets', () => {
-    test('renders preset buttons from manifest', async ({ page }) => {
-        await page.goto('/movieplayer/');
-        await expect(page.locator('#preset_buttons [data-preset-file="16x16_grid.json"]')).toBeVisible();
-        await expect(page.locator('#preset_buttons [data-preset-file="64x64_serpentine.json"]')).toBeVisible();
-    });
-
-    test('clicking a preset loads screenmap and enables movie upload', async ({ page }) => {
-        await page.goto('/movieplayer/');
-        const btn = page.locator('#preset_buttons [data-preset-file="16x16_grid.json"]');
-        await btn.click();
-        await expect(btn).toHaveClass(/active-preset/);
-        await expect(page.locator('#btn_load_movie')).toBeEnabled();
-    });
-
-    test('preset selection persists across reload', async ({ page }) => {
-        await page.goto('/movieplayer/');
-        const btn = page.locator('#preset_buttons [data-preset-file="8x8_grid.json"]');
-        await btn.click();
-        await expect(btn).toHaveClass(/active-preset/);
-
-        await page.reload();
-        const btnAfter = page.locator('#preset_buttons [data-preset-file="8x8_grid.json"]');
-        await expect(btnAfter).toHaveClass(/active-preset/);
-        await expect(page.locator('#btn_load_movie')).toBeEnabled();
-    });
-
-    test('custom screenmap upload clears active preset', async ({ page }) => {
-        await page.goto('/movieplayer/');
-        const btn = page.locator('#preset_buttons [data-preset-file="16x16_grid.json"]');
-        await btn.click();
-        await expect(btn).toHaveClass(/active-preset/);
-
-        await page.locator('#btn_upload_screenmap')
-            .setInputFiles(path.resolve('tests/fixtures/test-screenmap.json'));
-        await expect(btn).not.toHaveClass(/active-preset/);
     });
 });

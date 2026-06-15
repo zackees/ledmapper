@@ -1,16 +1,14 @@
 import { parseScreenmapMultiStrip, centerAndFitPoints, getStripColors, stripStartEndLabels } from '../common';
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
-import { saveScreenmap, getScreenmap, savePresetSelection, getPresetSelection } from '../screenmap-store';
 import { saveVideo, getVideo, clearVideo } from '../video-store';
 import { buildVideoChannelMap } from '../moviemaker/transforms';
-import { loadPresetText, loadPresetManifest } from '../preset-loader';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
 import { createAutoBloom } from '../auto-bloom';
 import { createCanvasRecorder } from './canvas-recorder';
 import { applyBloomGeometry } from '../render/bloom-geometry';
 import { wireBloomControls } from '../render/bloom-ui';
-import { parseRgbFrames } from '../render/rgb-video';
+import { parseRgbFrames, hasFledMagic } from '../render/rgb-video';
 import {
     DEMO_AUTO_FLOOR,
     DEMO_AUTO_MAX_DENSE,
@@ -36,21 +34,18 @@ function qe<T extends HTMLElement>(parent: ParentNode, sel: string, _cast?: (e: 
 export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
 
-    const dom_btn_upload_screenmap = qe<HTMLInputElement>(container, '#btn_upload_screenmap');
     const dom_btn_load_movie = qe<HTMLInputElement>(container, '#btn_load_movie');
     const dom_btn_play = qe<HTMLInputElement>(container, '#btn_play');
     const dom_btn_record = qe<HTMLInputElement>(container, '#btn_record');
     const dom_rng_diameter = qe<HTMLInputElement>(container, '#rng_diameter');
     const dom_txt_curr_diameter = qe<HTMLElement>(container, '#txt_curr_diameter');
-    const dom_screenmap_drop_target = qe<HTMLElement>(container, '#screenmap_drop_target');
     const dom_movie_drop_target = qe<HTMLElement>(container, '#movie_drop_target');
-    const dom_preset_buttons = qe<HTMLElement>(container, '#preset_buttons');
+    const dom_screenmap_status = qe<HTMLElement>(container, '#screenmap_status');
     const dom_chk_auto_bloom        = qe<HTMLInputElement>(container, '#chk_auto_bloom');
     const dom_bloom_strength_slider = qe<HTMLElement>(container, '#bloom_strength_slider');
     const dom_rng_bloom_strength    = qe<HTMLInputElement>(container, '#rng_bloom_strength');
     const dom_txt_bloom_strength    = qe<HTMLElement>(container, '#txt_curr_bloom_strength');
 
-    dom_btn_load_movie.disabled = true;
     dom_btn_play.disabled = true;
 
     const CANVAS_SIZE = 1000;
@@ -236,111 +231,56 @@ export function init(container: HTMLElement) {
     wrapper.addEventListener('mouseenter', () => { overlayHovered = true; refreshStripOverlay(); }, { signal });
     wrapper.addEventListener('mouseleave', () => { overlayHovered = false; refreshStripOverlay(); }, { signal });
 
-    function load_screenmap_data(text: string, { persist = true } = {}) {
+    function setStatus(text: string, loaded: boolean) {
+        dom_screenmap_status.textContent = text;
+        dom_screenmap_status.classList.toggle('loaded', loaded);
+    }
+
+    /**
+     * Apply a screenmap parsed from a FLED file's embedded JSON to the scene.
+     * Returns false (and surfaces no UI) if the JSON couldn't be parsed —
+     * caller decides how to report.
+     */
+    function applyEmbeddedScreenmap(jsonText: string): boolean {
         let parsed;
         try {
-            parsed = parseScreenmapMultiStrip(text);
+            parsed = parseScreenmapMultiStrip(jsonText);
         } catch (error) {
-            console.error('Error parsing screenmap:', error);
-            if (persist) alert(`Error parsing screenmap: ${String(error)}`);
-            parsed = null;
+            console.error('Error parsing embedded screenmap:', error);
+            return false;
         }
-        screenmap_pts = parsed ? parsed.allPoints : [];
-        screenmap_strips = parsed ? parsed.strips : [];
-        videoChannelMap = parsed ? buildVideoChannelMap(parsed.strips, parsed.totalCount) : null;
-        dom_btn_load_movie.disabled = (screenmap_pts.length === 0);
-        if (screenmap_pts.length === 0) return;
-        if (persist) saveScreenmap(text);
-        screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
+        if (parsed.allPoints.length === 0) return false;
+        screenmap_strips = parsed.strips;
+        videoChannelMap = buildVideoChannelMap(parsed.strips, parsed.totalCount);
+        screenmap_pts = centerAndFitPoints(parsed.allPoints, CANVAS_SIZE, CANVAS_SIZE);
         buildPoints();
         updateBloomGeometry();
         refreshStripOverlay();
+        return true;
     }
-
-    function loadScreenmapFile(file: File | null | undefined) {
-        if (!file) return;
-        set_dom_btn_play(false);
-        if (!fileHasExtension(file, ['.json'])) {
-            alert('Please choose a .json screenmap file.');
-            return;
-        }
-        void file.text().then((text: string) => {
-            load_screenmap_data(text);
-            markActivePreset(null);
-        }).catch((error: unknown) => {
-            alert(`Error reading screenmap file: ${String(error)}`);
-        });
-    }
-
-    function markActivePreset(presetFile: string | null) {
-        dom_preset_buttons.querySelectorAll('.preset-btn').forEach((btn) => {
-            (btn as HTMLElement & { dataset: DOMStringMap }).classList.toggle('active-preset', (btn as HTMLButtonElement).dataset.presetFile === presetFile);
-        });
-    }
-
-    async function selectPreset(presetFile: string) {
-        set_dom_btn_play(false);
-        try {
-            const text = await loadPresetText(presetFile);
-            load_screenmap_data(text);
-            savePresetSelection(presetFile);
-            markActivePreset(presetFile);
-        } catch (error) {
-            alert(`Error loading preset: ${String(error)}`);
-        }
-    }
-
-    async function initPresetButtons() {
-        let presets;
-        try {
-            presets = await loadPresetManifest();
-        } catch (error) {
-            console.error('Failed to load screenmap preset manifest:', error);
-            return;
-        }
-        for (const preset of presets) {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'preset-btn';
-            btn.textContent = preset.name;
-            btn.dataset.presetFile = preset.file;
-            btn.addEventListener('click', () => { void selectPreset(preset.file); }, { signal });
-            dom_preset_buttons.appendChild(btn);
-        }
-        const storedPreset = getPresetSelection();
-        if (storedPreset) markActivePreset(storedPreset);
-    }
-
-    void initPresetButtons();
 
     function loadMovieFile(file: File | null | undefined) {
         if (!file) return;
         set_dom_btn_play(false);
-        if (!fileHasExtension(file, ['.rgb'])) {
-            alert('Please choose a .rgb video file.');
+        if (!fileHasExtension(file, ['.fled'])) {
+            alert('Please choose a .fled video file (recorded by the Mapped Video Maker).');
             return;
         }
-        void file.arrayBuffer().then(load_movie_data).catch((error: unknown) => {
+        void file.arrayBuffer().then((buf) => { load_movie_data(buf); }).catch((error: unknown) => {
             alert(`Error reading video file: ${String(error)}`);
         });
     }
 
-    dom_btn_upload_screenmap.addEventListener('change', () => {
-        loadScreenmapFile(dom_btn_upload_screenmap.files?.[0]);
-    }, { signal });
-
-    // Restore stored screenmap if available (without re-persisting, which
-    // would clear the stored preset selection)
-    const storedScreenmap = getScreenmap();
-    if (storedScreenmap) load_screenmap_data(storedScreenmap, { persist: false });
-
-    // Restore a previously loaded video (persisted in IndexedDB) so it survives
-    // navigating away and back. Loaded paused; dropped silently if it no longer
-    // matches the restored screenmap.
+    // On startup, restore any previously-loaded video from IndexedDB. Legacy
+    // headerless blobs (pre-FLED) are dropped silently — this player only
+    // accepts videos with an embedded screenmap.
     void getVideo().then((bytes) => {
-        if (bytes && screenmap_pts.length > 0) {
-            load_movie_data(bytes.slice().buffer, { persist: false, autoplay: false, silent: true });
+        if (!bytes) return;
+        if (!hasFledMagic(bytes)) {
+            void clearVideo();
+            return;
         }
+        load_movie_data(bytes.slice().buffer, { persist: false, autoplay: false, silent: true });
     });
 
     function set_dom_btn_play(on: boolean) {
@@ -383,22 +323,37 @@ export function init(container: HTMLElement) {
 
     function load_movie_data(array_buffer: ArrayBuffer, { persist = true, autoplay = true, silent = false } = {}) {
         const uint8_array = new Uint8Array(array_buffer);
-        if (screenmap_pts.length === 0) {
-            if (!silent) alert("No screenmap is loaded!");
-            return;
-        }
-        const { frames, notMultiple } = parseRgbFrames(uint8_array, screenmap_pts.length);
-        if (notMultiple) {
-            // A restored video that no longer matches the screenmap is dropped
-            // silently (and forgotten); a user upload still gets the alert.
+
+        // Two-pass parse: (1) peek the header to extract embedded JSON, derive
+        // ledCount from it, (2) re-slice frames against the derived ledCount.
+        const peek = parseRgbFrames(uint8_array, 0);
+        if (!peek.isFled || peek.embeddedJson === null) {
             if (silent) { void clearVideo(); return; }
-            alert("Frame size should be a multiple of the number of screenmap points!");
+            alert('This video has no embedded screenmap. Re-record with the latest Mapped Video Maker.');
             return;
         }
-        movie_frames = frames;
+        if (peek.fledError !== null) {
+            if (silent) { void clearVideo(); return; }
+            alert(`Unsupported video file (${peek.fledError}).`);
+            return;
+        }
+        if (!applyEmbeddedScreenmap(peek.embeddedJson)) {
+            if (silent) { void clearVideo(); return; }
+            alert('Embedded screenmap in this video is invalid or empty.');
+            return;
+        }
+
+        const parsed = parseRgbFrames(uint8_array, screenmap_pts.length);
+        if (parsed.notMultiple) {
+            if (silent) { void clearVideo(); return; }
+            alert('Video payload does not match the embedded screenmap — file may be corrupted.');
+            return;
+        }
+        movie_frames = parsed.frames;
         curr_frame_idx = 0;
         dom_btn_play.disabled = false;
         if (persist) void saveVideo(uint8_array);
+        setStatus(`${String(screenmap_pts.length)} LEDs · ${String(movie_frames.length)} frames`, true);
         set_dom_btn_play(false);
         if (autoplay) dom_btn_play.click();
     }
@@ -406,13 +361,6 @@ export function init(container: HTMLElement) {
     dom_btn_load_movie.addEventListener('change', () => {
         loadMovieFile(dom_btn_load_movie.files?.[0]);
     }, { signal });
-
-    wireFileDropTarget({
-        target: dom_screenmap_drop_target,
-        input: dom_btn_upload_screenmap,
-        onFile: loadScreenmapFile,
-        signal,
-    });
 
     wireFileDropTarget({
         target: dom_movie_drop_target,
