@@ -22,6 +22,15 @@ ShapeEditor.prototype.onContextMenu = function (this: ShapeEditor, e: MouseEvent
         if (wasMoved) return;
         if (self.screenmap_pts.length === 0) return;
         const [cx, cy] = self.getCanvasCoords(e);
+        // Ruler hit-test: stash the index so the context menu can show
+        // "Duplicate ruler" / "Delete ruler" wired to this specific ruler.
+        // -1 means "no ruler under the cursor at right-click time".
+        self.ctxMenuRulerIdx = self._findRulerAtCanvasPoint(cx, cy);
+        // Stash the screenmap (world) coordinates so "Insert ruler" can place
+        // the new 60 cm ruler centered at the click location.
+        const worldClick = self.canvasToScreenmapCoords(cx, cy);
+        self.ctxMenuClickX = worldClick[0];
+        self.ctxMenuClickY = worldClick[1];
         // Chain mode: right-click on a connector arrow opens the connector menu
         if (self.editorMode === 'chain') {
             const conn = self._hitConnectorBody(cx, cy);
@@ -169,14 +178,17 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
         // Priority 0: Ruler handle / body
         const rulerHit = self.hitTestRuler(cx, cy);
         if (rulerHit) {
-            self.rulerDrag = rulerHit;
-            self.rulerDragStart = {
-                cx, cy,
-                ax: self.rulerA.x, ay: self.rulerA.y,
-                bx: self.rulerB.x, by: self.rulerB.y,
-            };
-            self._oc().style.cursor = rulerHit === 'body' ? 'move' : 'grab';
-            return;
+            const ruler = self.rulers[rulerHit.idx];
+            if (ruler) {
+                self.rulerDrag = rulerHit;
+                self.rulerDragStart = {
+                    cx, cy,
+                    ax: ruler.ax, ay: ruler.ay,
+                    bx: ruler.bx, by: ruler.by,
+                };
+                self._oc().style.cursor = rulerHit.kind === 'body' ? 'move' : 'grab';
+                return;
+            }
         }
 
         // Priority 1: Gizmo handle (corner/edge/rotation)
@@ -366,18 +378,21 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
             const ds = self.rulerDragStart;
             const wdx = (cx - ds.cx) / self.camZoom;
             const wdy = (cy - ds.cy) / self.camZoom;
-            if (self.rulerDrag === 'a') {
-                self.rulerA.x = ds.ax + wdx;
-                self.rulerA.y = ds.ay + wdy;
-            } else if (self.rulerDrag === 'b') {
-                self.rulerB.x = ds.bx + wdx;
-                self.rulerB.y = ds.by + wdy;
-            } else {
-                // body — move both handles
-                self.rulerA.x = ds.ax + wdx;
-                self.rulerA.y = ds.ay + wdy;
-                self.rulerB.x = ds.bx + wdx;
-                self.rulerB.y = ds.by + wdy;
+            const ruler = self.rulers[self.rulerDrag.idx];
+            if (ruler) {
+                if (self.rulerDrag.kind === 'a') {
+                    ruler.ax = ds.ax + wdx;
+                    ruler.ay = ds.ay + wdy;
+                } else if (self.rulerDrag.kind === 'b') {
+                    ruler.bx = ds.bx + wdx;
+                    ruler.by = ds.by + wdy;
+                } else {
+                    // body — move both handles
+                    ruler.ax = ds.ax + wdx;
+                    ruler.ay = ds.ay + wdy;
+                    ruler.bx = ds.bx + wdx;
+                    ruler.by = ds.by + wdy;
+                }
             }
             self.setNeedsRender();
             return;

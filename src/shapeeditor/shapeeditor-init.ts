@@ -307,6 +307,10 @@ window.__shapeeditorDebug = {
         this.ctxBtnInsertFwd = null;
         this.ctxBtnInsertBack = null;
         this.ctxBtnCopyStrip = null;
+        this.ctxRulerSep = null;
+        this.ctxBtnInsertRuler = null;
+        this.ctxBtnDuplicateRuler = null;
+        this.ctxBtnDeleteRuler = null;
         this.hintStripTextEl = null;
         this.hintStripHelpBtn = null;
         this._autoOpenHelpScheduled = false;
@@ -646,12 +650,12 @@ this.dom_txt_image_ty.addEventListener('change', () => {
         this.applyBgImageTransform();
     }, { signal: this.signal });
 this.dom_btn_remove_image.addEventListener('click', (...args: any[]) => (this.removeBackgroundImage as any)(...args), { signal: this.signal });
-        this.rulerA = { x: -80, y: -80 };
-;
-        this.rulerB = { x: 80, y: -80 };
-;
+        this.rulers = [];
         this.rulerDrag = null;
         this.rulerDragStart = null;
+        this.ctxMenuRulerIdx = -1;
+        this.ctxMenuClickX = 0;
+        this.ctxMenuClickY = 0;
         this.RULER_HANDLE_R = 7;
         this.LONG_PRESS_MS = 600;
         this.LONG_PRESS_MOVE_TOL = 10;
