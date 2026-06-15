@@ -1,0 +1,52 @@
+@reference "../styles/global.css";
+
+.app-shell {
+    @apply flex-1 flex flex-col min-h-0;
+}
+
+.app-content {
+    @apply flex-1 min-h-0 flex flex-col overflow-hidden;
+}
+
+.app-mode-bar {
+    @apply flex items-stretch justify-center gap-0 shrink-0;
+    background: var(--color-lm-surface-1);
+    border-top: 1px solid var(--color-lm-border);
+}
+
+.app-mode-btn {
+    @apply flex items-center justify-center gap-2 cursor-pointer select-none;
+    background: transparent;
+    color: var(--color-lm-text-secondary);
+    border: none;
+    padding: 10px 28px;
+    font-family: var(--font-family-body);
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    box-shadow: none;
+    border-bottom: 2px solid transparent;
+    transition: color var(--lm-dur) var(--lm-ease),
+                border-color var(--lm-dur) var(--lm-ease),
+                background var(--lm-dur) var(--lm-ease);
+}
+
+.app-mode-btn:hover {
+    color: var(--color-lm-text);
+    background: var(--color-lm-surface-2);
+    box-shadow: none;
+}
+
+.app-mode-btn.is-active {
+    color: var(--color-lm-accent);
+    border-bottom-color: var(--color-lm-accent);
+}
+
+.app-mode-icon {
+    @apply text-base leading-none;
+}
+
+.app-mode-label {
+    @apply leading-none;
+}

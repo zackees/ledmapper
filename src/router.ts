@@ -2,8 +2,14 @@ import { updateActiveLink } from './nav';
 import type { SpaHistory, ToolInitFn } from './types/domain';
 
 const routes = [
-    { path: '/',                  tool: 'hub' },
-    { path: '/index.html',       tool: 'hub' },
+    { path: '/',                  tool: 'app' },
+    { path: '/index.html',       tool: 'app' },
+    { path: '/play',             tool: 'app' },
+    { path: '/play/',            tool: 'app' },
+    { path: '/create',           tool: 'app' },
+    { path: '/create/',          tool: 'app' },
+    { path: '/hub',              tool: 'hub' },
+    { path: '/hub/',             tool: 'hub' },
     { path: '/demo/',            tool: 'demo' },
     { path: '/demo/index.html',  tool: 'demo' },
     { path: '/moviemaker/',            tool: 'moviemaker' },
@@ -22,6 +28,9 @@ interface ToolModule {
 }
 
 const toolConfig: Record<string, { module: () => Promise<ToolModule> }> = {
+    app: {
+        module: () => import('./app/app'),
+    },
     hub: {
         module: () => import('./hub/hub'),
     },
@@ -43,6 +52,7 @@ const toolConfig: Record<string, { module: () => Promise<ToolModule> }> = {
 };
 
 const titles: Record<string, string> = {
+    app: 'LED Mapper',
     hub: 'FastLED Video Mapper',
     demo: 'Demo',
     moviemaker: 'Video Maker',
