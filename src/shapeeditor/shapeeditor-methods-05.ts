@@ -101,6 +101,19 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
         // Draw gizmo handles (scale, rotate, translate affordances)
         self.drawGizmoHandles();
 
+        // Issue #111: during a gizmo drag, the cached `pts` are at the
+        // drag-start transform. Apply the live delta as a ctx affine and
+        // draw a stripped-down overlay — full rendering returns on commit.
+        if (self._isGizmoDragPreview()) {
+            self._drawGizmoPreviewOverlay(pts);
+            self.drawBgGizmoHandles();
+            self.drawRuler();
+            self._drawSnapGuides();
+            self._drawPlacingGhost();
+            self._drawPasteGhost();
+            return;
+        }
+
         // Rainbow lines and arrows fade with hover
         if (self.overlayAlpha > 0) {
             self.overlayCtx.globalAlpha = self.overlayAlpha;
@@ -748,7 +761,7 @@ ShapeEditor.prototype.handleGizmoDrag = function (this: ShapeEditor, cx: number,
             const wdx = dx / self.camZoom;
             const wdy = dy / self.camZoom;
             self.setTranslate(ds.translateX + wdx, ds.translateY + wdy);
-            self.markDirtyAndGeometry();
+            self.markDirty(); self.setNeedsRender();
             return;
         }
 
@@ -764,7 +777,7 @@ ShapeEditor.prototype.handleGizmoDrag = function (this: ShapeEditor, cx: number,
             // Snap to 15-degree increments when shift held
             if (self.shiftHeld) newRotate = Math.round(newRotate / 15) * 15;
             self.setRotate(self.clampRotate(newRotate));
-            self.markDirtyAndGeometry();
+            self.markDirty(); self.setNeedsRender();
             return;
         }
 
@@ -778,7 +791,7 @@ ShapeEditor.prototype.handleGizmoDrag = function (this: ShapeEditor, cx: number,
             if (startDist > 1) {
                 const ratio = currentDist / startDist;
                 self.writeScale(self.dom_txt_scale, self.clampScale(ds.scale * ratio));
-                self.markDirtyAndGeometry();
+                self.markDirty(); self.setNeedsRender();
             }
             return;
         }
@@ -793,13 +806,13 @@ ShapeEditor.prototype.handleGizmoDrag = function (this: ShapeEditor, cx: number,
                 if (Math.abs(startLx) > 1) {
                     const ratio = curLx / startLx; // signed: crossing center negates
                     self.writeScale(self.dom_txt_scale_x, self.clampScale(ds.scaleX * ratio));
-                    self.markDirtyAndGeometry();
+                    self.markDirty(); self.setNeedsRender();
                 }
             } else {
                 if (Math.abs(startLy) > 1) {
                     const ratio = curLy / startLy; // signed: crossing center negates
                     self.writeScale(self.dom_txt_scale_y, self.clampScale(ds.scaleY * ratio));
-                    self.markDirtyAndGeometry();
+                    self.markDirty(); self.setNeedsRender();
                 }
             }
             return;
@@ -824,4 +837,175 @@ ShapeEditor.prototype.commitGizmoDrag = function (this: ShapeEditor) {
                 self.committedTransform[control as string] = newVal as number;
             }
         }
+        // Bake the previewed transform into the geometry buffers on the next
+        // frame. animate() will see _dragPreviewActive=true with gizmoActive
+        // null and reset mesh transforms before the rebuild.
+        self.setNeedsGeometryUpdate();
     };
+
+// Issue #111: scene-transform drag preview helpers.
+//
+// During a gizmo drag we leave the points-mesh / outline vertex buffers frozen
+// at the values captured in `gizmoDragStart`, and express the live transform
+// delta as a model matrix on the meshes plus a matching ctx affine on the 2D
+// overlay. That makes a drag on a 64x64 grid as cheap as a camera pan.
+ShapeEditor.prototype._isGizmoDragPreview = function (this: ShapeEditor): boolean {
+    return this.gizmoActive !== null && this.gizmoDragStart !== null;
+};
+
+ShapeEditor.prototype._computeDragDelta = function (this: ShapeEditor) {
+    const self = this;
+    const ds = self.gizmoDragStart;
+    if (!ds) return null;
+
+    // Base effective transform (captured at drag start; matches what the
+    // vertex buffer was baked with).
+    const baseSX = ds.scale * ds.scaleX;
+    const baseSY = ds.scale * ds.scaleY;
+    const baseRot = ds.rotate * Math.PI / 180;
+    const baseTX = ds.translateX;
+    const baseTY = ds.translateY;
+
+    // Current effective transform (live DOM values).
+    const curScale = parseFloat(self.dom_txt_scale.value) || 1;
+    const curSX = (parseFloat(self.dom_txt_scale_x.value) || 1) * curScale;
+    const curSY = (parseFloat(self.dom_txt_scale_y.value) || 1) * curScale;
+    const curRot = (parseInt(self.dom_txt_rotate.value) || 0) * Math.PI / 180;
+    const curTX = parseFloat(self.dom_txt_translate_x.value) || 0;
+    const curTY = parseFloat(self.dom_txt_translate_y.value) || 0;
+
+    // Both transforms are T * R * S applied around the world origin, so the
+    // delta D such that T_cur = D ∘ T_base decomposes as:
+    //   rotation delta = curRot - baseRot
+    //   scale delta    = (curSX/baseSX, curSY/baseSY)
+    //   translate delta = curT - rotateScale(baseT)  (since baseT is moved by the rotate/scale of D)
+    // We need D(baseT) = curT, so dtx = curT - D_rot_scale(baseT).
+    const dRotRad = curRot - baseRot;
+    const dsX = baseSX !== 0 ? curSX / baseSX : 1;
+    const dsY = baseSY !== 0 ? curSY / baseSY : 1;
+    const cosD = Math.cos(dRotRad);
+    const sinD = Math.sin(dRotRad);
+    // D applied to baseT: scale → rotate → (no translate yet)
+    const baseTxRotated = baseTX * dsX * cosD - baseTY * dsY * sinD;
+    const baseTyRotated = baseTX * dsX * sinD + baseTY * dsY * cosD;
+    const dtx = curTX - baseTxRotated;
+    const dty = curTY - baseTyRotated;
+    return { dtx, dty, dRotRad, dsX, dsY };
+};
+
+ShapeEditor.prototype._applyDragPreviewMatrices = function (this: ShapeEditor) {
+    const self = this;
+    const delta = self._computeDragDelta();
+    if (!delta) return;
+    const { dtx, dty, dRotRad, dsX, dsY } = delta;
+    if (self.pointsMesh) {
+        self.pointsMesh.position.set(dtx, dty, 0);
+        self.pointsMesh.rotation.set(0, 0, dRotRad);
+        self.pointsMesh.scale.set(dsX, dsY, 1);
+    }
+    if (self.screenmapOutline) {
+        self.screenmapOutline.position.set(dtx, dty, 0);
+        self.screenmapOutline.rotation.set(0, 0, dRotRad);
+        self.screenmapOutline.scale.set(dsX, dsY, 1);
+    }
+};
+
+ShapeEditor.prototype._resetMeshTransforms = function (this: ShapeEditor) {
+    const self = this;
+    if (self.pointsMesh) {
+        self.pointsMesh.position.set(0, 0, 0);
+        self.pointsMesh.rotation.set(0, 0, 0);
+        self.pointsMesh.scale.set(1, 1, 1);
+    }
+    if (self.screenmapOutline) {
+        self.screenmapOutline.position.set(0, 0, 0);
+        self.screenmapOutline.rotation.set(0, 0, 0);
+        self.screenmapOutline.scale.set(1, 1, 1);
+    }
+};
+
+// Cheap overlay pass used while a gizmo drag is in flight. Reuses cached
+// `lastTransformedPts` (baked at drag-start values) and applies the world
+// delta as a canvas-space affine, so all the per-point geometry follows the
+// drag without any per-point recomputation.
+//
+// `pts` is `lastTransformedPts` already mapped to canvas via toCanvasCoords
+// (so callers don't pay for that map twice).
+ShapeEditor.prototype._drawGizmoPreviewOverlay = function (this: ShapeEditor, pts: [number, number][]) {
+    const self = this;
+    const ctx = self.overlayCtx;
+    if (!ctx) return;
+    if (pts.length === 0) return;
+    const delta = self._computeDragDelta();
+    if (!delta) return;
+    const { dtx, dty, dRotRad, dsX, dsY } = delta;
+
+    // Canvas-space delta affine = M_wc ∘ M_world_delta ∘ M_wc^-1, where
+    // M_wc maps world to canvas: c = w * camZoom + offset.
+    // offset = (canvasW/2 + camPanX*camZoom, canvasH/2 + camPanY*camZoom).
+    const ox = self.camPanX * self.camZoom + self.canvasW / 2;
+    const oy = self.camPanY * self.camZoom + self.canvasH / 2;
+    const cosD = Math.cos(dRotRad);
+    const sinD = Math.sin(dRotRad);
+    const a = dsX * cosD;
+    const b = dsX * sinD;
+    const c = -dsY * sinD;
+    const d = dsY * cosD;
+    const e = -a * ox - c * oy + dtx * self.camZoom + ox;
+    const f = -b * ox - d * oy + dty * self.camZoom + oy;
+    const txPt = (x: number, y: number): [number, number] => [a * x + c * y + e, b * x + d * y + f];
+
+    // One batched stroke for the entire trace (rainbow + arrows + interior
+    // dots are skipped — they return on commit). Cheap even for 4096 points.
+    if (self.overlayAlpha > 0) {
+        const hasMultiStrip = self.stripInfo && self.stripInfo.strips.length > 1;
+        const stripBoundaries = new Set<number>();
+        if (hasMultiStrip) {
+            for (const strip of self._si().strips) {
+                if (strip.count > 0) stripBoundaries.add(strip.offset + strip.count - 1);
+            }
+        }
+        ctx.globalAlpha = self.overlayAlpha * 0.55;
+        ctx.strokeStyle = '#9ca3af';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        let penDown = false;
+        for (let i = 0; i < pts.length - 1; i++) {
+            if (hasMultiStrip && stripBoundaries.has(i)) { penDown = false; continue; }
+            const [x1, y1] = self.nn(pts[i]);
+            const [x2, y2] = self.nn(pts[i + 1]);
+            const [tx1, ty1] = txPt(x1, y1);
+            const [tx2, ty2] = txPt(x2, y2);
+            if (!penDown) { ctx.moveTo(tx1, ty1); penDown = true; }
+            ctx.lineTo(tx2, ty2);
+        }
+        ctx.stroke();
+    }
+
+    // Highlighted edge (insert-between affordance) — keep it visible.
+    if (self.highlightedEdgeIdx >= 0 && self.highlightedEdgeIdx < pts.length - 1) {
+        const [x1, y1] = self.nn(pts[self.highlightedEdgeIdx]);
+        const [x2, y2] = self.nn(pts[self.highlightedEdgeIdx + 1]);
+        const [tx1, ty1] = txPt(x1, y1);
+        const [tx2, ty2] = txPt(x2, y2);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(tx1, ty1);
+        ctx.lineTo(tx2, ty2);
+        ctx.stroke();
+    }
+
+    // Selected-LED ring tracks the drag, but stays 10px in canvas space.
+    if (self.selectedIdx >= 0 && self.selectedIdx < pts.length) {
+        const [sx, sy] = self.nn(pts[self.selectedIdx]);
+        const [tsx, tsy] = txPt(sx, sy);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(tsx, tsy, 10, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+};

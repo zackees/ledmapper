@@ -173,6 +173,17 @@ export class ShapeEditor {
     declare startBgGizmoDrag: (hit: string, cx: number, cy: number) => any;
     declare handleGizmoDrag: (cx: number, cy: number) => any;
     declare commitGizmoDrag: () => any;
+    // Drag preview (issue #111): during a gizmo drag the geometry buffer is
+    // frozen at the values captured in `gizmoDragStart`; the live transform
+    // delta is applied as a model matrix on the points mesh / outline, and a
+    // matching ctx affine on the overlay. `_dragPreviewActive` tracks whether
+    // we last applied that delta so animate() can reset on the way out.
+    declare _dragPreviewActive: boolean;
+    declare _isGizmoDragPreview: () => boolean;
+    declare _computeDragDelta: () => { dtx: number; dty: number; dRotRad: number; dsX: number; dsY: number } | null;
+    declare _applyDragPreviewMatrices: () => void;
+    declare _resetMeshTransforms: () => void;
+    declare _drawGizmoPreviewOverlay: (pts: [number, number][]) => void;
     declare onContextMenu: (e: MouseEvent) => any;
     declare onMouseDown: (e: MouseEvent) => any;
     declare onMouseMove: (e: MouseEvent) => any;
