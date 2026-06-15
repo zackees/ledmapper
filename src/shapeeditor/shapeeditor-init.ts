@@ -10,6 +10,7 @@ import { stripStartEndLabels } from '../common';
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, wireFileSource } from '../drag-drop';
 import { safeStorage } from '../services/storage';
+import { errorDialog } from '../ui/dialogs';
 import { getBackup, promoteToBackup } from '../screenmap-store';
 
 import { createCircleTexture } from '../three-utils';
@@ -691,7 +692,7 @@ if (this.imageDropTarget) wireFileDropTarget({
         onFile: (file) => {
             if (!file) return;
             if (!file.type.startsWith('image/')) {
-                alert('Please drop an image file.');
+                void errorDialog('Wrong file type', 'Please drop an image file.');
                 return;
             }
             this.loadBackgroundImage(file);

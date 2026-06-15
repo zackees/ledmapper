@@ -1,6 +1,7 @@
 import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file, parseScreenmapMultiStrip, getStripColors, stripStartEndLabels } from '../common';
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, wireFilePicker, fileHasExtension } from '../drag-drop';
+import { errorDialog } from '../ui/dialogs';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
 import {
     resolveLedDiameter,
@@ -242,7 +243,7 @@ export function init(container: HTMLElement) {
     function loadScreenmapFile(file: File | null | undefined) {
         if (!file) return;
         if (!fileHasExtension(file, ['.json'])) {
-            alert('Please choose a .json screenmap file.');
+            void errorDialog('Wrong file type', 'Please choose a .json screenmap file.');
             return;
         }
         void file.text().then((text: string) => {
@@ -253,30 +254,30 @@ export function init(container: HTMLElement) {
             set_dom_btn_play(false);
             load_screenmap_data(JSON.parse(text) as Record<string, unknown>);
         }).catch((error: unknown) => {
-            alert(`Error reading screenmap file: ${String(error)}`);
+            void errorDialog('Error reading screenmap file', String(error));
         });
     }
 
     function loadMovieFile(file: File | null | undefined) {
         if (!file) return;
         if (!fileHasExtension(file, ['.rgb'])) {
-            alert('Please choose a .rgb video file.');
+            void errorDialog('Wrong file type', 'Please choose a .rgb video file.');
             return;
         }
         void file.arrayBuffer().then(load_movie_data).catch((error: unknown) => {
-            alert(`Error reading video file: ${String(error)}`);
+            void errorDialog('Error reading video file', String(error));
         });
     }
 
     function load_movie_data(arrayBuffer: ArrayBuffer) {
         if (screenmap_pts.length === 0) {
-            alert('No screenmap is loaded!');
+            void errorDialog('No screenmap loaded', 'Load a screenmap before loading a video.');
             return;
         }
         const uint8_array = new Uint8Array(arrayBuffer);
         const { frames, notMultiple } = parseRgbFrames(uint8_array, screenmap_pts.length);
         if (notMultiple) {
-            alert('Frame size should be a multiple of the number of screenmap points!');
+            void errorDialog('Frame size mismatch', 'Frame size should be a multiple of the number of screenmap points.');
             return;
         }
         stopVideoStream();
@@ -299,7 +300,7 @@ export function init(container: HTMLElement) {
             } else if (fileHasExtension(file, ['.rgb'])) {
                 loadMovieFile(file);
             } else {
-                alert('Please drop a .json screenmap or .rgb video file.');
+                void errorDialog('Wrong file type', 'Please drop a .json screenmap or .rgb video file.');
             }
         },
         signal,
@@ -401,7 +402,7 @@ export function init(container: HTMLElement) {
     // --- Download handlers ---
     dom_btn_download_screenmap.addEventListener('click', () => {
         if (screenmap_pts.length === 0) {
-            alert('No screenmap data available to download!');
+            void errorDialog('Nothing to download', 'No screenmap data available.');
             return;
         }
         const screenmap = {
@@ -419,7 +420,7 @@ export function init(container: HTMLElement) {
 
     dom_btn_download_video.addEventListener('click', () => {
         if (movie_frames.length === 0) {
-            alert('No video data available to download!');
+            void errorDialog('Nothing to download', 'No video data available.');
             return;
         }
         const totalLength = movie_frames.reduce((sum, frame) => sum + frame.length, 0);

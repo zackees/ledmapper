@@ -1,7 +1,7 @@
 import { download_text_as_file, getStripColors, stripStartEndLabels } from '../common';
 import { saveScreenmap } from '../screenmap-store';
 import { wireFileSource } from '../drag-drop';
-import { fireDialog } from '../ui/dialogs';
+import { fireDialog, errorDialog } from '../ui/dialogs';
 import templateHtml from './template.html?raw';
 export { default as css } from './screenmap.css?url';
 
@@ -336,7 +336,7 @@ export function init(container: HTMLElement) {
             return;
         }
         if (!pictureTaken) {
-            alert('Please take a picture first before adding points.');
+            void errorDialog('Take a picture first', 'Please take a picture first before adding points.');
             return;
         }
         if (!canvas) return;
