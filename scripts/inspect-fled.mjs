@@ -109,13 +109,20 @@ catch (err) {
     process.exit(8);
 }
 
-if (!parsed?.map || typeof parsed.map !== 'object') {
-    console.log('VERDICT: JSON missing required "map" object. Movie Player rejects: "Embedded screenmap in this video is invalid or empty."');
+// Accept both v1 (`{ map: { name: {x,y} } }`) and v2
+// (`{ version: 2, groups, segments: [{ id, x, y, ... }] }`) screenmap shapes.
+const isV2 = parsed?.version === 2 || Array.isArray(parsed?.segments);
+const isV1 = !isV2 && parsed?.map && typeof parsed.map === 'object';
+if (!isV2 && !isV1) {
+    console.log('VERDICT: JSON has neither v1 "map" object nor v2 "segments" array. Movie Player rejects: "Embedded screenmap in this video is invalid or empty."');
     exitCode = 9;
 }
 
 let ledCount = 0;
-for (const [name, strip] of Object.entries(parsed?.map ?? {})) {
+const stripEntries = isV2
+    ? (parsed?.segments ?? []).map((s) => [s?.id ?? '<missing-id>', s])
+    : Object.entries(parsed?.map ?? {});
+for (const [name, strip] of stripEntries) {
     const xs = Array.isArray(strip?.x) ? strip.x.length : 0;
     const ys = Array.isArray(strip?.y) ? strip.y.length : 0;
     if (xs !== ys) {
@@ -123,6 +130,7 @@ for (const [name, strip] of Object.entries(parsed?.map ?? {})) {
     }
     ledCount += xs;
 }
+console.log(`screenmap shape: ${isV2 ? 'v2' : 'v1'} (${stripEntries.length} ${isV2 ? 'segment(s)' : 'strip(s)'})`);
 console.log(`derived LED count: ${ledCount}`);
 const frameSize = ledCount * bpl;
 console.log(`expected frame size: ${ledCount} LEDs x ${bpl} bytes/LED = ${frameSize} bytes`);

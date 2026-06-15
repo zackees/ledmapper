@@ -58,6 +58,11 @@ export interface ScreenmapV2Segment {
     diameter?: number;
     parent?: string;
     offset?: number | null;
+    /** Ledmapper-specific extension (not part of the canonical v2 schema):
+     *  per-segment override of where this strip's frames start in the
+     *  recorded video. Only meaningful when `video_offset_override` is true. */
+    video_offset?: number;
+    video_offset_override?: boolean;
 }
 
 /** Top-level v2 screenmap document. */
