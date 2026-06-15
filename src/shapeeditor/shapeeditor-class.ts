@@ -313,6 +313,13 @@ export class ShapeEditor {
     declare stripDragLastSdx: number;
     declare stripDragLastSdy: number;
     declare stripSnapActive: boolean;
+    // Center-to-center snap (issue #105)
+    declare stripSnapXTargets: number[];
+    declare stripSnapYTargets: number[];
+    declare stripSnapStartCenter: { x: number; y: number } | null;
+    declare stripSnapEngagedX: number | null;
+    declare stripSnapEngagedY: number | null;
+    declare _drawSnapGuides: () => void;
     declare altQuasimode: boolean;
     declare ctxMenu: HTMLElement | null;
     declare ctxMenuIdx: number;

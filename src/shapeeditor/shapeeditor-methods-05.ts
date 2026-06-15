@@ -282,9 +282,44 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
 
         self.drawBgGizmoHandles();
         self.drawRuler();
+        self._drawSnapGuides();
         self._drawPlacingGhost();
         self._drawPasteGhost();
     };
+
+/**
+ * Magenta dashed alignment lines, shown while a strip drag has snapped
+ * center-to-center with another strip. v1: world-AABB center alignment
+ * only (see issue #105). Rotated strips snap correctly because their
+ * `screenmap_pts` already reflect the rotation — we average those
+ * world-space points to get each strip's center, which is the AABB
+ * center of the rotated rectangle.
+ */
+ShapeEditor.prototype._drawSnapGuides = function (this: ShapeEditor) {
+    const self = this;
+    if (!self.overlayCtx) return;
+    if (self.stripSnapEngagedX === null && self.stripSnapEngagedY === null) return;
+    const ctx = self.overlayCtx;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(236, 72, 153, 0.85)'; // tailwind pink-500
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    if (self.stripSnapEngagedX !== null) {
+        const [cx] = self.toCanvasCoords(self.stripSnapEngagedX, 0);
+        ctx.beginPath();
+        ctx.moveTo(cx, 0);
+        ctx.lineTo(cx, self.canvasH);
+        ctx.stroke();
+    }
+    if (self.stripSnapEngagedY !== null) {
+        const [, cy] = self.toCanvasCoords(0, self.stripSnapEngagedY);
+        ctx.beginPath();
+        ctx.moveTo(0, cy);
+        ctx.lineTo(self.canvasW, cy);
+        ctx.stroke();
+    }
+    ctx.restore();
+};
 
 ShapeEditor.prototype.fillCircle = function (this: ShapeEditor, x: number, y: number, diameter: number, color: string) {
     const self = this;

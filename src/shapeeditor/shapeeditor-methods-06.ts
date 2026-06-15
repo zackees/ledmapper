@@ -244,6 +244,42 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
                 }
                 self.stripDragLastSdx = 0;
                 self.stripDragLastSdy = 0;
+                // ── Center-to-center snap precompute (issue #105) ───
+                // Walk every strip OTHER than the one being dragged and
+                // record its world-space center (mean of its
+                // `screenmap_pts`). Centers are rotation-invariant
+                // because the points are already post-transform.
+                self.stripSnapXTargets = [];
+                self.stripSnapYTargets = [];
+                const stripsAll = self._si().strips;
+                for (let si = 0; si < stripsAll.length; si++) {
+                    if (si === hitStripIdx) continue;
+                    const s = stripsAll[si];
+                    if (!s || s.count <= 0) continue;
+                    let sx = 0, sy = 0, cnt = 0;
+                    for (let k = s.offset; k < s.offset + s.count; k++) {
+                        const p = self.screenmap_pts[k];
+                        if (!p) continue;
+                        sx += p[0]; sy += p[1]; cnt++;
+                    }
+                    if (cnt > 0) {
+                        self.stripSnapXTargets.push(sx / cnt);
+                        self.stripSnapYTargets.push(sy / cnt);
+                    }
+                }
+                // Dragged strip's starting center (rotation-aware: mean of
+                // its already-transformed `screenmap_pts`).
+                let cx0 = 0, cy0 = 0, cn0 = 0;
+                for (let k = strip.offset; k < strip.offset + strip.count; k++) {
+                    const p = self.screenmap_pts[k];
+                    if (!p) continue;
+                    cx0 += p[0]; cy0 += p[1]; cn0++;
+                }
+                self.stripSnapStartCenter = cn0 > 0
+                    ? { x: cx0 / cn0, y: cy0 / cn0 }
+                    : null;
+                self.stripSnapEngagedX = null;
+                self.stripSnapEngagedY = null;
                 self._oc().style.cursor = 'grabbing';
             }
             return;
@@ -449,7 +485,10 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
             // zoom level. Both the toggle and the threshold are user-
             // controllable via the Magnetic-snap checkbox + Tolerance slider
             // in the Screenmap controls panel (persisted in localStorage).
-            const snapPx = self.snapBackEnabled ? self.snapBackPx : 0;
+            // Holding Shift bypasses every kind of snap for this move
+            // (Figma convention).
+            const shiftBypass = e.shiftKey;
+            const snapPx = !shiftBypass && self.snapBackEnabled ? self.snapBackPx : 0;
             const wasSnapped = self.stripSnapActive;
             self.stripSnapActive = snapPx > 0 && Math.hypot(dx, dy) < snapPx;
             if (self.stripSnapActive) {
@@ -457,6 +496,40 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
                 sdy = 0;
             }
             if (self.stripSnapActive !== wasSnapped) self.setNeedsRender();
+            // ── Center-to-center snap (issue #105) ─────────────────────
+            // When the snap-back-to-origin isn't active, look for the
+            // closest other strip's center on each axis independently.
+            // Engage if within `snapBackPx / pxPerCm` cm.
+            const prevSnapX = self.stripSnapEngagedX;
+            const prevSnapY = self.stripSnapEngagedY;
+            if (!self.stripSnapActive && snapPx > 0 && self.stripSnapStartCenter) {
+                const pxPerCm = self.fitScale * self.camZoom;
+                const tolCm = pxPerCm > 0 ? snapPx / pxPerCm : 0;
+                const candCx = self.stripSnapStartCenter.x + sdx;
+                const candCy = self.stripSnapStartCenter.y + sdy;
+                let bestX: number | null = null;
+                let bestXDist = tolCm;
+                for (const t of self.stripSnapXTargets) {
+                    const d = Math.abs(t - candCx);
+                    if (d < bestXDist) { bestX = t; bestXDist = d; }
+                }
+                let bestY: number | null = null;
+                let bestYDist = tolCm;
+                for (const t of self.stripSnapYTargets) {
+                    const d = Math.abs(t - candCy);
+                    if (d < bestYDist) { bestY = t; bestYDist = d; }
+                }
+                if (bestX !== null) sdx = bestX - self.stripSnapStartCenter.x;
+                if (bestY !== null) sdy = bestY - self.stripSnapStartCenter.y;
+                self.stripSnapEngagedX = bestX;
+                self.stripSnapEngagedY = bestY;
+            } else {
+                self.stripSnapEngagedX = null;
+                self.stripSnapEngagedY = null;
+            }
+            if (prevSnapX !== self.stripSnapEngagedX || prevSnapY !== self.stripSnapEngagedY) {
+                self.setNeedsRender();
+            }
             const strip = self.nn(self.stripInfo.strips[self.stripDragIdx]);
             for (let k = 0; k < strip.count; k++) {
                 const base = strip.offset + k;
@@ -677,6 +750,11 @@ ShapeEditor.prototype._finalizeStripDrag = function (this: ShapeEditor) {
         self.stripDragStartScreenmap = null;
         self.stripDragStartRaw = null;
         self.stripSnapActive = false;
+        self.stripSnapXTargets = [];
+        self.stripSnapYTargets = [];
+        self.stripSnapStartCenter = null;
+        self.stripSnapEngagedX = null;
+        self.stripSnapEngagedY = null;
         self.stripDragLastSdx = 0;
         self.stripDragLastSdy = 0;
     };
@@ -743,6 +821,11 @@ ShapeEditor.prototype._cancelSingleTouchGesture = function (this: ShapeEditor) {
             self.stripDragStartScreenmap = null;
             self.stripDragStartRaw = null;
             self.stripSnapActive = false;
+            self.stripSnapXTargets = [];
+            self.stripSnapYTargets = [];
+            self.stripSnapStartCenter = null;
+            self.stripSnapEngagedX = null;
+            self.stripSnapEngagedY = null;
             self.stripDragLastSdx = 0;
             self.stripDragLastSdy = 0;
         }
