@@ -1,6 +1,6 @@
 import { parseScreenmapMultiStrip, centerAndFitPoints, getStripColors, stripStartEndLabels } from '../common';
 import { createLabelRenderer } from '../label-render';
-import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
+import { wireFileSource, fileHasExtension } from '../drag-drop';
 import { saveScreenmap, getScreenmap, savePresetSelection, getPresetSelection } from '../screenmap-store';
 import { saveVideo, getVideo, clearVideo } from '../video-store';
 import { buildVideoChannelMap } from '../moviemaker/transforms';
@@ -325,10 +325,6 @@ export function init(container: HTMLElement) {
         });
     }
 
-    dom_btn_upload_screenmap.addEventListener('change', () => {
-        loadScreenmapFile(dom_btn_upload_screenmap.files?.[0]);
-    }, { signal });
-
     // Restore stored screenmap if available (without re-persisting, which
     // would clear the stored preset selection)
     const storedScreenmap = getScreenmap();
@@ -403,20 +399,16 @@ export function init(container: HTMLElement) {
         if (autoplay) dom_btn_play.click();
     }
 
-    dom_btn_load_movie.addEventListener('change', () => {
-        loadMovieFile(dom_btn_load_movie.files?.[0]);
-    }, { signal });
-
-    wireFileDropTarget({
-        target: dom_screenmap_drop_target,
+    wireFileSource({
         input: dom_btn_upload_screenmap,
+        target: dom_screenmap_drop_target,
         onFile: loadScreenmapFile,
         signal,
     });
 
-    wireFileDropTarget({
-        target: dom_movie_drop_target,
+    wireFileSource({
         input: dom_btn_load_movie,
+        target: dom_movie_drop_target,
         onFile: loadMovieFile,
         signal,
     });

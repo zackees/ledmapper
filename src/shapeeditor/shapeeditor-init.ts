@@ -8,7 +8,7 @@ import type { PanelOpts } from './panel-catalog';
 import { stripStartEndLabels } from '../common';
 
 import { createLabelRenderer } from '../label-render';
-import { wireFileDropTarget } from '../drag-drop';
+import { wireFileDropTarget, wireFileSource } from '../drag-drop';
 import { getBackup, promoteToBackup } from '../screenmap-store';
 
 import { createCircleTexture } from '../three-utils';
@@ -679,13 +679,10 @@ this.dom_btn_new.addEventListener('click', () => {
             void this._toastInfo('New layout — previous layout kept as backup');
         }
     }, { signal: this.signal });
-this.dom_btn_upload_screenmap.addEventListener('change', () => {
-        this.loadScreenmapFile(this.dom_btn_upload_screenmap.files?.[0] ?? null);
-    }, { signal: this.signal });
         this.screenmapDropTarget = (this.container.querySelector('#screenmap_drop_target'))!;
-if (this.screenmapDropTarget) wireFileDropTarget({
-        target: this.screenmapDropTarget,
+if (this.screenmapDropTarget) wireFileSource({
         input: this.dom_btn_upload_screenmap,
+        target: this.screenmapDropTarget,
         onFile: (file: File | null | undefined) => this.loadScreenmapFile(file),
         signal: this.signal,
     });

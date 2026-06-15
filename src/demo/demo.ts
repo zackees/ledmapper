@@ -1,6 +1,6 @@
 import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file, parseScreenmapMultiStrip, getStripColors, stripStartEndLabels } from '../common';
 import { createLabelRenderer } from '../label-render';
-import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
+import { wireFileDropTarget, wireFilePicker, fileHasExtension } from '../drag-drop';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
 import { createAutoBloom } from '../auto-bloom';
 import {
@@ -325,13 +325,8 @@ export function init(container: HTMLElement) {
         set_dom_btn_play(true);
     }
 
-    dom_btn_upload_screenmap.addEventListener('change', () => {
-        loadScreenmapFile(dom_btn_upload_screenmap.files?.[0]);
-    }, { signal });
-
-    dom_btn_load_movie.addEventListener('change', () => {
-        loadMovieFile(dom_btn_load_movie.files?.[0]);
-    }, { signal });
+    wireFilePicker({ input: dom_btn_upload_screenmap, onFile: loadScreenmapFile, signal });
+    wireFilePicker({ input: dom_btn_load_movie, onFile: loadMovieFile, signal });
 
     wireFileDropTarget({
         target: main,
