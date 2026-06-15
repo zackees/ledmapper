@@ -141,6 +141,49 @@ export function wireDiameterSlider({ slider, label, getMaterial, signal }: { sli
     return () => parseInt(slider.value);
 }
 
+/**
+ * Size `wrapper` to the largest square that fits inside `parent`, accounting
+ * for the parent's CSS padding and the wrapper's distance from the top of the
+ * viewport (so the canvas can never push the page taller than `innerHeight`).
+ * Updates on parent resize via `ResizeObserver` and on window resize.
+ *
+ * The wrapper's CSS `width` and `height` are written; the WebGL drawing
+ * buffer is NOT touched — callers keep their internal render resolution
+ * (e.g. `BLOOM_RENDER_PX`) so a small wrapper still gets a sharp downscale.
+ *
+ * Used by `/play` (demo), `/movieplayer/`, and any future shell-hosted
+ * Three.js canvas. See issue #141.
+ */
+export function wireResponsiveCanvas({
+    wrapper,
+    parent,
+    signal,
+}: {
+    wrapper: HTMLElement;
+    parent: HTMLElement;
+    signal?: AbortSignal;
+}): void {
+    function fit() {
+        const cs = getComputedStyle(parent);
+        const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+        const rectTop = parent.getBoundingClientRect().top;
+        const availW = parent.clientWidth - padX;
+        const availH = window.innerHeight - rectTop - padY;
+        const size = Math.max(Math.floor(Math.min(availW, availH)), 1);
+        wrapper.style.width = `${String(size)}px`;
+        wrapper.style.height = `${String(size)}px`;
+    }
+    fit();
+    const observer = new ResizeObserver(() => { fit(); });
+    observer.observe(parent);
+    const listenerOpts: AddEventListenerOptions = signal !== undefined ? { signal } : {};
+    window.addEventListener('resize', fit, listenerOpts);
+    if (signal !== undefined) {
+        signal.addEventListener('abort', () => { observer.disconnect(); }, { once: true });
+    }
+}
+
 /** Start a frame-rate-limited requestAnimationFrame loop. */
 export function createAnimationLoop({ targetFPS, onFrame }: { targetFPS: number; onFrame: (time: number) => void }): { setTargetFPS: (fps: number) => void; stop: () => void } {
     let fps = targetFPS;

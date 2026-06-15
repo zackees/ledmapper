@@ -4,7 +4,7 @@ import { wireFileSource, fileHasExtension } from '../drag-drop';
 import { errorDialog } from '../ui/dialogs';
 import { saveVideo, getVideo, clearVideo } from '../video-store';
 import { buildVideoChannelMap } from '../moviemaker/transforms';
-import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
+import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop, wireResponsiveCanvas } from '../three-utils';
 import { createCanvasRecorder } from '../render/canvas-recorder';
 import { applyBloomGeometry } from '../render/bloom-geometry';
 import { setupDemoStyleBloom } from '../render/demo-bloom-setup';
@@ -74,28 +74,11 @@ export function init(container: HTMLElement) {
     const ac = new AbortController();
     const { signal } = ac;
 
-    // Size the wrapper to the largest square that fits the available area so the
-    // canvas never overflows the viewport vertically (issue #66). The drawing
-    // buffer is fixed (BLOOM_RENDER_PX); only the CSS display size changes, so
-    // downscaling stays crisp. Both canvases fill the wrapper at 100%.
-    function fitWrapper() {
-        const cs = getComputedStyle(main);
-        const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-        const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
-        // Bound the height by the viewport (main's top is fixed by the nav +
-        // control bar above it, independent of the canvas) so the square can
-        // never push the page taller than the viewport.
-        const rectTop = main.getBoundingClientRect().top;
-        const availW = main.clientWidth - padX;
-        const availH = window.innerHeight - rectTop - padY;
-        const size = Math.max(Math.floor(Math.min(availW, availH)), 1);
-        wrapper.style.width = `${String(size)}px`;
-        wrapper.style.height = `${String(size)}px`;
-    }
-    fitWrapper();
-    const resizeObserver = new ResizeObserver(() => { fitWrapper(); });
-    resizeObserver.observe(main);
-    window.addEventListener('resize', fitWrapper, { signal });
+    // Size the wrapper to the largest square that fits the available area so
+    // the canvas never overflows the viewport vertically (issue #66, #141).
+    // The drawing buffer is fixed (BLOOM_RENDER_PX); only the CSS display
+    // size changes, so downscaling stays crisp.
+    wireResponsiveCanvas({ wrapper, parent: main, signal });
 
     // Canvas-overlay play/pause button — the primary playback affordance. It is
     // shown only once a video is loaded and mirrors the playing state.
@@ -365,8 +348,9 @@ export function init(container: HTMLElement) {
 
     return function destroy() {
         ac.abort();
+        // wireResponsiveCanvas listens on the same signal, so the ac.abort()
+        // above already disconnects its ResizeObserver and window listener.
         recorder.stop();
-        resizeObserver.disconnect();
         animLoop.stop();
         if (pointsMesh) {
             scene.remove(pointsMesh);
