@@ -8,6 +8,7 @@ import type { StripEntry, StripInfo } from './strips-model';
 import { download_text_as_file } from '../common';
 import { formatCompactJson } from '../json-compact';
 import { safeStorage } from '../services/storage';
+import { fireDialog, getSwal } from '../ui/dialogs';
 
 import { saveScreenmap, getScreenmap, saveScreenmapMultiStrip, buildScreenmapMultiStripJson, getScreenmapMeta, getBackup, restoreBackup, backfillMeta, isDegenerate } from '../screenmap-store';
 import type { BackupMeta } from '../screenmap-store';
@@ -182,15 +183,15 @@ ShapeEditor.prototype._openInspectJsonDialog = async function (this: ShapeEditor
         // (shouldn't happen, but keep the dialog functional).
     }
 
+    if (self.signal.aborted) return;
     let Swal;
     try {
-        Swal = (await import('sweetalert2')).default;
+        Swal = await getSwal();
     } catch {
         return;
     }
-    if (self.signal.aborted) return;
 
-    const res = await Swal.fire({
+    const res = await fireDialog({
         title: 'Inspect / Edit Screenmap JSON',
         html: `
             <div style="text-align:left;font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#cbd5e1;margin-bottom:6px;">
@@ -202,8 +203,6 @@ ShapeEditor.prototype._openInspectJsonDialog = async function (this: ShapeEditor
                        white-space:pre;overflow:auto;resize:vertical;">${escapeForTextarea(json)}</textarea>
         `,
         width: '80vw',
-        background: '#1a1a1a',
-        color: '#e5e7eb',
         showConfirmButton: true,
         showDenyButton: true,
         showCancelButton: true,
@@ -318,16 +317,13 @@ ShapeEditor.prototype._toast = async function (this: ShapeEditor, opts: Record<s
     const self = this;
 
         try {
-            const Swal = (await import('sweetalert2')).default;
             if (self.signal.aborted) return null;
-            return await Swal.fire({
+            return await fireDialog({
                 toast: true,
                 position: 'top',
                 showConfirmButton: false,
                 timer: 6000,
                 timerProgressBar: true,
-                background: '#1a1a1a',
-                color: '#e5e7eb',
                 ...opts,
             });
         } catch { return null; }
@@ -351,9 +347,8 @@ ShapeEditor.prototype._toastFreshDegenerate = async function (this: ShapeEditor,
         const ledCount = (backupMeta && typeof backupMeta.ledCount === 'number')
             ? backupMeta.ledCount : 0;
         try {
-            const Swal = (await import('sweetalert2')).default;
             if (self.signal.aborted) return;
-            const res = await Swal.fire({
+            const res = await fireDialog({
                 toast: true,
                 position: 'top',
                 icon: 'info',
@@ -363,8 +358,6 @@ ShapeEditor.prototype._toastFreshDegenerate = async function (this: ShapeEditor,
                 showCancelButton: true,
                 confirmButtonText: 'Restore previous layout',
                 cancelButtonText: 'Dismiss',
-                background: '#1a1a1a',
-                color: '#e5e7eb',
                 timer: 12000,
                 timerProgressBar: true,
             });
@@ -386,9 +379,8 @@ ShapeEditor.prototype._toastSilentRestored = async function (this: ShapeEditor, 
         const when = (restoredMeta && typeof restoredMeta.savedAt === 'number')
             ? self._relativeTime(restoredMeta.savedAt) : 'recently';
         try {
-            const Swal = (await import('sweetalert2')).default;
             if (self.signal.aborted) return;
-            const res = await Swal.fire({
+            const res = await fireDialog({
                 toast: true,
                 position: 'top',
                 icon: 'success',
@@ -397,8 +389,6 @@ ShapeEditor.prototype._toastSilentRestored = async function (this: ShapeEditor, 
                 showConfirmButton: true,
                 confirmButtonText: 'Undo',
                 showCancelButton: false,
-                background: '#1a1a1a',
-                color: '#e5e7eb',
                 timer: 8000,
                 timerProgressBar: true,
             });

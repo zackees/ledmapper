@@ -1,5 +1,4 @@
-import type SweetAlert2 from 'sweetalert2';
-const Swal: Promise<typeof SweetAlert2> = import('sweetalert2').then(m => m.default);
+import { fireDialog, errorDialog, getSwal } from '../ui/dialogs';
 import type { ParsedStrip, MultiStripParseResult } from '../types/domain';
 import { parseScreenmapMultiStrip } from '../common';
 import { wireFileDropTarget, wireFileSource, fileHasExtension } from '../drag-drop';
@@ -133,12 +132,12 @@ export function init(container: HTMLElement) {
             }
         },
         onError(message: string) {
-            void Swal.then(s => s.fire('Webcam Error', message, 'error'));
+            void errorDialog('Webcam Error', message);
         },
     });
 
     const recording = createRecording({
-        getSwal: () => Swal,
+        getSwal,
         getScreenmapJson: () => getScreenmap(),
     });
 
@@ -344,7 +343,7 @@ export function init(container: HTMLElement) {
     // ── Event handlers ──────────────────────────────────────────────────────────
 
     dom_btn_how_to.addEventListener('click', () => {
-        void Swal.then(s => s.fire({
+        void fireDialog({
             title: 'How to get the best video',
             html: `
                 <div style="text-align: left; margin-bottom: 15px;">
@@ -361,7 +360,7 @@ export function init(container: HTMLElement) {
             `,
             confirmButtonText: 'Got it!',
             customClass: { popup: 'custom-popup-class', htmlContainer: 'custom-content-class' },
-        }));
+        });
     }, { signal });
 
     // Video source: Load file

@@ -10,6 +10,7 @@ import { parse_screenmap_data, centerAndFitPoints, parseScreenmapMultiStrip, get
 import { fileHasExtension } from '../drag-drop';
 import { saveScreenmap, notePinMutation } from '../screenmap-store';
 import { safeStorage } from '../services/storage';
+import { fireDialog } from '../ui/dialogs';
 
 import type { PresetEntry } from './shapeeditor-types';
 
@@ -17,7 +18,6 @@ ShapeEditor.prototype._openHelpOverlay = async function (this: ShapeEditor) {
     const self = this;
 
         try {
-            const Swal = (await import('sweetalert2')).default;
             if (self.signal.aborted) return;
             const dismissed = safeStorage.get('lm:shapeeditor-helpDismissed') === '1';
             const html = `
@@ -79,12 +79,10 @@ ShapeEditor.prototype._openHelpOverlay = async function (this: ShapeEditor) {
                     </label>
                 </div>
             `;
-            const res = await Swal.fire({
+            const res = await fireDialog({
                 title: 'ScreenMap Editor — Keyboard help',
                 html,
                 width: 640,
-                background: '#1a1a1a',
-                color: '#e5e7eb',
                 confirmButtonText: 'Got it',
                 showCloseButton: true,
                 focusConfirm: false,

@@ -6,6 +6,7 @@ import { WebGLRenderer, Scene, OrthographicCamera } from 'three';
 
 import { notePinMutation } from '../screenmap-store';
 import { safeStorage } from '../services/storage';
+import { fireDialog } from '../ui/dialogs';
 
 import { hintTextFor } from './hints';
 
@@ -108,9 +109,8 @@ ShapeEditor.prototype.doRenamePinPrompt = async function (this: ShapeEditor, pin
 
         const pins = self.stripStore.getPinOrder();
         if (!pins.includes(pinId)) return;
-        const Swal = (await import('sweetalert2')).default;
         if (self.signal.aborted) return;
-        const swalResult1 = await Swal.fire({
+        const swalResult1 = await fireDialog({
             title: 'Rename Pin',
             input: 'text',
             inputValue: pinId,
@@ -263,15 +263,12 @@ ShapeEditor.prototype._moveDownstreamToPinPrompt = async function (this: ShapeEd
             if (p !== curPin) options[p] = p;
         }
         options.__new__ = 'New pin…';
-        const Swal = (await import('sweetalert2')).default;
         if (self.signal.aborted) return;
-        const swalResult2 = await Swal.fire({
+        const swalResult2 = await fireDialog({
             title: `Move "${s.name}" to pin`,
             input: 'select',
             inputOptions: options,
             showCancelButton: true,
-            background: '#1a1a1a',
-            color: '#e5e7eb',
         });
         const value2: unknown = swalResult2.value;
         if (typeof value2 !== 'string' || !value2) return;
@@ -405,9 +402,8 @@ ShapeEditor.prototype.doRenameStripPrompt = async function (this: ShapeEditor, s
         const strip = strips[stripIdx];
         if (!strip) return;
         const oldName = strip.name;
-        const Swal = (await import('sweetalert2')).default;
         if (self.signal.aborted) return;
-        const swalResult3 = await Swal.fire({
+        const swalResult3 = await fireDialog({
             title: 'Rename Strip',
             input: 'text',
             inputValue: oldName,
@@ -444,9 +440,8 @@ ShapeEditor.prototype.doDeleteStripPrompt = async function (this: ShapeEditor, s
         if (strips.length <= 1) return;
         const strip = strips[stripIdx];
         if (!strip) return;
-        const Swal = (await import('sweetalert2')).default;
         if (self.signal.aborted) return;
-        const result = await Swal.fire({
+        const result = await fireDialog({
             title: `Delete "${strip.name}"?`,
             text: `${String(strip.count)} LED${strip.count === 1 ? '' : 's'} will be removed.`,
             icon: 'warning',
