@@ -70,6 +70,20 @@ this.mainEl.style.position = 'relative';
                 try { localStorage.setItem('shapeeditor.snapBackPx', String(this.snapBackPx)); } catch { /* ignore */ }
             }
         }, { signal: this.signal });
+        // ── Overlay panel collapse/expand button ────────────────────
+        this.dom_transform_overlay = this.qe<HTMLElement>('#transform-overlay');
+        this.dom_btn_overlay_collapse = this.qeb('#btn_overlay_collapse');
+        this.dom_btn_overlay_expand = this.qeb('#btn_overlay_expand');
+        try {
+            this.overlayCollapsed = localStorage.getItem('shapeeditor.overlayCollapsed') === '1';
+        } catch { this.overlayCollapsed = false; }
+        this._setOverlayCollapsed(this.overlayCollapsed);
+        this.dom_btn_overlay_collapse.addEventListener('click', () => {
+            this._setOverlayCollapsed(true);
+        }, { signal: this.signal });
+        this.dom_btn_overlay_expand.addEventListener('click', () => {
+            this._setOverlayCollapsed(false);
+        }, { signal: this.signal });
         this.dom_btn_save = this.qeb('#btn_save_as');
         this.dom_btn_reset = this.qeb('#btn_reset');
         this.dom_btn_undo = this.qeb('#btn_undo');

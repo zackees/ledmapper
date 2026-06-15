@@ -237,6 +237,11 @@ export class ShapeEditor {
     declare dom_rng_snap_back_px_val: HTMLElement;
     declare snapBackEnabled: boolean;
     declare snapBackPx: number;
+    declare dom_transform_overlay: HTMLElement;
+    declare dom_btn_overlay_collapse: HTMLButtonElement;
+    declare dom_btn_overlay_expand: HTMLButtonElement;
+    declare overlayCollapsed: boolean;
+    declare _setOverlayCollapsed: (collapsed: boolean) => void;
     declare dom_btn_save: HTMLButtonElement;
     declare dom_btn_reset: HTMLButtonElement;
     declare dom_btn_undo: HTMLButtonElement;
