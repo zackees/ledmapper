@@ -7,6 +7,7 @@ import type { StripEntry } from './strips-model';
 import type { WiringStyle, DataInCorner, RotationDeg } from './panel-catalog';
 
 import { notePinMutation } from '../screenmap-store';
+import { fireDialog } from '../ui/dialogs';
 
 import { PANEL_CATALOG, getCatalogEntry, generatePanelPoints } from './panel-catalog';
 import { snapToGrid } from './grid-snap';
@@ -323,7 +324,6 @@ ShapeEditor.prototype._openInsertDialog = async function (this: ShapeEditor) {
     const self = this;
 
         try {
-            const Swal = (await import('sweetalert2')).default;
             if (self.signal.aborted) return;
 
             // Snapshot current accordion values for initial form state
@@ -377,12 +377,10 @@ ShapeEditor.prototype._openInsertDialog = async function (this: ShapeEditor) {
                 </div>
             `;
 
-            const res = await Swal.fire({
+            const res = await fireDialog({
                 title: 'Insert Panel',
                 html,
                 width: 480,
-                background: '#1a1a1a',
-                color: '#e5e7eb',
                 showCancelButton: true,
                 showDenyButton: true,
                 cancelButtonText: 'Cancel',

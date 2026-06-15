@@ -1,6 +1,7 @@
 import { download_text_as_file, getStripColors, stripStartEndLabels } from '../common';
 import { saveScreenmap } from '../screenmap-store';
 import { wireFileSource } from '../drag-drop';
+import { fireDialog } from '../ui/dialogs';
 import templateHtml from './template.html?raw';
 export { default as css } from './screenmap.css?url';
 
@@ -182,9 +183,8 @@ export function init(container: HTMLElement) {
         }
         if (dom.btn_rename_strip) {
             dom.btn_rename_strip.addEventListener('click', () => { void (async () => {
-                const Swal = (await import('sweetalert2')).default;
                 if (signal.aborted) return;
-                const fireResult = await Swal.fire<string>({
+                const fireResult = await fireDialog<string>({
                     title: 'Rename Strip',
                     input: 'text',
                     inputValue: activeStrip,
