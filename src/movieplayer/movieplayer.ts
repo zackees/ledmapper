@@ -6,22 +6,11 @@ import { saveVideo, getVideo, clearVideo } from '../video-store';
 import { buildVideoChannelMap } from '../moviemaker/transforms';
 import { loadPresetText, loadPresetManifest } from '../preset-loader';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
-import { createAutoBloom } from '../auto-bloom';
 import { createCanvasRecorder } from './canvas-recorder';
 import { applyBloomGeometry } from '../render/bloom-geometry';
-import { wireBloomControls } from '../render/bloom-ui';
+import { setupDemoStyleBloom } from '../render/demo-bloom-setup';
 import { parseRgbFrames } from '../render/rgb-video';
-import {
-    DEMO_AUTO_FLOOR,
-    DEMO_AUTO_MAX_DENSE,
-    DEMO_AUTO_MAX_SPARSE,
-    DEMO_BLOOM_MAX_STRENGTH,
-    DEMO_BLOOM_RADIUS,
-    DEMO_BLOOM_AREA_REF,
-    BLOOM_MIN_STRENGTH,
-    BLOOM_RENDER_PX,
-    IRIS_DIAMETER_GAIN,
-} from '../bloom-utils';
+import { BLOOM_RENDER_PX } from '../bloom-utils';
 import type { ParsedStrip, RendererContextWithOverlay } from '../types/domain';
 import type { BufferGeometry, PointsMaterial, Points, Float32BufferAttribute } from 'three';
 import templateHtml from './template.html?raw';
@@ -122,23 +111,16 @@ export function init(container: HTMLElement) {
     dom_btn_play_overlay.hidden = true;
     wrapper.appendChild(dom_btn_play_overlay);
 
-    // FastLED-style bloom via the shared controller. The player is a playback
-    // view like the demo, so it uses the same configuration: the size-kernel
-    // floor (minFloorMode 'size') and the geometry-derived iris modulation
-    // depth (useBlowoutRisk) so small/sparse dots hold full bloom.
-    const PLAYER_PROFILE = { floor: DEMO_AUTO_FLOOR, maxDense: DEMO_AUTO_MAX_DENSE, maxSparse: DEMO_AUTO_MAX_SPARSE };
-    const bloom = createAutoBloom({
+    // FastLED-style bloom via the shared setup helper (see issue #119).
+    const bloom = setupDemoStyleBloom({
         renderer, scene, camera,
-        width: CANVAS_SIZE, height: CANVAS_SIZE,
-        profile: PLAYER_PROFILE,
-        paramOverrides: {
-            baseMax: DEMO_BLOOM_MAX_STRENGTH,
-            baseRadius: DEMO_BLOOM_RADIUS,
-            refArea: DEMO_BLOOM_AREA_REF,
-        },
-        minFloorMode: 'size',
-        useBlowoutRisk: true,
-        diameterGain: IRIS_DIAMETER_GAIN,
+        paneSize: CANVAS_SIZE,
+        chk: dom_chk_auto_bloom,
+        slider: dom_rng_bloom_strength,
+        sliderWrap: dom_bloom_strength_slider,
+        label: dom_txt_bloom_strength,
+        lsKey: 'ledmapper.movieplayer.autoBloom',
+        signal,
     });
     const getDiameter = wireDiameterSlider({
         slider: dom_rng_diameter,
@@ -153,30 +135,6 @@ export function init(container: HTMLElement) {
         applyBloomGeometry(bloom, screenmap_pts, { ledPx: pointsMaterial.size, panePx: CANVAS_SIZE });
     }
     dom_rng_diameter.addEventListener('input', updateBloomGeometry, { signal });
-
-    // --- Bloom UI: auto checkbox + manual strength slider ---
-    const PLAYER_BLOOM_S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
-    wireBloomControls({
-        chk: dom_chk_auto_bloom,
-        slider: dom_rng_bloom_strength,
-        sliderWrap: dom_bloom_strength_slider,
-        label: dom_txt_bloom_strength,
-        lsKey: 'ledmapper.movieplayer.autoBloom',
-        adapter: {
-            setAuto: (e) => { bloom.setAuto(e); },
-            getStrength: () => bloom.getStrength(),
-            setManualStrength: (s) => { bloom.setManualStrength(s); },
-        },
-        strengthFromSlider: (rngVal) =>
-            PLAYER_BLOOM_S_MIN + (DEMO_BLOOM_MAX_STRENGTH - PLAYER_BLOOM_S_MIN) * (rngVal / 100) ** 2,
-        sliderFromStrength: (curr) => {
-            const sMax = DEMO_AUTO_MAX_SPARSE * 1.5;
-            const raw = (curr - PLAYER_BLOOM_S_MIN) / (sMax - PLAYER_BLOOM_S_MIN);
-            return Math.round(Math.sqrt(Math.max(raw, 0)) * 100);
-        },
-        disabledStyle: 'opacity',
-        signal,
-    });
 
     function buildPoints() {
         const previous = (pointsMesh && pointsGeometry && pointsMaterial && colorAttribute) ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial, colorAttribute } : null;
