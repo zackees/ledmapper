@@ -17,10 +17,52 @@ export interface ScreenmapStrip {
     video_offset_override?: boolean;
 }
 
-/** Top-level screenmap JSON object. */
+/** Top-level screenmap JSON object (v1: FastLED ScreenMap shape). */
 export interface ScreenmapJson {
     /** Strip data keyed by strip name. Optional only to allow graceful validation of untrusted JSON. */
     map?: Record<string, ScreenmapStrip>;
+    /** When present, must be 1 for the v1 parser to take this path. */
+    version?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Screenmap v2 interchange format (see ledmapper issue #92)
+// ---------------------------------------------------------------------------
+
+/** A UI group entry in the v2 schema. Free-form metadata; only `color` is required. */
+export interface ScreenmapV2Group {
+    color: string;
+    [key: string]: unknown;
+}
+
+/**
+ * A v2 segment — one physical LED chain.
+ *
+ *   - `id`, `pin`, `group` required.
+ *   - `x` and `y` required parallel float arrays of equal length.
+ *   - `z` optional parallel float array (same length when present).
+ *   - `parent` present iff this segment is a fork; value is another segment's `id`.
+ *   - `offset` optional integer or null; only meaningful on forks. `null` or
+ *     omitted = tip (parent's last LED). Non-negative N = forward index.
+ *     Negative -N = N positions before the tip.
+ */
+export interface ScreenmapV2Segment {
+    id: string;
+    pin: number | string;
+    group: string;
+    x: number[];
+    y: number[];
+    z?: number[];
+    parent?: string;
+    offset?: number | null;
+}
+
+/** Top-level v2 screenmap document. */
+export interface ScreenmapV2 {
+    /** When present, must be 2. */
+    version?: 2;
+    groups: Record<string, ScreenmapV2Group>;
+    segments: ScreenmapV2Segment[];
 }
 
 // ---------------------------------------------------------------------------
