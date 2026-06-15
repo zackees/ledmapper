@@ -176,11 +176,16 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
             }
         }
 
-        // Ctrl+Left-click on empty area: extend — append a new point at the click location
+        // Ctrl+Left-mousedown on empty area: ambiguous — could be a click
+        // ("append point") or a drag ("marquee select"). Stash the intent and
+        // resolve in mousemove / mouseup once we know whether the user moved.
         if ((e.ctrlKey || e.metaKey) && self.screenmap_pts.length > 0 && hitLedForModCheck < 0) {
-            const newScreenmapPt = self.canvasToScreenmapCoords(cx, cy);
-            const newRawPt = self.screenmapToRawCoords(newScreenmapPt[0], newScreenmapPt[1]);
-            self.insertPointAt(self.screenmap_pts.length, newScreenmapPt, newRawPt);
+            self._pendingMarquee = {
+                cx, cy,
+                mode: e.shiftKey ? 'add' : 'replace',
+                appendOnClick: true,
+            };
+            self._oc().style.cursor = 'crosshair';
             return;
         }
 
@@ -367,34 +372,9 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
         }
         if (self.highlightedEdgeIdx >= 0) { self.highlightedEdgeIdx = -1; self.setNeedsRender(); }
 
-        // Priority 3.5: Marquee selection.
-        // Left-drag on empty area starts a rubber-band selection over the
-        // LEDs. Modifiers: shift = add, ctrl/meta = toggle, none = replace.
-        // Inside the screenmap bbox a translate-gizmo drag still wins unless
-        // a selection modifier is held, so the existing "move the whole
-        // screenmap" UX is preserved.
-        const hasLeds = self.screenmap_pts.length > 0;
-        const hasMod = e.shiftKey || e.ctrlKey || e.metaKey;
-        const startMarquee = hasLeds && (gizmoHit !== 'translate' || hasMod);
-        if (startMarquee) {
-            self.marqueeActive = true;
-            self.marqueeStartCx = cx;
-            self.marqueeStartCy = cy;
-            self.marqueeCurCx = cx;
-            self.marqueeCurCy = cy;
-            self.marqueeMode = e.shiftKey
-                ? 'add'
-                : (e.ctrlKey || e.metaKey) ? 'toggle' : 'replace';
-            // Snapshot the current selection so add/toggle modes can apply
-            // their delta against a stable baseline as the marquee grows.
-            self._marqueeBaseSelection = new Set(self.multiSelectedIdxs);
-            if (self.marqueeMode === 'replace') {
-                self.multiSelectedIdxs.clear();
-                self.setNeedsGeometryUpdate();
-            }
-            self._oc().style.cursor = 'crosshair';
-            return;
-        }
+        // Marquee select is gated behind Ctrl+drag (handled by the
+        // _pendingMarquee branch above). Plain left-drag keeps its
+        // original behavior: translate gizmo inside the bbox, pan outside.
 
         // Priority 4: Translate (inside bbox, no LED hit)
         if (gizmoHit === 'translate') {
@@ -583,6 +563,29 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
             self.camPanY = self.panStartCamY + dy / self.camZoom;
             self.setNeedsRender();
             return;
+        }
+
+        // Pending Ctrl+mousedown promotes to a marquee on the first move
+        // past a small threshold. Below the threshold, the click stays a
+        // click and onMouseUp will run the append-point action.
+        if (self._pendingMarquee) {
+            const pm = self._pendingMarquee;
+            const ddx = cx - pm.cx;
+            const ddy = cy - pm.cy;
+            if (ddx * ddx + ddy * ddy > 9) { // ~3px threshold
+                self.marqueeActive = true;
+                self.marqueeStartCx = pm.cx;
+                self.marqueeStartCy = pm.cy;
+                self.marqueeCurCx = cx;
+                self.marqueeCurCy = cy;
+                self.marqueeMode = pm.mode;
+                self._marqueeBaseSelection = new Set(self.multiSelectedIdxs);
+                if (pm.mode === 'replace') self.multiSelectedIdxs.clear();
+                self._pendingMarquee = null;
+                self._updateMarqueeSelection();
+                self.setNeedsGeometryUpdate();
+                return;
+            }
         }
 
         // Marquee drag: live LED hit-test against the rectangle, eagerly
@@ -874,6 +877,20 @@ ShapeEditor.prototype.onMouseUp = function (this: ShapeEditor, e: MouseEvent) {
 
         if (self.isPanning) {
             self.isPanning = false;
+            self._oc().style.cursor = 'default';
+            return;
+        }
+
+        // Ctrl+mousedown that never crossed the marquee threshold reverts to
+        // the original ctrl+click "append point at click location" behavior.
+        if (self._pendingMarquee) {
+            const pm = self._pendingMarquee;
+            self._pendingMarquee = null;
+            if (pm.appendOnClick && self.screenmap_pts.length > 0) {
+                const newScreenmapPt = self.canvasToScreenmapCoords(pm.cx, pm.cy);
+                const newRawPt = self.screenmapToRawCoords(newScreenmapPt[0], newScreenmapPt[1]);
+                self.insertPointAt(self.screenmap_pts.length, newScreenmapPt, newRawPt);
+            }
             self._oc().style.cursor = 'default';
             return;
         }
