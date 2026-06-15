@@ -9,6 +9,7 @@ import { parse_screenmap_data, centerAndFitPoints, parseScreenmapMultiStrip, get
 
 import { fileHasExtension } from '../drag-drop';
 import { saveScreenmap, notePinMutation } from '../screenmap-store';
+import { safeStorage } from '../services/storage';
 
 import type { PresetEntry } from './shapeeditor-types';
 
@@ -18,7 +19,7 @@ ShapeEditor.prototype._openHelpOverlay = async function (this: ShapeEditor) {
         try {
             const Swal = (await import('sweetalert2')).default;
             if (self.signal.aborted) return;
-            const dismissed = localStorage.getItem('lm:shapeeditor-helpDismissed') === '1';
+            const dismissed = safeStorage.get('lm:shapeeditor-helpDismissed') === '1';
             const html = `
                 <div style="text-align:left;font:13px/1.45 'Outfit',system-ui,sans-serif;color:#e5e7eb;display:grid;grid-template-columns:1fr 1fr;gap:18px;">
                     <div>
@@ -97,16 +98,14 @@ ShapeEditor.prototype._openHelpOverlay = async function (this: ShapeEditor) {
             // Only the confirm button reports the checkbox; closing via the
             // × or Esc leaves the stored preference untouched.
             if (res.isConfirmed && res.value) {
-                try {
-                    const resVal: unknown = res.value;
-                    const dontShow = typeof resVal === 'object' && resVal !== null
-                        && 'dontShow' in resVal && (resVal as Record<string, unknown>).dontShow === true;
-                    if (dontShow) {
-                        localStorage.setItem('lm:shapeeditor-helpDismissed', '1');
-                    } else {
-                        localStorage.removeItem('lm:shapeeditor-helpDismissed');
-                    }
-                } catch { /* persistence is best-effort */ }
+                const resVal: unknown = res.value;
+                const dontShow = typeof resVal === 'object' && resVal !== null
+                    && 'dontShow' in resVal && (resVal as Record<string, unknown>).dontShow === true;
+                if (dontShow) {
+                    safeStorage.set('lm:shapeeditor-helpDismissed', '1');
+                } else {
+                    safeStorage.remove('lm:shapeeditor-helpDismissed');
+                }
             }
         } catch { /* swal may fail in headless edge cases */ }
     };
@@ -117,19 +116,15 @@ ShapeEditor.prototype._maybeShowGestureNotice = function (this: ShapeEditor) {
         if (self._gestureNoticeShown) return;
         const sIdx = self.selection.getStripIdx();
         if (sIdx === null || sIdx < 0) return;
-        try {
-            if (localStorage.getItem('lm:shapeeditor-gestureNotice') === '1') {
-                self._gestureNoticeShown = true;
-                return;
-            }
-        } catch { return; }
+        if (safeStorage.get('lm:shapeeditor-gestureNotice') === '1') {
+            self._gestureNoticeShown = true;
+            return;
+        }
         // Don't stack on top of the first-run help modal — skip if the
         // dismissal key is missing (help is about to auto-open or did).
-        try {
-            if (localStorage.getItem('lm:shapeeditor-helpDismissed') !== '1') return;
-        } catch { return; }
+        if (safeStorage.get('lm:shapeeditor-helpDismissed') !== '1') return;
         self._gestureNoticeShown = true;
-        try { localStorage.setItem('lm:shapeeditor-gestureNotice', '1'); } catch { /* ignore */ }
+        safeStorage.set('lm:shapeeditor-gestureNotice', '1');
         void self._toastInfo('New: drag moves the strip — double-click to edit points');
     };
 
@@ -138,9 +133,7 @@ ShapeEditor.prototype._maybeAutoOpenHelpOnLaunch = function (this: ShapeEditor) 
 
         if (self._autoOpenHelpScheduled) return;
         self._autoOpenHelpScheduled = true;
-        try {
-            if (localStorage.getItem('lm:shapeeditor-helpDismissed') === '1') return;
-        } catch { return; }
+        if (safeStorage.get('lm:shapeeditor-helpDismissed') === '1') return;
         // Defer to next tick so any preset autoload finishes first
         setTimeout(() => {
             if (self.signal.aborted) return;

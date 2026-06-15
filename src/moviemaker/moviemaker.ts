@@ -2,7 +2,7 @@ import type SweetAlert2 from 'sweetalert2';
 const Swal: Promise<typeof SweetAlert2> = import('sweetalert2').then(m => m.default);
 import type { ParsedStrip, MultiStripParseResult } from '../types/domain';
 import { parseScreenmapMultiStrip } from '../common';
-import { wireFileDropTarget, fileHasExtension } from '../drag-drop';
+import { wireFileDropTarget, wireFileSource, fileHasExtension } from '../drag-drop';
 import { saveScreenmap, getScreenmap } from '../screenmap-store';
 import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension, buildVideoChannelMap } from './transforms';
 import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
@@ -13,6 +13,8 @@ import { createVideoSource } from './video-source';
 import { createRecording } from './recording';
 import { drawMoviemakerOverlay } from './overlay';
 import { createLedPreview } from './preview';
+import { wireSliderReadout } from '../ui/sliders';
+import { safeStorage } from '../services/storage';
 import { PREVIEW_AUTO_MAX_SPARSE, PREVIEW_AUTO_FLOOR } from '../bloom-utils';
 import { perfEnabled } from './perf';
 import templateHtml from './template.html?raw';
@@ -475,13 +477,9 @@ export function init(container: HTMLElement) {
         });
     }
 
-    dom_btn_upload_screenmap.addEventListener('change', () => {
-        loadScreenmapFile(dom_btn_upload_screenmap.files?.[0] ?? null);
-    }, { signal });
-
-    wireFileDropTarget({
-        target: qeFrom(container, '#screenmap_drop_target'),
+    wireFileSource({
         input: dom_btn_upload_screenmap,
+        target: qeFrom(container, '#screenmap_drop_target'),
         onFile: loadScreenmapFile,
         signal,
     });
@@ -513,51 +511,78 @@ export function init(container: HTMLElement) {
         const rotTxt2 = container.querySelector<HTMLElement>('#txt_curr_rotation');
         if (rotTxt2) rotTxt2.innerText = String(snapped);
     }
-    dom_rng_rotation.addEventListener('input', () => { set_target_rotate(dom_rng_rotation.value); }, { signal });
+    wireSliderReadout({
+        slider: dom_rng_rotation,
+        signal,
+        onChange: (raw) => { set_target_rotate(raw); },
+    });
 
-    dom_rng_brightness.addEventListener('input', () => {
-        dom_txt_curr_bri.innerText = `${dom_rng_brightness.value}%`;
-    }, { signal });
+    wireSliderReadout({
+        slider: dom_rng_brightness,
+        readout: dom_txt_curr_bri,
+        format: (raw) => `${raw}%`,
+        signal,
+    });
     const dom_max_bri_slider = container.querySelector('#max_bri_slider');
     dom_chk_limit_bri.addEventListener('change', () => {
         const enabled = dom_chk_limit_bri.checked;
         dom_rng_max_bri.disabled = !enabled;
         dom_max_bri_slider?.classList.toggle('disabled', !enabled);
     }, { signal });
-    dom_rng_max_bri.addEventListener('input', () => {
-        dom_txt_curr_max_bri.innerText = `${dom_rng_max_bri.value}%`;
-    }, { signal });
-    dom_rng_gamma.addEventListener('input', () => {
-        dom_txt_curr_gamma.innerText = (parseFloat(dom_rng_gamma.value) / 10).toFixed(1);
-    }, { signal });
+    wireSliderReadout({
+        slider: dom_rng_max_bri,
+        readout: dom_txt_curr_max_bri,
+        format: (raw) => `${raw}%`,
+        signal,
+    });
+    wireSliderReadout({
+        slider: dom_rng_gamma,
+        readout: dom_txt_curr_gamma,
+        format: (raw) => (parseFloat(raw) / 10).toFixed(1),
+        signal,
+    });
     const dom_txt_curr_blur = container.querySelector<HTMLElement>('#txt_curr_blur');
     const dom_txt_curr_blur_sigma = container.querySelector<HTMLElement>('#txt_curr_blur_sigma');
-    dom_rng_blur.addEventListener('input', () => {
-        if (dom_txt_curr_blur) dom_txt_curr_blur.innerText = dom_rng_blur.value;
-        if (dom_chk_sigma_lock.checked) {
-            dom_rng_blur_sigma.value = dom_rng_blur.value;
-            if (dom_txt_curr_blur_sigma) dom_txt_curr_blur_sigma.innerText = dom_rng_blur.value;
-        }
-    }, { signal });
-    dom_rng_blur_sigma.addEventListener('input', () => {
-        if (dom_txt_curr_blur_sigma) dom_txt_curr_blur_sigma.innerText = dom_rng_blur_sigma.value;
-        if (dom_chk_sigma_lock.checked) {
-            dom_rng_blur.value = dom_rng_blur_sigma.value;
-            if (dom_txt_curr_blur) dom_txt_curr_blur.innerText = dom_rng_blur_sigma.value;
-        }
-    }, { signal });
+    wireSliderReadout({
+        slider: dom_rng_blur,
+        readout: dom_txt_curr_blur,
+        signal,
+        onChange: (raw) => {
+            if (dom_chk_sigma_lock.checked) {
+                dom_rng_blur_sigma.value = raw;
+                if (dom_txt_curr_blur_sigma) dom_txt_curr_blur_sigma.innerText = raw;
+            }
+        },
+    });
+    wireSliderReadout({
+        slider: dom_rng_blur_sigma,
+        readout: dom_txt_curr_blur_sigma,
+        signal,
+        onChange: (raw) => {
+            if (dom_chk_sigma_lock.checked) {
+                dom_rng_blur.value = raw;
+                if (dom_txt_curr_blur) dom_txt_curr_blur.innerText = raw;
+            }
+        },
+    });
     dom_chk_sigma_lock.addEventListener('change', () => {
         if (dom_chk_sigma_lock.checked) {
             dom_rng_blur_sigma.value = dom_rng_blur.value;
             if (dom_txt_curr_blur_sigma) dom_txt_curr_blur_sigma.innerText = dom_rng_blur.value;
         }
     }, { signal });
-    dom_rng_zoom.addEventListener('input', () => {
-        const v = parseFloat(dom_rng_zoom.value).toFixed(2);
-        dom_rng_zoom.value = v;
-        dom_txt_curr_zoom.innerText = v;
-        target_zoom = parseFloat(v);
-    }, { signal });
+    wireSliderReadout({
+        slider: dom_rng_zoom,
+        readout: dom_txt_curr_zoom,
+        format: (raw) => parseFloat(raw).toFixed(2),
+        signal,
+        onChange: (raw) => {
+            const v = parseFloat(raw).toFixed(2);
+            // Re-canonicalize the input so subsequent reads round-trip cleanly.
+            dom_rng_zoom.value = v;
+            target_zoom = parseFloat(v);
+        },
+    });
 
     dom_chk_show_leds.addEventListener('change', () => {
         overlayCanvas.classList.toggle('leds-hidden', !dom_chk_show_leds.checked);
@@ -567,8 +592,7 @@ export function init(container: HTMLElement) {
     const BLOOM_LS_KEY = 'ledmapper.moviemaker.autoBloom';
 
     // Restore persisted state (default: auto on).
-    const _bloomAutoStored = localStorage.getItem(BLOOM_LS_KEY);
-    const _bloomAutoInit = _bloomAutoStored === null ? true : _bloomAutoStored === 'true';
+    const _bloomAutoInit = safeStorage.getBool(BLOOM_LS_KEY, true);
     dom_chk_auto_bloom.checked = _bloomAutoInit;
 
     function _applyBloomAutoState(enabled: boolean) {
@@ -602,7 +626,7 @@ export function init(container: HTMLElement) {
 
     dom_chk_auto_bloom.addEventListener('change', () => {
         const enabled = dom_chk_auto_bloom.checked;
-        localStorage.setItem(BLOOM_LS_KEY, String(enabled));
+        safeStorage.setBool(BLOOM_LS_KEY, enabled);
         if (!enabled) {
             // Seed slider from current auto strength so there's no visual jump.
             const curr = preview.getCurrentBloomStrength();
@@ -629,20 +653,18 @@ export function init(container: HTMLElement) {
 
     // Rotate view is opt-in: the preview stays locked to the screenmap's
     // native orientation unless the user explicitly enables rotation.
-    const _prevRotateStored = localStorage.getItem(PREVIEW_ROTATE_LS_KEY);
-    dom_chk_preview_rotate.checked = _prevRotateStored === null ? false : _prevRotateStored === 'true';
+    dom_chk_preview_rotate.checked = safeStorage.getBool(PREVIEW_ROTATE_LS_KEY, false);
 
-    const _prevBloomStored = localStorage.getItem(PREVIEW_BLOOM_LS_KEY);
-    const _prevBloomInit = _prevBloomStored === null ? true : _prevBloomStored === 'true';
+    const _prevBloomInit = safeStorage.getBool(PREVIEW_BLOOM_LS_KEY, true);
     dom_chk_preview_bloom.checked = _prevBloomInit;
     preview.setBloomEnabled(_prevBloomInit);
 
     dom_chk_preview_rotate.addEventListener('change', () => {
-        localStorage.setItem(PREVIEW_ROTATE_LS_KEY, String(dom_chk_preview_rotate.checked));
+        safeStorage.setBool(PREVIEW_ROTATE_LS_KEY, dom_chk_preview_rotate.checked);
     }, { signal });
 
     dom_chk_preview_bloom.addEventListener('change', () => {
-        localStorage.setItem(PREVIEW_BLOOM_LS_KEY, String(dom_chk_preview_bloom.checked));
+        safeStorage.setBool(PREVIEW_BLOOM_LS_KEY, dom_chk_preview_bloom.checked);
         preview.setBloomEnabled(dom_chk_preview_bloom.checked);
     }, { signal });
 

@@ -10,15 +10,15 @@
     </div>
 
     <!-- Three-section Layout -->
-    <div class="controls-container flex justify-center items-center gap-6 mt-3 flex-wrap">
+    <div class="controls-container control-bar mt-3">
         <!-- Left section - Play/Pause -->
-        <div class="flex flex-col items-center gap-2">
+        <div class="control-stack">
             <input type="button" id="btn_play" value="Play">
         </div>
 
         <!-- Middle section - Sliders -->
-        <div class="flex flex-col items-center gap-2">
-            <div class="flex items-center gap-2.5">
+        <div class="control-stack">
+            <div class="control-row">
                 <label for="sel_framerate">Frame Rate:</label>
                 <select id="sel_framerate">
                     <option value="60">60 FPS</option>
@@ -30,28 +30,28 @@
                     <option value="1">1 FPS</option>
                 </select>
             </div>
-            <div class="flex items-center gap-2.5">
+            <div class="control-row">
                 <label for="rng_diameter">LED Diameter:</label>
                 <input type="range" min="1" max="64" value="6" step="1" class="slider" id="rng_diameter">
-                <span class="font-mono text-xs text-lm-text-muted min-w-6 text-right" id="txt_curr_diameter">6</span>
+                <span class="slider-readout" id="txt_curr_diameter">6</span>
             </div>
         </div>
 
         <!-- Right section - Download buttons + Bloom -->
-        <div class="flex flex-col items-center gap-2">
-            <div class="flex flex-wrap gap-1.5 justify-center">
+        <div class="control-stack">
+            <div class="button-row justify-center">
                 <button id="btn_download_screenmap">Download Screenmap</button>
                 <button id="btn_download_screenmap_16x16_serpentine">Download 16x16 Serpentine Screenmap</button>
                 <button id="btn_download_video">Download Mapped Video</button>
             </div>
-            <div class="flex flex-col items-start gap-1.5 mt-1">
-                <label class="flex items-center gap-1.5 text-sm text-lm-text cursor-pointer">
+            <div class="control-stack-start gap-1.5 mt-1">
+                <label class="checkbox-row">
                     <input type="checkbox" id="chk_auto_bloom" checked> Auto bloom
                 </label>
-                <div id="bloom_strength_slider" class="flex items-center gap-2.5 opacity-50 pointer-events-none">
+                <div id="bloom_strength_slider" class="control-row is-disabled">
                     <label for="rng_bloom_strength" class="text-sm text-lm-text-muted">Strength</label>
                     <input type="range" min="0" max="100" value="50" class="slider" id="rng_bloom_strength" disabled>
-                    <span class="font-mono text-xs text-lm-text-muted min-w-10 text-right" id="txt_curr_bloom_strength">16.00</span>
+                    <span class="slider-readout-wide" id="txt_curr_bloom_strength">16.00</span>
                 </div>
             </div>
         </div>

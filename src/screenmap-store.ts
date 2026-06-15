@@ -46,17 +46,11 @@ export function _resetPinMutationGuardForTests() {
     _pinGuardWarned = false;
 }
 
-function _safeGet(key: string): string | null {
-    try { return localStorage.getItem(key); } catch { return null; }
-}
+import { safeStorage } from './services/storage';
 
-function _safeSet(key: string, val: string): boolean {
-    try { localStorage.setItem(key, val); return true; } catch { return false; }
-}
-
-function _safeRemove(key: string): void {
-    try { localStorage.removeItem(key); } catch { /* ignore */ }
-}
+const _safeGet = (key: string) => safeStorage.get(key);
+const _safeSet = (key: string, value: string) => safeStorage.set(key, value);
+const _safeRemove = (key: string) => { safeStorage.remove(key); };
 
 /**
  * Count LEDs and strips in a raw screenmap JSON string.

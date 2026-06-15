@@ -365,11 +365,10 @@
     cursor: not-allowed;
 }
 
-/* ── Preset Pills ───────────────────────────────────────────── */
-
-.preset-buttons {
-    @apply flex flex-wrap gap-1.5;
-}
+/* ── Preset Pills ─────────────────────────────────────────────
+   Container layout (.preset-buttons) lives on the shared
+   `.button-row` class in src/styles/global.css — only the
+   per-pill styling stays tool-specific here. */
 
 .preset-btn {
     font-size: 0.72rem;

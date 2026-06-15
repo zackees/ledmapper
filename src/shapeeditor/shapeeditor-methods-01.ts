@@ -7,6 +7,7 @@ import type { StripEntry, StripInfo } from './strips-model';
 
 import { download_text_as_file } from '../common';
 import { formatCompactJson } from '../json-compact';
+import { safeStorage } from '../services/storage';
 
 import { saveScreenmap, getScreenmap, saveScreenmapMultiStrip, buildScreenmapMultiStripJson, getScreenmapMeta, getBackup, restoreBackup, backfillMeta, isDegenerate } from '../screenmap-store';
 import type { BackupMeta } from '../screenmap-store';
@@ -75,7 +76,7 @@ ShapeEditor.prototype._setOverlayCollapsed = function (this: ShapeEditor, collap
     this.overlayCollapsed = collapsed;
     this.dom_transform_overlay.classList.toggle('collapsed', collapsed);
     this.dom_btn_overlay_collapse.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    try { localStorage.setItem('shapeeditor.overlayCollapsed', collapsed ? '1' : '0'); } catch { /* ignore */ }
+    safeStorage.set('shapeeditor.overlayCollapsed', collapsed ? '1' : '0');
 };
 
 /**
@@ -404,10 +405,8 @@ ShapeEditor.prototype._toastSilentRestored = async function (this: ShapeEditor, 
             if (res.isConfirmed && typeof degenerateJson === 'string') {
                 // Put the degenerate copy back as the working copy. We bypass
                 // the save gate by writing directly to the store keys.
-                try {
-                    localStorage.setItem('lm:screenmap', degenerateJson);
-                    localStorage.removeItem('lm:screenmap-meta');
-                } catch { /* ignore */ }
+                safeStorage.set('lm:screenmap', degenerateJson);
+                safeStorage.remove('lm:screenmap-meta');
                 self.load_screenmap_data(degenerateJson);
                 self.renderBackupRow();
             }

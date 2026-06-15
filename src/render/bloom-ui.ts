@@ -12,6 +12,7 @@
  * unchanged, so callers don't know the internals went reactive.
  */
 import { effect, signal } from '../ui/signal';
+import { safeStorage } from '../services/storage';
 
 /** The bloom controller surface this wiring drives (auto-bloom or preview). */
 export interface BloomControlsAdapter {
@@ -39,8 +40,10 @@ export interface BloomControlsConfig {
     sliderFromStrength: (strength: number) => number;
     /**
      * How to visually disable the manual slider while auto is on.
-     * 'opacity' = add `opacity-50 pointer-events-none` (demo/movieplayer),
-     * 'class'   = toggle a `disabled` class (moviemaker).
+     * 'opacity' = toggle the shared `.is-disabled` class from global.css
+     *            (demo/movieplayer, which use the `.control-row` shell),
+     * 'class'   = toggle a `disabled` class on the wrapper (moviemaker,
+     *            which has its own `.slider-container.disabled` rule).
      */
     disabledStyle?: 'opacity' | 'class';
     /** Format strength for the readout. Defaults to 2 decimal places. */
@@ -65,8 +68,7 @@ export function wireBloomControls(cfg: BloomControlsConfig): BloomControls {
     const clampSlider = (v: number) => Math.min(Math.max(v, 0), 100);
 
     // Restore persisted auto-bloom state (default: on).
-    const stored = localStorage.getItem(lsKey);
-    const auto = signal(stored === null ? true : stored === 'true');
+    const auto = signal(safeStorage.getBool(lsKey, true));
     const sliderVal = signal(clampSlider(parseInt(slider.value) || 0));
 
     // auto state -> checkbox, disabled styling, controller.
@@ -75,9 +77,7 @@ export function wireBloomControls(cfg: BloomControlsConfig): BloomControls {
         chk.checked = enabled;
         slider.disabled = enabled;
         if (disabledStyle === 'opacity') {
-            sliderWrap.classList.toggle('opacity-50', enabled);
-            sliderWrap.classList.toggle('pointer-events-none', enabled);
-            sliderWrap.classList.toggle('opacity-100', !enabled);
+            sliderWrap.classList.toggle('is-disabled', enabled);
         } else {
             sliderWrap.classList.toggle('disabled', enabled);
         }
@@ -95,7 +95,7 @@ export function wireBloomControls(cfg: BloomControlsConfig): BloomControls {
 
     chk.addEventListener('change', () => {
         const enabled = chk.checked;
-        localStorage.setItem(lsKey, String(enabled));
+        safeStorage.setBool(lsKey, enabled);
         if (!enabled) {
             // Seed the slider from the current strength so there's no jump.
             const seed = clampSlider(sliderFromStrength(adapter.getStrength()));
@@ -110,7 +110,7 @@ export function wireBloomControls(cfg: BloomControlsConfig): BloomControls {
     }, listenerOpts);
 
     function setAuto(enabled: boolean) {
-        localStorage.setItem(lsKey, String(enabled));
+        safeStorage.setBool(lsKey, enabled);
         auto.set(enabled);
     }
 

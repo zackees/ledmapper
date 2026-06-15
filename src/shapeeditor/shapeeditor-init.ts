@@ -8,7 +8,8 @@ import type { PanelOpts } from './panel-catalog';
 import { stripStartEndLabels } from '../common';
 
 import { createLabelRenderer } from '../label-render';
-import { wireFileDropTarget } from '../drag-drop';
+import { wireFileDropTarget, wireFileSource } from '../drag-drop';
+import { safeStorage } from '../services/storage';
 import { getBackup, promoteToBackup } from '../screenmap-store';
 
 import { createCircleTexture } from '../three-utils';
@@ -45,38 +46,37 @@ this.mainEl.style.position = 'relative';
         this.dom_chk_snap_back = this.qei('#chk_snap_back');
         this.dom_rng_snap_back_px = this.qei('#rng_snap_back_px');
         this.dom_rng_snap_back_px_val = this.qe<HTMLElement>('#rng_snap_back_px_val');
-        // Restore snap settings from localStorage (best-effort).
-        try {
-            const v = localStorage.getItem('shapeeditor.snapBackEnabled');
+        // Restore snap settings from localStorage (best-effort). The
+        // persisted values use '1'/'0' for the boolean and a stringified
+        // int for the px; preserve that exact format on write so users
+        // who don't get migrated still read them on downgrade.
+        {
+            const v = safeStorage.get('shapeeditor.snapBackEnabled');
             this.snapBackEnabled = v === null ? true : v === '1';
-        } catch { this.snapBackEnabled = true; }
-        try {
-            const v = localStorage.getItem('shapeeditor.snapBackPx');
-            const n = v === null ? 12 : parseInt(v, 10);
+            const raw = safeStorage.get('shapeeditor.snapBackPx');
+            const n = raw === null ? 12 : parseInt(raw, 10);
             this.snapBackPx = Number.isFinite(n) ? Math.max(2, Math.min(40, n)) : 12;
-        } catch { this.snapBackPx = 12; }
+        }
         this.dom_chk_snap_back.checked = this.snapBackEnabled;
         this.dom_rng_snap_back_px.value = String(this.snapBackPx);
         this.dom_rng_snap_back_px_val.textContent = `${String(this.snapBackPx)} px`;
         this.dom_chk_snap_back.addEventListener('change', () => {
             this.snapBackEnabled = this.dom_chk_snap_back.checked;
-            try { localStorage.setItem('shapeeditor.snapBackEnabled', this.snapBackEnabled ? '1' : '0'); } catch { /* ignore */ }
+            safeStorage.set('shapeeditor.snapBackEnabled', this.snapBackEnabled ? '1' : '0');
         }, { signal: this.signal });
         this.dom_rng_snap_back_px.addEventListener('input', () => {
             const n = parseInt(this.dom_rng_snap_back_px.value, 10);
             if (Number.isFinite(n)) {
                 this.snapBackPx = Math.max(2, Math.min(40, n));
                 this.dom_rng_snap_back_px_val.textContent = `${String(this.snapBackPx)} px`;
-                try { localStorage.setItem('shapeeditor.snapBackPx', String(this.snapBackPx)); } catch { /* ignore */ }
+                safeStorage.set('shapeeditor.snapBackPx', String(this.snapBackPx));
             }
         }, { signal: this.signal });
         // ── Overlay panel collapse/expand button ────────────────────
         this.dom_transform_overlay = this.qe<HTMLElement>('#transform-overlay');
         this.dom_btn_overlay_collapse = this.qeb('#btn_overlay_collapse');
         this.dom_btn_overlay_expand = this.qeb('#btn_overlay_expand');
-        try {
-            this.overlayCollapsed = localStorage.getItem('shapeeditor.overlayCollapsed') === '1';
-        } catch { this.overlayCollapsed = false; }
+        this.overlayCollapsed = safeStorage.get('shapeeditor.overlayCollapsed') === '1';
         this._setOverlayCollapsed(this.overlayCollapsed);
         this.dom_btn_overlay_collapse.addEventListener('click', () => {
             this._setOverlayCollapsed(true);
@@ -669,23 +669,18 @@ this.dom_btn_new.addEventListener('click', () => {
         this.fitScale = 1;
         this.resetTransforms();
         this.setNeedsGeometryUpdate();
-        try {
-            localStorage.removeItem('lm:screenmap');
-            localStorage.removeItem('lm:screenmap-meta');
-            localStorage.removeItem('lm:screenmap-preset');
-        } catch { /* quota / private mode */ }
+        safeStorage.remove('lm:screenmap');
+        safeStorage.remove('lm:screenmap-meta');
+        safeStorage.remove('lm:screenmap-preset');
         try { this.renderBackupRow(); } catch { /* render is best-effort */ }
         if (hadBackupPromote) {
             void this._toastInfo('New layout — previous layout kept as backup');
         }
     }, { signal: this.signal });
-this.dom_btn_upload_screenmap.addEventListener('change', () => {
-        this.loadScreenmapFile(this.dom_btn_upload_screenmap.files?.[0] ?? null);
-    }, { signal: this.signal });
         this.screenmapDropTarget = (this.container.querySelector('#screenmap_drop_target'))!;
-if (this.screenmapDropTarget) wireFileDropTarget({
-        target: this.screenmapDropTarget,
+if (this.screenmapDropTarget) wireFileSource({
         input: this.dom_btn_upload_screenmap,
+        target: this.screenmapDropTarget,
         onFile: (file: File | null | undefined) => this.loadScreenmapFile(file),
         signal: this.signal,
     });

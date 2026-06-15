@@ -116,17 +116,27 @@ tests/
 - Fonts: `font-body` (Outfit), `font-mono` (IBM Plex Mono)
 - Moviemaker extras: `bg-mm-surface-1`, `text-mm-danger`, `bg-mm-success`
 
-**Approach:** Hybrid — Tailwind utility classes inline in `template.html` files for layout/spacing/typography, with residual CSS for things Tailwind can't handle (keyframe animations, pseudo-elements, vendor-prefixed selectors, `details/summary` styling, dynamic state classes).
+**Approach: named shared classes via `@apply`, NOT inline utility strings in templates.** Inline Tailwind utility-class strings in `template.html` files are deprecated (issue #119 Phase 3d). Every meaningful UI grouping — slider row, control bar, button group, panel container, etc. — should have a named class defined with `@apply` in `src/styles/global.css` (or a tool's own CSS file for tool-specific groupings) and used semantically in templates.
 
-**Per-tool CSS files** still exist (loaded dynamically via `?url` imports + router). They use `@reference "../styles/global.css"` to access Tailwind utilities in `@apply` directives. These files contain:
+**Shared layout classes live in `src/styles/global.css`** under the "Layout Components" section:
+- `.control-bar` / `.control-bar-start` — top-of-page horizontal wrap container
+- `.control-stack` / `.control-stack-start` — vertical stack of related controls
+- `.control-row` — label + control + (optional) readout row
+- `.button-row` — tight wrap of action buttons / presets
+- `.checkbox-row` — inline checkbox + label
+- `.slider-readout` / `.slider-readout-wide` — mono numeric readout next to a slider
+- `.is-disabled` — faded / non-interactive state for `.control-row` / `.control-stack`
+
+**Per-tool CSS files** (loaded dynamically via `?url` imports + router) still exist for tool-specific concerns. They use `@reference "../styles/global.css"` to access Tailwind utilities in `@apply` directives. These files contain:
 - State toggle classes (`.hidden`, `.visible`, `.recording`, `.active-preset`, `.disabled`)
 - Keyframe animations
 - Pseudo-element styles (`::before`, `::after`)
 - Vendor-prefixed selectors (`::-webkit-slider-thumb`, scrollbar)
 - Responsive `@media` breakpoints
 - Data-attribute layout selectors (`[data-layout="portrait"]`)
+- Tool-specific layout groupings (e.g. moviemaker's grid-based `.slider-container`)
 
-**When adding new UI:** Use Tailwind utility classes directly in template HTML. Only add CSS rules for states, animations, or pseudo-elements that utilities can't express.
+**When adding new UI:** Define a named class with `@apply` in `global.css` (shared across tools) or the tool's CSS (one-tool concerns), then reference the class by name in the template. Do not paste raw utility strings into templates.
 
 ### Key Patterns
 
