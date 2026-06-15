@@ -78,7 +78,7 @@ export function init(container: HTMLElement) {
     // the canvas never overflows the viewport vertically (issue #66, #141).
     // The drawing buffer is fixed (BLOOM_RENDER_PX); only the CSS display
     // size changes, so downscaling stays crisp.
-    wireResponsiveCanvas({ wrapper, parent: main, signal });
+    wireResponsiveCanvas({ wrapper, parent: main, maxSize: BLOOM_RENDER_PX, signal });
 
     // Canvas-overlay play/pause button — the primary playback affordance. It is
     // shown only once a video is loaded and mirrors the playing state.

@@ -275,6 +275,12 @@ main {
     justify-content: center;
     align-items: center;
     padding: 20px;
+    /* Let the flex contract clamp `main` below its content size. Required
+       by `wireResponsiveCanvas` (#141): the canvas it sizes is `main`'s
+       child; without min-height:0 the child's intrinsic size would drag
+       the parent past its flex slot and the canvas would never shrink. */
+    min-height: 0;
+    min-width: 0;
 }
 
 /* ── Canvas ─────────────────────────────────────────────────── */
