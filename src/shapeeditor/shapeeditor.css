@@ -40,12 +40,8 @@
 
 .overlay-collapse-btn,
 .overlay-expand-btn {
-    position: absolute;
-    top: 6px;
-    right: 6px;
     width: 22px;
     height: 22px;
-    display: inline-flex;
     align-items: center;
     justify-content: center;
     background: transparent;
@@ -57,14 +53,28 @@
     opacity: 0.7;
     transition: opacity 0.15s ease, background 0.15s ease;
 }
+.overlay-collapse-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: inline-flex;
+}
+.overlay-expand-btn {
+    /* Default-hidden when the panel is expanded; revealed only by the
+       `.transform-overlay.collapsed` selector below. The inline
+       `style="display:none"` that used to live in the template was lost
+       on toggle because inline styles win against the class rule, which
+       made "Dismiss" a one-way trip — fixed here. */
+    display: none;
+}
 .overlay-collapse-btn:hover,
 .overlay-expand-btn:hover {
     opacity: 1;
     background: rgba(255, 255, 255, 0.08);
 }
 
-/* Collapsed state: hide the accordion content, shrink the panel to just the
-   single expand button at the top-left of the canvas. */
+/* Collapsed state: hide the accordion content + the collapse button, and
+   reveal the single expand-icon affordance. */
 .transform-overlay.collapsed {
     padding: 0;
     width: auto;
@@ -77,7 +87,6 @@
 }
 .transform-overlay.collapsed .overlay-expand-btn {
     display: inline-flex;
-    position: static;
 }
 
 .slider-row > label {
