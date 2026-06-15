@@ -45,6 +45,8 @@ export async function createGfxFromFled(opts: CreateGfxFromFledOptions): Promise
         ...(opts.renderPx !== undefined ? { renderPx: opts.renderPx } : {}),
         ...(opts.bloom !== undefined ? { bloom: opts.bloom } : {}),
         ...(opts.diameter !== undefined ? { diameter: opts.diameter } : {}),
+        ...(opts.targetFPS !== undefined ? { targetFPS: opts.targetFPS } : {}),
+        ...(opts.enableOverlay !== undefined ? { enableOverlay: opts.enableOverlay } : {}),
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
     });
 
@@ -59,9 +61,15 @@ export async function createGfxFromFled(opts: CreateGfxFromFledOptions): Promise
         canvas: gfx.canvas,
         wrapper: gfx.wrapper,
         get screenmap() { return gfx.screenmap; },
+        ...(gfx.overlayCanvas !== undefined ? { overlayCanvas: gfx.overlayCanvas } : {}),
+        ...(gfx.overlayCtx !== undefined ? { overlayCtx: gfx.overlayCtx } : {}),
         pushFrame: (rgb: Uint8Array) => { gfx.pushFrame(rgb); },
         setBloom: (cfg) => { gfx.setBloom(cfg); },
+        getBloomStrength: () => gfx.getBloomStrength(),
         setScreenmap: (map: unknown) => { gfx.setScreenmap(map); },
+        setDiameter: (px: number) => { gfx.setDiameter(px); },
+        getDiameter: () => gfx.getDiameter(),
+        setTargetFPS: (fps: number) => { gfx.setTargetFPS(fps); },
         getStats: () => gfx.getStats(),
         dispose() {
             player.pause();

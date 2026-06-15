@@ -51,6 +51,13 @@ export interface GfxBaseOptions {
     /** LED dot diameter in CSS pixels. Defaults to 16 if the screenmap
      *  has no declared diameter; otherwise scaled from the screenmap. */
     diameter?: number;
+    /** Target animation-loop frames-per-second. Defaults to 60. */
+    targetFPS?: number;
+    /** Mount a 2D overlay canvas on top of the WebGL canvas. The
+     *  returned `Gfx.overlayCanvas` and `Gfx.overlayCtx` are populated
+     *  when this is true. Useful for connection-line / label drawing
+     *  that the consumer owns. */
+    enableOverlay?: boolean;
     /** Abort signal to dispose of the renderer + detach listeners. */
     signal?: AbortSignal;
 }
@@ -76,12 +83,24 @@ export interface Gfx {
     readonly wrapper: HTMLElement;
     /** The normalized screenmap currently in use. */
     readonly screenmap: Screenmap;
+    /** 2D overlay canvas, present only when `enableOverlay: true`. */
+    readonly overlayCanvas?: HTMLCanvasElement;
+    /** 2D overlay context, present only when `enableOverlay: true`. */
+    readonly overlayCtx?: CanvasRenderingContext2D;
     /** Push one frame of LED colors. Length = `screenmap.points.length * 3`. */
     pushFrame(rgb: Uint8Array): void;
     /** Update bloom mode / strength on the fly. */
     setBloom(cfg: BloomConfig): void;
+    /** Current bloom strength (auto-driven or manually pinned). */
+    getBloomStrength(): number;
     /** Swap the screenmap; rebuilds the points mesh. */
     setScreenmap(map: unknown): void;
+    /** Set the LED dot diameter in CSS pixels. Re-applies bloom geometry. */
+    setDiameter(px: number): void;
+    /** Current LED dot diameter in CSS pixels (pre-iris scaling). */
+    getDiameter(): number;
+    /** Change the animation-loop target FPS on the fly. */
+    setTargetFPS(fps: number): void;
     /** Snapshot of runtime stats. */
     getStats(): { fps: number; framesRendered: number };
     /** Stop the render loop, dispose GPU resources, detach listeners. */

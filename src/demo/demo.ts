@@ -1,18 +1,11 @@
-import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file, parseScreenmapMultiStrip, getStripColors, stripStartEndLabels } from '../common';
+import { parse_screenmap_data_json, parseScreenmapMultiStrip, getStripColors, stripStartEndLabels, download_blob_as_file } from '../common';
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, wireFilePicker, fileHasExtension } from '../drag-drop';
 import { errorDialog } from '../ui/dialogs';
-import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop, wireResponsiveCanvas } from '../three-utils';
-import {
-    resolveLedDiameter,
-    computeFitScale,
-    BLOOM_RENDER_PX,
-} from '../bloom-utils';
-import { applyBloomGeometry } from '../render/bloom-geometry';
-import { setupDemoStyleBloom } from '../render/demo-bloom-setup';
+import { createGfx, wireBloomUi } from '../gfx';
+import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
 import { parseRgbFrames, prependFledHeader } from '../render/rgb-video';
-import type { MultiStripParseResult, StripPoint, RendererContextWithOverlay } from '../types/domain';
-import type { BufferGeometry, PointsMaterial, Points, Float32BufferAttribute } from 'three';
+import type { MultiStripParseResult, StripPoint } from '../types/domain';
 import templateHtml from './template.html?raw';
 export { default as css } from './demo.css?url';
 
@@ -22,10 +15,14 @@ function qe<T extends HTMLElement>(container: ParentNode, sel: string, _cast?: (
     return el as T;
 }
 
+// Trivial placeholder so `createGfx` can instantiate before the real
+// screenmap is fetched. Replaced via `gfx.setScreenmap` on first load.
+const PLACEHOLDER_SCREENMAP = {
+    map: { strip1: { x: [0], y: [0], diameter: 0.25 } },
+};
+
 export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
-
-    // Global variables
 
     // DOM elements
     const dom_btn_upload_screenmap = qe<HTMLInputElement>(container, '#btn_upload_screenmap');
@@ -51,46 +48,36 @@ export function init(container: HTMLElement) {
     const movie_frames: Uint8Array[] = [];
     let playing = false;
     let curr_frame_idx = 0;
-    let curr_frame: Uint8Array | null = null;
-
-    // Three.js objects
-    let pointsGeometry: BufferGeometry | undefined;
-    let pointsMaterial: PointsMaterial | undefined;
-    let pointsMesh: Points | undefined;
-    let colorAttribute: Float32BufferAttribute | undefined;
 
     // Overlay state
     let showLines = false;
 
-    // Pre-computed inverse for byte-to-float conversion
-    const INV_255 = 1 / 255;
-
     const ac = new AbortController();
     const { signal } = ac;
 
-    // --- Three.js Initialization ---
-    const circleTexture = createCircleTexture(64);
-
     const main = qe<HTMLElement>(container, 'main');
-    const { renderer, scene, camera, wrapper, overlayCanvas, overlayCtx } = createRendererAndScene({
-        width: CANVAS_SIZE,
-        height: CANVAS_SIZE,
-        parent: main,
-        enableOverlay: true,
-        renderPx: BLOOM_RENDER_PX,
-    }) as RendererContextWithOverlay;
-    // CANVAS_SIZE above seeds the renderer's CSS dimensions. The actual
-    // displayed size is then driven by `wireResponsiveCanvas`: the
-    // WebGL drawing buffer stays at BLOOM_RENDER_PX and the wrapper's
-    // CSS size is downscaled to fit the available shell-content slot,
-    // capped at BLOOM_RENDER_PX so we never upscale a small render
-    // buffer past its native resolution (issue #141).
-    wireResponsiveCanvas({ wrapper, parent: main, maxSize: BLOOM_RENDER_PX, signal });
 
-    // FastLED-style bloom via the shared setup helper (see issue #119).
-    const bloom = setupDemoStyleBloom({
-        renderer, scene, camera,
+    // The gfx package owns the renderer, points mesh, bloom controller,
+    // overlay canvas, and animation loop. The seed screenmap is a
+    // single-point placeholder that's replaced as soon as the real
+    // screenmap fetch lands.
+    const gfx = createGfx({
+        screenmap: PLACEHOLDER_SCREENMAP,
+        parent: main,
         paneSize: CANVAS_SIZE,
+        enableOverlay: true,
+        signal,
+    });
+    if (!gfx.overlayCanvas || !gfx.overlayCtx) {
+        throw new Error('demo: gfx overlay not provisioned');
+    }
+    const overlayCanvas = gfx.overlayCanvas;
+    const overlayCtx = gfx.overlayCtx;
+    const wrapper = gfx.wrapper;
+
+    // Wire the auto/manual bloom UI to the gfx instance.
+    wireBloomUi({
+        gfx,
         chk: dom_chk_auto_bloom,
         slider: dom_rng_bloom_strength,
         sliderWrap: dom_bloom_strength_slider,
@@ -98,14 +85,6 @@ export function init(container: HTMLElement) {
         lsKey: 'ledmapper.demo.autoBloom',
         signal,
     });
-
-    // Reproportion the bloom kernel + density envelope to the current geometry.
-    // PointsMaterial.size is in CSS pixels (the renderer applies its pixelRatio
-    // to the size uniform internally).
-    function updateBloomGeometry() {
-        if (!pointsMaterial) return;
-        applyBloomGeometry(bloom, screenmap_pts, { ledPx: pointsMaterial.size, panePx: CANVAS_SIZE });
-    }
 
     // Configure overlay for hover/touch fade behavior
     overlayCanvas.style.opacity = '0';
@@ -137,7 +116,7 @@ export function init(container: HTMLElement) {
 
     function hitTestLED(canvasX: number, canvasY: number): number {
         if (screenmap_pts.length === 0) return -1;
-        const threshold = Math.max(getDiameter(), 10);
+        const threshold = Math.max(gfx.getDiameter(), 10);
         const threshSq = threshold * threshold;
         let bestIdx = -1, bestDist = threshSq;
         for (let i = 0; i < screenmap_pts.length; i++) {
@@ -187,35 +166,19 @@ export function init(container: HTMLElement) {
     overlayCanvas.addEventListener('touchend', onPointerLeave, { passive: true, signal });
     overlayCanvas.addEventListener('touchcancel', onPointerLeave, { passive: true, signal });
 
-    // --- Build Three.js Points from screenmap data ---
-    function buildPoints() {
-        const previous = (pointsMesh && pointsGeometry && pointsMaterial && colorAttribute) ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial, colorAttribute } : null;
-        const result = rebuildPointsMesh({
-            scene, previous,
-            points: screenmap_pts,
-            circleTexture,
-            diameter: getDiameter(),
-        });
-
-        pointsGeometry = result.geometry;
-        pointsMaterial = result.material;
-        pointsMesh = result.mesh;
-        colorAttribute = result.colorAttribute;
-    }
-
     // --- Screenmap data loading ---
     function load_screenmap_data(jsonBlob: Record<string, unknown>) {
-        screenmap_pts = parse_screenmap_data_json(jsonBlob);
-        if (screenmap_pts.length === 0) {
+        const rawPts = parse_screenmap_data_json(jsonBlob);
+        if (rawPts.length === 0) {
             console.error('Failed to load screenmap data');
             return;
         }
-        screenmap_pts_original = screenmap_pts.map(([x, y]) => [x, y] as StripPoint);
-        screenmap_pts = centerAndFitPoints(screenmap_pts, CANVAS_SIZE, CANVAS_SIZE);
+        screenmap_pts_original = rawPts.map(([x, y]) => [x, y] as StripPoint);
+        gfx.setScreenmap(jsonBlob);
+        // Mirror the renderer's centered/fitted points for overlay + hit-test.
+        screenmap_pts = gfx.screenmap.points.map(([x, y]) => [x, y] as StripPoint);
         stripInfo = parseScreenmapMultiStrip(jsonBlob);
-        buildPoints();
         applyScreenmapDiameter();
-        updateBloomGeometry();
         drawOverlay();
         dom_btn_play.disabled = false;
     }
@@ -227,8 +190,6 @@ export function init(container: HTMLElement) {
     function applyScreenmapDiameter() {
         const declared = resolveLedDiameter(stripInfo ? (stripInfo.strips as unknown as Record<string, unknown>[]) : null);
         if (declared === null) return;
-        // Canvas world units map 1:1 to CSS pixels (and PointsMaterial.size
-        // is in CSS pixels), so no pixelRatio term here.
         const scale = computeFitScale(screenmap_pts_original, screenmap_pts);
         const px = Math.round(declared * scale);
         const min = parseInt(dom_rng_diameter.min) || 1;
@@ -318,9 +279,7 @@ export function init(container: HTMLElement) {
     // --- Video load ---
     // The .fled file is self-describing (header + embedded screenmap +
     // payload), so we fetch it once and let parseRgbFrames slice frames
-    // against the screenmap's LED count. No chunked streaming needed at
-    // these file sizes (~4–80 MB) and it removes a significant amount of
-    // bookkeeping vs. the legacy chunked-rgb path.
+    // against the screenmap's LED count.
     async function fetchAndLoadVideo() {
         try {
             const response = await fetch('/demo/video.fled');
@@ -342,22 +301,35 @@ export function init(container: HTMLElement) {
 
     dom_btn_play.addEventListener('click', () => { set_dom_btn_play(!playing); }, { signal });
 
-    // --- Diameter slider ---
-    const getDiameter = wireDiameterSlider({
-        slider: dom_rng_diameter,
-        label: dom_txt_curr_diameter,
-        getMaterial: () => pointsMaterial ?? null,
-        signal,
-    });
-    // Re-proportion the bloom after wireDiameterSlider applies the new size.
-    dom_rng_diameter.addEventListener('input', updateBloomGeometry, { signal });
+    // --- Frame pump --- drives gfx.pushFrame from movie_frames at the
+    // user-selected playback FPS. The gfx package runs its own internal
+    // render loop at a higher rate; we just hand it the latest frame.
+    let frameRafId: number | null = null;
+    let lastPump = 0;
+    function pump(t: number) {
+        frameRafId = requestAnimationFrame(pump);
+        const interval = 1000 / Math.max(parseInt(dom_sel_framerate.value), 1);
+        if (t - lastPump < interval) return;
+        lastPump = t;
+        if (screenmap_pts.length === 0) return;
+        if (movie_frames.length && playing) {
+            if (curr_frame_idx >= movie_frames.length) curr_frame_idx = 0;
+            const frame = movie_frames[curr_frame_idx++];
+            if (frame) gfx.pushFrame(frame);
+        }
+    }
+    frameRafId = requestAnimationFrame(pump);
 
-    // --- Frame rate ---
-    let targetFPS = parseInt(dom_sel_framerate.value);
-    dom_sel_framerate.addEventListener('change', () => {
-        targetFPS = parseInt(dom_sel_framerate.value);
-        animLoop.setTargetFPS(targetFPS);
+    // --- Diameter slider --- bind directly to gfx.setDiameter.
+    dom_rng_diameter.addEventListener('input', () => {
+        const px = parseInt(dom_rng_diameter.value) || 1;
+        gfx.setDiameter(px);
+        dom_txt_curr_diameter.textContent = String(px);
     }, { signal });
+
+    // --- Frame rate selector --- frame pump reads the dropdown directly,
+    // so we just need to refresh on change for any UI that depends on it.
+    dom_sel_framerate.addEventListener('change', () => { /* read by pump() */ }, { signal });
 
     // --- Download handlers ---
     dom_btn_download_screenmap.addEventListener('click', () => {
@@ -390,9 +362,9 @@ export function init(container: HTMLElement) {
             videoData.set(frame, offset);
             offset += frame.length;
         });
-        // Wrap the raw payload with the FLED self-describing header so the
-        // file is portable: it carries its own screenmap and can be replayed
-        // anywhere without a side-channel screenmap.json.
+        // Wrap the raw payload with the FLED self-describing header so
+        // the file is portable: it carries its own screenmap and can be
+        // replayed anywhere without a side-channel screenmap.json.
         const screenmapJson = JSON.stringify({
             map: {
                 strip1: {
@@ -440,7 +412,6 @@ export function init(container: HTMLElement) {
     }
 
     function drawOverlaySingleStrip(pts: StripPoint[]) {
-        // Connecting lines with rainbow colors
         overlayCtx.lineWidth = 2;
         for (let i = 0; i < pts.length - 1; i++) {
             const [x1, y1] = pts[i] ?? [0, 0];
@@ -487,7 +458,6 @@ export function init(container: HTMLElement) {
         for (let s = 0; s < strips.length; s++) {
             const strip = strips[s];
             if (!strip) continue;
-            // Skip empty strips and strips that fall outside the available points
             if (strip.count <= 0) continue;
             if (strip.offset >= pts.length) continue;
             const color = colors[s] ?? '#ffffff';
@@ -496,7 +466,6 @@ export function init(container: HTMLElement) {
             const startIdx = strip.offset;
             const endIdx = Math.min(strip.offset + strip.count - 1, pts.length - 1);
 
-            // Draw connection lines within this strip
             for (let i = startIdx; i < endIdx; i++) {
                 const [x1, y1] = pts[i] ?? [0, 0];
                 const [x2, y2] = pts[i + 1] ?? [0, 0];
@@ -511,7 +480,6 @@ export function init(container: HTMLElement) {
                 }
             }
 
-            // Draw LED circles for this strip
             const ptStart = pts[startIdx] ?? [0, 0];
             const ptEnd = pts[endIdx] ?? [0, 0];
             fillCircle(ptStart[0], ptStart[1], 8, color);
@@ -527,7 +495,6 @@ export function init(container: HTMLElement) {
                 fillCircle(pt[0], pt[1], 4, color);
             }
 
-            // Label start/end of each strip (single label for 1-LED strips)
             const labels = stripStartEndLabels({ name: strip.name, count: endIdx - startIdx + 1 }, s);
             labelItems.push({ id: `start:${String(s)}`, text: labels.start, anchorX: ptStart[0], anchorY: ptStart[1], color, dotRadius: 4 });
             if (labels.end) {
@@ -568,53 +535,12 @@ export function init(container: HTMLElement) {
         overlayCtx.fill();
     }
 
-    // --- Main render loop ---
-    const animLoop = createAnimationLoop({
-        targetFPS,
-        onFrame() {
-            if (screenmap_pts.length === 0) return;
-
-            if (movie_frames.length && playing) {
-                if (curr_frame_idx >= movie_frames.length) curr_frame_idx = 0;
-                curr_frame = movie_frames[curr_frame_idx++] ?? null;
-            } else {
-                curr_frame = null;
-            }
-
-            if (curr_frame && colorAttribute) {
-                const arr = colorAttribute.array as Float32Array;
-                const count = screenmap_pts.length;
-                for (let i = 0; i < count; i++) {
-                    const i3 = i * 3;
-                    arr[i3    ] = (curr_frame[i3    ] ?? 0) * INV_255;
-                    arr[i3 + 1] = (curr_frame[i3 + 1] ?? 0) * INV_255;
-                    arr[i3 + 2] = (curr_frame[i3 + 2] ?? 0) * INV_255;
-                }
-                colorAttribute.needsUpdate = true;
-            }
-
-            if (curr_frame) {
-                bloom.frame(curr_frame);
-            }
-            // Iris diameter modulation: dots open up on bright frames in sparse maps.
-            if (pointsMaterial) pointsMaterial.size = getDiameter() * bloom.getDiameterScale();
-            bloom.render();
-        },
-    });
-
     // --- Initialize ---
     fetchAndLoadJSON();
 
     return function destroy() {
+        if (frameRafId !== null) cancelAnimationFrame(frameRafId);
         ac.abort();
-        animLoop.stop();
-        if (pointsMesh) {
-            scene.remove(pointsMesh);
-            pointsGeometry?.dispose();
-            pointsMaterial?.dispose();
-        }
-        circleTexture.dispose();
-        bloom.dispose();
-        renderer.dispose();
+        gfx.dispose();
     };
 }
