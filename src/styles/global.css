@@ -40,6 +40,12 @@
 
 /* ── Base ───────────────────────────────────────────────────── */
 
+/* Establish concrete heights all the way down so flex children with
+   `min-h-0` can clamp instead of forcing the body to grow. Required by
+   the layered app shell (#133): if the body grew beyond the viewport
+   the bottom mode bar would scroll off-screen. */
+html, body, #app { height: 100%; }
+
 body {
     font-family: var(--font-family-body);
     line-height: 1.5;
@@ -49,7 +55,7 @@ body {
     background-color: var(--color-lm-bg);
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    min-height: 0;
     -webkit-font-smoothing: antialiased;
 }
 

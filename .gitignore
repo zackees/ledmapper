@@ -13,3 +13,8 @@ playwright/.cache/
 
 .claude/worktrees/
 .claude/projects/
+.claude/snapshots/
+.claude/snapshots-after/
+.claude/*.mjs
+.claude/*.md
+.claude/ts-mig-tmp/
