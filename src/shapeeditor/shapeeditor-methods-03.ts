@@ -625,6 +625,10 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
         self.ctxBtnInsertFwd = self.makeCtxBtn('Insert, shift forward', 'insert-forward');
         self.ctxBtnInsertBack = self.makeCtxBtn('Insert, shift back', 'insert-back');
 
+        // Inspector
+        self.makeCtxSeparator();
+        self.makeCtxBtn('Inspect JSON…', 'inspect-json');
+
         // Trailing help entry
         self.makeCtxSeparator();
         self.makeCtxBtn('Keyboard help', 'kbd-help');
@@ -680,6 +684,8 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
                 void self._pasteFromClipboardAPI();
             } else if (action === 'copy-strip') {
                 self._copySelectedStripToClipboard();
+            } else if (action === 'inspect-json') {
+                void self._openInspectJsonDialog();
             } else if (action === 'kbd-help') {
                 void self._openHelpOverlay();
             }
