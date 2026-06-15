@@ -236,6 +236,44 @@ window.__shapeeditorDebug = {
             this.overlayCanvas.dispatchEvent(new MouseEvent('mouseup', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
             return true;
         },
+        // Synthetic per-strip rotation drag: select strip `i`, then drive
+        // mousedown → mousemove (at +deltaDeg around the handle anchor)
+        // → mouseup. Mirrors the production wiring so tests cover real
+        // event flow rather than calling `_applyStripRotate` directly.
+        simulateStripRotateDrag: (i: number, deltaDeg: number) => {
+            const strips = this.stripStore.getStrips();
+            if (i < 0 || i >= strips.length) return false;
+            this.selection.selectStrip(i);
+            const handle = this._stripRotateHandlePos();
+            if (!handle || !this.overlayCanvas) return false;
+            // Anchor of the rotation pivot in canvas px = bbox center.
+            const bb = this._selectedStripBboxCanvas();
+            if (!bb) return false;
+            const anchorX = (bb.minX + bb.maxX) / 2;
+            const anchorY = (bb.minY + bb.maxY) / 2;
+            const rect = this.overlayCanvas.getBoundingClientRect();
+            const toClient = (cx: number, cy: number) => ({
+                clientX: rect.left + (cx / this.canvasW) * rect.width,
+                clientY: rect.top + (cy / this.canvasH) * rect.height,
+            });
+            // Mousedown at the handle itself (so the hit-test fires).
+            const start = toClient(handle.handleX, handle.handleY);
+            // The angle from the handle to the anchor is -90° (handle is
+            // 30px above the bbox top). Rotate that vector by deltaDeg to
+            // pick a mousemove point at the same radius but rotated.
+            const dxStart = handle.handleX - anchorX;
+            const dyStart = handle.handleY - anchorY;
+            const rad = deltaDeg * Math.PI / 180;
+            const dxEnd = dxStart * Math.cos(rad) - dyStart * Math.sin(rad);
+            const dyEnd = dxStart * Math.sin(rad) + dyStart * Math.cos(rad);
+            const end = toClient(anchorX + dxEnd, anchorY + dyEnd);
+            const mk = (type: string, p: { clientX: number; clientY: number }) =>
+                new MouseEvent(type, { clientX: p.clientX, clientY: p.clientY, button: 0, bubbles: true });
+            this.overlayCanvas.dispatchEvent(mk('mousedown', start));
+            this.overlayCanvas.dispatchEvent(mk('mousemove', end));
+            this.overlayCanvas.dispatchEvent(mk('mouseup', end));
+            return true;
+        },
         // Pins / chain hooks (issue #24, Phases 1-2)
         getPinSummary: () => {
             const strips = this.stripStore.getStrips();
@@ -341,6 +379,15 @@ window.__shapeeditorDebug = {
         this.stripSnapStartCenter = null;
         this.stripSnapEngagedX = null;
         this.stripSnapEngagedY = null;
+        this.stripRotateActive = false;
+        this.stripRotateIdx = -1;
+        this.stripRotateStartScreenmap = null;
+        this.stripRotateStartRaw = null;
+        this.stripRotateCenterSm = null;
+        this.stripRotateCenterRaw = null;
+        this.stripRotateStartAngle = 0;
+        this.stripRotateLastDeg = 0;
+        this.stripRotateHover = false;
         this.altQuasimode = false;
         this.ctxMenu = null;
         this.ctxMenuIdx = -1;

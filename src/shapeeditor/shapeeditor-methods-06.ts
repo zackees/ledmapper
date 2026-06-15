@@ -2,6 +2,8 @@
 // Prototype-installed methods (chunk 6/8).
 
 import { ShapeEditor } from './shapeeditor-class';
+import { computeStripSnapTargets } from './strip-snap-targets';
+import { rotatePointsAround } from './strip-rotate';
 
 ShapeEditor.prototype.onContextMenu = function (this: ShapeEditor, e: MouseEvent) {
     const self = this;
@@ -191,6 +193,49 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
             }
         }
 
+        // Priority 0.5: Per-strip rotation handle (only when a strip is
+        // selected). Checked before the global gizmo so a strip near the
+        // top of the screenmap's bbox still gets its own handle hit.
+        if (self.hitTestStripRotateHandle(cx, cy)) {
+            const idx = self.selection.getStripIdx();
+            if (idx !== null && self.stripInfo && idx < self.stripInfo.strips.length) {
+                const strip = self.nn(self.stripInfo.strips[idx]);
+                self.stripRotateActive = true;
+                self.stripRotateIdx = idx;
+                self.stripRotateStartScreenmap = [];
+                self.stripRotateStartRaw = [];
+                let cxSm = 0, cySm = 0, cxRw = 0, cyRw = 0, n = 0;
+                for (let k = strip.offset; k < strip.offset + strip.count; k++) {
+                    const sm = self.nn(self.screenmap_pts[k]);
+                    const rw = self.nn(self.rawPts[k]);
+                    self.stripRotateStartScreenmap.push([sm[0], sm[1]]);
+                    self.stripRotateStartRaw.push([rw[0], rw[1]]);
+                    cxSm += sm[0]; cySm += sm[1]; cxRw += rw[0]; cyRw += rw[1]; n++;
+                }
+                if (n > 0) {
+                    cxSm /= n; cySm /= n; cxRw /= n; cyRw /= n;
+                }
+                self.stripRotateCenterSm = { x: cxSm, y: cySm };
+                self.stripRotateCenterRaw = { x: cxRw, y: cyRw };
+                // Cursor angle around the canvas-space handle anchor (the
+                // top-center of the strip bbox in canvas px). We rotate the
+                // points around their screenmap-space mean (also at the
+                // bbox center), so the rotation pivot in cm == the visual
+                // pivot in canvas px.
+                const bb = self._selectedStripBboxCanvas();
+                if (bb) {
+                    const anchorX = (bb.minX + bb.maxX) / 2;
+                    const anchorY = (bb.minY + bb.maxY) / 2;
+                    self.stripRotateStartAngle = Math.atan2(cy - anchorY, cx - anchorX);
+                } else {
+                    self.stripRotateStartAngle = 0;
+                }
+                self.stripRotateLastDeg = 0;
+                self._oc().style.cursor = 'grabbing';
+                return;
+            }
+        }
+
         // Priority 1: Gizmo handle (corner/edge/rotation)
         const gizmoHit = self.hitTestGizmo(cx, cy);
         if (gizmoHit && gizmoHit !== 'translate') {
@@ -244,29 +289,17 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
                 }
                 self.stripDragLastSdx = 0;
                 self.stripDragLastSdy = 0;
-                // ── Center-to-center snap precompute (issue #105) ───
-                // Walk every strip OTHER than the one being dragged and
-                // record its world-space center (mean of its
-                // `screenmap_pts`). Centers are rotation-invariant
-                // because the points are already post-transform.
-                self.stripSnapXTargets = [];
-                self.stripSnapYTargets = [];
-                const stripsAll = self._si().strips;
-                for (let si = 0; si < stripsAll.length; si++) {
-                    if (si === hitStripIdx) continue;
-                    const s = stripsAll[si];
-                    if (!s || s.count <= 0) continue;
-                    let sx = 0, sy = 0, cnt = 0;
-                    for (let k = s.offset; k < s.offset + s.count; k++) {
-                        const p = self.screenmap_pts[k];
-                        if (!p) continue;
-                        sx += p[0]; sy += p[1]; cnt++;
-                    }
-                    if (cnt > 0) {
-                        self.stripSnapXTargets.push(sx / cnt);
-                        self.stripSnapYTargets.push(sy / cnt);
-                    }
-                }
+                // ── Strip-drag snap precompute (issues #105, #110) ───
+                // For every strip OTHER than the dragged one, emit center-
+                // to-center targets (#105, k=0) AND ±k·pitch targets for
+                // k ∈ {1, 2, 3} (#110, bricklayer snap). Pitch is the
+                // median LED-to-LED distance in the neighbor strip.
+                // Rotation is already folded into `screenmap_pts`.
+                const { xTargets, yTargets } = computeStripSnapTargets(
+                    self._si().strips, hitStripIdx, self.screenmap_pts,
+                );
+                self.stripSnapXTargets = xTargets;
+                self.stripSnapYTargets = yTargets;
                 // Dragged strip's starting center (rotation-aware: mean of
                 // its already-transformed `screenmap_pts`).
                 let cx0 = 0, cy0 = 0, cn0 = 0;
@@ -434,6 +467,37 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
             return;
         }
 
+        // Per-strip rotation drag in progress
+        if (self.stripRotateActive && self.stripRotateIdx >= 0 && self.stripInfo
+            && self.stripRotateStartScreenmap && self.stripRotateStartRaw
+            && self.stripRotateCenterSm && self.stripRotateCenterRaw) {
+            const bb = self._selectedStripBboxCanvas();
+            if (!bb) return;
+            const anchorX = (bb.minX + bb.maxX) / 2;
+            const anchorY = (bb.minY + bb.maxY) / 2;
+            const curAngle = Math.atan2(cy - anchorY, cx - anchorX);
+            let deltaDeg = (curAngle - self.stripRotateStartAngle) * 180 / Math.PI;
+            // Shift snaps to 15° increments, matching the global gizmo
+            // (rotation always uses INTEGER degree steps so the resulting
+            // points are deterministic and undo-friendly).
+            if (self.shiftHeld) deltaDeg = Math.round(deltaDeg / 15) * 15;
+            else deltaDeg = Math.round(deltaDeg);
+            const deltaRad = deltaDeg * Math.PI / 180;
+            const strip = self.nn(self.stripInfo.strips[self.stripRotateIdx]);
+            const csm = self.stripRotateCenterSm;
+            const crw = self.stripRotateCenterRaw;
+            const rotatedSm = rotatePointsAround(self.stripRotateStartScreenmap, csm.x, csm.y, deltaRad);
+            const rotatedRw = rotatePointsAround(self.stripRotateStartRaw, crw.x, crw.y, deltaRad);
+            for (let k = 0; k < strip.count; k++) {
+                const base = strip.offset + k;
+                self.screenmap_pts[base] = rotatedSm[k] ?? [0, 0] as [number, number];
+                self.rawPts[base] = rotatedRw[k] ?? [0, 0] as [number, number];
+            }
+            self.stripRotateLastDeg = deltaDeg;
+            self.setNeedsGeometryUpdate();
+            return;
+        }
+
         // Gizmo drag in progress
         if (self.gizmoActive) {
             self.handleGizmoDrag(cx, cy);
@@ -559,6 +623,18 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
             // still update gizmo/bbox hover state below so rendering stays correct
         }
 
+        // Per-strip rotate handle hover detection (takes priority over
+        // the global gizmo so the handle glows when the user is over it).
+        const prevStripRotHover = self.stripRotateHover;
+        self.stripRotateHover = self.hitTestStripRotateHandle(cx, cy);
+        if (self.stripRotateHover !== prevStripRotHover) self.setNeedsRender();
+        if (self.stripRotateHover) {
+            self._oc().style.cursor = 'grab';
+            self.tooltipLedIdx = -1;
+            self._tooltip().style.opacity = '0';
+            return;
+        }
+
         // Gizmo hover detection
         const prevGizmoHover = self.gizmoHover;
         self.gizmoHover = self.hitTestGizmo(cx, cy);
@@ -681,6 +757,12 @@ ShapeEditor.prototype.onMouseUp = function (this: ShapeEditor, e: MouseEvent) {
             return;
         }
 
+        if (self.stripRotateActive) {
+            self._finalizeStripRotate();
+            self._oc().style.cursor = 'grab';
+            return;
+        }
+
         if (self.gizmoActive) {
             self.commitGizmoDrag();
             self.gizmoActive = null;
@@ -770,6 +852,58 @@ ShapeEditor.prototype._applyStripTranslate = function (this: ShapeEditor, stripI
         }
     };
 
+ShapeEditor.prototype._finalizeStripRotate = function (this: ShapeEditor) {
+    const self = this;
+        if (!self.stripRotateActive) return;
+        const deg = self.stripRotateLastDeg;
+        const stripIdx = self.stripRotateIdx;
+        const csm = self.stripRotateCenterSm;
+        const crw = self.stripRotateCenterRaw;
+        if (deg !== 0 && csm && crw && stripIdx >= 0) {
+            self.pushUndo({
+                type: 'strip-rotate',
+                stripIdx,
+                deltaDeg: deg,
+                centerSm: { x: csm.x, y: csm.y },
+                centerRaw: { x: crw.x, y: crw.y },
+            });
+            self._persistMultiStrip();
+        }
+        self.stripRotateActive = false;
+        self.stripRotateIdx = -1;
+        self.stripRotateStartScreenmap = null;
+        self.stripRotateStartRaw = null;
+        self.stripRotateCenterSm = null;
+        self.stripRotateCenterRaw = null;
+        self.stripRotateStartAngle = 0;
+        self.stripRotateLastDeg = 0;
+    };
+
+/**
+ * Rotate the points of a single strip around its captured bbox center by
+ * `deltaRad` (radians). Modifies both `screenmap_pts` and `rawPts` in place.
+ * Used by `applyAction` / `applyInverse` for the `strip-rotate` undo type.
+ */
+ShapeEditor.prototype._applyStripRotate = function (this: ShapeEditor, stripIdx: number, deltaRad: number, centerSm: { x: number; y: number }, centerRaw: { x: number; y: number }) {
+    const self = this;
+        if (!self.stripInfo || stripIdx < 0 || stripIdx >= self.stripInfo.strips.length) return;
+        const strip = self.nn(self.stripInfo.strips[stripIdx]);
+        const lo = strip.offset;
+        const hi = strip.offset + strip.count;
+        const sliceSm: [number, number][] = [];
+        const sliceRw: [number, number][] = [];
+        for (let k = lo; k < hi; k++) {
+            sliceSm.push([self.nn(self.screenmap_pts[k])[0], self.nn(self.screenmap_pts[k])[1]]);
+            sliceRw.push([self.nn(self.rawPts[k])[0], self.nn(self.rawPts[k])[1]]);
+        }
+        const rotatedSm = rotatePointsAround(sliceSm, centerSm.x, centerSm.y, deltaRad);
+        const rotatedRw = rotatePointsAround(sliceRw, centerRaw.x, centerRaw.y, deltaRad);
+        for (let k = lo; k < hi; k++) {
+            self.screenmap_pts[k] = rotatedSm[k - lo] ?? [0, 0] as [number, number];
+            self.rawPts[k] = rotatedRw[k - lo] ?? [0, 0] as [number, number];
+        }
+    };
+
 ShapeEditor.prototype.onDoubleClick = function (this: ShapeEditor, e: MouseEvent) {
     const self = this;
 
@@ -828,6 +962,16 @@ ShapeEditor.prototype._cancelSingleTouchGesture = function (this: ShapeEditor) {
             self.stripSnapEngagedY = null;
             self.stripDragLastSdx = 0;
             self.stripDragLastSdy = 0;
+        }
+        if (self.stripRotateActive) {
+            self.stripRotateActive = false;
+            self.stripRotateIdx = -1;
+            self.stripRotateStartScreenmap = null;
+            self.stripRotateStartRaw = null;
+            self.stripRotateCenterSm = null;
+            self.stripRotateCenterRaw = null;
+            self.stripRotateStartAngle = 0;
+            self.stripRotateLastDeg = 0;
         }
         if (self.isDragging) {
             self.isDragging = false;
