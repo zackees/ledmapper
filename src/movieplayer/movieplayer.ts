@@ -5,7 +5,7 @@ import { errorDialog } from '../ui/dialogs';
 import { saveVideo, getVideo, clearVideo } from '../video-store';
 import { buildVideoChannelMap } from '../moviemaker/transforms';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
-import { createCanvasRecorder } from './canvas-recorder';
+import { createCanvasRecorder } from '../render/canvas-recorder';
 import { applyBloomGeometry } from '../render/bloom-geometry';
 import { setupDemoStyleBloom } from '../render/demo-bloom-setup';
 import { parseRgbFrames, hasFledMagic } from '../render/rgb-video';

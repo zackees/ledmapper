@@ -47,6 +47,29 @@ function extForMime(mime: string): string {
     return mime.startsWith('video/mp4') ? 'mp4' : 'webm';
 }
 
+/**
+ * Aspect-ratio presets for social-media exports. Each preset names a
+ * width × height in pixels at a target good-quality output size:
+ *
+ *   square — 1080×1080 — Instagram square posts, generic LED preview.
+ *   portrait — 1080×1920 (9:16) — Instagram Reels, TikTok, YouTube Shorts.
+ *   landscape — 1920×1080 (16:9) — YouTube, Twitter, generic playback.
+ */
+export type AspectPreset = 'square' | 'portrait' | 'landscape';
+
+export interface AspectDimensions { width: number; height: number }
+
+const ASPECT_DIMENSIONS: Record<AspectPreset, AspectDimensions> = {
+    square:    { width: 1080, height: 1080 },
+    portrait:  { width: 1080, height: 1920 },
+    landscape: { width: 1920, height: 1080 },
+};
+
+/** Look up the pixel dimensions for a named aspect-ratio preset. */
+export function dimensionsForAspect(preset: AspectPreset): AspectDimensions {
+    return ASPECT_DIMENSIONS[preset];
+}
+
 export interface CanvasRecorder {
     /** Toggle recording; returns the new active state. */
     toggle: () => boolean;
@@ -115,7 +138,20 @@ export function createCanvasRecorder({
     function captureFrame(): void {
         if (!active || !cctx) return;
         try {
-            cctx.drawImage(canvas, 0, 0, width, height);
+            // Letterbox / pillarbox the (assumed-square) source into the
+            // (possibly non-square) output. The LED bloom looks awful when
+            // stretched, so paint black bars instead and center the largest
+            // square that fits.
+            if (width !== height) {
+                cctx.fillStyle = '#000';
+                cctx.fillRect(0, 0, width, height);
+                const side = Math.min(width, height);
+                const dx = Math.round((width - side) / 2);
+                const dy = Math.round((height - side) / 2);
+                cctx.drawImage(canvas, dx, dy, side, side);
+            } else {
+                cctx.drawImage(canvas, 0, 0, width, height);
+            }
         } catch { /* transient draw failure — skip this frame */ }
     }
 
