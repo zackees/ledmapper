@@ -35,8 +35,12 @@ interface BgImageBBox { cx: number; cy: number; hw: number; hh: number; cos: num
 /** Gizmo handle hit-test result. */
 interface GizmoHandle { id?: string; x: number; y: number; r?: number; cursor?: string; strip?: number; up?: number; down?: number; x1?: number; y1?: number; x2?: number; y2?: number; hx?: number; hy?: number; }
 
-/** Ruler drag state. */
+/** One ruler entry. Endpoints are in screenmap (world) coordinates. */
+interface RulerEntry { ax: number; ay: number; bx: number; by: number; }
+
+/** Active ruler drag — which ruler, which handle, and the snapshot at drag start. */
 interface RulerDragStart { cx: number; cy: number; ax: number; ay: number; bx: number; by: number; }
+interface RulerDragHandle { idx: number; kind: 'a' | 'b' | 'body'; }
 
 /** Connector drag state. */
 interface ConnectorDrag { upIdx: number; x: number; y: number; targetIdx: number | null; }
@@ -64,7 +68,9 @@ export type {
     BgGizmoDragStart,
     BgImageBBox,
     GizmoHandle,
+    RulerEntry,
     RulerDragStart,
+    RulerDragHandle,
     ConnectorDrag,
     StartHandleDrag,
     PlacingState,

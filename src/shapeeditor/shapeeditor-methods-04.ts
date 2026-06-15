@@ -445,6 +445,10 @@ ShapeEditor.prototype.positionRulerAboveBBox = function (this: ShapeEditor) {
     const self = this;
 
         if (self.screenmap_pts.length === 0) return;
+        // Auto-create the initial ruler only when there are none. If the user
+        // has deleted all rulers, leave the canvas free until they explicitly
+        // Insert one via the context menu.
+        if (self.rulers.length > 0) return;
         let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
         for (const [x, y] of self.screenmap_pts) {
             if (x < xmin) xmin = x;
@@ -454,42 +458,98 @@ ShapeEditor.prototype.positionRulerAboveBBox = function (this: ShapeEditor) {
         }
         const bboxH = ymax - ymin;
         const gap = bboxH * 0.10;
-        self.rulerA.x = xmin;
-        self.rulerA.y = ymin - gap;
-        self.rulerB.x = xmax;
-        self.rulerB.y = ymin - gap;
+        self.rulers.push({
+            ax: xmin, ay: ymin - gap,
+            bx: xmax, by: ymin - gap,
+        });
     };
 
 ShapeEditor.prototype.hitTestRuler = function (this: ShapeEditor, cx: number, cy: number) {
     const self = this;
 
-        const [ax, ay] = self.toCanvasCoords(self.rulerA.x, self.rulerA.y);
-        const [bx, by] = self.toCanvasCoords(self.rulerB.x, self.rulerB.y);
+        // Returns the active ruler hit ({idx, kind}) or null. Walks rulers in
+        // reverse order so the most-recently-added (drawn last, on top) wins
+        // when two rulers overlap.
         const r = self.RULER_HANDLE_R + 4;
-        if (Math.hypot(cx - ax, cy - ay) <= r) return 'a';
-        if (Math.hypot(cx - bx, cy - by) <= r) return 'b';
-        // Body hit: anywhere inside the ruler band (bandHalf=10 + small margin)
-        const dx = bx - ax, dy = by - ay;
-        const lenSq = dx * dx + dy * dy;
-        if (lenSq > 0) {
-            const t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / lenSq));
-            const px = ax + t * dx, py = ay + t * dy;
-            if (Math.hypot(cx - px, cy - py) <= 14) return 'body';
+        for (let idx = self.rulers.length - 1; idx >= 0; idx--) {
+            const ruler = self.rulers[idx];
+            if (!ruler) continue;
+            const [ax, ay] = self.toCanvasCoords(ruler.ax, ruler.ay);
+            const [bx, by] = self.toCanvasCoords(ruler.bx, ruler.by);
+            if (Math.hypot(cx - ax, cy - ay) <= r) return { idx, kind: 'a' as const };
+            if (Math.hypot(cx - bx, cy - by) <= r) return { idx, kind: 'b' as const };
+            const dx = bx - ax, dy = by - ay;
+            const lenSq = dx * dx + dy * dy;
+            if (lenSq > 0) {
+                const t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / lenSq));
+                const px = ax + t * dx, py = ay + t * dy;
+                if (Math.hypot(cx - px, cy - py) <= 14) return { idx, kind: 'body' as const };
+            }
         }
         return null;
     };
+
+ShapeEditor.prototype._findRulerAtCanvasPoint = function (this: ShapeEditor, cx: number, cy: number): number {
+    const hit = this.hitTestRuler(cx, cy);
+    return hit ? hit.idx : -1;
+};
+
+/** Insert a new horizontal ruler 60 cm long centered on the given screenmap
+ *  (world) coordinates. */
+ShapeEditor.prototype._insertRulerAt = function (this: ShapeEditor, worldX: number, worldY: number): void {
+    const half = 30; // 60 cm wide, centered → ±30 cm
+    this.rulers.push({
+        ax: worldX - half, ay: worldY,
+        bx: worldX + half, by: worldY,
+    });
+    this.setNeedsRender();
+};
+
+/** Duplicate the ruler at `idx`. Offsets the copy by 10 cm perpendicular to
+ *  the original so the two are visually distinguishable. */
+ShapeEditor.prototype._duplicateRuler = function (this: ShapeEditor, idx: number): void {
+    const src = this.rulers[idx];
+    if (!src) return;
+    const dx = src.bx - src.ax, dy = src.by - src.ay;
+    const len = Math.hypot(dx, dy) || 1;
+    const px = -dy / len, py = dx / len;
+    const step = 10;
+    this.rulers.push({
+        ax: src.ax + px * step, ay: src.ay + py * step,
+        bx: src.bx + px * step, by: src.by + py * step,
+    });
+    this.setNeedsRender();
+};
+
+/** Delete the ruler at `idx`. The last remaining ruler may be deleted; the
+ *  user can re-insert via the context menu. */
+ShapeEditor.prototype._deleteRuler = function (this: ShapeEditor, idx: number): void {
+    if (idx < 0 || idx >= this.rulers.length) return;
+    this.rulers.splice(idx, 1);
+    if (this.rulerDrag?.idx === idx) {
+        this.rulerDrag = null;
+        this.rulerDragStart = null;
+    } else if (this.rulerDrag && this.rulerDrag.idx > idx) {
+        this.rulerDrag = { idx: this.rulerDrag.idx - 1, kind: this.rulerDrag.kind };
+    }
+    this.setNeedsRender();
+};
 
 ShapeEditor.prototype.drawRuler = function (this: ShapeEditor) {
     const self = this;
 
         if (!self.overlayCtx || self.fitScale <= 0) return;
+        if (self.rulers.length === 0) return;
         const ctx = self.overlayCtx;
         const pxPerCm = self.fitScale * self.camZoom;
-        const [ax, ay] = self.toCanvasCoords(self.rulerA.x, self.rulerA.y);
-        const [bx, by] = self.toCanvasCoords(self.rulerB.x, self.rulerB.y);
+        // Draw each ruler. The original implementation only had one; this loop
+        // wraps the per-ruler drawing block below.
+        for (const ruler of self.rulers) {
+        const [ax, ay] = self.toCanvasCoords(ruler.ax, ruler.ay);
+        const [bx, by] = self.toCanvasCoords(ruler.bx, ruler.by);
         const dx = bx - ax, dy = by - ay;
         const lenPx = Math.hypot(dx, dy);
-        if (lenPx < 1) return;
+        if (lenPx < 1) continue;
         const lenCm = lenPx / pxPerCm;
 
         // Unit vector along ruler
@@ -595,6 +655,7 @@ ShapeEditor.prototype.drawRuler = function (this: ShapeEditor) {
         ctx.restore();
 
         ctx.restore();
+        } // end for each ruler
     };
 
 ShapeEditor.prototype._chainArrowCount = function (this: ShapeEditor) {

@@ -625,6 +625,12 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
         self.ctxBtnInsertFwd = self.makeCtxBtn('Insert, shift forward', 'insert-forward');
         self.ctxBtnInsertBack = self.makeCtxBtn('Insert, shift back', 'insert-back');
 
+        // Ruler operations
+        self.ctxRulerSep = self.makeCtxSeparator();
+        self.ctxBtnInsertRuler = self.makeCtxBtn('Insert ruler (60 cm)', 'insert-ruler');
+        self.ctxBtnDuplicateRuler = self.makeCtxBtn('Duplicate ruler', 'duplicate-ruler');
+        self.ctxBtnDeleteRuler = self.makeCtxBtn('Delete ruler', 'delete-ruler');
+
         // Inspector
         self.makeCtxSeparator();
         self.makeCtxBtn('Inspect JSON…', 'inspect-json');
@@ -686,6 +692,12 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
                 self._copySelectedStripToClipboard();
             } else if (action === 'inspect-json') {
                 void self._openInspectJsonDialog();
+            } else if (action === 'insert-ruler') {
+                self._insertRulerAt(self.ctxMenuClickX, self.ctxMenuClickY);
+            } else if (action === 'duplicate-ruler' && self.ctxMenuRulerIdx >= 0) {
+                self._duplicateRuler(self.ctxMenuRulerIdx);
+            } else if (action === 'delete-ruler' && self.ctxMenuRulerIdx >= 0) {
+                self._deleteRuler(self.ctxMenuRulerIdx);
             } else if (action === 'kbd-help') {
                 void self._openHelpOverlay();
             }

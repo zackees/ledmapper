@@ -446,6 +446,12 @@ ShapeEditor.prototype.showContextMenu = function (this: ShapeEditor, clientX: nu
             const sIdx = self.selection.getStripIdx();
             self.ctxBtnCopyStrip.style.display = (sIdx !== null && sIdx >= 0) ? 'block' : 'none';
         }
+        // Ruler buttons. Insert is always available. Duplicate / Delete only
+        // when a ruler was under the right-click point (ctxMenuRulerIdx >= 0).
+        if (self.ctxBtnInsertRuler) self.ctxBtnInsertRuler.style.display = 'block';
+        const onRuler = self.ctxMenuRulerIdx >= 0;
+        if (self.ctxBtnDuplicateRuler) self.ctxBtnDuplicateRuler.style.display = onRuler ? 'block' : 'none';
+        if (self.ctxBtnDeleteRuler) self.ctxBtnDeleteRuler.style.display = onRuler ? 'block' : 'none';
         // Position - keep on screen
         if (self.ctxMenu) { self.ctxMenu.style.left = `${String(clientX)}px`; self.ctxMenu.style.top = `${String(clientY)}px`; self.ctxMenu.style.display = ''; }
     };
@@ -456,6 +462,7 @@ ShapeEditor.prototype.hideContextMenu = function (this: ShapeEditor) {
         if (self.ctxMenu) self.ctxMenu.style.display = 'none';
         if (self.ctxLoadSubmenu) self.ctxLoadSubmenu.style.display = 'none';
         self.ctxMenuIdx = -1;
+        self.ctxMenuRulerIdx = -1;
         if (self.highlightedEdgeIdx >= 0) {
             self.highlightedEdgeIdx = -1;
             self.setNeedsRender();

@@ -13,7 +13,7 @@ import type { BackupMeta } from '../screenmap-store';
 import { type StripStore } from './strips-model';
 import { type Selection } from './selection';
 
-import type { UndoAction, InsertDialogOpts, OBBox, GizmoDragStart, BgGizmoDragStart, BgImageBBox, GizmoHandle, RulerDragStart, ConnectorDrag, StartHandleDrag, PlacingState, PasteStateActive, StripDragPt, PresetEntry } from './shapeeditor-types';
+import type { UndoAction, InsertDialogOpts, OBBox, GizmoDragStart, BgGizmoDragStart, BgImageBBox, GizmoHandle, RulerEntry, RulerDragStart, RulerDragHandle, ConnectorDrag, StartHandleDrag, PlacingState, PasteStateActive, StripDragPt, PresetEntry } from './shapeeditor-types';
 
 export class ShapeEditor {
     declare qe: <T extends HTMLElement>(sel: string, _cast?: (e: Element) => T) => T;
@@ -316,6 +316,10 @@ export class ShapeEditor {
     declare ctxBtnInsertFwd: HTMLButtonElement | null;
     declare ctxBtnInsertBack: HTMLButtonElement | null;
     declare ctxBtnCopyStrip: HTMLButtonElement | null;
+    declare ctxRulerSep: HTMLElement | null;
+    declare ctxBtnInsertRuler: HTMLButtonElement | null;
+    declare ctxBtnDuplicateRuler: HTMLButtonElement | null;
+    declare ctxBtnDeleteRuler: HTMLButtonElement | null;
     declare hintStripTextEl: HTMLElement | null;
     declare hintStripHelpBtn: HTMLButtonElement | null;
     declare _autoOpenHelpScheduled: boolean;
@@ -369,10 +373,16 @@ export class ShapeEditor {
     declare bgImageObjectURL: string | null;
     declare bgImageControls: any[];
     declare deleteBgConfirmEl: HTMLElement | null;
-    declare rulerA: any;
-    declare rulerB: any;
-    declare rulerDrag: 'a' | 'b' | 'body' | null;
+    declare rulers: RulerEntry[];
+    declare rulerDrag: RulerDragHandle | null;
     declare rulerDragStart: RulerDragStart | null;
+    declare ctxMenuRulerIdx: number;
+    declare ctxMenuClickX: number;
+    declare ctxMenuClickY: number;
+    declare _findRulerAtCanvasPoint: (cx: number, cy: number) => number;
+    declare _insertRulerAt: (worldX: number, worldY: number) => void;
+    declare _duplicateRuler: (idx: number) => void;
+    declare _deleteRuler: (idx: number) => void;
     declare RULER_HANDLE_R: number;
     declare LONG_PRESS_MS: number;
     declare LONG_PRESS_MOVE_TOL: number;
