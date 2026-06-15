@@ -133,3 +133,87 @@ describe('computeStripSnapTargets (issue #110)', () => {
         assert.ok(includesNear(yTargets, 10));
     });
 });
+
+describe('inter-strip grid pitch (issue #115)', () => {
+    test('Red 1: 4-panel row infers pitch and snaps one panel beyond each end', () => {
+        // 4 horizontal strips, 2 LEDs each, centered at x = 0, 10, 20, 30 on y=0.
+        const strips: SnapStripRef[] = [
+            { offset: 0, count: 2 }, { offset: 2, count: 2 },
+            { offset: 4, count: 2 }, { offset: 6, count: 2 },
+        ];
+        const points: [number, number][] = [
+            [-1, 0], [1, 0],
+            [9, 0], [11, 0],
+            [19, 0], [21, 0],
+            [29, 0], [31, 0],
+        ];
+        const { xTargets } = computeStripSnapTargets(strips, -1, points, { x: 40, y: 0 });
+        assert.ok(
+            xTargets.some((v) => Math.abs(v - 40) < 1e-9),
+            `expected 40, got ${JSON.stringify(xTargets)}`,
+        );
+        assert.ok(
+            xTargets.some((v) => Math.abs(v + 10) < 1e-9),
+            `expected -10, got ${JSON.stringify(xTargets)}`,
+        );
+    });
+
+    test('Red 2: 5-panel row emits ±k targets two panels out', () => {
+        // 5 strips at cx = 0, 10, 20, 30, 40. Inter-strip pitch = 10.
+        // Expect 50 (k=1 past 40), 60 (k=2 past 40), -10 (k=1 below 0), -20 (k=2).
+        const strips: SnapStripRef[] = Array.from(
+            { length: 5 },
+            (_, i) => ({ offset: i * 2, count: 2 }),
+        );
+        const points: [number, number][] = [];
+        for (let i = 0; i < 5; i++) {
+            points.push([i * 10 - 1, 0], [i * 10 + 1, 0]);
+        }
+        const { xTargets } = computeStripSnapTargets(strips, -1, points, { x: 50, y: 0 });
+        for (const x of [50, 60, -10, -20]) {
+            assert.ok(
+                xTargets.some((v) => Math.abs(v - x) < 1e-9),
+                `missing ${String(x)}: ${JSON.stringify(xTargets)}`,
+            );
+        }
+    });
+
+    test('Red 3: irregular spacing yields true-median pitch', () => {
+        // 3 strips at cx = 0, 10, 25. Diffs = [10, 15]. True median = 12.5.
+        // Expect a target at 25 + 12.5 = 37.5 OR 0 - 12.5 = -12.5.
+        const strips: SnapStripRef[] = [
+            { offset: 0, count: 2 }, { offset: 2, count: 2 }, { offset: 4, count: 2 },
+        ];
+        const points: [number, number][] = [
+            [-1, 0], [1, 0],
+            [9, 0], [11, 0],
+            [24, 0], [26, 0],
+        ];
+        const { xTargets } = computeStripSnapTargets(strips, -1, points, { x: 35, y: 0 });
+        assert.ok(
+            xTargets.some((v) => Math.abs(v - 37.5) < 1e-6)
+            || xTargets.some((v) => Math.abs(v + 12.5) < 1e-6),
+            `expected 37.5 or -12.5, got ${JSON.stringify(xTargets)}`,
+        );
+    });
+
+    test('Red 4: perpendicular band filter excludes far-axis strip from pitch inference', () => {
+        // A=(0,0) B=(20,0) C=(10,100). Dragging near y=0 ⇒ pitch from {A,B} only.
+        // Inter-strip X pitch = 20. Expect 40 (B + 20) in targets.
+        // Without the band filter a buggy implementation would infer pitch=10
+        // from {0, 10, 20} and yield x=30 (and miss x=40).
+        const strips: SnapStripRef[] = [
+            { offset: 0, count: 2 }, { offset: 2, count: 2 }, { offset: 4, count: 2 },
+        ];
+        const points: [number, number][] = [
+            [-1, 0], [1, 0],
+            [19, 0], [21, 0],
+            [9, 100], [11, 100],
+        ];
+        const { xTargets } = computeStripSnapTargets(strips, -1, points, { x: 30, y: 0 });
+        assert.ok(
+            xTargets.some((v) => Math.abs(v - 40) < 1e-9),
+            `expected 40 from {A,B} pitch=20, got ${JSON.stringify(xTargets)}`,
+        );
+    });
+});

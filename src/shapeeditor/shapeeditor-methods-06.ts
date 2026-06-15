@@ -289,19 +289,10 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
                 }
                 self.stripDragLastSdx = 0;
                 self.stripDragLastSdy = 0;
-                // ── Strip-drag snap precompute (issues #105, #110) ───
-                // For every strip OTHER than the dragged one, emit center-
-                // to-center targets (#105, k=0) AND ±k·pitch targets for
-                // k ∈ {1, 2, 3} (#110, bricklayer snap). Pitch is the
-                // median LED-to-LED distance in the neighbor strip.
-                // Rotation is already folded into `screenmap_pts`.
-                const { xTargets, yTargets } = computeStripSnapTargets(
-                    self._si().strips, hitStripIdx, self.screenmap_pts,
-                );
-                self.stripSnapXTargets = xTargets;
-                self.stripSnapYTargets = yTargets;
                 // Dragged strip's starting center (rotation-aware: mean of
-                // its already-transformed `screenmap_pts`).
+                // its already-transformed `screenmap_pts`). Computed first
+                // so the snap-target precompute can use it as the band-filter
+                // anchor for issue #115's inter-strip grid pitch inference.
                 let cx0 = 0, cy0 = 0, cn0 = 0;
                 for (let k = strip.offset; k < strip.offset + strip.count; k++) {
                     const p = self.screenmap_pts[k];
@@ -311,6 +302,18 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
                 self.stripSnapStartCenter = cn0 > 0
                     ? { x: cx0 / cn0, y: cy0 / cn0 }
                     : null;
+                // ── Strip-drag snap precompute (issues #105, #110, #115) ──
+                // Targets per other strip: center (#105), ±k·LED_pitch (#110,
+                // k ∈ {1..3}), and ±k·grid_pitch (#115, k ∈ {1..5}). The
+                // inter-strip grid pitch is inferred from neighbor centers
+                // along each axis, band-filtered by the dragged strip's
+                // start center so far-row outliers don't contaminate it.
+                const { xTargets, yTargets } = computeStripSnapTargets(
+                    self._si().strips, hitStripIdx, self.screenmap_pts,
+                    self.stripSnapStartCenter ?? undefined,
+                );
+                self.stripSnapXTargets = xTargets;
+                self.stripSnapYTargets = yTargets;
                 self.stripSnapEngagedX = null;
                 self.stripSnapEngagedY = null;
                 self._oc().style.cursor = 'grabbing';
