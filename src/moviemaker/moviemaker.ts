@@ -14,6 +14,7 @@ import { drawMoviemakerOverlay } from './overlay';
 import { createLedPreview } from './preview';
 import { wireSliderReadout } from '../ui/sliders';
 import { withPrefix } from '../services/storage';
+import { createCanvasRecorder, dimensionsForAspect, type AspectPreset } from '../render/canvas-recorder';
 import { PREVIEW_AUTO_MAX_SPARSE, PREVIEW_AUTO_FLOOR } from '../bloom-utils';
 import { perfEnabled } from './perf';
 import templateHtml from './template.html?raw';
@@ -53,6 +54,8 @@ export function init(container: HTMLElement) {
     const dom_time_duration     = qe<HTMLElement>('#video-time-duration');
     const dom_btn_how_to       = qe<HTMLButtonElement>('#btn_how_to');
     const dom_btn_toggle_record = qe<HTMLInputElement>('#btn_toggle_record');
+    const dom_sel_record_format = qe<HTMLSelectElement>('#sel_record_format');
+    const dom_sel_record_aspect = qe<HTMLSelectElement>('#sel_record_aspect');
     const dom_rng_rotation     = qei('#rng_rotation');
     const dom_rng_zoom         = qei('#rng_zoom');
     const dom_txt_curr_zoom    = qe<HTMLElement>('#txt_curr_zoom');
@@ -667,16 +670,79 @@ export function init(container: HTMLElement) {
         preview.setBloomEnabled(dom_chk_preview_bloom.checked);
     }, { signal });
 
-    // Recording toggle
+    // MP4 social-media recorder. Captures the preview canvas (the styled LED
+    // bloom that users actually want to share), letterboxed into the selected
+    // aspect-ratio preset. The .fled recorder above remains the LED-data path;
+    // both can run together when the format selector is set to "both".
+    let mp4Recorder: ReturnType<typeof createCanvasRecorder> | null = null;
+    function buildMp4Recorder(aspect: AspectPreset) {
+        if (mp4Recorder) return mp4Recorder; // already built for this drag — start() reads its current width/height once
+        const dims = dimensionsForAspect(aspect);
+        mp4Recorder = createCanvasRecorder({
+            canvas: preview.domElement,
+            width: dims.width,
+            height: dims.height,
+            fps: 30,
+            onError: (m) => { void errorDialog('Recording error', m); },
+        });
+        return mp4Recorder;
+    }
+
+    // Gate the aspect selector: enabled only when MP4 (alone or with .fled).
+    function syncRecordFormatUi() {
+        const wantsMp4 = dom_sel_record_format.value !== 'fled';
+        dom_sel_record_aspect.disabled = !wantsMp4;
+    }
+    syncRecordFormatUi();
+    dom_sel_record_format.addEventListener('change', syncRecordFormatUi, { signal });
+
+    // Recording toggle — drives the .fled recorder, the .mp4 recorder, or
+    // both depending on the format selector.
     dom_btn_toggle_record.addEventListener('click', () => {
-        if (!recording.isActive && screenmap_pts.length < 2) {
+        const fledActive = recording.isActive;
+        const mp4Active = mp4Recorder?.isActive ?? false;
+        const anyActive = fledActive || mp4Active;
+        if (!anyActive && screenmap_pts.length < 2) {
             void errorDialog('Screenmap required', 'Please load a valid screenmap first (size >= 2).');
             return;
         }
-        void recording.toggle().then(active => {
-            dom_btn_toggle_record.value = active ? 'Stop Recording' : 'Start Recording';
-            dom_btn_toggle_record.classList.toggle('recording', active);
-        });
+        const format = dom_sel_record_format.value;
+        const aspect = dom_sel_record_aspect.value as AspectPreset;
+        const wantFled = !anyActive && (format === 'fled' || format === 'both');
+        const wantMp4  = !anyActive && (format === 'mp4'  || format === 'both');
+        // Lock the format selectors while a recording is in flight.
+        dom_sel_record_format.disabled = !anyActive;
+        dom_sel_record_aspect.disabled = !anyActive || dom_sel_record_format.value === 'fled';
+
+        if (anyActive) {
+            // Stop whichever is running.
+            if (fledActive) void recording.toggle();
+            if (mp4Active && mp4Recorder) mp4Recorder.stop();
+            mp4Recorder = null;
+            dom_btn_toggle_record.value = 'Start Recording';
+            dom_btn_toggle_record.classList.remove('recording');
+            return;
+        }
+
+        let startedAny = false;
+        if (wantFled) {
+            void recording.toggle();
+            startedAny = true;
+        }
+        if (wantMp4) {
+            const rec = buildMp4Recorder(aspect);
+            const ok = rec.start();
+            if (ok) startedAny = true;
+            else mp4Recorder = null;
+        }
+        if (!startedAny) {
+            // Re-enable the selectors since nothing actually started.
+            dom_sel_record_format.disabled = false;
+            syncRecordFormatUi();
+            return;
+        }
+        dom_btn_toggle_record.value = 'Stop Recording';
+        dom_btn_toggle_record.classList.add('recording');
     }, { signal });
 
     // Pointer-Events drag on overlay canvas.
@@ -817,6 +883,10 @@ export function init(container: HTMLElement) {
         drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter);
         const previewRotate = dom_chk_preview_rotate.checked ? curr_rotate : 0;
         preview.render(screenmap_pts, previewRotate, lastSample, previewLedDiameter);
+
+        // While recording MP4, blit the just-rendered preview canvas into the
+        // recorder's intermediate. No-op when not recording.
+        if (mp4Recorder) mp4Recorder.captureFrame();
 
         // Update progress bar for video sources
         if (videoSource.sourceType === 'video' && !isScrubbing) {

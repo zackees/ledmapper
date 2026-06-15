@@ -140,6 +140,16 @@
             <div id="canvas-container" class="flex flex-col items-center gap-1.5">
                 <div class="canvas-toolbar">
                     <input type="button" id="btn_toggle_record" value="Start Recording" disabled>
+                    <select id="sel_record_format" class="toolbar-select" title="Recording output format">
+                        <option value="fled" selected>.fled (LED data)</option>
+                        <option value="mp4">.mp4 (social)</option>
+                        <option value="both">Both</option>
+                    </select>
+                    <select id="sel_record_aspect" class="toolbar-select" title="MP4 aspect ratio" disabled>
+                        <option value="square" selected>1:1 (square)</option>
+                        <option value="portrait">9:16 (Reels / Shorts)</option>
+                        <option value="landscape">16:9 (YouTube)</option>
+                    </select>
                     <div class="toolbar-separator"></div>
                     <select id="sel_max_resolution" class="toolbar-select" title="Max canvas resolution">
                         <option value="0">Native</option>
