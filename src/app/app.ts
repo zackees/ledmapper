@@ -1,14 +1,15 @@
 /**
  * Layered single-page app shell — Phase 6 (issue #133).
  *
- * Two modes — Play and Create — switched via a DaVinci-style bottom bar.
- * Each mode lazily mounts the existing tool's `init` function into the
- * content slot; switching modes tears down the previous tool and mounts
- * the next. Future PRs will share state + scene across modes.
+ * Three modes — Play, Create, Record — switched via a DaVinci-style
+ * bottom bar. Reading left-to-right is the natural pipeline:
+ *   Play   — watch a recorded .fled LED video (or the demo sample)
+ *   Create — build / edit the screenmap (the LED layout)
+ *   Record — capture a video onto the screenmap (the moviemaker pipeline)
  *
- * The shell routes:
- *   /play   → Play  (today, the existing demo's playback UX)
- *   /create → Create (today, the existing moviemaker pipeline)
+ * Each mode lazily mounts the existing tool's `init` function into the
+ * content slot; switching modes tears down the previous tool and
+ * mounts the next.
  */
 
 import type { SpaHistory, ToolInitFn } from '../types/domain';
@@ -17,7 +18,7 @@ import templateHtml from './template.html?raw';
 
 export { default as css } from './app.css?url';
 
-export type AppMode = 'play' | 'create';
+export type AppMode = 'play' | 'create' | 'record';
 
 interface LayerModule {
     init?: ToolInitFn;
@@ -26,7 +27,8 @@ interface LayerModule {
 
 const layerLoaders: Record<AppMode, () => Promise<LayerModule>> = {
     play:   () => import('../demo/demo'),
-    create: () => import('../moviemaker/moviemaker'),
+    create: () => import('../shapeeditor/shapeeditor'),
+    record: () => import('../moviemaker/moviemaker'),
 };
 
 /**
@@ -38,17 +40,20 @@ const layerLoaders: Record<AppMode, () => Promise<LayerModule>> = {
  */
 const modeToolNames: Record<AppMode, string> = {
     play:   'demo',
-    create: 'moviemaker',
+    create: 'shapeeditor',
+    record: 'moviemaker',
 };
 
 const modeRoutes: Record<AppMode, string> = {
     play:   '/play',
     create: '/create',
+    record: '/record',
 };
 
 const modeTitles: Record<AppMode, string> = {
     play:   'Play — LED Mapper',
     create: 'Create — LED Mapper',
+    record: 'Record — LED Mapper',
 };
 
 /**
@@ -132,7 +137,12 @@ export function init(container: HTMLElement, nav?: SpaHistory): () => void {
     });
 
     // Initial activation derived from the current URL.
-    const initialMode: AppMode = window.location.pathname.startsWith('/create') ? 'create' : 'play';
+    const path = window.location.pathname;
+    const initialMode: AppMode = path.startsWith('/record')
+        ? 'record'
+        : path.startsWith('/create')
+            ? 'create'
+            : 'play';
     void activate(initialMode);
 
     return function destroy() {

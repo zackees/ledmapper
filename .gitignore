@@ -15,6 +15,11 @@ playwright/.cache/
 .claude/projects/
 .claude/snapshots/
 .claude/snapshots-after/
+.claude/snapshots-3mode/
 .claude/*.mjs
 .claude/*.md
 .claude/ts-mig-tmp/
+
+# Sibling extern checkouts (e.g. fastled) — convention from
+# the clud-extern-repos workflow; never part of this repo's history.
+/.extern-repos/

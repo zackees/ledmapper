@@ -8,6 +8,8 @@ const routes = [
     { path: '/play/',            tool: 'app' },
     { path: '/create',           tool: 'app' },
     { path: '/create/',          tool: 'app' },
+    { path: '/record',           tool: 'app' },
+    { path: '/record/',          tool: 'app' },
     { path: '/hub',              tool: 'hub' },
     { path: '/hub/',             tool: 'hub' },
     { path: '/demo/',            tool: 'demo' },
