@@ -2,22 +2,13 @@ import { parse_screenmap_data_json, centerAndFitPoints, download_blob_as_file, p
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, wireFilePicker, fileHasExtension } from '../drag-drop';
 import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop } from '../three-utils';
-import { createAutoBloom } from '../auto-bloom';
 import {
     resolveLedDiameter,
     computeFitScale,
-    DEMO_AUTO_FLOOR,
-    DEMO_AUTO_MAX_DENSE,
-    DEMO_AUTO_MAX_SPARSE,
-    DEMO_BLOOM_MAX_STRENGTH,
-    DEMO_BLOOM_RADIUS,
-    DEMO_BLOOM_AREA_REF,
-    BLOOM_MIN_STRENGTH,
     BLOOM_RENDER_PX,
-    IRIS_DIAMETER_GAIN,
 } from '../bloom-utils';
 import { applyBloomGeometry } from '../render/bloom-geometry';
-import { wireBloomControls } from '../render/bloom-ui';
+import { setupDemoStyleBloom } from '../render/demo-bloom-setup';
 import { parseRgbFrames } from '../render/rgb-video';
 import type { MultiStripParseResult, StripPoint, RendererContextWithOverlay } from '../types/domain';
 import type { BufferGeometry, PointsMaterial, Points, Float32BufferAttribute } from 'three';
@@ -90,23 +81,18 @@ export function init(container: HTMLElement) {
         renderPx: BLOOM_RENDER_PX,
     }) as RendererContextWithOverlay;
 
-    // FastLED-style bloom via the shared controller. The demo uses the
-    // size-kernel floor (minFloorMode 'size') and the geometry-derived iris
-    // modulation depth (useBlowoutRisk) so small/sparse dots hold full bloom.
-    const DEMO_PROFILE = { floor: DEMO_AUTO_FLOOR, maxDense: DEMO_AUTO_MAX_DENSE, maxSparse: DEMO_AUTO_MAX_SPARSE };
-    const bloom = createAutoBloom({
+    // FastLED-style bloom via the shared setup helper (see issue #119).
+    const bloom = setupDemoStyleBloom({
         renderer, scene, camera,
-        width: CANVAS_SIZE, height: CANVAS_SIZE,
-        profile: DEMO_PROFILE,
-        paramOverrides: {
-            baseMax: DEMO_BLOOM_MAX_STRENGTH,
-            baseRadius: DEMO_BLOOM_RADIUS,
-            refArea: DEMO_BLOOM_AREA_REF,
-        },
-        minFloorMode: 'size',
-        useBlowoutRisk: true,
-        diameterGain: IRIS_DIAMETER_GAIN,
+        paneSize: CANVAS_SIZE,
+        chk: dom_chk_auto_bloom,
+        slider: dom_rng_bloom_strength,
+        sliderWrap: dom_bloom_strength_slider,
+        label: dom_txt_bloom_strength,
+        lsKey: 'ledmapper.demo.autoBloom',
+        signal,
     });
+
     // Reproportion the bloom kernel + density envelope to the current geometry.
     // PointsMaterial.size is in CSS pixels (the renderer applies its pixelRatio
     // to the size uniform internally).
@@ -114,30 +100,6 @@ export function init(container: HTMLElement) {
         if (!pointsMaterial) return;
         applyBloomGeometry(bloom, screenmap_pts, { ledPx: pointsMaterial.size, panePx: CANVAS_SIZE });
     }
-
-    // --- Bloom UI: auto checkbox + manual strength slider ---
-    const DEMO_BLOOM_S_MIN = Math.max(BLOOM_MIN_STRENGTH, DEMO_AUTO_FLOOR * 0.5);
-    wireBloomControls({
-        chk: dom_chk_auto_bloom,
-        slider: dom_rng_bloom_strength,
-        sliderWrap: dom_bloom_strength_slider,
-        label: dom_txt_bloom_strength,
-        lsKey: 'ledmapper.demo.autoBloom',
-        adapter: {
-            setAuto: (e) => { bloom.setAuto(e); },
-            getStrength: () => bloom.getStrength(),
-            setManualStrength: (s) => { bloom.setManualStrength(s); },
-        },
-        strengthFromSlider: (rngVal) =>
-            DEMO_BLOOM_S_MIN + (DEMO_BLOOM_MAX_STRENGTH - DEMO_BLOOM_S_MIN) * (rngVal / 100) ** 2,
-        sliderFromStrength: (curr) => {
-            const sMax = DEMO_AUTO_MAX_SPARSE * 1.5;
-            const raw = (curr - DEMO_BLOOM_S_MIN) / (sMax - DEMO_BLOOM_S_MIN);
-            return Math.round(Math.sqrt(Math.max(raw, 0)) * 100);
-        },
-        disabledStyle: 'opacity',
-        signal,
-    });
 
     // Configure overlay for hover/touch fade behavior
     overlayCanvas.style.opacity = '0';
