@@ -428,10 +428,32 @@ ShapeEditor.prototype.animate = function (this: ShapeEditor) {
         const targetAlpha = self.isHovering ? 0 : 1;
         if (Math.abs(self.overlayAlpha - targetAlpha) > 0.001) self.frameDirty = true;
 
+        // Issue #111: drag preview lifecycle.
+        // While a gizmo drag is in flight, push the live transform delta to
+        // the mesh model matrix instead of rebaking the vertex buffer. When
+        // the drag ends, animate() reverts the mesh transforms so the next
+        // baked rebuild lines up.
+        const previewing = self._isGizmoDragPreview();
+        if (previewing) {
+            self._dragPreviewActive = true;
+            self.frameDirty = true;
+        } else if (self._dragPreviewActive) {
+            self._resetMeshTransforms();
+            self._dragPreviewActive = false;
+            // Bake the committed transform into the buffer this frame.
+            self.geometryDirty = true;
+            self.frameDirty = true;
+        }
+
         // Nothing to do — skip all work this frame
         if (!self.geometryDirty && !self.frameDirty) return;
 
         if (self.screenmap_pts.length > 0) {
+            // The rebuild path bakes the current DOM transform into the
+            // points-mesh / outline buffers. While previewing, handleGizmoDrag
+            // no longer sets geometryDirty, so this only runs at preview entry
+            // (if the buffer was stale) and at preview exit (to bake the
+            // committed transform).
             if (self.geometryDirty) {
                 const scaleGlobal = parseFloat(self.dom_txt_scale.value) || 1;
                 const scaleX = (parseFloat(self.dom_txt_scale_x.value) || 1) * scaleGlobal;
@@ -455,6 +477,9 @@ ShapeEditor.prototype.animate = function (this: ShapeEditor) {
                 self.buildScreenmap(transformedPts);
                 self.updateLabels(transformedPts);
             }
+            // Push the live drag delta onto the (possibly just-rebuilt) mesh.
+            // No-op when not previewing.
+            if (previewing) self._applyDragPreviewMatrices();
             self.drawOverlay();
         } else {
             if (self.screenmapOutline) {

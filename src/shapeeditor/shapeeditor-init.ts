@@ -428,6 +428,7 @@ window.__shapeeditorDebug = {
         this.gizmoActive = null;
         this.gizmoHover = null;
         this.gizmoDragStart = null;
+        this._dragPreviewActive = false;
         this.shiftHeld = false;
         this.bgImageFitW = 0;
         this.bgImageFitH = 0;
