@@ -232,6 +232,11 @@ export class ShapeEditor {
     declare dom_txt_translate_x: HTMLInputElement;
     declare dom_txt_translate_y: HTMLInputElement;
     declare dom_txt_diameter: HTMLInputElement;
+    declare dom_chk_snap_back: HTMLInputElement;
+    declare dom_rng_snap_back_px: HTMLInputElement;
+    declare dom_rng_snap_back_px_val: HTMLElement;
+    declare snapBackEnabled: boolean;
+    declare snapBackPx: number;
     declare dom_btn_save: HTMLButtonElement;
     declare dom_btn_reset: HTMLButtonElement;
     declare dom_btn_undo: HTMLButtonElement;
