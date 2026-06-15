@@ -33,6 +33,7 @@ import {
 } from '../bloom-utils';
 import { normalizeScreenmap } from './screenmap';
 import type { CreateGfxOptions, Gfx, BloomConfig, Screenmap } from './types';
+import type { RendererContextWithOverlay } from '../types/domain';
 
 const INV_255 = 1 / 255;
 const DEFAULT_PANE_SIZE = 800;
@@ -49,12 +50,21 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
     const signal = opts.signal ?? ac.signal;
     const circleTexture = createCircleTexture(64);
 
-    const { renderer, scene, camera, wrapper } = createRendererAndScene({
+    const enableOverlay = opts.enableOverlay === true;
+    const ctx = createRendererAndScene({
         width: paneSize,
         height: paneSize,
         parent: opts.parent,
         renderPx,
+        enableOverlay,
     });
+    const { renderer, scene, camera, wrapper } = ctx;
+    const overlay = enableOverlay
+        ? {
+            overlayCanvas: (ctx as RendererContextWithOverlay).overlayCanvas,
+            overlayCtx: (ctx as RendererContextWithOverlay).overlayCtx,
+        }
+        : null;
     wireResponsiveCanvas({ wrapper, parent: opts.parent, maxSize: renderPx, signal });
 
     // Auto-bloom controller (UI-less). `wireBloomControls` is opt-in and
@@ -78,7 +88,7 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
     });
     applyBloomConfig(bloom, initialBloom);
 
-    const diameter = opts.diameter ?? DEFAULT_DIAMETER;
+    let diameter = opts.diameter ?? DEFAULT_DIAMETER;
 
     let pointsGeometry: BufferGeometry | undefined;
     let pointsMaterial: PointsMaterial | undefined;
@@ -107,7 +117,7 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
     let framesRendered = 0;
 
     const animLoop = createAnimationLoop({
-        targetFPS: 60,
+        targetFPS: opts.targetFPS ?? 60,
         onFrame() {
             if (!colorAttribute || screenmap.points.length === 0) return;
             if (lastFrame) {
@@ -136,9 +146,26 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
         applyBloomConfig(bloom, cfg);
     }
 
+    function getBloomStrength(): number {
+        return bloom.getStrength();
+    }
+
     function setScreenmap(map: unknown): void {
         screenmap = normalizeScreenmap(map, paneSize);
         rebuildPoints();
+    }
+
+    function setDiameter(px: number): void {
+        diameter = px;
+        applyBloomGeometry(bloom, screenmap.points.map(([x, y]) => [x, y]), { ledPx: diameter, panePx: paneSize });
+    }
+
+    function getDiameter(): number {
+        return diameter;
+    }
+
+    function setTargetFPS(fps: number): void {
+        animLoop.setTargetFPS(fps);
     }
 
     function getStats(): { fps: number; framesRendered: number } {
@@ -162,9 +189,14 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
         canvas: renderer.domElement,
         wrapper,
         get screenmap(): Screenmap { return screenmap; },
+        ...(overlay ? { overlayCanvas: overlay.overlayCanvas, overlayCtx: overlay.overlayCtx } : {}),
         pushFrame,
         setBloom,
+        getBloomStrength,
         setScreenmap,
+        setDiameter,
+        getDiameter,
+        setTargetFPS,
         getStats,
         dispose,
     };

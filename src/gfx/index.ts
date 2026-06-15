@@ -13,6 +13,7 @@ export { createGfx } from './gfx-core';
 export { createGfxFromFled } from './gfx-fled';
 export { createPlayer } from './player';
 export { normalizeScreenmap } from './screenmap';
+export { wireBloomUi } from './bloom-ui';
 export type {
     Gfx,
     GfxWithPlayer,
