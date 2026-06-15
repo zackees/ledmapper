@@ -279,6 +279,39 @@ canvas {
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
+/* ── Layout Components ─────────────────────────────────────────
+   Named shared classes for the duplicated UI groupings across
+   the tool pages. Per project convention (issue #119, Phase 3d),
+   inline Tailwind utility strings in `template.html` are
+   deprecated — use these classes by name instead.
+   ───────────────────────────────────────────────────────────── */
+
+/* Top-of-page horizontal container for a tool's control groups. */
+.control-bar       { @apply flex justify-center items-center gap-6 flex-wrap; }
+.control-bar-start { @apply flex justify-center items-start  gap-6 flex-wrap; }
+
+/* Vertical stack of related controls inside a control bar. */
+.control-stack       { @apply flex flex-col items-center gap-2; }
+.control-stack-start { @apply flex flex-col items-start  gap-2; }
+
+/* One label + control + (optional) readout row, horizontally aligned. */
+.control-row { @apply flex items-center gap-2.5; }
+
+/* Tight button group row (presets, action buttons). */
+.button-row { @apply flex flex-wrap gap-1.5; }
+
+/* Inline checkbox + label combo. */
+.checkbox-row { @apply flex items-center gap-1.5 text-sm text-lm-text cursor-pointer; }
+
+/* Monospace numeric readout next to a slider (small/wide variants). */
+.slider-readout      { @apply font-mono text-xs text-lm-text-muted min-w-6  text-right; }
+.slider-readout-wide { @apply font-mono text-xs text-lm-text-muted min-w-10 text-right; }
+
+/* Faded / non-interactive state for a control group whose owning
+   feature is currently disabled (e.g. manual bloom while auto is on). */
+.control-row.is-disabled,
+.control-stack.is-disabled { @apply opacity-50 pointer-events-none; }
+
 /* ── Source Selection Cards ─────────────────────────────────── */
 
 .source-card {

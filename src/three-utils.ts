@@ -12,6 +12,7 @@ import {
 } from 'three';
 
 import type { RendererContext, RendererContextWithOverlay, PointsMeshResult } from './types/domain';
+import { wireSliderReadout } from './ui/sliders';
 
 /** Create a canvas-based circle texture for round points. */
 export function createCircleTexture(size: number): CanvasTexture {
@@ -128,14 +129,15 @@ export function rebuildPointsMesh({ scene, previous, points, circleTexture, diam
 
 /** Wire a diameter slider to update a PointsMaterial's size. */
 export function wireDiameterSlider({ slider, label, getMaterial, signal }: { slider: HTMLInputElement; label: HTMLElement; getMaterial: () => PointsMaterial | null; signal?: AbortSignal }): () => number {
-    function update() {
-        const d = parseInt(slider.value);
-        label.textContent = String(d);
-        const mat = getMaterial();
-        if (mat) mat.size = d;
-    }
-    const opts: AddEventListenerOptions = signal !== undefined ? { signal } : {};
-    slider.addEventListener('input', update, opts);
+    const baseOpts = {
+        slider,
+        readout: label,
+        onChange: (raw: string) => {
+            const mat = getMaterial();
+            if (mat) mat.size = parseInt(raw);
+        },
+    };
+    wireSliderReadout(signal !== undefined ? { ...baseOpts, signal } : baseOpts);
     return () => parseInt(slider.value);
 }
 

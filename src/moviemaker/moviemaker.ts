@@ -13,6 +13,7 @@ import { createVideoSource } from './video-source';
 import { createRecording } from './recording';
 import { drawMoviemakerOverlay } from './overlay';
 import { createLedPreview } from './preview';
+import { wireSliderReadout } from '../ui/sliders';
 import { PREVIEW_AUTO_MAX_SPARSE, PREVIEW_AUTO_FLOOR } from '../bloom-utils';
 import { perfEnabled } from './perf';
 import templateHtml from './template.html?raw';
@@ -512,51 +513,78 @@ export function init(container: HTMLElement) {
         const rotTxt2 = container.querySelector<HTMLElement>('#txt_curr_rotation');
         if (rotTxt2) rotTxt2.innerText = String(snapped);
     }
-    dom_rng_rotation.addEventListener('input', () => { set_target_rotate(dom_rng_rotation.value); }, { signal });
+    wireSliderReadout({
+        slider: dom_rng_rotation,
+        signal,
+        onChange: (raw) => { set_target_rotate(raw); },
+    });
 
-    dom_rng_brightness.addEventListener('input', () => {
-        dom_txt_curr_bri.innerText = `${dom_rng_brightness.value}%`;
-    }, { signal });
+    wireSliderReadout({
+        slider: dom_rng_brightness,
+        readout: dom_txt_curr_bri,
+        format: (raw) => `${raw}%`,
+        signal,
+    });
     const dom_max_bri_slider = container.querySelector('#max_bri_slider');
     dom_chk_limit_bri.addEventListener('change', () => {
         const enabled = dom_chk_limit_bri.checked;
         dom_rng_max_bri.disabled = !enabled;
         dom_max_bri_slider?.classList.toggle('disabled', !enabled);
     }, { signal });
-    dom_rng_max_bri.addEventListener('input', () => {
-        dom_txt_curr_max_bri.innerText = `${dom_rng_max_bri.value}%`;
-    }, { signal });
-    dom_rng_gamma.addEventListener('input', () => {
-        dom_txt_curr_gamma.innerText = (parseFloat(dom_rng_gamma.value) / 10).toFixed(1);
-    }, { signal });
+    wireSliderReadout({
+        slider: dom_rng_max_bri,
+        readout: dom_txt_curr_max_bri,
+        format: (raw) => `${raw}%`,
+        signal,
+    });
+    wireSliderReadout({
+        slider: dom_rng_gamma,
+        readout: dom_txt_curr_gamma,
+        format: (raw) => (parseFloat(raw) / 10).toFixed(1),
+        signal,
+    });
     const dom_txt_curr_blur = container.querySelector<HTMLElement>('#txt_curr_blur');
     const dom_txt_curr_blur_sigma = container.querySelector<HTMLElement>('#txt_curr_blur_sigma');
-    dom_rng_blur.addEventListener('input', () => {
-        if (dom_txt_curr_blur) dom_txt_curr_blur.innerText = dom_rng_blur.value;
-        if (dom_chk_sigma_lock.checked) {
-            dom_rng_blur_sigma.value = dom_rng_blur.value;
-            if (dom_txt_curr_blur_sigma) dom_txt_curr_blur_sigma.innerText = dom_rng_blur.value;
-        }
-    }, { signal });
-    dom_rng_blur_sigma.addEventListener('input', () => {
-        if (dom_txt_curr_blur_sigma) dom_txt_curr_blur_sigma.innerText = dom_rng_blur_sigma.value;
-        if (dom_chk_sigma_lock.checked) {
-            dom_rng_blur.value = dom_rng_blur_sigma.value;
-            if (dom_txt_curr_blur) dom_txt_curr_blur.innerText = dom_rng_blur_sigma.value;
-        }
-    }, { signal });
+    wireSliderReadout({
+        slider: dom_rng_blur,
+        readout: dom_txt_curr_blur,
+        signal,
+        onChange: (raw) => {
+            if (dom_chk_sigma_lock.checked) {
+                dom_rng_blur_sigma.value = raw;
+                if (dom_txt_curr_blur_sigma) dom_txt_curr_blur_sigma.innerText = raw;
+            }
+        },
+    });
+    wireSliderReadout({
+        slider: dom_rng_blur_sigma,
+        readout: dom_txt_curr_blur_sigma,
+        signal,
+        onChange: (raw) => {
+            if (dom_chk_sigma_lock.checked) {
+                dom_rng_blur.value = raw;
+                if (dom_txt_curr_blur) dom_txt_curr_blur.innerText = raw;
+            }
+        },
+    });
     dom_chk_sigma_lock.addEventListener('change', () => {
         if (dom_chk_sigma_lock.checked) {
             dom_rng_blur_sigma.value = dom_rng_blur.value;
             if (dom_txt_curr_blur_sigma) dom_txt_curr_blur_sigma.innerText = dom_rng_blur.value;
         }
     }, { signal });
-    dom_rng_zoom.addEventListener('input', () => {
-        const v = parseFloat(dom_rng_zoom.value).toFixed(2);
-        dom_rng_zoom.value = v;
-        dom_txt_curr_zoom.innerText = v;
-        target_zoom = parseFloat(v);
-    }, { signal });
+    wireSliderReadout({
+        slider: dom_rng_zoom,
+        readout: dom_txt_curr_zoom,
+        format: (raw) => parseFloat(raw).toFixed(2),
+        signal,
+        onChange: (raw) => {
+            const v = parseFloat(raw).toFixed(2);
+            // Re-canonicalize the input so subsequent reads round-trip cleanly.
+            dom_rng_zoom.value = v;
+            target_zoom = parseFloat(v);
+        },
+    });
 
     dom_chk_show_leds.addEventListener('change', () => {
         overlayCanvas.classList.toggle('leds-hidden', !dom_chk_show_leds.checked);

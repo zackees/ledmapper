@@ -39,8 +39,10 @@ export interface BloomControlsConfig {
     sliderFromStrength: (strength: number) => number;
     /**
      * How to visually disable the manual slider while auto is on.
-     * 'opacity' = add `opacity-50 pointer-events-none` (demo/movieplayer),
-     * 'class'   = toggle a `disabled` class (moviemaker).
+     * 'opacity' = toggle the shared `.is-disabled` class from global.css
+     *            (demo/movieplayer, which use the `.control-row` shell),
+     * 'class'   = toggle a `disabled` class on the wrapper (moviemaker,
+     *            which has its own `.slider-container.disabled` rule).
      */
     disabledStyle?: 'opacity' | 'class';
     /** Format strength for the readout. Defaults to 2 decimal places. */
@@ -75,9 +77,7 @@ export function wireBloomControls(cfg: BloomControlsConfig): BloomControls {
         chk.checked = enabled;
         slider.disabled = enabled;
         if (disabledStyle === 'opacity') {
-            sliderWrap.classList.toggle('opacity-50', enabled);
-            sliderWrap.classList.toggle('pointer-events-none', enabled);
-            sliderWrap.classList.toggle('opacity-100', !enabled);
+            sliderWrap.classList.toggle('is-disabled', enabled);
         } else {
             sliderWrap.classList.toggle('disabled', enabled);
         }
