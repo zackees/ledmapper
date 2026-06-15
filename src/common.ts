@@ -35,6 +35,18 @@ export function parse_screenmap_data_json(jsonBlob: string | ScreenmapJson): Poi
     }
     try {
         const out: PointArrayWithDiameter = [];
+        if (detectScreenmapVersion(parsed) === 2) {
+            const multi = v2ToMultiStripResult(parseScreenmapV2(parsed));
+            let firstDiameter: number | undefined;
+            for (const strip of multi.strips) {
+                for (const pt of strip.points) out.push(pt);
+                if (firstDiameter === undefined && typeof strip.diameter === "number") {
+                    firstDiameter = strip.diameter;
+                }
+            }
+            if (typeof firstDiameter === "number") out.diameter = firstDiameter;
+            return out;
+        }
         if (parsed.map === undefined) {
             throw new Error("Missing required 'map' key in screenmap JSON");
         }

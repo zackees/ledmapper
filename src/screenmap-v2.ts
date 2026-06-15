@@ -142,7 +142,7 @@ export function v2ToMultiStripResult(v2: ScreenmapV2): MultiStripParseResult {
         strips.push({
             name: seg.id,
             points,
-            diameter: undefined,
+            diameter: seg.diameter,
             offset: flatOffset,
             count: points.length,
             video_offset: flatOffset,
@@ -233,6 +233,13 @@ function parseSegment(raw: unknown, idx: number, _groups: Record<string, Screenm
             throw new Error(`Segment '${id}' 'parent' is not a string`);
         }
         out.parent = raw.parent;
+    }
+
+    if (raw.diameter !== undefined) {
+        if (typeof raw.diameter !== 'number' || !Number.isFinite(raw.diameter)) {
+            throw new Error(`Segment '${id}' 'diameter' must be a finite number`);
+        }
+        out.diameter = raw.diameter;
     }
 
     if (raw.offset !== undefined) {
