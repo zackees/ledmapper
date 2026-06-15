@@ -10,7 +10,7 @@ import {
 } from '../bloom-utils';
 import { applyBloomGeometry } from '../render/bloom-geometry';
 import { setupDemoStyleBloom } from '../render/demo-bloom-setup';
-import { parseRgbFrames } from '../render/rgb-video';
+import { parseRgbFrames, prependFledHeader } from '../render/rgb-video';
 import type { MultiStripParseResult, StripPoint, RendererContextWithOverlay } from '../types/domain';
 import type { BufferGeometry, PointsMaterial, Points, Float32BufferAttribute } from 'three';
 import templateHtml from './template.html?raw';
@@ -26,8 +26,6 @@ export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
 
     // Global variables
-    let videoReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-    let videoBuffer = new Uint8Array();
 
     // DOM elements
     const dom_btn_upload_screenmap = qe<HTMLInputElement>(container, '#btn_upload_screenmap');
@@ -232,14 +230,6 @@ export function init(container: HTMLElement) {
         dom_rng_diameter.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
-    function stopVideoStream() {
-        if (videoReader) {
-            void videoReader.cancel().catch((_e: unknown) => { /* ignore cancel errors */ });
-            videoReader = null;
-        }
-        videoBuffer = new Uint8Array();
-    }
-
     function loadScreenmapFile(file: File | null | undefined) {
         if (!file) return;
         if (!fileHasExtension(file, ['.json'])) {
@@ -247,8 +237,7 @@ export function init(container: HTMLElement) {
             return;
         }
         void file.text().then((text: string) => {
-            // A new screenmap invalidates frames sized for the old LED count
-            stopVideoStream();
+            // A new screenmap invalidates frames sized for the old LED count.
             movie_frames.length = 0;
             curr_frame_idx = 0;
             set_dom_btn_play(false);
@@ -260,8 +249,8 @@ export function init(container: HTMLElement) {
 
     function loadMovieFile(file: File | null | undefined) {
         if (!file) return;
-        if (!fileHasExtension(file, ['.rgb'])) {
-            void errorDialog('Wrong file type', 'Please choose a .rgb video file.');
+        if (!fileHasExtension(file, ['.fled'])) {
+            void errorDialog('Wrong file type', 'Please choose a .fled video file.');
             return;
         }
         void file.arrayBuffer().then(load_movie_data).catch((error: unknown) => {
@@ -280,7 +269,6 @@ export function init(container: HTMLElement) {
             void errorDialog('Frame size mismatch', 'Frame size should be a multiple of the number of screenmap points.');
             return;
         }
-        stopVideoStream();
         movie_frames.length = 0;
         curr_frame_idx = 0;
         for (const frame of frames) movie_frames.push(frame);
@@ -297,10 +285,10 @@ export function init(container: HTMLElement) {
             if (!file) return;
             if (fileHasExtension(file, ['.json'])) {
                 loadScreenmapFile(file);
-            } else if (fileHasExtension(file, ['.rgb'])) {
+            } else if (fileHasExtension(file, ['.fled'])) {
                 loadMovieFile(file);
             } else {
-                void errorDialog('Wrong file type', 'Please drop a .json screenmap or .rgb video file.');
+                void errorDialog('Wrong file type', 'Please drop a .json screenmap or .fled video file.');
             }
         },
         signal,
@@ -320,57 +308,22 @@ export function init(container: HTMLElement) {
             .catch((error: unknown) => { console.error('Error loading JSON:', error); });
     }
 
-    // --- Video streaming ---
+    // --- Video load ---
+    // The .fled file is self-describing (header + embedded screenmap +
+    // payload), so we fetch it once and let parseRgbFrames slice frames
+    // against the screenmap's LED count. No chunked streaming needed at
+    // these file sizes (~4–80 MB) and it removes a significant amount of
+    // bookkeeping vs. the legacy chunked-rgb path.
     async function fetchAndLoadVideo() {
         try {
-            const response = await fetch('/demo/video.rgb');
+            const response = await fetch('/demo/video.fled');
             if (!response.ok) throw new Error('Network response was not ok');
-            if (!response.body) throw new Error('ReadableStream not supported');
-            videoReader = response.body.getReader();
-            void streamVideoData();
-        } catch (error) {
-            console.error('Error loading video:', error);
-        }
-    }
-
-    async function streamVideoData() {
-        try {
-            for (;;) {
-                if (!videoReader) break;
-                const { done, value } = await videoReader.read();
-                if (done) {
-                    console.warn('Finished streaming video data');
-                    break;
-                }
-                const newBuffer = new Uint8Array(videoBuffer.length + value.length);
-                newBuffer.set(videoBuffer);
-                newBuffer.set(value, videoBuffer.length);
-                videoBuffer = newBuffer;
-
-                const frameSize = screenmap_pts.length * 3;
-                const completeFrames = Math.floor(videoBuffer.length / frameSize);
-                if (completeFrames > 0) {
-                    const frameData = videoBuffer.slice(0, completeFrames * frameSize);
-                    processNewFrames(frameData);
-                    videoBuffer = videoBuffer.slice(completeFrames * frameSize);
-                }
-            }
-        } catch (error) {
-            console.error('Error streaming video:', error);
-        }
-    }
-
-    function processNewFrames(frameData: Uint8Array) {
-        const frameSize = screenmap_pts.length * 3;
-        const numNewFrames = frameData.length / frameSize;
-        for (let i = 0; i < numNewFrames; i++) {
-            const start = i * frameSize;
-            movie_frames.push(frameData.slice(start, start + frameSize));
-        }
-        if (movie_frames.length === numNewFrames) {
-            dom_btn_play.disabled = false;
+            const buffer = await response.arrayBuffer();
+            load_movie_data(buffer);
             set_dom_btn_play(false);
             dom_btn_play.click();
+        } catch (error) {
+            console.error('Error loading video:', error);
         }
     }
 
@@ -430,8 +383,21 @@ export function init(container: HTMLElement) {
             videoData.set(frame, offset);
             offset += frame.length;
         });
-        const blob = new Blob([videoData], { type: 'application/octet-stream' });
-        download_blob_as_file(blob, 'video.rgb');
+        // Wrap the raw payload with the FLED self-describing header so the
+        // file is portable: it carries its own screenmap and can be replayed
+        // anywhere without a side-channel screenmap.json.
+        const screenmapJson = JSON.stringify({
+            map: {
+                strip1: {
+                    x: screenmap_pts.map((pt) => pt[0]),
+                    y: screenmap_pts.map((pt) => pt[1]),
+                    diameter: 0.25,
+                },
+            },
+        });
+        const fledBytes = prependFledHeader(videoData, screenmapJson);
+        const blob = new Blob([fledBytes.buffer as ArrayBuffer], { type: 'application/octet-stream' });
+        download_blob_as_file(blob, 'video.fled');
     }, { signal });
 
     dom_btn_download_screenmap_16x16_serpentine.addEventListener('click', () => {
@@ -635,9 +601,6 @@ export function init(container: HTMLElement) {
     return function destroy() {
         ac.abort();
         animLoop.stop();
-        if (videoReader) {
-            void videoReader.cancel().catch((_e: unknown) => { /* ignore cancel errors */ });
-        }
         if (pointsMesh) {
             scene.remove(pointsMesh);
             pointsGeometry?.dispose();

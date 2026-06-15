@@ -1,5 +1,5 @@
 /**
- * Persist the loaded Movie Player video (.rgb bytes) in IndexedDB so it
+ * Persist the loaded Movie Player video (.fled bytes) in IndexedDB so it
  * survives navigating away and back (and full reloads). localStorage is too
  * small for raw video, so a single-record object store is used instead.
  *
@@ -35,7 +35,7 @@ function openDb(): Promise<IDBDatabase | null> {
     return dbPromise;
 }
 
-/** Persist the raw .rgb video bytes as the current video. Best-effort. */
+/** Persist the .fled video bytes as the current video. Best-effort. */
 export async function saveVideo(bytes: Uint8Array): Promise<void> {
     const db = await openDb();
     if (!db) return;
