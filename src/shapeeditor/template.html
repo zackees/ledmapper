@@ -35,6 +35,27 @@
         <button id="hint_strip_help" type="button" class="hint-strip-help" title="Keyboard help (?, F1)">? Help</button>
     </div>
     <div id="transform-overlay" class="transform-overlay">
+        <button id="btn_overlay_collapse" type="button"
+            class="overlay-collapse-btn"
+            title="Collapse panel"
+            aria-label="Collapse panel"
+            aria-expanded="true">
+            <!-- FA chevron-up SVG path (Font Awesome Free, CC BY 4.0). -->
+            <svg viewBox="0 0 448 512" width="14" height="14" aria-hidden="true">
+                <path fill="currentColor" d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
+            </svg>
+        </button>
+        <button id="btn_overlay_expand" type="button"
+            class="overlay-expand-btn"
+            title="Expand panel"
+            aria-label="Expand panel"
+            style="display:none;">
+            <!-- FA bars (hamburger) SVG path — used as the "expand panel" affordance. -->
+            <svg viewBox="0 0 448 512" width="14" height="14" aria-hidden="true">
+                <path fill="currentColor" d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/>
+            </svg>
+        </button>
+        <div id="overlay_content">
         <details class="accordion" open>
             <summary class="cursor-pointer select-none text-sm font-medium text-lm-text py-1">Screenmap</summary>
             <div class="transform-row flex flex-wrap items-center gap-x-3 gap-y-1 pt-2">
@@ -130,5 +151,6 @@
                 <label>Move Y <input id="txt_image_ty" type="number" value="0" step="1" disabled><span class="unit">px</span></label>
             </div>
         </details>
+        </div><!-- /#overlay_content -->
     </div>
 </main>

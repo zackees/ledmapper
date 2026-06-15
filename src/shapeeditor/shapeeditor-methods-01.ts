@@ -67,6 +67,18 @@ ShapeEditor.prototype.resetTransforms = function (this: ShapeEditor) {
     };
 
 /**
+ * Apply the collapsed/expanded visual state to the transform overlay,
+ * persist the preference, and update ARIA. Called from the init wiring
+ * and the two button handlers.
+ */
+ShapeEditor.prototype._setOverlayCollapsed = function (this: ShapeEditor, collapsed: boolean): void {
+    this.overlayCollapsed = collapsed;
+    this.dom_transform_overlay.classList.toggle('collapsed', collapsed);
+    this.dom_btn_overlay_collapse.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    try { localStorage.setItem('shapeeditor.overlayCollapsed', collapsed ? '1' : '0'); } catch { /* ignore */ }
+};
+
+/**
  * Build the canonical screenmap JSON for the CURRENT editor state
  * (raw points transformed by the on-screen scale / rotate / translate).
  * Returns '' when there's nothing to serialize.

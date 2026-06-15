@@ -38,6 +38,48 @@
     opacity: 1;
 }
 
+.overlay-collapse-btn,
+.overlay-expand-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--color-lm-text);
+    border: 1px solid var(--color-lm-border);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 0;
+    opacity: 0.7;
+    transition: opacity 0.15s ease, background 0.15s ease;
+}
+.overlay-collapse-btn:hover,
+.overlay-expand-btn:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Collapsed state: hide the accordion content, shrink the panel to just the
+   single expand button at the top-left of the canvas. */
+.transform-overlay.collapsed {
+    padding: 0;
+    width: auto;
+    background: rgba(17, 17, 17, 0.65);
+    opacity: 0.7;
+}
+.transform-overlay.collapsed #overlay_content,
+.transform-overlay.collapsed .overlay-collapse-btn {
+    display: none;
+}
+.transform-overlay.collapsed .overlay-expand-btn {
+    display: inline-flex;
+    position: static;
+}
+
 .slider-row > label {
     @apply shrink-0 text-right;
     width: 60px;
