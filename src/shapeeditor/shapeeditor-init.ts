@@ -42,6 +42,34 @@ this.mainEl.style.position = 'relative';
         this.dom_txt_translate_x = this.qei('#txt_translate_x');
         this.dom_txt_translate_y = this.qei('#txt_translate_y');
         this.dom_txt_diameter = this.qei('#txt_diameter');
+        this.dom_chk_snap_back = this.qei('#chk_snap_back');
+        this.dom_rng_snap_back_px = this.qei('#rng_snap_back_px');
+        this.dom_rng_snap_back_px_val = this.qe<HTMLElement>('#rng_snap_back_px_val');
+        // Restore snap settings from localStorage (best-effort).
+        try {
+            const v = localStorage.getItem('shapeeditor.snapBackEnabled');
+            this.snapBackEnabled = v === null ? true : v === '1';
+        } catch { this.snapBackEnabled = true; }
+        try {
+            const v = localStorage.getItem('shapeeditor.snapBackPx');
+            const n = v === null ? 12 : parseInt(v, 10);
+            this.snapBackPx = Number.isFinite(n) ? Math.max(2, Math.min(40, n)) : 12;
+        } catch { this.snapBackPx = 12; }
+        this.dom_chk_snap_back.checked = this.snapBackEnabled;
+        this.dom_rng_snap_back_px.value = String(this.snapBackPx);
+        this.dom_rng_snap_back_px_val.textContent = `${String(this.snapBackPx)} px`;
+        this.dom_chk_snap_back.addEventListener('change', () => {
+            this.snapBackEnabled = this.dom_chk_snap_back.checked;
+            try { localStorage.setItem('shapeeditor.snapBackEnabled', this.snapBackEnabled ? '1' : '0'); } catch { /* ignore */ }
+        }, { signal: this.signal });
+        this.dom_rng_snap_back_px.addEventListener('input', () => {
+            const n = parseInt(this.dom_rng_snap_back_px.value, 10);
+            if (Number.isFinite(n)) {
+                this.snapBackPx = Math.max(2, Math.min(40, n));
+                this.dom_rng_snap_back_px_val.textContent = `${String(this.snapBackPx)} px`;
+                try { localStorage.setItem('shapeeditor.snapBackPx', String(this.snapBackPx)); } catch { /* ignore */ }
+            }
+        }, { signal: this.signal });
         this.dom_btn_save = this.qeb('#btn_save_as');
         this.dom_btn_reset = this.qeb('#btn_reset');
         this.dom_btn_undo = this.qeb('#btn_undo');

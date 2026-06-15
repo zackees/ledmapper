@@ -446,10 +446,12 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
             // initial mousedown point, zero out the delta so the strip
             // visibly snaps back to its starting place. The threshold is in
             // canvas pixels (not cm) so it stays the same on screen at any
-            // zoom level.
-            const STRIP_SNAP_BACK_PX = 12;
+            // zoom level. Both the toggle and the threshold are user-
+            // controllable via the Magnetic-snap checkbox + Tolerance slider
+            // in the Screenmap controls panel (persisted in localStorage).
+            const snapPx = self.snapBackEnabled ? self.snapBackPx : 0;
             const wasSnapped = self.stripSnapActive;
-            self.stripSnapActive = Math.hypot(dx, dy) < STRIP_SNAP_BACK_PX;
+            self.stripSnapActive = snapPx > 0 && Math.hypot(dx, dy) < snapPx;
             if (self.stripSnapActive) {
                 sdx = 0;
                 sdy = 0;

@@ -46,6 +46,17 @@
                 <label>Move Y <input id="txt_translate_y" type="number" value="0" step="1"><span class="unit">px</span></label>
                 <label>LED ⌀ <input id="txt_diameter" type="number" value="0.50" min="0.01" max="100" step="0.01"></label>
             </div>
+            <div class="transform-row flex flex-wrap items-center gap-x-3 gap-y-1 pt-2">
+                <label class="flex items-center gap-1" title="Snap a dragged strip back to its starting place when the cursor comes back near the mousedown point.">
+                    <input id="chk_snap_back" type="checkbox" checked>
+                    Magnetic snap
+                </label>
+                <label class="flex items-center gap-1" title="Distance in canvas pixels at which the snap engages.">
+                    Tolerance
+                    <input id="rng_snap_back_px" type="range" min="2" max="40" step="1" value="12" style="width:90px;">
+                    <span id="rng_snap_back_px_val" class="unit">12 px</span>
+                </label>
+            </div>
         </details>
         <details id="panel_palette" class="accordion">
             <summary class="cursor-pointer select-none text-sm font-medium text-lm-text py-1">Add Panel</summary>
