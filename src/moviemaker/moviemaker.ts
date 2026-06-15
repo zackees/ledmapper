@@ -14,6 +14,7 @@ import { createRecording } from './recording';
 import { drawMoviemakerOverlay } from './overlay';
 import { createLedPreview } from './preview';
 import { wireSliderReadout } from '../ui/sliders';
+import { safeStorage } from '../services/storage';
 import { PREVIEW_AUTO_MAX_SPARSE, PREVIEW_AUTO_FLOOR } from '../bloom-utils';
 import { perfEnabled } from './perf';
 import templateHtml from './template.html?raw';
@@ -590,8 +591,7 @@ export function init(container: HTMLElement) {
     const BLOOM_LS_KEY = 'ledmapper.moviemaker.autoBloom';
 
     // Restore persisted state (default: auto on).
-    const _bloomAutoStored = localStorage.getItem(BLOOM_LS_KEY);
-    const _bloomAutoInit = _bloomAutoStored === null ? true : _bloomAutoStored === 'true';
+    const _bloomAutoInit = safeStorage.getBool(BLOOM_LS_KEY, true);
     dom_chk_auto_bloom.checked = _bloomAutoInit;
 
     function _applyBloomAutoState(enabled: boolean) {
@@ -625,7 +625,7 @@ export function init(container: HTMLElement) {
 
     dom_chk_auto_bloom.addEventListener('change', () => {
         const enabled = dom_chk_auto_bloom.checked;
-        localStorage.setItem(BLOOM_LS_KEY, String(enabled));
+        safeStorage.setBool(BLOOM_LS_KEY, enabled);
         if (!enabled) {
             // Seed slider from current auto strength so there's no visual jump.
             const curr = preview.getCurrentBloomStrength();
@@ -652,20 +652,18 @@ export function init(container: HTMLElement) {
 
     // Rotate view is opt-in: the preview stays locked to the screenmap's
     // native orientation unless the user explicitly enables rotation.
-    const _prevRotateStored = localStorage.getItem(PREVIEW_ROTATE_LS_KEY);
-    dom_chk_preview_rotate.checked = _prevRotateStored === null ? false : _prevRotateStored === 'true';
+    dom_chk_preview_rotate.checked = safeStorage.getBool(PREVIEW_ROTATE_LS_KEY, false);
 
-    const _prevBloomStored = localStorage.getItem(PREVIEW_BLOOM_LS_KEY);
-    const _prevBloomInit = _prevBloomStored === null ? true : _prevBloomStored === 'true';
+    const _prevBloomInit = safeStorage.getBool(PREVIEW_BLOOM_LS_KEY, true);
     dom_chk_preview_bloom.checked = _prevBloomInit;
     preview.setBloomEnabled(_prevBloomInit);
 
     dom_chk_preview_rotate.addEventListener('change', () => {
-        localStorage.setItem(PREVIEW_ROTATE_LS_KEY, String(dom_chk_preview_rotate.checked));
+        safeStorage.setBool(PREVIEW_ROTATE_LS_KEY, dom_chk_preview_rotate.checked);
     }, { signal });
 
     dom_chk_preview_bloom.addEventListener('change', () => {
-        localStorage.setItem(PREVIEW_BLOOM_LS_KEY, String(dom_chk_preview_bloom.checked));
+        safeStorage.setBool(PREVIEW_BLOOM_LS_KEY, dom_chk_preview_bloom.checked);
         preview.setBloomEnabled(dom_chk_preview_bloom.checked);
     }, { signal });
 

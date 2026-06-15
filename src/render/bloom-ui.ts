@@ -12,6 +12,7 @@
  * unchanged, so callers don't know the internals went reactive.
  */
 import { effect, signal } from '../ui/signal';
+import { safeStorage } from '../services/storage';
 
 /** The bloom controller surface this wiring drives (auto-bloom or preview). */
 export interface BloomControlsAdapter {
@@ -67,8 +68,7 @@ export function wireBloomControls(cfg: BloomControlsConfig): BloomControls {
     const clampSlider = (v: number) => Math.min(Math.max(v, 0), 100);
 
     // Restore persisted auto-bloom state (default: on).
-    const stored = localStorage.getItem(lsKey);
-    const auto = signal(stored === null ? true : stored === 'true');
+    const auto = signal(safeStorage.getBool(lsKey, true));
     const sliderVal = signal(clampSlider(parseInt(slider.value) || 0));
 
     // auto state -> checkbox, disabled styling, controller.
@@ -95,7 +95,7 @@ export function wireBloomControls(cfg: BloomControlsConfig): BloomControls {
 
     chk.addEventListener('change', () => {
         const enabled = chk.checked;
-        localStorage.setItem(lsKey, String(enabled));
+        safeStorage.setBool(lsKey, enabled);
         if (!enabled) {
             // Seed the slider from the current strength so there's no jump.
             const seed = clampSlider(sliderFromStrength(adapter.getStrength()));
@@ -110,7 +110,7 @@ export function wireBloomControls(cfg: BloomControlsConfig): BloomControls {
     }, listenerOpts);
 
     function setAuto(enabled: boolean) {
-        localStorage.setItem(lsKey, String(enabled));
+        safeStorage.setBool(lsKey, enabled);
         auto.set(enabled);
     }
 

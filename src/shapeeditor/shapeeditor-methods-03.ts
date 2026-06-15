@@ -5,6 +5,7 @@ import { ShapeEditor } from './shapeeditor-class';
 import { WebGLRenderer, Scene, OrthographicCamera } from 'three';
 
 import { notePinMutation } from '../screenmap-store';
+import { safeStorage } from '../services/storage';
 
 import { hintTextFor } from './hints';
 
@@ -34,10 +35,8 @@ ShapeEditor.prototype.doSetVideoOffset = function (this: ShapeEditor, stripIdx: 
 ShapeEditor.prototype._maybeShowRepinToast = function (this: ShapeEditor, stripName: string, newPin: string) {
     const self = this;
 
-        try {
-            if (localStorage.getItem('lm:shapeeditor-repinToastShown')) return;
-            localStorage.setItem('lm:shapeeditor-repinToastShown', '1');
-        } catch { /* private mode */ }
+        if (safeStorage.get('lm:shapeeditor-repinToastShown')) return;
+        safeStorage.set('lm:shapeeditor-repinToastShown', '1');
         void self._toastInfo(`Moved "${stripName}" to ${newPin}. vo: was reset; Undo to restore.`);
     };
 
