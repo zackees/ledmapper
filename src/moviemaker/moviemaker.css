@@ -222,6 +222,25 @@
     border-bottom: 1px solid var(--color-lm-border);
 }
 
+/* "Edit / Create from a photo" link that opens the ScreenMap Editor. */
+.btn-edit-screenmap {
+    @apply inline-flex items-center justify-center;
+    background: var(--color-lm-surface-2);
+    color: var(--color-lm-text);
+    border: 1px solid var(--color-lm-border);
+    padding: 6px 12px;
+    border-radius: var(--radius-lm);
+    font-size: 0.78rem;
+    text-decoration: none;
+    transition: border-color var(--lm-dur) var(--lm-ease),
+                background var(--lm-dur) var(--lm-ease);
+}
+.btn-edit-screenmap:hover {
+    border-color: var(--color-lm-accent);
+    background: var(--color-lm-accent-subtle);
+    color: var(--color-lm-text);
+}
+
 #sidebar::before {
     content: '';
     display: block;

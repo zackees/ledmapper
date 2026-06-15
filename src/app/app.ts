@@ -29,6 +29,18 @@ const layerLoaders: Record<AppMode, () => Promise<LayerModule>> = {
     create: () => import('../moviemaker/moviemaker'),
 };
 
+/**
+ * Per-mode `data-tool` value matched by the underlying tool's CSS
+ * (every per-tool stylesheet gates its rules on `[data-tool="<name>"]`).
+ * When the shell hosts a tool, the content slot needs to carry that
+ * tool's name or none of the tool's CSS applies — see issue #133
+ * + the broken /create snapshot that motivated this fix.
+ */
+const modeToolNames: Record<AppMode, string> = {
+    play:   'demo',
+    create: 'moviemaker',
+};
+
 const modeRoutes: Record<AppMode, string> = {
     play:   '/play',
     create: '/create',
@@ -75,8 +87,28 @@ export function init(container: HTMLElement, nav?: SpaHistory): () => void {
             currentDestroy = null;
         }
         contentEl.innerHTML = '';
+        // Stamp the content slot with the hosted tool's data-tool name so
+        // the tool's CSS (gated on `[data-tool="<name>"]`) applies. The
+        // router writes `data-tool="app"` on the outer #app; we override
+        // on the inner slot for the active layer.
+        contentEl.dataset.tool = modeToolNames[mode];
         const module = await layerLoaders[mode]();
         if (id !== activationId) return; // a later activation overtook us
+        // Swap in the layer's per-tool CSS. The router's #tool-css link
+        // is pointing at app.css for the shell; the layer's own
+        // stylesheet rides on a second #layer-css link.
+        if (module.css) {
+            const linkEl = document.getElementById('layer-css') as HTMLLinkElement | null;
+            if (linkEl && linkEl.getAttribute('href') !== module.css) {
+                const cssLink = linkEl;
+                await new Promise<void>((resolve) => {
+                    cssLink.onload = () => { resolve(); };
+                    cssLink.onerror = () => { resolve(); };
+                    cssLink.href = module.css ?? '';
+                });
+                if (id !== activationId) return;
+            }
+        }
         currentMode = mode;
         updateModeBar(mode);
         document.title = modeTitles[mode];
