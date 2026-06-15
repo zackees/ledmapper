@@ -13,7 +13,7 @@ import { createRecording } from './recording';
 import { drawMoviemakerOverlay } from './overlay';
 import { createLedPreview } from './preview';
 import { wireSliderReadout } from '../ui/sliders';
-import { safeStorage } from '../services/storage';
+import { withPrefix } from '../services/storage';
 import { PREVIEW_AUTO_MAX_SPARSE, PREVIEW_AUTO_FLOOR } from '../bloom-utils';
 import { perfEnabled } from './perf';
 import templateHtml from './template.html?raw';
@@ -588,10 +588,13 @@ export function init(container: HTMLElement) {
     }, { signal });
 
     // ── Bloom controls ──────────────────────────────────────────────────────────
-    const BLOOM_LS_KEY = 'ledmapper.moviemaker.autoBloom';
+    // All moviemaker persisted state lives under `ledmapper.moviemaker.*`;
+    // route every read/write through a namespaced sub-store so the prefix
+    // appears in exactly one place.
+    const mmStore = withPrefix('ledmapper.moviemaker.');
 
     // Restore persisted state (default: auto on).
-    const _bloomAutoInit = safeStorage.getBool(BLOOM_LS_KEY, true);
+    const _bloomAutoInit = mmStore.getBool('autoBloom', true);
     dom_chk_auto_bloom.checked = _bloomAutoInit;
 
     function _applyBloomAutoState(enabled: boolean) {
@@ -625,7 +628,7 @@ export function init(container: HTMLElement) {
 
     dom_chk_auto_bloom.addEventListener('change', () => {
         const enabled = dom_chk_auto_bloom.checked;
-        safeStorage.setBool(BLOOM_LS_KEY, enabled);
+        mmStore.setBool('autoBloom', enabled);
         if (!enabled) {
             // Seed slider from current auto strength so there's no visual jump.
             const curr = preview.getCurrentBloomStrength();
@@ -647,23 +650,20 @@ export function init(container: HTMLElement) {
     }, { signal });
 
     // ── Preview panel options (rotate view / bloom) ─────────────────────────────
-    const PREVIEW_ROTATE_LS_KEY = 'ledmapper.moviemaker.previewRotate';
-    const PREVIEW_BLOOM_LS_KEY  = 'ledmapper.moviemaker.previewBloom';
-
     // Rotate view is opt-in: the preview stays locked to the screenmap's
     // native orientation unless the user explicitly enables rotation.
-    dom_chk_preview_rotate.checked = safeStorage.getBool(PREVIEW_ROTATE_LS_KEY, false);
+    dom_chk_preview_rotate.checked = mmStore.getBool('previewRotate', false);
 
-    const _prevBloomInit = safeStorage.getBool(PREVIEW_BLOOM_LS_KEY, true);
+    const _prevBloomInit = mmStore.getBool('previewBloom', true);
     dom_chk_preview_bloom.checked = _prevBloomInit;
     preview.setBloomEnabled(_prevBloomInit);
 
     dom_chk_preview_rotate.addEventListener('change', () => {
-        safeStorage.setBool(PREVIEW_ROTATE_LS_KEY, dom_chk_preview_rotate.checked);
+        mmStore.setBool('previewRotate', dom_chk_preview_rotate.checked);
     }, { signal });
 
     dom_chk_preview_bloom.addEventListener('change', () => {
-        safeStorage.setBool(PREVIEW_BLOOM_LS_KEY, dom_chk_preview_bloom.checked);
+        mmStore.setBool('previewBloom', dom_chk_preview_bloom.checked);
         preview.setBloomEnabled(dom_chk_preview_bloom.checked);
     }, { signal });
 

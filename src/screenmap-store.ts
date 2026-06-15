@@ -48,10 +48,6 @@ export function _resetPinMutationGuardForTests() {
 
 import { safeStorage } from './services/storage';
 
-const _safeGet = (key: string) => safeStorage.get(key);
-const _safeSet = (key: string, value: string) => safeStorage.set(key, value);
-const _safeRemove = (key: string) => { safeStorage.remove(key); };
-
 /**
  * Count LEDs and strips in a raw screenmap JSON string.
  * Returns `null` if the JSON is unusable.
@@ -104,7 +100,7 @@ export function isDegenerate(jsonText: string | null | undefined): boolean {
  */
 export function saveScreenmap(jsonText: string): void {
     const ok = saveScreenmapWithMeta(jsonText, { source: 'save' });
-    if (ok) _safeRemove(PRESET_KEY);
+    if (ok) safeStorage.remove(PRESET_KEY);
 }
 
 /**
@@ -124,7 +120,7 @@ export function saveScreenmapPoints(pts: [number, number][] | number[][], diamet
  * @returns {string|null}
  */
 export function getScreenmap() {
-    return _safeGet(KEY);
+    return safeStorage.get(KEY);
 }
 
 /**
@@ -132,7 +128,7 @@ export function getScreenmap() {
  * @param {string} file
  */
 export function savePresetSelection(file: string): void {
-    _safeSet(PRESET_KEY, file);
+    safeStorage.set(PRESET_KEY, file);
 }
 
 /**
@@ -140,7 +136,7 @@ export function savePresetSelection(file: string): void {
  * @returns {string|null}
  */
 export function getPresetSelection() {
-    return _safeGet(PRESET_KEY);
+    return safeStorage.get(PRESET_KEY);
 }
 
 /**
@@ -206,7 +202,7 @@ export function saveScreenmapMultiStrip(strips: Parameters<typeof buildScreenmap
 interface ScreenmapMeta { savedAt: number; source: string; ledCount: number; stripCount: number; pinCount: number; }
 
 export function getScreenmapMeta(): ScreenmapMeta | null {
-    const raw = _safeGet(META_KEY);
+    const raw = safeStorage.get(META_KEY);
     if (!raw) return null;
     try {
         const obj = JSON.parse(raw) as unknown;
@@ -223,10 +219,10 @@ export function getScreenmapMeta(): ScreenmapMeta | null {
 export interface BackupMeta extends ScreenmapMeta { presetFile?: string | null; }
 
 export function getBackup(): { json: string; meta: BackupMeta | null } | null {
-    const json = _safeGet(BACKUP_KEY);
+    const json = safeStorage.get(BACKUP_KEY);
     if (!json) return null;
     let meta: BackupMeta | null = null;
-    const rawMeta = _safeGet(BACKUP_META_KEY);
+    const rawMeta = safeStorage.get(BACKUP_META_KEY);
     if (rawMeta) {
         try {
             const parsed = JSON.parse(rawMeta) as unknown;
@@ -242,7 +238,7 @@ export function getBackup(): { json: string; meta: BackupMeta | null } | null {
  * @returns {boolean}
  */
 export function promoteToBackup() {
-    const current = _safeGet(KEY);
+    const current = safeStorage.get(KEY);
     if (!current || isDegenerate(current)) return false;
     const counts: MapCounts = _countMap(current) ?? { ledCount: 0, stripCount: 0, pinCount: 0 };
     const existingMeta = getScreenmapMeta();
@@ -262,10 +258,10 @@ export function promoteToBackup() {
         pinCount: (existingMeta && typeof existingMeta.pinCount === 'number')
             ? existingMeta.pinCount
             : counts.pinCount,
-        presetFile: _safeGet(PRESET_KEY),
+        presetFile: safeStorage.get(PRESET_KEY),
     };
-    _safeSet(BACKUP_KEY, current);
-    _safeSet(BACKUP_META_KEY, JSON.stringify(backupMeta));
+    safeStorage.set(BACKUP_KEY, current);
+    safeStorage.set(BACKUP_META_KEY, JSON.stringify(backupMeta));
     return true;
 }
 
@@ -288,12 +284,12 @@ export function restoreBackup() {
         stripCount: (meta && typeof meta.stripCount === 'number') ? meta.stripCount : counts.stripCount,
         pinCount: (meta && typeof meta.pinCount === 'number') ? meta.pinCount : counts.pinCount,
     };
-    _safeSet(KEY, json);
-    _safeSet(META_KEY, JSON.stringify(newMeta));
+    safeStorage.set(KEY, json);
+    safeStorage.set(META_KEY, JSON.stringify(newMeta));
     if (meta && typeof meta.presetFile === 'string' && meta.presetFile.length > 0) {
-        _safeSet(PRESET_KEY, meta.presetFile);
+        safeStorage.set(PRESET_KEY, meta.presetFile);
     } else {
-        _safeRemove(PRESET_KEY);
+        safeStorage.remove(PRESET_KEY);
     }
     return json;
 }
@@ -304,7 +300,7 @@ export function restoreBackup() {
  * counts and source 'backfill'.
  */
 export function backfillMeta() {
-    const json = _safeGet(KEY);
+    const json = safeStorage.get(KEY);
     if (!json) return;
     if (getScreenmapMeta()) return;
     const counts = _countMap(json);
@@ -316,7 +312,7 @@ export function backfillMeta() {
         stripCount: counts.stripCount,
         pinCount: counts.pinCount,
     };
-    _safeSet(META_KEY, JSON.stringify(meta));
+    safeStorage.set(META_KEY, JSON.stringify(meta));
 }
 
 /**
@@ -335,7 +331,7 @@ export function saveScreenmapWithMeta(jsonText: string, opts: { source?: string 
     if (isDegenerate(jsonText)) return false;
     const source = typeof opts.source === 'string' ? opts.source : 'save';
     const counts = _countMap(jsonText) ?? { ledCount: 0, stripCount: 0, pinCount: 0 };
-    const prev = _safeGet(KEY);
+    const prev = safeStorage.get(KEY);
     // Pin-count regression guard (issue #24 §1.8): refuse a write whose
     // distinct pin count dropped vs. the stored working copy unless a
     // user-initiated pin mutation was recorded recently. Protects against
@@ -358,7 +354,7 @@ export function saveScreenmapWithMeta(jsonText: string, opts: { source?: string 
     if (prev && prev !== jsonText && !isDegenerate(prev)) {
         promoteToBackup();
     }
-    const ok = _safeSet(KEY, jsonText);
+    const ok = safeStorage.set(KEY, jsonText);
     if (!ok) return false;
     const meta = {
         savedAt: Date.now(),
@@ -367,6 +363,6 @@ export function saveScreenmapWithMeta(jsonText: string, opts: { source?: string 
         stripCount: counts.stripCount,
         pinCount: counts.pinCount,
     };
-    _safeSet(META_KEY, JSON.stringify(meta));
+    safeStorage.set(META_KEY, JSON.stringify(meta));
     return true;
 }
