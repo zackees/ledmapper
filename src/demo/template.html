@@ -1,60 +1,56 @@
 <div class="controls">
-    <h1>Demo</h1>
-    <p>This demo uses a 4x serpentine matrix to display mapped video. See in FastLED: </p>
-    <p><a href="https://zackees.github.io/fastled-wasm/FxSdCard">https://zackees.github.io/fastled-wasm/FxSdCard</a></p>
-
     <!-- Hidden file inputs -->
     <div style="display: none;">
         <input type="file" id="btn_upload_screenmap" accept=".json">
         <input type="file" id="btn_load_movie" accept=".fled">
     </div>
 
-    <!-- Three-section Layout -->
-    <div class="controls-container control-bar mt-3">
-        <!-- Left section - Play/Pause -->
-        <div class="control-stack">
-            <input type="button" id="btn_play" value="Play">
+    <!-- One compact toolbar row. The verbose Demo title + description +
+         the three Download buttons live inside a kebab "More…" details
+         pop-over so the resting height stays small. -->
+    <div class="controls-container control-bar">
+        <input type="button" id="btn_play" value="Play">
+
+        <div class="control-row">
+            <label for="sel_framerate">FPS</label>
+            <select id="sel_framerate">
+                <option value="60">60</option>
+                <option value="30">30</option>
+                <option value="15">15</option>
+                <option value="10">10</option>
+                <option value="5">5</option>
+                <option value="3">3</option>
+                <option value="1">1</option>
+            </select>
         </div>
 
-        <!-- Middle section - Sliders -->
-        <div class="control-stack">
-            <div class="control-row">
-                <label for="sel_framerate">Frame Rate:</label>
-                <select id="sel_framerate">
-                    <option value="60">60 FPS</option>
-                    <option value="30">30 FPS</option>
-                    <option value="15">15 FPS</option>
-                    <option value="10">10 FPS</option>
-                    <option value="5">5 FPS</option>
-                    <option value="3">3 FPS</option>
-                    <option value="1">1 FPS</option>
-                </select>
-            </div>
-            <div class="control-row">
-                <label for="rng_diameter">LED Diameter:</label>
-                <input type="range" min="1" max="64" value="6" step="1" class="slider" id="rng_diameter">
-                <span class="slider-readout" id="txt_curr_diameter">6</span>
-            </div>
+        <div class="control-row">
+            <label for="rng_diameter">LED size</label>
+            <input type="range" min="1" max="64" value="6" step="1" class="slider" id="rng_diameter">
+            <span class="slider-readout" id="txt_curr_diameter">6</span>
         </div>
 
-        <!-- Right section - Download buttons + Bloom -->
-        <div class="control-stack">
-            <div class="button-row justify-center">
-                <button id="btn_download_screenmap">Download Screenmap</button>
-                <button id="btn_download_screenmap_16x16_serpentine">Download 16x16 Serpentine Screenmap</button>
-                <button id="btn_download_video">Download Mapped Video</button>
-            </div>
-            <div class="control-stack-start gap-1.5 mt-1">
-                <label class="checkbox-row">
-                    <input type="checkbox" id="chk_auto_bloom" checked> Auto bloom
-                </label>
-                <div id="bloom_strength_slider" class="control-row is-disabled">
-                    <label for="rng_bloom_strength" class="text-sm text-lm-text-muted">Strength</label>
-                    <input type="range" min="0" max="100" value="50" class="slider" id="rng_bloom_strength" disabled>
-                    <span class="slider-readout-wide" id="txt_curr_bloom_strength">16.00</span>
+        <label class="checkbox-row">
+            <input type="checkbox" id="chk_auto_bloom" checked> Auto bloom
+        </label>
+
+        <div id="bloom_strength_slider" class="control-row is-disabled">
+            <label for="rng_bloom_strength" class="text-sm text-lm-text-muted">Strength</label>
+            <input type="range" min="0" max="100" value="50" class="slider" id="rng_bloom_strength" disabled>
+            <span class="slider-readout-wide" id="txt_curr_bloom_strength">16.00</span>
+        </div>
+
+        <details class="demo-more">
+            <summary>More…</summary>
+            <div class="demo-more-body">
+                <p class="text-xs text-lm-text-muted">4x serpentine matrix demo · see <a href="https://zackees.github.io/fastled-wasm/FxSdCard">FxSdCard in FastLED</a></p>
+                <div class="button-row mt-2">
+                    <button id="btn_download_screenmap">Download Screenmap</button>
+                    <button id="btn_download_screenmap_16x16_serpentine">Download 16×16 Serpentine</button>
+                    <button id="btn_download_video">Download Mapped Video</button>
                 </div>
             </div>
-        </div>
+        </details>
     </div>
 </div>
 <main class="drop-zone">
