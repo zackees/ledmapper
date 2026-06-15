@@ -283,6 +283,7 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
         self.drawBgGizmoHandles();
         self.drawRuler();
         self._drawSnapGuides();
+        self._drawStripRotateHandle();
         self._drawPlacingGhost();
         self._drawPasteGhost();
     };
@@ -825,3 +826,103 @@ ShapeEditor.prototype.commitGizmoDrag = function (this: ShapeEditor) {
             }
         }
     };
+
+/**
+ * Axis-aligned screenmap-pts bbox of the currently selected strip's LEDs.
+ * Returns null if no strip is selected, the strip is empty, or the
+ * screenmap_pts array doesn't include its range.
+ */
+ShapeEditor.prototype._selectedStripBboxCanvas = function (this: ShapeEditor) {
+    const self = this;
+    const idx = self.selection.getStripIdx();
+    if (idx === null || !self.stripInfo || idx >= self.stripInfo.strips.length) return null;
+    const st = self.nn(self.stripInfo.strips[idx]);
+    if (st.count <= 0) return null;
+    const lo = Math.max(0, st.offset);
+    const hi = Math.min(self.screenmap_pts.length, st.offset + st.count);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = lo; i < hi; i++) {
+        const [px, py] = self.nn(self.screenmap_pts[i]);
+        if (px < minX) minX = px;
+        if (py < minY) minY = py;
+        if (px > maxX) maxX = px;
+        if (py > maxY) maxY = py;
+    }
+    if (!isFinite(minX)) return null;
+    return { idx, minX, minY, maxX, maxY };
+};
+
+/**
+ * Canvas-pixel position of the per-strip rotation handle: 30px above the
+ * selected strip's bbox top-center (matching the whole-screenmap gizmo's
+ * 30px rotation arm). The handle itself is drawn in `_drawStripRotateHandle`.
+ */
+ShapeEditor.prototype._stripRotateHandlePos = function (this: ShapeEditor) {
+    const self = this;
+    const bb = self._selectedStripBboxCanvas();
+    if (!bb) return null;
+    const pad = 10;
+    const armLen = 30;
+    return {
+        idx: bb.idx,
+        anchorX: (bb.minX + bb.maxX) / 2,
+        anchorY: bb.minY - pad,
+        handleX: (bb.minX + bb.maxX) / 2,
+        handleY: bb.minY - pad - armLen,
+    };
+};
+
+/** Hit-test the per-strip rotation handle. Returns true within 14px. */
+ShapeEditor.prototype.hitTestStripRotateHandle = function (this: ShapeEditor, canvasX: number, canvasY: number): boolean {
+    const self = this;
+    const h = self._stripRotateHandlePos();
+    if (!h) return false;
+    return Math.abs(canvasX - h.handleX) < 14 && Math.abs(canvasY - h.handleY) < 14;
+};
+
+/**
+ * Draw the per-strip rotate handle (purple to distinguish from the blue
+ * whole-screenmap gizmo). Visible only when a strip is selected. Style
+ * mirrors `drawGizmoHandles`: dashed connector line + arc with arrowhead.
+ */
+ShapeEditor.prototype._drawStripRotateHandle = function (this: ShapeEditor) {
+    const self = this;
+    if (!self.overlayCtx) return;
+    const h = self._stripRotateHandlePos();
+    if (!h) return;
+    const ctx = self.overlayCtx;
+    const isActive = self.stripRotateActive || self.stripRotateHover;
+    const color = isActive ? '#c084fc' : '#a855f7'; // tailwind purple-400 / purple-500
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    // Dashed connector
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(h.anchorX, h.anchorY);
+    ctx.lineTo(h.handleX, h.handleY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Arc with arrowhead
+    const arcR = isActive ? 9 : 7;
+    const arcStart = -Math.PI * 1.25;
+    const arcEnd = Math.PI * 0.05;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(h.handleX, h.handleY, arcR, arcStart, arcEnd);
+    ctx.stroke();
+    const ax = h.handleX + arcR * Math.cos(arcEnd);
+    const ay = h.handleY + arcR * Math.sin(arcEnd);
+    const tangent = arcEnd + Math.PI / 2;
+    const arrowLen = 5;
+    const arrowHalf = 0.55;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - arrowLen * Math.cos(tangent - arrowHalf), ay - arrowLen * Math.sin(tangent - arrowHalf));
+    ctx.lineTo(ax - arrowLen * Math.cos(tangent + arrowHalf), ay - arrowLen * Math.sin(tangent + arrowHalf));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+};

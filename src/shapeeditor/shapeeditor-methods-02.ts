@@ -65,6 +65,14 @@ ShapeEditor.prototype.applyAction = function (this: ShapeEditor, action: UndoAct
             });
         } else if (action.type === 'strip-translate') {
             self._applyStripTranslate(a.stripIdx as number, a.sdx as number, a.sdy as number);
+        } else if (action.type === 'strip-rotate') {
+            const deg = a.deltaDeg as number;
+            self._applyStripRotate(
+                a.stripIdx as number,
+                deg * Math.PI / 180,
+                a.centerSm as { x: number; y: number },
+                a.centerRaw as { x: number; y: number },
+            );
         } else if (action.type === 'paste-strips') {
             self._doPasteStrips(action);
         } else if (action.type === 'restore-backup') {
@@ -132,6 +140,14 @@ ShapeEditor.prototype.applyInverse = function (this: ShapeEditor, action: UndoAc
             });
         } else if (action.type === 'strip-translate') {
             self._applyStripTranslate(a.stripIdx as number, -(a.sdx as number), -(a.sdy as number));
+        } else if (action.type === 'strip-rotate') {
+            const deg = a.deltaDeg as number;
+            self._applyStripRotate(
+                a.stripIdx as number,
+                -deg * Math.PI / 180,
+                a.centerSm as { x: number; y: number },
+                a.centerRaw as { x: number; y: number },
+            );
         } else if (action.type === 'paste-strips') {
             self._undoPasteStrips(action);
         } else if (action.type === 'restore-backup') {
@@ -168,6 +184,7 @@ ShapeEditor.prototype.isStripAction = function (this: ShapeEditor, action: UndoA
             || action.type === 'pin-rename'
             || action.type === 'vo-override-toggle'
             || action.type === 'strip-translate'
+            || action.type === 'strip-rotate'
             || action.type === 'paste-strips'
         );
     };
@@ -402,6 +419,15 @@ ShapeEditor.prototype.clearEditingState = function (this: ShapeEditor) {
         self.stripSnapStartCenter = null;
         self.stripSnapEngagedX = null;
         self.stripSnapEngagedY = null;
+        self.stripRotateActive = false;
+        self.stripRotateIdx = -1;
+        self.stripRotateStartScreenmap = null;
+        self.stripRotateStartRaw = null;
+        self.stripRotateCenterSm = null;
+        self.stripRotateCenterRaw = null;
+        self.stripRotateStartAngle = 0;
+        self.stripRotateLastDeg = 0;
+        self.stripRotateHover = false;
         self.altQuasimode = false;
         self.isDragging = false;
         self.isPanning = false;

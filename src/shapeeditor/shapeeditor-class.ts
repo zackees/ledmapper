@@ -320,6 +320,24 @@ export class ShapeEditor {
     declare stripSnapEngagedX: number | null;
     declare stripSnapEngagedY: number | null;
     declare _drawSnapGuides: () => void;
+    declare _drawStripRotateHandle: () => void;
+    declare _stripRotateHandlePos: () => { idx: number; anchorX: number; anchorY: number; handleX: number; handleY: number } | null;
+    declare _selectedStripBboxCanvas: () => { idx: number; minX: number; minY: number; maxX: number; maxY: number } | null;
+    declare hitTestStripRotateHandle: (canvasX: number, canvasY: number) => boolean;
+    declare _applyStripRotate: (stripIdx: number, deltaRad: number, centerSm: { x: number; y: number }, centerRaw: { x: number; y: number }) => void;
+    declare _finalizeStripRotate: () => void;
+    // Per-strip (sub-group) rotation handle — independent of the
+    // whole-screenmap rotation gizmo. Active only while the user is
+    // dragging the strip's dedicated rotate handle.
+    declare stripRotateActive: boolean;
+    declare stripRotateIdx: number;
+    declare stripRotateStartScreenmap: [number, number][] | null;
+    declare stripRotateStartRaw: [number, number][] | null;
+    declare stripRotateCenterSm: { x: number; y: number } | null;
+    declare stripRotateCenterRaw: { x: number; y: number } | null;
+    declare stripRotateStartAngle: number;
+    declare stripRotateLastDeg: number;
+    declare stripRotateHover: boolean;
     declare altQuasimode: boolean;
     declare ctxMenu: HTMLElement | null;
     declare ctxMenuIdx: number;
