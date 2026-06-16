@@ -58,6 +58,7 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
         parent: opts.parent,
         renderPx,
         enableOverlay,
+        preserveDrawingBuffer: opts.preserveDrawingBuffer === true,
     });
     const { renderer, scene, camera, wrapper } = ctx;
     const overlay = enableOverlay

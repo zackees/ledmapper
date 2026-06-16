@@ -48,6 +48,7 @@ export async function createGfxFromFled(opts: CreateGfxFromFledOptions): Promise
         ...(opts.targetFPS !== undefined ? { targetFPS: opts.targetFPS } : {}),
         ...(opts.enableOverlay !== undefined ? { enableOverlay: opts.enableOverlay } : {}),
         ...(opts.showFps !== undefined ? { showFps: opts.showFps } : {}),
+        ...(opts.preserveDrawingBuffer !== undefined ? { preserveDrawingBuffer: opts.preserveDrawingBuffer } : {}),
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
     });
 

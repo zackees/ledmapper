@@ -62,6 +62,10 @@ export interface GfxBaseOptions {
      *  at `gfx.fps.visible` (set by `f`-key toggle / click-to-hide)
      *  overrides this whenever it's present. Default `false`. */
     showFps?: boolean;
+    /** Keep the WebGL backbuffer readable after compositing so consumers
+     *  can `drawImage()` / `captureStream()` the canvas. Off by default
+     *  (cheaper); turn on for recording or external readback. */
+    preserveDrawingBuffer?: boolean;
     /** Abort signal to dispose of the renderer + detach listeners. */
     signal?: AbortSignal;
 }
