@@ -50,6 +50,39 @@ export default tseslint.config(
       // Unused vars: off for base rule, TS rule handles it
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      // Inline-style guard. Style information belongs in CSS (variables
+      // + classes), not in TS literals. See issue #170 for the migration
+      // plan and the per-token mapping. Files with pre-existing violations
+      // are temporarily exempted below until they migrate.
+      'no-restricted-syntax': [
+        'error',
+        {
+          // Forbid hex color literals: '#000', '#abc123', '#abcdef80'.
+          // Matches 3, 4, 6, or 8 hex digits after #. Numeric hex (0x...)
+          // is unaffected — it's not a string literal.
+          selector: "Literal[value=/^#[0-9a-fA-F]{3,8}$/]",
+          message: 'Hex color literals belong in CSS variables (src/styles/global.css), read at runtime via the helper described in #170.',
+        },
+        {
+          // Forbid rgba/rgb/rgba()/hsl()/hsla() string literals.
+          selector: "Literal[value=/^(rgba?|hsla?)\\s*\\(/]",
+          message: 'rgb()/hsl() color literals belong in CSS variables, not TS. See #170.',
+        },
+        {
+          // Forbid `el.style.cssText = ...` — bundles style with logic.
+          // Add a CSS class instead.
+          selector: "AssignmentExpression[left.type='MemberExpression'][left.property.name='cssText']",
+          message: 'element.style.cssText is forbidden — define a CSS class and set element.className. See #170.',
+        },
+        {
+          // Forbid `<el style="...">` in template-literal strings.
+          // Triggers on any TemplateElement whose raw text contains
+          // `style="`. Liberally caught; suppression on a per-line basis
+          // is allowed during migration via `// eslint-disable-next-line`.
+          selector: "TemplateElement[value.raw=/style\\s*=\\s*[\"']/]",
+          message: 'HTML inline style="..." attributes belong in CSS. Replace with a class and a rule in the tool CSS. See #170.',
+        },
+      ],
     },
   },
   {
@@ -117,6 +150,41 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unnecessary-condition': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
+    },
+  },
+  {
+    // Tests legitimately use hex colors as fixtures (screenmap parse,
+    // V2 group palette assertions, webcam mock pattern generation).
+    // Tests don't ship to users, so the inline-color guard doesn't
+    // apply.
+    files: ['tests/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': 'off',
+    },
+  },
+  {
+    // Pre-existing inline-color / cssText violations (inventory in #170).
+    // Each file listed here will migrate in its own focused PR; the
+    // override comes off when the file lands clean. New code must not
+    // be added to this list without an explicit issue link.
+    files: [
+      'src/shapeeditor/shapeeditor-methods-*.ts',
+      'src/shapeeditor/shapeeditor-init.ts',
+      'src/screenmap/screenmap.ts',
+      'src/screenmap-store.ts',
+      'src/demo/demo.ts',
+      'src/moviemaker/moviemaker.ts',
+      'src/gfx/fps.ts',
+      'src/gfx/player.ts',
+      'src/gfx/gfx-core.ts',
+      'src/render/canvas-recorder.ts',
+      'src/ui/dialogs.ts',
+      'src/label-render.ts',
+      'src/router.ts',
+      'src/three-utils.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': 'off',
     },
   },
   { ignores: ['dist/', 'public/', 'node_modules/', '.tmp/', 'tests/**/*.js'] },
