@@ -413,9 +413,15 @@ export function init(container: HTMLElement) {
         dom_btn_play_pause.setAttribute('aria-label', label);
     }, { signal });
 
-    // Progress bar scrubbing
+    // Progress bar scrubbing.
+    // Cache the track's bounding rect at pointerdown so every pointermove
+    // doesn't force a synchronous layout recalc (one of the worst drag-jank
+    // sources we caught in the #181 perf audit). The rect can't change
+    // mid-drag because the user is interacting with this element — any
+    // layout shift would cancel the pointer capture.
+    let scrubRect: DOMRect | null = null;
     function seekToPosition(clientX: number) {
-        const rect = dom_progress_track.getBoundingClientRect();
+        const rect = scrubRect ?? dom_progress_track.getBoundingClientRect();
         const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
         const seekTime = fraction * videoPlayer.duration;
         videoPlayer.currentTime = seekTime;
@@ -434,6 +440,7 @@ export function init(container: HTMLElement) {
         // Capture the pointer so move/up still fire when the user drags off
         // the track. PointerEvents handles this with one method call.
         dom_progress_track.setPointerCapture(e.pointerId);
+        scrubRect = dom_progress_track.getBoundingClientRect();
         seekToPosition(e.clientX);
     }, { signal });
 
@@ -445,6 +452,7 @@ export function init(container: HTMLElement) {
     function endScrub(e: PointerEvent) {
         if (!isScrubbing) return;
         isScrubbing = false;
+        scrubRect = null;
         dom_progress_thumb.classList.remove('dragging');
         dom_progress_track.releasePointerCapture(e.pointerId);
     }
