@@ -76,6 +76,13 @@ export function init(container: HTMLElement) {
     const overlayCtx = gfx.overlayCtx;
     const wrapper = gfx.wrapper;
 
+    // Debug hook for the perf snapshot test (issue #160). Only attaches
+    // under `?debug=stats` so production builds don't expose internals
+    // to scrapers / extensions reading window properties.
+    if (new URLSearchParams(window.location.search).get('debug') === 'stats') {
+        (window as unknown as { __gfxStats?: () => ReturnType<typeof gfx.getStats> }).__gfxStats = () => gfx.getStats();
+    }
+
     // Wire the auto/manual bloom UI to the gfx instance.
     wireBloomUi({
         gfx,
