@@ -4,14 +4,11 @@ import { wireFileSource, fileHasExtension } from '../drag-drop';
 import { errorDialog } from '../ui/dialogs';
 import { saveVideo, getVideo, clearVideo } from '../video-store';
 import { buildVideoChannelMap } from '../moviemaker/transforms';
-import { createCircleTexture, createRendererAndScene, rebuildPointsMesh, wireDiameterSlider, createAnimationLoop, wireResponsiveCanvas } from '../three-utils';
+import { createGfx, wireBloomUi, createPlayer } from '../gfx';
 import { createCanvasRecorder } from '../render/canvas-recorder';
-import { applyBloomGeometry } from '../render/bloom-geometry';
-import { setupDemoStyleBloom } from '../render/demo-bloom-setup';
 import { parseRgbFrames, hasFledMagic } from '../render/rgb-video';
-import { BLOOM_RENDER_PX } from '../bloom-utils';
-import type { ParsedStrip, RendererContextWithOverlay } from '../types/domain';
-import type { BufferGeometry, PointsMaterial, Points, Float32BufferAttribute } from 'three';
+import type { ParsedStrip } from '../types/domain';
+import type { Player } from '../gfx';
 import templateHtml from './template.html?raw';
 export { default as css } from './movieplayer.css?url';
 
@@ -20,6 +17,12 @@ function qe<T extends HTMLElement>(parent: ParentNode, sel: string, _cast?: (e: 
     if (!el) throw new Error(`Missing element "${sel}"`);
     return el as T;
 }
+
+// Placeholder so `createGfx` can instantiate before a video is loaded.
+// Replaced via `gfx.setScreenmap` on every load.
+const PLACEHOLDER_SCREENMAP = {
+    map: { strip1: { x: [0], y: [0], diameter: 0.25 } },
+};
 
 export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
@@ -42,46 +45,48 @@ export function init(container: HTMLElement) {
 
     let screenmap_pts: [number, number][] = [];
     let screenmap_strips: ParsedStrip[] = [];
-    let videoChannelMap: Int32Array | null = null;
-    let movie_frames: Uint8Array[] = [];
-    let playing = false;
-    let curr_frame_idx = 0;
-    let curr_frame: Uint8Array | null = null;
-
-    const INV_255 = 1 / 255;
-
-    let pointsGeometry: BufferGeometry | undefined;
-    let pointsMaterial: PointsMaterial | undefined;
-    let pointsMesh: Points | undefined;
-    let colorAttribute: Float32BufferAttribute | undefined;
-
-    const circleTexture = createCircleTexture(64);
-
-    const main = qe<HTMLElement>(container, 'main');
-    const { renderer, scene, camera, wrapper, overlayCanvas, overlayCtx } = createRendererAndScene({
-        width: CANVAS_SIZE,
-        height: CANVAS_SIZE,
-        parent: main,
-        enableOverlay: true,
-        renderPx: BLOOM_RENDER_PX,
-        // Keep the backbuffer readable so the recorder can drawImage() the
-        // rendered frame into its 1080p capture canvas.
-        preserveDrawingBuffer: true,
-    }) as RendererContextWithOverlay;
-    // Labels only — let mouse events fall through to the renderer canvas.
-    overlayCanvas.style.pointerEvents = 'none';
+    let player: Player | null = null;
+    let frameCount = 0;
 
     const ac = new AbortController();
     const { signal } = ac;
 
-    // Size the wrapper to the largest square that fits the available area so
-    // the canvas never overflows the viewport vertically (issue #66, #141).
-    // The drawing buffer is fixed (BLOOM_RENDER_PX); only the CSS display
-    // size changes, so downscaling stays crisp.
-    wireResponsiveCanvas({ wrapper, parent: main, maxSize: BLOOM_RENDER_PX, signal });
+    const main = qe<HTMLElement>(container, 'main');
 
-    // Canvas-overlay play/pause button — the primary playback affordance. It is
-    // shown only once a video is loaded and mirrors the playing state.
+    // gfx package owns renderer + bloom + animation loop + overlay canvas.
+    // `preserveDrawingBuffer: true` lets the recorder readback via
+    // canvas.captureStream(). The screenmap is a placeholder until the
+    // first .fled file lands; the bloom UI persists its auto/manual flag
+    // under a movieplayer-scoped localStorage key.
+    const gfx = createGfx({
+        screenmap: PLACEHOLDER_SCREENMAP,
+        parent: main,
+        paneSize: CANVAS_SIZE,
+        enableOverlay: true,
+        preserveDrawingBuffer: true,
+        signal,
+    });
+    if (!gfx.overlayCanvas || !gfx.overlayCtx) {
+        throw new Error('movieplayer: gfx overlay not provisioned');
+    }
+    const overlayCanvas = gfx.overlayCanvas;
+    const overlayCtx = gfx.overlayCtx;
+    const wrapper = gfx.wrapper;
+    // Labels only — let mouse events fall through to the renderer canvas.
+    overlayCanvas.style.pointerEvents = 'none';
+
+    wireBloomUi({
+        gfx,
+        chk: dom_chk_auto_bloom,
+        slider: dom_rng_bloom_strength,
+        sliderWrap: dom_bloom_strength_slider,
+        label: dom_txt_bloom_strength,
+        lsKey: 'ledmapper.movieplayer.autoBloom',
+        signal,
+    });
+
+    // Canvas-overlay play/pause button — the primary playback affordance.
+    // Shown only once a video is loaded and mirrors the playing state.
     const dom_btn_play_overlay = document.createElement('button');
     dom_btn_play_overlay.type = 'button';
     dom_btn_play_overlay.id = 'btn_play_overlay';
@@ -90,49 +95,16 @@ export function init(container: HTMLElement) {
     dom_btn_play_overlay.hidden = true;
     wrapper.appendChild(dom_btn_play_overlay);
 
-    // FastLED-style bloom via the shared setup helper (see issue #119).
-    const bloom = setupDemoStyleBloom({
-        renderer, scene, camera,
-        paneSize: CANVAS_SIZE,
-        chk: dom_chk_auto_bloom,
-        slider: dom_rng_bloom_strength,
-        sliderWrap: dom_bloom_strength_slider,
-        label: dom_txt_bloom_strength,
-        lsKey: 'ledmapper.movieplayer.autoBloom',
-        signal,
-    });
-    const getDiameter = wireDiameterSlider({
-        slider: dom_rng_diameter,
-        label: dom_txt_curr_diameter,
-        getMaterial: () => pointsMaterial ?? null,
-        signal,
-    });
+    // Diameter slider bound directly to gfx.setDiameter.
+    dom_rng_diameter.addEventListener('input', () => {
+        const px = parseInt(dom_rng_diameter.value) || 1;
+        gfx.setDiameter(px);
+        dom_txt_curr_diameter.textContent = String(px);
+    }, { signal });
 
-    // Reproportion the bloom kernel + density envelope to the current geometry.
-    function updateBloomGeometry() {
-        if (!pointsMaterial) return;
-        applyBloomGeometry(bloom, screenmap_pts, { ledPx: pointsMaterial.size, panePx: CANVAS_SIZE });
-    }
-    dom_rng_diameter.addEventListener('input', updateBloomGeometry, { signal });
-
-    function buildPoints() {
-        const previous = (pointsMesh && pointsGeometry && pointsMaterial && colorAttribute) ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial, colorAttribute } : null;
-        const result = rebuildPointsMesh({
-            scene, previous,
-            points: screenmap_pts,
-            circleTexture,
-            diameter: getDiameter(),
-        });
-
-        pointsGeometry = result.geometry;
-        pointsMaterial = result.material;
-        pointsMesh = result.mesh;
-        colorAttribute = result.colorAttribute;
-    }
-
-    // Draw per-strip Start/End labels over the LED view. Multi-strip maps get
-    // one color per strip (matching the moviemaker overlay); single-strip maps
-    // use white. Redrawn only on screenmap load — positions are static.
+    // Draw per-strip Start/End labels over the LED view. Multi-strip maps
+    // get one color per strip; single-strip maps use white. Redrawn only
+    // on screenmap load — positions are static.
     const labelRenderer = createLabelRenderer();
 
     function drawStripLabels() {
@@ -180,8 +152,7 @@ export function init(container: HTMLElement) {
 
     /**
      * Apply a screenmap parsed from a FLED file's embedded JSON to the scene.
-     * Returns false (and surfaces no UI) if the JSON couldn't be parsed —
-     * caller decides how to report.
+     * Returns false (and surfaces no UI) if the JSON couldn't be parsed.
      */
     function applyEmbeddedScreenmap(jsonText: string): boolean {
         let parsed;
@@ -193,17 +164,17 @@ export function init(container: HTMLElement) {
         }
         if (parsed.allPoints.length === 0) return false;
         screenmap_strips = parsed.strips;
-        videoChannelMap = buildVideoChannelMap(parsed.strips, parsed.totalCount);
         screenmap_pts = centerAndFitPoints(parsed.allPoints, CANVAS_SIZE, CANVAS_SIZE);
-        buildPoints();
-        updateBloomGeometry();
+        // Hand the raw JSON to gfx so the package owns the centered/fitted
+        // points internally. We keep our own copy too for the overlay code.
+        gfx.setScreenmap(JSON.parse(jsonText) as Record<string, unknown>);
         refreshStripOverlay();
         return true;
     }
 
     function loadMovieFile(file: File | null | undefined) {
         if (!file) return;
-        set_dom_btn_play(false);
+        teardownPlayer();
         if (!fileHasExtension(file, ['.fled'])) {
             void errorDialog('Wrong file type', 'Please choose a .fled video file (recorded by the Mapped Video Maker).');
             return;
@@ -226,29 +197,32 @@ export function init(container: HTMLElement) {
     });
 
     function set_dom_btn_play(on: boolean) {
-        playing = on;
-        dom_btn_play.value = playing ? "Pause" : "Play";
+        dom_btn_play.value = on ? 'Pause' : 'Play';
         // The overlay button only appears once a video is loaded; it reflects
-        // the playing state (pause icon while playing, play icon while paused).
-        dom_btn_play_overlay.hidden = movie_frames.length === 0;
-        dom_btn_play_overlay.classList.toggle('is-playing', playing);
-        dom_btn_play_overlay.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+        // the playing state.
+        dom_btn_play_overlay.hidden = frameCount === 0;
+        dom_btn_play_overlay.classList.toggle('is-playing', on);
+        dom_btn_play_overlay.setAttribute('aria-label', on ? 'Pause' : 'Play');
     }
 
-    dom_btn_play.addEventListener('click', () => {
-        set_dom_btn_play(!playing);
-    }, { signal });
+    function togglePlay() {
+        if (!player) return;
+        if (player.playing) player.pause();
+        else player.play();
+        set_dom_btn_play(player.playing);
+    }
 
+    dom_btn_play.addEventListener('click', togglePlay, { signal });
     dom_btn_play_overlay.addEventListener('click', () => {
-        if (movie_frames.length === 0) return;
-        set_dom_btn_play(!playing);
+        if (frameCount === 0) return;
+        togglePlay();
     }, { signal });
 
-    // Native canvas recording (issue: video player canvas capture). Encoding
-    // runs off the main thread via MediaRecorder + captureStream, so the render
-    // loop does zero extra work per frame — recording on vs. off is identical.
+    // Native canvas recording. Encoding runs off the main thread via
+    // MediaRecorder + captureStream, so the render loop does zero extra
+    // work per frame — recording on vs. off is identical.
     const recorder = createCanvasRecorder({
-        canvas: renderer.domElement,
+        canvas: gfx.canvas,
         fps: 60,
         onError: (m) => { void errorDialog('Recording error', m); },
     });
@@ -263,10 +237,43 @@ export function init(container: HTMLElement) {
         set_dom_btn_record(recorder.toggle());
     }, { signal });
 
+    // Each loaded video gets its own Player. Tear down the previous one so
+    // its RAF loop stops driving pushFrame.
+    function teardownPlayer() {
+        if (player) {
+            player.pause();
+            player = null;
+        }
+        frameCount = 0;
+    }
+
+    // Pre-apply the video-channel remap once at load time so the per-frame
+    // render path can hand bytes straight to gfx.pushFrame with no
+    // remapping work. Identity-map screenmaps (no explicit video_offsets)
+    // skip the copy entirely.
+    function applyChannelMap(frames: Uint8Array[], channelMap: Int32Array | null, ledCount: number): Uint8Array[] {
+        if (!channelMap) return frames;
+        const remapped: Uint8Array[] = new Array<Uint8Array>(frames.length);
+        for (let f = 0; f < frames.length; f++) {
+            const src = frames[f];
+            if (!src) continue;
+            const dst = new Uint8Array(ledCount * 3);
+            for (let i = 0; i < ledCount; i++) {
+                const i3 = i * 3;
+                const c3 = (channelMap[i] ?? i) * 3;
+                dst[i3    ] = src[c3    ] ?? 0;
+                dst[i3 + 1] = src[c3 + 1] ?? 0;
+                dst[i3 + 2] = src[c3 + 2] ?? 0;
+            }
+            remapped[f] = dst;
+        }
+        return remapped;
+    }
+
     function load_movie_data(array_buffer: ArrayBuffer, { persist = true, autoplay = true, silent = false } = {}) {
         const uint8_array = new Uint8Array(array_buffer);
-        // Two-pass parse: (1) peek the header to extract embedded JSON, derive
-        // ledCount from it, (2) re-slice frames against the derived ledCount.
+        // Two-pass parse: peek the header to extract embedded JSON, derive
+        // ledCount from it, then re-slice frames against the derived count.
         const peek = parseRgbFrames(uint8_array, 0);
         if (!peek.isFled || peek.embeddedJson === null) {
             if (silent) { void clearVideo(); return; }
@@ -290,13 +297,25 @@ export function init(container: HTMLElement) {
             void errorDialog('Corrupted video', 'Video payload does not match the embedded screenmap — file may be corrupted.');
             return;
         }
-        movie_frames = parsed.frames;
-        curr_frame_idx = 0;
+        const channelMap = buildVideoChannelMap(screenmap_strips, screenmap_pts.length);
+        const frames = applyChannelMap(parsed.frames, channelMap, screenmap_pts.length);
+        teardownPlayer();
+        player = createPlayer({
+            frames,
+            fps: 30,
+            autoplay,
+            pushFrame: (rgb) => { gfx.pushFrame(rgb); },
+        });
+        // Per-frame: drive the recorder's blit from gfx's render loop via
+        // onTimeUpdate (fires whenever the player advances time). The
+        // recorder is a no-op when not recording.
+        player.onTimeUpdate(() => { recorder.captureFrame(); });
+        player.onEnded(() => { set_dom_btn_play(false); });
+        frameCount = frames.length;
         dom_btn_play.disabled = false;
         if (persist) void saveVideo(uint8_array);
-        setStatus(`${String(screenmap_pts.length)} LEDs · ${String(movie_frames.length)} frames`, true);
-        set_dom_btn_play(false);
-        if (autoplay) dom_btn_play.click();
+        setStatus(`${String(screenmap_pts.length)} LEDs · ${String(frameCount)} frames`, true);
+        set_dom_btn_play(player.playing);
     }
 
     wireFileSource({
@@ -306,59 +325,10 @@ export function init(container: HTMLElement) {
         signal,
     });
 
-    const animLoop = createAnimationLoop({
-        targetFPS: 30,
-        onFrame() {
-            if (screenmap_pts.length === 0) return;
-
-            if (movie_frames.length && playing) {
-                if (curr_frame_idx >= movie_frames.length) curr_frame_idx = 0;
-                curr_frame = movie_frames[curr_frame_idx++] ?? null;
-            } else {
-                curr_frame = null;
-            }
-
-            if (curr_frame && colorAttribute) {
-                const arr = colorAttribute.array as Float32Array;
-                const count = screenmap_pts.length;
-                // LED i reads frame channel videoChannelMap[i] when the
-                // screenmap declares explicit video_offsets; identity otherwise.
-                for (let i = 0; i < count; i++) {
-                    const i3 = i * 3;
-                    const c3 = (videoChannelMap ? (videoChannelMap[i] ?? i) : i) * 3;
-                    arr[i3    ] = (curr_frame[c3    ] ?? 0) * INV_255;
-                    arr[i3 + 1] = (curr_frame[c3 + 1] ?? 0) * INV_255;
-                    arr[i3 + 2] = (curr_frame[c3 + 2] ?? 0) * INV_255;
-                }
-                colorAttribute.needsUpdate = true;
-            }
-
-            if (curr_frame) {
-                bloom.frame(curr_frame);
-            }
-            // Iris diameter modulation: dots open up on bright frames in sparse maps.
-            if (pointsMaterial) pointsMaterial.size = getDiameter() * bloom.getDiameterScale();
-            bloom.render();
-            // Blit the freshly rendered frame into the recorder's 1080p capture
-            // canvas (no-op when not recording). Done here, in the same tick as
-            // the GL draw, so the backbuffer is still intact for drawImage.
-            recorder.captureFrame();
-        }
-    });
-
     return function destroy() {
-        ac.abort();
-        // wireResponsiveCanvas listens on the same signal, so the ac.abort()
-        // above already disconnects its ResizeObserver and window listener.
+        teardownPlayer();
         recorder.stop();
-        animLoop.stop();
-        if (pointsMesh) {
-            scene.remove(pointsMesh);
-            pointsGeometry?.dispose();
-            pointsMaterial?.dispose();
-        }
-        circleTexture.dispose();
-        bloom.dispose();
-        renderer.dispose();
+        ac.abort();
+        gfx.dispose();
     };
 }
