@@ -42,6 +42,13 @@ export function createVideoSource({
 
     function startWebcam(resolutionStr: string, frameRate: number) {
         stopWebcam();
+        // Feature-check before touching the API. `navigator.mediaDevices`
+        // is undefined in privacy-restricted contexts (cross-origin iframe
+        // without `allow="camera"`) and on insecure-context pages. #183.
+        if (typeof navigator.mediaDevices?.getUserMedia !== 'function') {
+            onError('Webcam not available in this browser context. Try uploading a video file instead.');
+            return;
+        }
         const res = parseResolution(resolutionStr);
         const constraints: MediaStreamConstraints = {
             video: { width: res.width, height: res.height, frameRate },
