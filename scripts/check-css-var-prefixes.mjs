@@ -17,8 +17,7 @@
  * Run via `npm run lint` — appended to the lint script.
  */
 
-import { readFileSync } from 'node:fs';
-import { globSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const ALLOWED_PREFIXES = [
@@ -32,20 +31,34 @@ const ALLOWED_PREFIXES = [
 ];
 
 const ROOT = path.resolve(process.cwd());
-const STYLE_GLOBS = [
-    'src/styles/**/*.css',
-    'src/**/*.css',
-    // Templates can declare `style="--card-accent: #...;"` (hub does).
-    // Catch those too.
-    'src/**/template.html',
-];
+const SRC_DIR = path.join(ROOT, 'src');
 
-/** Vite's path-API doesn't expose glob; use Node 22's experimental glob. */
-function* iterFiles() {
-    for (const pattern of STYLE_GLOBS) {
-        for (const file of globSync(pattern)) {
-            yield path.join(ROOT, file);
+function* walk(dir) {
+    let entries;
+    try {
+        entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+        return;
+    }
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            yield* walk(fullPath);
+        } else if (entry.isFile()) {
+            yield fullPath;
         }
+    }
+}
+
+function shouldCheck(file) {
+    if (file.endsWith('.css')) return true;
+    if (file.endsWith(`${path.sep}template.html`)) return true;
+    return false;
+}
+
+function* iterFiles() {
+    for (const file of walk(SRC_DIR)) {
+        if (shouldCheck(file)) yield file;
     }
 }
 
