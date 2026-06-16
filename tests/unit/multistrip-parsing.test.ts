@@ -57,6 +57,27 @@ describe('parse_screenmap_data_json backwards compatibility', () => {
         assert.deepStrictEqual(pts[6], [12, 1]);
     });
 
+    it('mismatched x.length !== y.length warns and truncates to shorter (#182)', () => {
+        // Spy on console.warn to capture the diagnostic.
+        const calls: string[] = [];
+        const origWarn = console.warn;
+        console.warn = (msg: unknown) => { calls.push(String(msg)); };
+        try {
+            const MISMATCHED = {
+                map: {
+                    bad: { x: [0, 1, 2, 3, 4], y: [0, 0, 0] }, // y is 2 short
+                },
+            };
+            const pts = parse_screenmap_data_json(MISMATCHED);
+            assert.strictEqual(pts.length, 3, 'truncates to shorter axis');
+            assert.strictEqual(calls.length, 1, 'warns exactly once');
+            assert.ok(calls[0].includes('x.length=5'), 'mentions x.length');
+            assert.ok(calls[0].includes('y.length=3'), 'mentions y.length');
+        } finally {
+            console.warn = origWarn;
+        }
+    });
+
     it('two strips — .diameter from first strip', () => {
         const pts = parse_screenmap_data_json(TWO_STRIPS);
         assert.strictEqual(pts.diameter, 0.25);

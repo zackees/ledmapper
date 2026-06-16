@@ -60,6 +60,11 @@ export function parse_screenmap_data_json(jsonBlob: string | ScreenmapJson): Poi
             const strip = map[key];
             if (strip === undefined) continue;
             const { x, y } = strip;
+            // Surface mismatched x/y arrays — silently truncating to the
+            // shorter axis would produce ghost LEDs at [0,0] downstream. #182.
+            if (x.length !== y.length) {
+                console.warn(`Screenmap strip "${key}": x.length=${String(x.length)} != y.length=${String(y.length)}; truncating to shorter to avoid undefined coords.`);
+            }
             const len = Math.min(x.length, y.length);
             for (let i = 0; i < len; ++i) {
                 out.push([x[i] ?? 0, y[i] ?? 0]);
