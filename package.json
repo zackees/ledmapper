@@ -20,6 +20,7 @@
     "test:integration": "playwright test",
     "test:smoke": "vite build && playwright test --config playwright.smoke.config.js",
     "test:canvas-fit": "vite build && playwright test --config playwright.canvas-fit.config.js",
+    "test:perf": "vite build && playwright test --config playwright.perf.config.js",
     "typecheck": "tsc --noEmit"
   },
   "repository": {

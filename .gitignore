@@ -11,6 +11,7 @@ test-results/
 playwright-report/
 playwright/.cache/
 tests/canvas-fit/output/
+tests/perf/output/
 
 .claude/worktrees/
 .claude/projects/
