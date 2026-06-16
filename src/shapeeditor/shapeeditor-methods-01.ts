@@ -575,9 +575,7 @@ ShapeEditor.prototype.makeCtxBtn = function (this: ShapeEditor, label: string, a
         const btn = document.createElement('button');
         btn.dataset.action = action;
         btn.textContent = label;
-        btn.style.cssText = self.ctxBtnStyle;
-        btn.addEventListener('mouseenter', () => { btn.style.background = '#3b82f6'; btn.style.color = '#fff'; });
-        btn.addEventListener('mouseleave', () => { btn.style.background = 'none'; btn.style.color = '#eee'; });
+        btn.className = self.ctxBtnClass;
         if (ctxContainer) ctxContainer.appendChild(btn);
         return btn;
     };

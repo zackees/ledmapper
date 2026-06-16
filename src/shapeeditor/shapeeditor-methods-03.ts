@@ -576,7 +576,7 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
         self.ctxFileOps.appendChild(ctxLoadWrapper);
         self.ctxBtnLoadScreenmap = document.createElement('button');
         self.ctxBtnLoadScreenmap.textContent = 'Load Screenmap \u25B8';
-        self.ctxBtnLoadScreenmap.style.cssText = self.ctxBtnStyle;
+        self.ctxBtnLoadScreenmap.className = self.ctxBtnClass;
         ctxLoadWrapper.appendChild(self.ctxBtnLoadScreenmap);
 
         self.ctxLoadSubmenu = document.createElement('div');

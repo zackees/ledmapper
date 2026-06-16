@@ -175,7 +175,6 @@ export default tseslint.config(
       'src/ui/theme.ts',
       // Pre-existing inline-color / cssText violations, migrating per #170:
       'src/shapeeditor/shapeeditor-methods-*.ts',
-      'src/shapeeditor/shapeeditor-init.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',
