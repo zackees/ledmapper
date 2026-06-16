@@ -374,6 +374,14 @@ main {
     z-index: 10;
 }
 
+.gfx-player-play-pause-btn::before {
+    content: '\25B6';
+}
+
+.gfx-player-play-pause-btn[data-state="playing"]::before {
+    content: '\23F8';
+}
+
 /* ── Canvas ─────────────────────────────────────────────────── */
 
 canvas {

@@ -38,6 +38,8 @@ export type {
     Gfx,
     GfxWithPlayer,
     Player,
+    PlayerControlLabels,
+    PlayerControlsOptions,
     Screenmap,
     BloomConfig,
     CreateGfxOptions,
