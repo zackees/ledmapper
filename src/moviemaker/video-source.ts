@@ -79,6 +79,9 @@ export function createVideoSource({
         }
         videoPlayer.src = '';
         videoPlayer.srcObject = null;
+        // Drop the on-load closure so it doesn't keep references to
+        // the tool's state alive across navigation. Issue #180.
+        videoPlayer.onloadedmetadata = null;
     }
 
     return {

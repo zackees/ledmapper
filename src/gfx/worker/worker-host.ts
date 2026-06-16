@@ -114,6 +114,10 @@ export function runGfxWorker(): void {
         } catch (e: unknown) {
             const err = e as Error;
             post({ type: 'error', message: err.message, ...(err.stack !== undefined ? { stack: err.stack } : {}) });
+            // Any thrown exception during init/dispatch means the worker
+            // is in an indeterminate state. Tear down so dangling timers
+            // (statsTimer, bloomTimer) don't leak. Issue #180.
+            shutdown();
         }
     };
 }
