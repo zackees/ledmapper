@@ -62,7 +62,13 @@ export function createRecording({ getSwal, getScreenmapJson }: {
             // so navigating there auto-loads it. Movie Player only accepts
             // FLED-formatted bytes — legacy headerless blobs are dropped on
             // startup.
-            void saveVideo(fledFile);
+            // IndexedDB persistence is best-effort: the user already has
+            // the downloaded file; storage failure (quota, permission)
+            // just means Movie Player won't auto-restore. Log so the
+            // failure isn't completely silent. Issue #179.
+            saveVideo(fledFile).catch((error: unknown) => {
+                console.error('Save recorded video to IndexedDB failed:', error);
+            });
         }
         colorFrames.length = 0;
         capturing = false;
