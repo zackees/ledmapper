@@ -146,6 +146,32 @@
     color: #fff;
 }
 
+.shapeeditor-context-menu-separator {
+    height: 1px;
+    background: var(--color-lm-border);
+    margin: 4px 0;
+}
+
+.inspect-json-help {
+    text-align: left;
+    font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--color-lm-text-secondary);
+    margin-bottom: 6px;
+}
+
+.inspect-json-text {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--color-lm-surface-0);
+    color: var(--color-lm-text);
+    border: 1px solid var(--color-lm-border);
+    padding: 8px;
+    font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre;
+    overflow: auto;
+    resize: vertical;
+}
+
 /* ── Accordion ─────────────────────────────────────────────── */
 
 .accordion summary {

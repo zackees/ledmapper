@@ -194,13 +194,10 @@ ShapeEditor.prototype._openInspectJsonDialog = async function (this: ShapeEditor
     const res = await fireDialog({
         title: 'Inspect / Edit Screenmap JSON',
         html: `
-            <div style="text-align:left;font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#cbd5e1;margin-bottom:6px;">
+            <div class="inspect-json-help">
                 Edit and Apply to reload the editor with the modified JSON, or Copy to clipboard.
             </div>
-            <textarea id="inspect_json_text" rows="22"
-                style="width:100%;box-sizing:border-box;background:#0a0a0a;color:#e5e7eb;border:1px solid #444;
-                       padding:8px;font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-                       white-space:pre;overflow:auto;resize:vertical;">${escapeForTextarea(json)}</textarea>
+            <textarea id="inspect_json_text" class="inspect-json-text" rows="22">${escapeForTextarea(json)}</textarea>
         `,
         width: '80vw',
         showConfirmButton: true,
@@ -584,7 +581,7 @@ ShapeEditor.prototype.makeCtxSeparator = function (this: ShapeEditor) {
     const self = this;
 
         const sep = document.createElement('div');
-        sep.style.cssText = 'height:1px;background:#444;margin:4px 0;';
+        sep.className = 'shapeeditor-context-menu-separator';
         if (self.ctxMenu) self.ctxMenu.appendChild(sep);
         return sep;
     };
