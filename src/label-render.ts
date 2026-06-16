@@ -6,6 +6,7 @@
 
 import { createLabelLayoutEngine } from './label-layout';
 import type { LabelLayoutOptions, LabelPlacement } from './types/domain';
+import { gfxColors, withAlpha } from './ui/theme';
 
 interface LabelRenderItem {
     id: string;
@@ -91,7 +92,7 @@ export function createLabelRenderer(engineOptions: LabelLayoutOptions = {}) {
             ctx.textBaseline = 'middle';
             ctx.lineWidth = 3;
             ctx.lineJoin = 'round';
-            ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+            ctx.strokeStyle = withAlpha(gfxColors.bgPopoverStrong(), 0.9);
             ctx.strokeText(it.text, p.labelX, p.labelY + p.h / 2);
             ctx.fillStyle = opts.textColor ?? it.color;
             ctx.fillText(it.text, p.labelX, p.labelY + p.h / 2);
