@@ -168,6 +168,12 @@ export default tseslint.config(
     // override comes off when the file lands clean. New code must not
     // be added to this list without an explicit issue link.
     files: [
+      // The single legitimate declaration site for hex color literals:
+      // the FALLBACK palette that workers + bare-DOM environments use
+      // when getComputedStyle is unavailable. Everything else reads
+      // through gfxColors.* — see #170.
+      'src/ui/theme.ts',
+      // Pre-existing inline-color / cssText violations, migrating per #170:
       'src/shapeeditor/shapeeditor-methods-*.ts',
       'src/shapeeditor/shapeeditor-init.ts',
       'src/screenmap/screenmap.ts',

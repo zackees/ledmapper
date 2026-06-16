@@ -13,7 +13,7 @@
     "build": "vite build",
     "build:gfx": "cd packages/gfx && vite build && tsc -p tsconfig.json",
     "preview": "vite preview",
-    "lint": "eslint src/ tests/ --max-warnings 0 --cache --cache-location node_modules/.cache/eslint/ && node scripts/check-moviemaker-presets.mjs",
+    "lint": "eslint src/ tests/ --max-warnings 0 --cache --cache-location node_modules/.cache/eslint/ && node scripts/check-moviemaker-presets.mjs && node scripts/check-css-var-prefixes.mjs",
     "check:presets": "node scripts/check-moviemaker-presets.mjs",
     "test": "node --import tsx --test tests/unit/*.test.ts",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
