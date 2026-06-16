@@ -100,3 +100,30 @@ export const gfxColors = {
 export function snapshotGfxColors(): Record<string, string> {
     return { ...FALLBACK, ...Object.fromEntries(_cache) };
 }
+
+/** Wrap a hex color (e.g. `gfxColors.ledStart()` → `'#22c55e'`) into an
+ *  `rgba()` string with the given alpha. The hex source stays under
+ *  CSS-variable control; only the alpha is callsite-specific.
+ *
+ *  Accepts: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`. The input alpha is
+ *  multiplied with the explicit `alpha` argument so you can soften a
+ *  token that already carries some transparency.
+ *
+ *  Returns the input unchanged if it doesn't match a recognized hex
+ *  format (e.g. a CSS-named color like `'black'`). */
+export function withAlpha(hex: string, alpha: number): string {
+    const m = /^#([0-9a-fA-F]{3,8})$/.exec(hex);
+    if (!m) return hex;
+    let s = m[1];
+    // Expand 3- / 4-digit shorthand.
+    if (s.length === 3 || s.length === 4) {
+        s = s.split('').map((c) => c + c).join('');
+    }
+    if (s.length !== 6 && s.length !== 8) return hex;
+    const r = parseInt(s.slice(0, 2), 16);
+    const g = parseInt(s.slice(2, 4), 16);
+    const b = parseInt(s.slice(4, 6), 16);
+    const baseA = s.length === 8 ? parseInt(s.slice(6, 8), 16) / 255 : 1;
+    const a = Math.max(0, Math.min(1, baseA * alpha));
+    return `rgba(${String(r)}, ${String(g)}, ${String(b)}, ${a.toFixed(3)})`;
+}
