@@ -25,6 +25,41 @@
     --color-mm-success-hover: #16a34a;
     --color-mm-danger: #ef4444;
     --color-mm-danger-glow: rgba(239, 68, 68, 0.45);
+    /* ── @fastled/gfx color tokens (#170) ─────────────────────
+       Read at runtime via gfxColors.* from src/ui/theme.ts so
+       drawing code (canvas fillStyle/strokeStyle, scene materials,
+       etc.) never embeds a hex literal. Keep alphabetised by suffix
+       within each group. */
+    --fastled-accent-blue:         #3b82f6;
+    --fastled-accent-blue-hover:   #60a5fa;
+    --fastled-accent-cyan:         #22d3ee;
+    --fastled-accent-amber:        #f59e0b;
+    --fastled-accent-amber-hover:  #fbbf24;
+    --fastled-accent-purple:       #a855f7;
+    --fastled-accent-purple-hover: #c084fc;
+    --fastled-accent-red:          #ef4444;
+    --fastled-accent-green:        #22c55e;
+    --fastled-accent-emerald:      #10b981;
+    /* LED scatter endpoint markers (start = green, end = red). */
+    --fastled-led-start:           #22c55e;
+    --fastled-led-end:             #ef4444;
+    /* Popover / context-menu surfaces (shapeeditor + dialogs). */
+    --fastled-bg-popover:          #1e1e1e;
+    --fastled-bg-popover-strong:   #0a0a0a;
+    --fastled-border-popover:      #444444;
+    --fastled-text-strong:         #e4e4e7;
+    --fastled-text-muted:          #a1a1aa;
+    --fastled-text-dim:            #63636e;
+    --fastled-text-link:           #93c5fd;
+    /* 8-color group palette (replaces V2_GROUP_COLORS). */
+    --fastled-group-0:             #3b82f6;
+    --fastled-group-1:             #10b981;
+    --fastled-group-2:             #f59e0b;
+    --fastled-group-3:             #ef4444;
+    --fastled-group-4:             #a855f7;
+    --fastled-group-5:             #06b6d4;
+    --fastled-group-6:             #ec4899;
+    --fastled-group-7:             #84cc16;
     --radius-lm: 6px;
     --radius-lm-lg: 10px;
     --radius-lm-pill: 12px;

@@ -65,7 +65,7 @@
     @apply block relative overflow-hidden no-underline;
     background: var(--color-lm-surface-1);
     border: 1px solid var(--color-lm-border);
-    border-left: 3px solid var(--card-accent, var(--color-lm-accent));
+    border-left: 3px solid var(--lm-card-accent, var(--color-lm-accent));
     border-radius: 8px;
     padding: 20px 22px;
     transition: all 280ms var(--lm-ease);
@@ -79,17 +79,17 @@
     border-radius: 8px;
     opacity: 0;
     transition: opacity 280ms var(--lm-ease);
-    background: radial-gradient(ellipse at 20% 50%, color-mix(in srgb, var(--card-accent, var(--color-lm-accent)) 6%, transparent) 0%, transparent 70%);
+    background: radial-gradient(ellipse at 20% 50%, color-mix(in srgb, var(--lm-card-accent, var(--color-lm-accent)) 6%, transparent) 0%, transparent 70%);
     pointer-events: none;
 }
 
 .tool-card:hover {
     background: var(--color-lm-surface-2);
-    border-color: color-mix(in srgb, var(--card-accent, var(--color-lm-accent)) 40%, var(--color-lm-border));
+    border-color: color-mix(in srgb, var(--lm-card-accent, var(--color-lm-accent)) 40%, var(--color-lm-border));
     border-left-width: 3px;
     transform: translateY(-2px);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
-                0 0 24px color-mix(in srgb, var(--card-accent, var(--color-lm-accent)) 8%, transparent);
+                0 0 24px color-mix(in srgb, var(--lm-card-accent, var(--color-lm-accent)) 8%, transparent);
 }
 
 .tool-card:hover::after {
