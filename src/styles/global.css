@@ -101,6 +101,20 @@ body {
     min-height: 0;
 }
 
+#app.is-route-loading {
+    opacity: 0;
+    animation: none;
+}
+
+#app.is-route-entering {
+    animation: lm-page-enter 300ms var(--lm-ease) both;
+}
+
+.route-load-error {
+    color: var(--color-mm-danger);
+    padding: 20px;
+}
+
 @keyframes lm-page-enter {
     from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: translateY(0); }
