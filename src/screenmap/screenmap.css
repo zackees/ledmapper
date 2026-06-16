@@ -16,8 +16,13 @@
     @apply flex-1 flex flex-col min-h-0;
 }
 
+#mappingUI[hidden] {
+    display: none;
+}
+
 [data-tool="screenmap"] main {
     @apply flex-1 w-full flex justify-center items-center p-0;
+    position: relative;
 }
 
 /* ── Floating Controls Panel ────────────────────────────────── */
@@ -167,6 +172,10 @@
     transition: opacity 0.3s ease;
 }
 
+#captureContainer.is-faded {
+    opacity: 0;
+}
+
 #captureContainer video {
     @apply w-full h-full object-cover;
 }
@@ -187,6 +196,11 @@
     color: #a1a1aa;
     border: 1px solid rgba(255, 255, 255, 0.06);
     font-size: 0.85rem;
+}
+
+#popup.is-visible {
+    display: block;
+    opacity: 1;
 }
 
 #print {

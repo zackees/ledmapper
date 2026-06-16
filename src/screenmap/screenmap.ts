@@ -2,6 +2,7 @@ import { download_text_as_file, getStripColors, stripStartEndLabels } from '../c
 import { saveScreenmap } from '../screenmap-store';
 import { wireFileSource } from '../drag-drop';
 import { fireDialog, errorDialog } from '../ui/dialogs';
+import { gfxColors } from '../ui/theme';
 import templateHtml from './template.html?raw';
 export { default as css } from './screenmap.css?url';
 
@@ -25,8 +26,8 @@ export function init(container: HTMLElement) {
 
     // --- Source selection ---
     btnWebcam.addEventListener('click', () => {
-        sourceSelect.style.display = 'none';
-        mappingUI.style.display = '';
+        sourceSelect.hidden = true;
+        mappingUI.hidden = false;
         startMapping();
     }, { signal });
 
@@ -54,8 +55,8 @@ export function init(container: HTMLElement) {
             // If destroy() ran while the image was decoding, bail out before
             // touching the (torn-down) DOM.
             if (signal.aborted) return;
-            sourceSelect.style.display = 'none';
-            mappingUI.style.display = '';
+            sourceSelect.hidden = true;
+            mappingUI.hidden = false;
             startMappingWithImage(img);
         };
         img.onerror = () => {
@@ -85,6 +86,9 @@ export function init(container: HTMLElement) {
         let i = 1;
         while (strips[`strip${String(i)}`]) i++;
         return `strip${String(i)}`;
+    }
+    function stripColor(colors: string[], index: number): string {
+        return colors[index] ?? gfxColors.group(index);
     }
 
     interface DomRefs {
@@ -278,11 +282,9 @@ export function init(container: HTMLElement) {
     function showPopup() {
         const popup = container.querySelector<HTMLElement>('#popup');
         if (!popup) return;
-        popup.style.display = 'block';
-        setTimeout(() => { popup.style.opacity = '1'; }, 10);
+        popup.classList.add('is-visible');
         setTimeout(() => {
-            popup.style.opacity = '0';
-            setTimeout(() => { popup.style.display = 'none'; }, 500);
+            popup.classList.remove('is-visible');
         }, 3000);
     }
 
@@ -328,7 +330,6 @@ export function init(container: HTMLElement) {
         hint.textContent = 'Go back and use "Upload Image" instead.';
 
         errorDiv.append(icon, title, msg, hint);
-        main.style.position = 'relative';
         main.appendChild(errorDiv);
     }
 
@@ -371,7 +372,7 @@ export function init(container: HTMLElement) {
         const zoom = Number.parseFloat(dom.txt_zoom?.value ?? '1') || 1.0;
         const r = Number.parseFloat(dom.txt_rotate?.value ?? '0') || 0;
 
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = gfxColors.bgPopoverStrong();
         ctx.fillRect(0, 0, w, h);
 
         // Use actual source dimensions to preserve aspect ratio
@@ -410,7 +411,7 @@ export function init(container: HTMLElement) {
             if (!name) continue;
             const pts = strips[name] ?? [];
             const isActive = name === activeStrip;
-            ctx.strokeStyle = colors[s] ?? '#ffffff';
+            ctx.strokeStyle = stripColor(colors, s);
             ctx.lineWidth = isActive ? 2 : 1;
             for (let i = 1; i < pts.length; ++i) {
                 const [x0, y0] = pts[i - 1] ?? [0, 0];
@@ -428,7 +429,7 @@ export function init(container: HTMLElement) {
             if (!name) continue;;
             const pts = strips[name] ?? [];
             const isActive = name === activeStrip;
-            ctx.fillStyle = colors[s] ?? '#ffffff';
+            ctx.fillStyle = stripColor(colors, s);
             const radius = isActive ? circle_diameter / 2 : (circle_diameter / 2) * 0.75;
             for (const [x, y] of pts) {
                 ctx.beginPath();
@@ -453,11 +454,11 @@ export function init(container: HTMLElement) {
             if (!pts.length) continue;
             const labels = stripStartEndLabels({ name, count: pts.length }, s);
             const [sx, sy] = pts[0] ?? [0, 0];
-            drawEndpointMarker(sx, sy, colors[s] ?? '#ffffff', 'start');
+            drawEndpointMarker(sx, sy, stripColor(colors, s), 'start');
             drawEndpointLabel(labels.start, sx, sy);
             if (labels.end) {
                 const [ex, ey] = pts[pts.length - 1] ?? [0, 0];
-                drawEndpointMarker(ex, ey, colors[s] ?? '#ffffff', 'end');
+                drawEndpointMarker(ex, ey, stripColor(colors, s), 'end');
                 drawEndpointLabel(labels.end, ex, ey);
             }
         }
@@ -564,8 +565,8 @@ export function init(container: HTMLElement) {
                     // Pointer-Events instead of mouseenter/mouseleave so the
                     // touch-tap path (iOS Safari has no hover) also gets the
                     // opacity fade. Issue #178.
-                    const onIn = () => { captureContainer.style.opacity = '0'; };
-                    const onOut = () => { captureContainer.style.opacity = '1'; };
+                    const onIn = () => { captureContainer.classList.add('is-faded'); };
+                    const onOut = () => { captureContainer.classList.remove('is-faded'); };
                     captureContainer.addEventListener('pointerenter', onIn, { signal });
                     captureContainer.addEventListener('pointerleave', onOut, { signal });
                     captureContainer.addEventListener('pointercancel', onOut, { signal });
@@ -589,9 +590,9 @@ export function init(container: HTMLElement) {
         window.addEventListener('resize', handleResize, { signal });
 
         // Hide webcam-only controls
-        if (dom.btn_snapshot) dom.btn_snapshot.style.display = 'none';
+        if (dom.btn_snapshot) dom.btn_snapshot.hidden = true;
         const captureContainer = container.querySelector<HTMLElement>('#captureContainer');
-        if (captureContainer) captureContainer.style.display = 'none';
+        if (captureContainer) captureContainer.hidden = true;
 
         // Create snapshot from the uploaded image immediately
         snapshotCanvas = document.createElement('canvas');
