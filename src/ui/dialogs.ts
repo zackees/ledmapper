@@ -15,14 +15,19 @@
 
 import type SweetAlert2 from 'sweetalert2';
 import type { SweetAlertOptions } from 'sweetalert2';
+import { cssVar } from './theme';
 
 const swalPromise: Promise<typeof SweetAlert2> = import('sweetalert2').then((m) => m.default);
 
-/** Theme tokens applied to every dialog so they match the LM design system. */
-const THEME = {
-    background: '#1a1a1a',
-    color: '#e5e7eb',
-} as const;
+/** Theme tokens applied to every dialog so they match the LM design
+ *  system. Reads CSS variables at call time (issue #170) so a runtime
+ *  theme swap propagates without touching this code. */
+function buildTheme(): { background: string; color: string } {
+    return {
+        background: cssVar('--color-lm-surface-2'),
+        color: cssVar('--color-lm-text'),
+    };
+}
 
 /**
  * Get the raw Swal singleton. Used by callsites that need imperative
@@ -40,7 +45,7 @@ export async function getSwal(): Promise<typeof SweetAlert2> {
  */
 export async function fireDialog<T = unknown>(opts: SweetAlertOptions) {
     const s = await swalPromise;
-    return s.fire<T>({ ...THEME, ...opts });
+    return s.fire<T>({ ...buildTheme(), ...opts });
 }
 
 /** Standard "something went wrong" dialog. Returns when the user dismisses. */

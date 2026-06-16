@@ -181,7 +181,6 @@ export default tseslint.config(
       'src/demo/demo.ts',
       'src/moviemaker/moviemaker.ts',
       'src/gfx/gfx-core.ts',
-      'src/ui/dialogs.ts',
       'src/label-render.ts',
       'src/router.ts',
       'src/three-utils.ts',
