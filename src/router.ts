@@ -63,6 +63,24 @@ const titles: Record<string, string> = {
     screenmap: 'Screenmap Maker',
 };
 
+function setRouteLoading(appEl: HTMLElement): void {
+    appEl.classList.add('is-route-loading');
+    appEl.classList.remove('is-route-entering');
+}
+
+function setRouteReady(appEl: HTMLElement): void {
+    appEl.classList.remove('is-route-loading', 'is-route-entering');
+    void appEl.offsetHeight; // force reflow before replaying the entry animation
+    appEl.classList.add('is-route-entering');
+}
+
+function renderRouteError(appEl: HTMLElement, message: string): void {
+    const errorEl = document.createElement('div');
+    errorEl.className = 'route-load-error';
+    errorEl.textContent = `Failed to load tool: ${message}`;
+    appEl.replaceChildren(errorEl);
+}
+
 // State stored on each history entry. `p` is the resolved route path so a
 // popstate can tell a tool change (path differs) from an in-tool view change
 // (same path, different `v`). `v`/`d` carry an optional in-tool view + payload.
@@ -111,8 +129,7 @@ export function createRouter(appEl: HTMLElement) {
         // Clear app container and hide it until content + CSS are ready
         appEl.innerHTML = '';
         appEl.dataset.tool = tool;
-        appEl.style.animation = 'none';
-        appEl.style.opacity = '0';
+        setRouteLoading(appEl);
 
         // Update nav active state
         updateActiveLink(path);
@@ -163,16 +180,12 @@ export function createRouter(appEl: HTMLElement) {
             window.scrollTo(0, 0);
 
             // Content and CSS are ready — trigger entrance animation
-            appEl.style.opacity = '';
-            appEl.style.animation = '';
-            void appEl.offsetHeight; // force reflow
-            appEl.style.animation = 'lm-page-enter 300ms var(--lm-ease) both';
+            setRouteReady(appEl);
         } catch (e: unknown) {
             if (thisLoad !== loadId) return;
             console.error(`Failed to load tool "${tool}":`, e);
-            appEl.style.opacity = '';
-            appEl.style.animation = '';
-            appEl.innerHTML = `<div style="color:red;padding:20px;">Failed to load tool: ${e instanceof Error ? e.message : String(e)}</div>`;
+            setRouteReady(appEl);
+            renderRouteError(appEl, e instanceof Error ? e.message : String(e));
         }
     }
 
