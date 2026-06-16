@@ -339,6 +339,20 @@ main {
     margin: 0 auto;
 }
 
+.gfx-render-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.gfx-overlay-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
 /* @fastled/gfx hover tooltip (e.g. LED-index readout in demo's /play
    view). Issue #170 — moved here from inline cssText. Opacity is
    driven from TS for the show/hide animation. */

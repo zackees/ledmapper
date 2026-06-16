@@ -178,7 +178,6 @@ export default tseslint.config(
       'src/shapeeditor/shapeeditor-init.ts',
       'src/screenmap/screenmap.ts',
       'src/moviemaker/moviemaker.ts',
-      'src/gfx/gfx-core.ts',
       'src/label-render.ts',
       'src/router.ts',
       'src/three-utils.ts',
