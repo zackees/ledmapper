@@ -216,3 +216,121 @@ test('player: fps fallback when 0 or negative passed', () => {
     assert.equal(p.fps, 30); // default
     assert.equal(p.duration, 1.0);
 });
+
+test('player controls: labels come from mount options and state drives CSS', () => {
+    const restoreDocument = installMiniDocument();
+    try {
+        const h = makeHarness();
+        const p = createPlayer({
+            frames: makeFrames(10), fps: 10, autoplay: false,
+            pushFrame: (rgb) => h.pushed.push(rgb),
+            now: () => h.now.ms,
+            raf: (cb) => { h.pendingRaf.push(cb); return h.pendingRaf.length; },
+            cancelRaf: () => { /* noop */ },
+        });
+        const root = new MiniElement('div');
+
+        p.mountControls(root as unknown as HTMLElement, {
+            labels: {
+                play: 'Start animation',
+                pause: 'Stop animation',
+            },
+        });
+
+        const playBtn = root.children[0];
+        assert.ok(playBtn);
+        assert.equal(playBtn.className, 'gfx-player-play-pause-btn');
+        assert.equal(playBtn.textContent, '');
+        assert.equal(playBtn.dataset.state, 'paused');
+        assert.equal(playBtn.title, 'Start animation');
+        assert.equal(playBtn.getAttribute('aria-label'), 'Start animation');
+
+        playBtn.click();
+        assert.equal(p.playing, true);
+        assert.equal(playBtn.dataset.state, 'playing');
+        assert.equal(playBtn.title, 'Stop animation');
+        assert.equal(playBtn.getAttribute('aria-label'), 'Stop animation');
+    } finally {
+        restoreDocument();
+    }
+});
+
+class MiniClassList {
+    private readonly values = new Set<string>();
+    constructor(private readonly owner: MiniElement) {}
+    add(...names: string[]): void {
+        for (const name of names) this.values.add(name);
+        this.sync();
+    }
+    remove(...names: string[]): void {
+        for (const name of names) this.values.delete(name);
+        this.sync();
+    }
+    private sync(): void {
+        this.owner.className = [...this.values].join(' ');
+    }
+}
+
+class MiniElement {
+    readonly dataset: Record<string, string> = {};
+    readonly children: MiniElement[] = [];
+    readonly classList = new MiniClassList(this);
+    className = '';
+    title = '';
+    textContent = '';
+    type = '';
+    min = '';
+    max = '';
+    step = '';
+    value = '';
+    private html = '';
+    private readonly attrs = new Map<string, string>();
+    private readonly handlers = new Map<string, Set<() => void>>();
+
+    constructor(readonly tagName: string) {}
+
+    get innerHTML(): string {
+        return this.html;
+    }
+    set innerHTML(value: string) {
+        this.html = value;
+        if (value === '') this.children.length = 0;
+    }
+    append(...children: MiniElement[]): void {
+        this.children.push(...children);
+    }
+    setAttribute(name: string, value: string): void {
+        this.attrs.set(name, value);
+    }
+    getAttribute(name: string): string | null {
+        return this.attrs.get(name) ?? null;
+    }
+    addEventListener(_kind: string, fn: EventListenerOrEventListenerObject): void {
+        const kind = _kind;
+        let set = this.handlers.get(kind);
+        if (set === undefined) {
+            set = new Set();
+            this.handlers.set(kind, set);
+        }
+        if (typeof fn === 'function') set.add(fn as () => void);
+    }
+    removeEventListener(_kind: string, fn: EventListenerOrEventListenerObject): void {
+        if (typeof fn !== 'function') return;
+        this.handlers.get(_kind)?.delete(fn as () => void);
+    }
+    click(): void {
+        for (const fn of this.handlers.get('click') ?? []) fn();
+    }
+}
+
+function installMiniDocument(): () => void {
+    const prev = globalThis.document;
+    globalThis.document = {
+        createElement(tagName: string): MiniElement {
+            return new MiniElement(tagName);
+        },
+    } as unknown as Document;
+    return () => {
+        globalThis.document = prev;
+    };
+}

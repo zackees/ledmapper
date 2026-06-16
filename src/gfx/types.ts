@@ -137,6 +137,20 @@ export interface GfxWithPlayer extends Gfx {
     readonly frames: readonly Uint8Array[];
 }
 
+export interface PlayerControlLabels {
+    play: string;
+    pause: string;
+}
+
+export interface PlayerControlsOptions {
+    /**
+     * Accessible labels for the optional control strip. The gfx package
+     * does not provide English defaults so consumers can localize at the
+     * mount edge.
+     */
+    labels?: Partial<PlayerControlLabels>;
+}
+
 /** Headless player controller. UI is opt-in via `mountControls`. */
 export interface Player {
     /** Is the player currently advancing through frames? */
@@ -165,7 +179,7 @@ export interface Player {
     onEnded(cb: () => void): () => void;
 
     /** Build a minimal play/pause/scrub control strip into `el`. */
-    mountControls(el: HTMLElement): void;
+    mountControls(el: HTMLElement, options?: PlayerControlsOptions): void;
     /** Tear down a previously-mounted control strip. */
     unmountControls(): void;
 }

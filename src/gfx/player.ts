@@ -16,7 +16,8 @@
  * playhead off-time.
  */
 
-import type { Player } from './types';
+import { setupToggleButton } from './controls/toggle-button';
+import type { Player, PlayerControlsOptions } from './types';
 
 export interface PlayerInit {
     frames: readonly Uint8Array[];
@@ -113,9 +114,9 @@ export function createPlayer(init: PlayerInit): Player {
         return () => { endedListeners.delete(cb); };
     }
 
-    function mountControls(el: HTMLElement): void {
+    function mountControls(el: HTMLElement, options: PlayerControlsOptions = {}): void {
         unmountControls();
-        controlsDispose = mountControlStrip(el, player);
+        controlsDispose = mountControlStrip(el, player, options);
     }
     function unmountControls(): void {
         if (controlsDispose) {
@@ -156,12 +157,13 @@ function autoplayShouldStart(autoplay: boolean, frameCount: number): boolean {
  * Uses the shared `.control-bar` / `.control-row` classes from
  * `global.css` so the strip inherits the app's theme.
  */
-function mountControlStrip(el: HTMLElement, player: Player): () => void {
+function mountControlStrip(el: HTMLElement, player: Player, options: PlayerControlsOptions): () => void {
+    const labels = options.labels ?? {};
     el.innerHTML = '';
     el.classList.add('control-bar');
     const playBtn = document.createElement('button');
     playBtn.type = 'button';
-    playBtn.textContent = player.playing ? 'Pause' : 'Play';
+    playBtn.className = 'gfx-player-play-pause-btn';
 
     const scrub = document.createElement('input');
     scrub.type = 'range';
@@ -176,24 +178,26 @@ function mountControlStrip(el: HTMLElement, player: Player): () => void {
 
     el.append(playBtn, scrub, readout);
 
+    const playToggle = setupToggleButton(playBtn, {
+        off: { state: 'paused', label: labels.play ?? '' },
+        on:  { state: 'playing', label: labels.pause ?? '' },
+    }, player.playing ? 'on' : 'off', () => {
+        if (player.playing) player.pause();
+        else player.play();
+        playToggle.setState(player.playing ? 'on' : 'off');
+    });
+
     function refresh(t: number) {
         scrub.value = String(t);
         readout.textContent = fmtTime(t);
-        playBtn.textContent = player.playing ? 'Pause' : 'Play';
+        playToggle.setState(player.playing ? 'on' : 'off');
     }
     const offTime = player.onTimeUpdate(refresh);
-    const onPlay = () => {
-        if (player.playing) player.pause();
-        else player.play();
-        playBtn.textContent = player.playing ? 'Pause' : 'Play';
-    };
-    playBtn.addEventListener('click', onPlay);
     const onScrub = () => { player.seek(parseFloat(scrub.value)); };
     scrub.addEventListener('input', onScrub);
 
     return function dispose() {
         offTime();
-        playBtn.removeEventListener('click', onPlay);
         scrub.removeEventListener('input', onScrub);
         el.classList.remove('control-bar');
         el.innerHTML = '';
