@@ -47,9 +47,8 @@ export function init(container: HTMLElement) {
     const dom_source_hint = container.querySelector('#screenmap_gate_hint');
     const dom_btn_unload_source = qe<HTMLButtonElement>('#btn_unload_source');
     const dom_btn_play_pause    = qe<HTMLButtonElement>('#btn_play_pause');
-    const dom_video_progress    = qe('#video-progress');
+    const dom_video_progress    = qe<HTMLElement>('#video-progress');
     const dom_progress_track    = qe<HTMLElement>('#video-progress-track');
-    const dom_progress_fill     = qe<HTMLElement>('#video-progress-fill');
     const dom_progress_thumb    = qe<HTMLElement>('#video-progress-thumb');
     const dom_time_current      = qe<HTMLElement>('#video-time-current');
     const dom_time_duration     = qe<HTMLElement>('#video-time-duration');
@@ -214,8 +213,7 @@ export function init(container: HTMLElement) {
         if (isVideo) {
             dom_time_duration.textContent = formatTime(videoPlayer.duration);
             dom_time_current.textContent = '0:00';
-            dom_progress_fill.style.width = '0%';
-            dom_progress_thumb.style.left = '0%';
+            setVideoProgress(0);
             playPauseCtl.setState('off');
         }
     }
@@ -358,7 +356,7 @@ export function init(container: HTMLElement) {
         void fireDialog({
             title: 'How to get the best video',
             html: `
-                <div style="text-align: left; margin-bottom: 15px;">
+                <div class="movie-help-dialog">
                     <h3>Best Practices:</h3>
                     <ul>
                         <li>Load MP4/WebM video files for best quality, or use webcam for live capture.</li>
@@ -423,14 +421,15 @@ export function init(container: HTMLElement) {
     // mid-drag because the user is interacting with this element — any
     // layout shift would cancel the pointer capture.
     let scrubRect: DOMRect | null = null;
+    function setVideoProgress(percent: number) {
+        dom_video_progress.style.setProperty('--mm-progress-pct', `${String(percent)}%`);
+    }
     function seekToPosition(clientX: number) {
         const rect = scrubRect ?? dom_progress_track.getBoundingClientRect();
         const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
         const seekTime = fraction * videoPlayer.duration;
         videoPlayer.currentTime = seekTime;
-        const pct = fraction * 100;
-        dom_progress_fill.style.width = `${String(pct)}%`;
-        dom_progress_thumb.style.left = `${String(pct)}%`;
+        setVideoProgress(fraction * 100);
         dom_time_current.textContent = formatTime(seekTime);
     }
 
@@ -924,8 +923,7 @@ export function init(container: HTMLElement) {
             const d = videoPlayer.duration;
             if (isFinite(d) && d > 0) {
                 const pct = (t / d) * 100;
-                dom_progress_fill.style.width = `${String(pct)}%`;
-                dom_progress_thumb.style.left = `${String(pct)}%`;
+                setVideoProgress(pct);
                 dom_time_current.textContent = formatTime(t);
             }
         }
@@ -942,4 +940,3 @@ export function init(container: HTMLElement) {
         preview.dispose();
     };
 }
-
