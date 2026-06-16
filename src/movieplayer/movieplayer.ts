@@ -194,6 +194,10 @@ export function init(container: HTMLElement) {
             return;
         }
         load_movie_data(bytes.slice().buffer, { persist: false, autoplay: false, silent: true });
+    }).catch((error: unknown) => {
+        // IndexedDB read failed (quota, permission, corruption). #179.
+        console.error('Restore from IndexedDB failed:', error);
+        void errorDialog('Could not restore your last video', String(error));
     });
 
     function set_dom_btn_play(on: boolean) {
@@ -313,7 +317,14 @@ export function init(container: HTMLElement) {
         player.onEnded(() => { set_dom_btn_play(false); });
         frameCount = frames.length;
         dom_btn_play.disabled = false;
-        if (persist) void saveVideo(uint8_array);
+        if (persist) {
+            saveVideo(uint8_array).catch((error: unknown) => {
+                console.error('Persist video to IndexedDB failed:', error);
+                // Quota / permission errors surface to the user — the
+                // video plays this session but won't auto-restore later.
+                void errorDialog('Could not save video for next session', `Storage error: ${String(error)}\n\nThe video will play now but won't auto-restore on your next visit.`);
+            });
+        }
         setStatus(`${String(screenmap_pts.length)} LEDs · ${String(frameCount)} frames`, true);
         set_dom_btn_play(player.playing);
     }

@@ -278,7 +278,15 @@ export function init(container: HTMLElement) {
                 load_screenmap_data(jsonBlob);
                 void fetchAndLoadVideo();
             })
-            .catch((error: unknown) => { console.error('Error loading JSON:', error); });
+            .catch((error: unknown) => {
+                console.error('Error loading demo screenmap:', error);
+                // Demo failed to bootstrap — surface to the user instead
+                // of leaving a blank canvas with only a console log. #179.
+                void errorDialog(
+                    'Could not load demo data',
+                    `Network or file error loading the sample screenmap.\n\n${String(error)}\n\nCheck your connection and refresh.`,
+                );
+            });
     }
 
     // --- Video load ---

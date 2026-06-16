@@ -727,7 +727,12 @@ export function init(container: HTMLElement) {
 
         if (anyActive) {
             // Stop whichever is running.
-            if (fledActive) void recording.toggle();
+            if (fledActive) {
+                recording.toggle().catch((error: unknown) => {
+                    console.error('Stop recording failed:', error);
+                    void errorDialog('Stop recording error', String(error));
+                });
+            }
             if (mp4Active && mp4Recorder) mp4Recorder.stop();
             mp4Recorder = null;
             dom_btn_toggle_record.value = 'Start Recording';
@@ -737,7 +742,10 @@ export function init(container: HTMLElement) {
 
         let startedAny = false;
         if (wantFled) {
-            void recording.toggle();
+            recording.toggle().catch((error: unknown) => {
+                console.error('Start recording failed:', error);
+                void errorDialog('Start recording error', String(error));
+            });
             startedAny = true;
         }
         if (wantMp4) {
