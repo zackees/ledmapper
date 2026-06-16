@@ -376,8 +376,8 @@ ShapeEditor.prototype._toastSilentRestored = async function (this: ShapeEditor, 
 
         const ledCount = (restoredMeta && typeof restoredMeta.ledCount === 'number')
             ? restoredMeta.ledCount : 0;
-        const when = (restoredMeta && typeof restoredMeta.savedAt === 'number')
-            ? self._relativeTime(restoredMeta.savedAt) : 'recently';
+        const when: string = (restoredMeta && typeof restoredMeta.savedAt === 'number')
+            ? self._relativeTime(restoredMeta.savedAt) as string : 'recently';
         try {
             if (self.signal.aborted) return;
             const res = await fireDialog({
@@ -418,7 +418,7 @@ ShapeEditor.prototype._autoloadOnLaunch = function (this: ShapeEditor) {
             self.load_screenmap_data(stored);
             if (meta && typeof meta.savedAt === 'number'
                 && (now - meta.savedAt) > STALE_MS) {
-                void self._toastInfo(`Loaded layout from ${self._relativeTime(meta.savedAt)}`);
+                void self._toastInfo(`Loaded layout from ${String(self._relativeTime(meta.savedAt))}`);
             }
             return true;
         }

@@ -712,7 +712,7 @@ ShapeEditor.prototype._commitPlacingAt = function (this: ShapeEditor, cx: number
         self.renderStripsPanel();
         self.setNeedsGeometryUpdate();
         self.placingState = null;
-        if (self.dom_pp_status) self.dom_pp_status.textContent = `Placed ${entry.label} as ${name}`;
+        if (self.dom_pp_status) self.dom_pp_status.textContent = `Placed ${entry.label} as ${String(name)}`;
         self._oc().style.cursor = 'default';
         self._updateHintStrip();
     };

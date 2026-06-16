@@ -160,9 +160,11 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
         if (e.shiftKey && self.screenmap_pts.length >= 2 && hitLedForModCheck < 0) {
             const edge = self.findNearestEdge(cx, cy);
             if (edge) {
-                const { idx, t } = edge;
-                const si = self.nn(self.screenmap_pts[idx]), si1 = self.nn(self.screenmap_pts[idx + 1]);
-                const ri = self.nn(self.rawPts[idx]), ri1 = self.nn(self.rawPts[idx + 1]);
+                const { idx, t }: { idx: number; t: number } = edge;
+                const si: [number, number] = self.nn(self.screenmap_pts[idx]);
+                const si1: [number, number] = self.nn(self.screenmap_pts[idx + 1]);
+                const ri: [number, number] = self.nn(self.rawPts[idx]);
+                const ri1: [number, number] = self.nn(self.rawPts[idx + 1]);
                 const newScreenmapPt: [number, number] = [
                     si[0] + t * (si1[0] - si[0]),
                     si[1] + t * (si1[1] - si[1]),
