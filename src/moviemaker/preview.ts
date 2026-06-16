@@ -88,6 +88,7 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
     let meshData: PointsMeshResult | null = null;
     let cachedPts: StripPoint[] | null = null;
     let cachedRotate: number | null = null;
+    let cachedSampleRef: Uint8Array | null = null;
     let cachedLedDiameter: number | null = null;
     let ledWorldRadius = 0.5;
     let ledSpacing = 1;
@@ -189,18 +190,24 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
             fitCamera(localPts, rotate);
         }
 
-        // Per-frame color update: Uint8 0-255 → Float32 0-1.
+        // Per-frame color update: Uint8 0-255 → Float32 0-1. Skip the
+        // copy when the same sample reference is passed twice in a row
+        // (idle scene, paused video) — the GPU buffer is already
+        // current. #181.
         const src = lastSample.rgbPts;
         if (!meshData) return;
-        const arr = meshData.colorAttribute.array as Float32Array;
-        const count = Math.min(localPts.length, Math.floor(src.length / 3));
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
-            arr[i3    ] = (src[i3]    ?? 0) * INV_255;
-            arr[i3 + 1] = (src[i3 + 1] ?? 0) * INV_255;
-            arr[i3 + 2] = (src[i3 + 2] ?? 0) * INV_255;
+        if (src !== cachedSampleRef) {
+            cachedSampleRef = src;
+            const arr = meshData.colorAttribute.array as Float32Array;
+            const count = Math.min(localPts.length, Math.floor(src.length / 3));
+            for (let i = 0; i < count; i++) {
+                const i3 = i * 3;
+                arr[i3    ] = (src[i3]    ?? 0) * INV_255;
+                arr[i3 + 1] = (src[i3 + 1] ?? 0) * INV_255;
+                arr[i3 + 2] = (src[i3 + 2] ?? 0) * INV_255;
+            }
+            meshData.colorAttribute.needsUpdate = true;
         }
-        meshData.colorAttribute.needsUpdate = true;
 
         bloom.frame(src);
         // Iris diameter modulation: dots open up on bright frames in sparse maps.
