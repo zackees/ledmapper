@@ -401,7 +401,7 @@ export class ShapeEditor {
     declare _autoOpenHelpScheduled: boolean;
     declare highlightedEdgeIdx: number;
     declare loadedPresets: PresetEntry[];
-    declare ctxBtnStyle: string;
+    declare ctxBtnClass: string;
     declare camPanX: number;
     declare camPanY: number;
     declare camZoom: number;

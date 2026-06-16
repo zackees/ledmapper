@@ -23,17 +23,11 @@ import type { InsertDialogOpts } from './shapeeditor-types';
 
 ShapeEditor.prototype._construct = function (this: ShapeEditor): void {
 this.container.innerHTML = templateHtml;
-this.container.style.display = 'flex';
-this.container.style.flexDirection = 'column';
-this.container.style.height = '100vh';
-this.container.style.overflow = 'hidden';
+this.container.classList.add('shapeeditor-root');
         this.qei = (sel: string) => this.qe<HTMLInputElement>(sel);
         this.qeb = (sel: string) => this.qe<HTMLButtonElement>(sel);
         this.mainEl = this.qe<HTMLElement>('#main');
-this.mainEl.style.flex = '1';
-this.mainEl.style.minHeight = '0';
-this.mainEl.style.overflow = 'hidden';
-this.mainEl.style.position = 'relative';
+this.mainEl.classList.add('shapeeditor-main');
         this.dom_btn_new = this.qeb('#btn_new');
         this.dom_btn_upload_screenmap = this.qei('#btn_upload_screenmap');
         this.dom_sel_preset = this.qe<HTMLSelectElement>('#sel_preset');
@@ -412,8 +406,7 @@ window.__shapeeditorDebug = {
         this._autoOpenHelpScheduled = false;
         this.highlightedEdgeIdx = -1;
         this.loadedPresets = [];
-        this.ctxBtnStyle = 'display:block;width:100%;padding:8px 16px;background:none;border:none;' +
-        'color:#eee;font:14px/1.4 "Outfit",system-ui,sans-serif;text-align:left;cursor:pointer;';
+        this.ctxBtnClass = 'shapeeditor-context-menu-button';
         this.camPanX = 0;
         this.camPanY = 0;
         this.camZoom = 1;
@@ -613,7 +606,7 @@ if (this.dom_strips_btn_chain) {
         // button on touch-only devices.
         try {
             if (window.matchMedia('(hover: none)').matches) {
-                this.dom_strips_btn_chain.style.display = 'none';
+                this.dom_strips_btn_chain.hidden = true;
             }
         } catch { /* matchMedia unavailable */ }
     }
@@ -926,10 +919,7 @@ ShapeEditor.prototype.destroy = function (this: ShapeEditor): void {
         this.circleTexture.dispose();
         this._renderer().dispose();
         this.ctxMenu?.parentNode?.removeChild(this.ctxMenu);
-        // Clean up container layout styles
-        this.container.style.display = '';
-        this.container.style.flexDirection = '';
-        this.container.style.height = '';
-        this.container.style.overflow = '';
+        this.container.classList.remove('shapeeditor-root');
+        this.mainEl.classList.remove('shapeeditor-main');
     
 };
