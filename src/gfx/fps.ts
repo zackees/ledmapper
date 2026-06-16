@@ -108,14 +108,10 @@ export function mountFpsWidget({
 }): { el: HTMLElement; dispose: () => void } {
     const el = document.createElement('div');
     el.setAttribute('data-gfx-fps', '');
-    el.style.cssText = [
-        'position:absolute', 'top:6px', 'right:6px',
-        'padding:4px 8px', 'border-radius:4px',
-        'background:rgba(0,0,0,0.7)', 'color:#fff',
-        'font:11px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
-        'white-space:nowrap', 'pointer-events:auto', 'cursor:pointer',
-        'user-select:none', 'z-index:10',
-    ].join(';');
+    // Style lives in `src/styles/global.css` under `.gfx-fps-counter`.
+    // See #170 — keeping style out of TS so the widget is themeable and
+    // so the inline-cssText lint guard (#171) stops here.
+    el.className = 'gfx-fps-counter';
     el.title = 'Click or press F to hide';
     wrapper.appendChild(el);
 

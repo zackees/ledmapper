@@ -180,8 +180,6 @@ export default tseslint.config(
       'src/screenmap-store.ts',
       'src/demo/demo.ts',
       'src/moviemaker/moviemaker.ts',
-      'src/gfx/fps.ts',
-      'src/gfx/player.ts',
       'src/gfx/gfx-core.ts',
       'src/render/canvas-recorder.ts',
       'src/ui/dialogs.ts',
