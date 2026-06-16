@@ -538,6 +538,11 @@ export function init(container: HTMLElement) {
 
         // Webcam init LAST — failures cannot break the controls or draw loop above
         try {
+            // Feature-check before touching the API. #183.
+            if (typeof navigator.mediaDevices?.getUserMedia !== 'function') {
+                showWebcamError('Webcam not available in this browser context.');
+                return;
+            }
             const constraints = { video: true };
             void navigator.mediaDevices.getUserMedia(constraints).then(stream => {
                 // If destroy() already ran while the permission prompt was open,
