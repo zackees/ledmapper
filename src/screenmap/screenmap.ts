@@ -307,22 +307,24 @@ export function init(container: HTMLElement) {
     function showWebcamError(message: string) {
         const main = container.querySelector<HTMLElement>('main');
         if (!main) return;
+        // Styles for the webcam-error panel live in src/screenmap/screenmap.css
+        // (`.webcam-error*` classes). See #170 — keeping presentation in CSS.
         const errorDiv = document.createElement('div');
-        errorDiv.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#a1a1aa;font-size:0.9rem;max-width:360px;';
+        errorDiv.className = 'webcam-error';
 
         const icon = document.createElement('div');
-        icon.style.cssText = 'font-size:2rem;margin-bottom:12px';
+        icon.className = 'webcam-error-icon';
         icon.textContent = '⚠';
 
         const title = document.createElement('div');
-        title.style.cssText = 'color:#e4e4e7;font-weight:500;margin-bottom:8px';
+        title.className = 'webcam-error-title';
         title.textContent = 'Camera Unavailable';
 
         const msg = document.createElement('div');
         msg.textContent = message;
 
         const hint = document.createElement('div');
-        hint.style.cssText = 'margin-top:12px;font-size:0.78rem;color:#63636e';
+        hint.className = 'webcam-error-hint';
         hint.textContent = 'Go back and use "Upload Image" instead.';
 
         errorDiv.append(icon, title, msg, hint);

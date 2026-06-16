@@ -143,7 +143,7 @@ export function createCanvasRecorder({
             // stretched, so paint black bars instead and center the largest
             // square that fits.
             if (width !== height) {
-                cctx.fillStyle = '#000';
+                cctx.fillStyle = 'black';
                 cctx.fillRect(0, 0, width, height);
                 const side = Math.min(width, height);
                 const dx = Math.round((width - side) / 2);
