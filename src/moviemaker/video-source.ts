@@ -45,7 +45,10 @@ export function createVideoSource({
         // Feature-check before touching the API. `navigator.mediaDevices`
         // is undefined in privacy-restricted contexts (cross-origin iframe
         // without `allow="camera"`) and on insecure-context pages. #183.
-        if (typeof navigator.mediaDevices?.getUserMedia !== 'function') {
+        // (TS thinks navigator.mediaDevices is non-null but the DOM lib
+        // types are optimistic — `in` check is honest about the runtime
+        // reality.)
+        if (!('mediaDevices' in navigator) || typeof navigator.mediaDevices.getUserMedia !== 'function') {
             onError('Webcam not available in this browser context. Try uploading a video file instead.');
             return;
         }
