@@ -477,7 +477,7 @@ export function init(container: HTMLElement) {
             if (!strip) continue;
             if (strip.count <= 0) continue;
             if (strip.offset >= pts.length) continue;
-            const color = colors[s] ?? '#ffffff';
+            const color = colors[s] ?? gfxColors.textStrong();
             overlayCtx.strokeStyle = color;
 
             const startIdx = strip.offset;
