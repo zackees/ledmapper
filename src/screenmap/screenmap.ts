@@ -539,7 +539,7 @@ export function init(container: HTMLElement) {
         // Webcam init LAST — failures cannot break the controls or draw loop above
         try {
             // Feature-check before touching the API. #183.
-            if (typeof navigator.mediaDevices?.getUserMedia !== 'function') {
+            if (!('mediaDevices' in navigator) || typeof navigator.mediaDevices.getUserMedia !== 'function') {
                 showWebcamError('Webcam not available in this browser context.');
                 return;
             }

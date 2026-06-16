@@ -189,5 +189,70 @@ export default tseslint.config(
       'no-restricted-syntax': 'off',
     },
   },
+  {
+    // Worker-bound files: these modules must load and run inside a
+    // dedicated Web Worker, where `document`, `window`, `localStorage`,
+    // `HTMLElement` constructor, and `getComputedStyle` are all
+    // undefined. Issue #172.
+    //
+    // To add a file here, verify it loads without throwing under Node
+    // (the fixture test in tests/unit/worker-bound-modules-load.test.ts
+    // does exactly that). Adding a file here without the test fixture
+    // catching it = the rule isn't doing its job; fix the rule first.
+    //
+    // `three-utils.ts` is intentionally NOT here: it carries both
+    // worker-safe helpers (createRendererCore, createCircleTexture) and
+    // DOM-coupled helpers (createRendererAndScene, wireResponsiveCanvas).
+    // Split TBD per #172 Open Question #1.
+    files: [
+      'src/gfx/gfx-core-headless.ts',
+      'src/gfx/screenmap.ts',
+      'src/gfx/worker/worker-host.ts',
+      'src/gfx/worker/protocol.ts',
+      'src/auto-bloom.ts',
+      'src/bloom-utils.ts',
+      'src/render/bloom-geometry.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        // Keep the inline-color/style rules from the base override so
+        // worker-bound files still can't ship hex literals etc.
+        {
+          selector: "Literal[value=/^#[0-9a-fA-F]{3,8}$/]",
+          message: 'Hex color literals belong in CSS variables (#170).',
+        },
+        {
+          selector: "Literal[value=/^(rgba?|hsla?)\\s*\\(/]",
+          message: 'rgb()/hsl() literals belong in CSS variables (#170).',
+        },
+        {
+          selector: "AssignmentExpression[left.type='MemberExpression'][left.property.name='cssText']",
+          message: 'el.style.cssText is forbidden — use a CSS class (#170).',
+        },
+        // Worker-bound-specific: forbid DOM globals.
+        {
+          selector: "MemberExpression[object.name='document']",
+          message: 'document.* is forbidden in worker-bound code (#172) — this module loads inside a Web Worker. Pass any needed DOM state via init message.',
+        },
+        {
+          selector: "MemberExpression[object.name='window']",
+          message: 'window.* is forbidden in worker-bound code (#172). Pass devicePixelRatio etc. via init message.',
+        },
+        {
+          selector: "MemberExpression[object.name='localStorage']",
+          message: 'localStorage is undefined in workers (#172). Pass persisted state via init; or guard with `typeof localStorage !== "undefined"`.',
+        },
+        {
+          selector: "BinaryExpression[operator='instanceof'][right.name='HTMLElement']",
+          message: 'HTMLElement is a DOM type, not available in workers (#172). Accept HTMLCanvasElement | OffscreenCanvas only.',
+        },
+        {
+          selector: "CallExpression[callee.name='getComputedStyle']",
+          message: 'getComputedStyle is a DOM function (#172). Pass CSS-var snapshots via init (see snapshotGfxColors in src/ui/theme.ts).',
+        },
+      ],
+    },
+  },
   { ignores: ['dist/', 'public/', 'node_modules/', '.tmp/', 'tests/**/*.js'] },
 );
