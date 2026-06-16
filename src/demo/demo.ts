@@ -2,6 +2,7 @@ import { parse_screenmap_data_json, parseScreenmapMultiStrip, getStripColors, st
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, wireFilePicker, fileHasExtension } from '../drag-drop';
 import { errorDialog } from '../ui/dialogs';
+import { gfxColors, withAlpha } from '../ui/theme';
 import { createGfx, wireBloomUi } from '../gfx';
 import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
 import { parseRgbFrames, prependFledHeader } from '../render/rgb-video';
@@ -444,19 +445,22 @@ export function init(container: HTMLElement) {
         const pt0 = pts[0] ?? [0, 0];
         const pt1 = pts[1] ?? [0, 0];
         const ptLast = pts[pts.length - 1] ?? [0, 0];
-        fillCircle(pt0[0], pt0[1], 8, 'rgba(0,255,0,1)');
-        if (pts.length > 1) fillCircle(pt1[0], pt1[1], 6, 'rgba(0,255,0,0.5)');
-        fillCircle(ptLast[0], ptLast[1], 8, 'rgba(255,0,0,1)');
+        const ledStart = gfxColors.ledStart();
+        const ledEnd = gfxColors.ledEnd();
+        fillCircle(pt0[0], pt0[1], 8, ledStart);
+        if (pts.length > 1) fillCircle(pt1[0], pt1[1], 6, withAlpha(ledStart, 0.5));
+        fillCircle(ptLast[0], ptLast[1], 8, ledEnd);
+        const midColor = withAlpha(gfxColors.textStrong(), 0.5);
         for (let i = 2; i < pts.length - 1; i++) {
             const pt = pts[i] ?? [0, 0];
-            fillCircle(pt[0], pt[1], 4, 'rgba(255,255,255,0.5)');
+            fillCircle(pt[0], pt[1], 4, midColor);
         }
 
         const strip = (stripInfo?.strips[0]) ?? { name: '', count: pts.length };
         const labels = stripStartEndLabels(strip, 0);
-        const items = [{ id: 'start:0', text: labels.start, anchorX: pt0[0], anchorY: pt0[1], color: 'rgba(0,255,0,1)', dotRadius: 4 }];
+        const items = [{ id: 'start:0', text: labels.start, anchorX: pt0[0], anchorY: pt0[1], color: ledStart, dotRadius: 4 }];
         if (labels.end) {
-            items.push({ id: 'end:0', text: labels.end, anchorX: ptLast[0], anchorY: ptLast[1], color: 'rgba(255,0,0,1)', dotRadius: 4 });
+            items.push({ id: 'end:0', text: labels.end, anchorX: ptLast[0], anchorY: ptLast[1], color: ledEnd, dotRadius: 4 });
         }
         drawLabelItems(items, pts);
     }

@@ -47,6 +47,7 @@ export function _resetPinMutationGuardForTests() {
 }
 
 import { safeStorage } from './services/storage';
+import { gfxColors } from './ui/theme';
 
 /**
  * Count LEDs and strips in a raw screenmap JSON string.
@@ -185,7 +186,8 @@ export function getPresetSelection() {
  * @param {Array<{name:string, points:Array<[number,number]>, diameter:number|undefined, offset:number, count:number, video_offset:number, pin?:string, videoOffsetOverride?:boolean}>} strips
  * @returns {string} JSON string in v2 shape
  */
-const V2_GROUP_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
+// The 8-color group palette lives under `@theme` as `--fastled-group-0..7`
+// (#170). gfxColors.group(i) wraps mod-8 automatically.
 
 export function buildScreenmapMultiStripJson(strips: { name: string; points: [number, number][] | number[][]; diameter?: number | undefined; offset: number; count: number; video_offset?: number | undefined; pin?: string | undefined; videoOffsetOverride?: boolean | undefined }[]): string {
     if (!Array.isArray(strips) || strips.length === 0) {
@@ -204,7 +206,7 @@ export function buildScreenmapMultiStripJson(strips: { name: string; points: [nu
         if (s.points.length === 0) {
             throw new Error(`Strip "${s.name}" has 0 points`);
         }
-        groups[s.name] = { color: V2_GROUP_COLORS[i % V2_GROUP_COLORS.length] ?? V2_GROUP_COLORS[0] ?? '#3b82f6' };
+        groups[s.name] = { color: gfxColors.group(i) };
         const seg: V2Segment = {
             id: s.name,
             pin: pinOf(s),
