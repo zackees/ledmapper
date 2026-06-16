@@ -14,8 +14,25 @@ import {
 import type { RendererContext, RendererContextWithOverlay, PointsMeshResult } from './types/domain';
 import { wireSliderReadout } from './ui/sliders';
 
-/** Create a canvas-based circle texture for round points. */
+/** Create a canvas-based circle texture for round points.
+ *
+ *  Worker-safe: prefers `OffscreenCanvas` when `document` is unavailable
+ *  (dedicated workers). Three.js wraps it via `CanvasTexture` identically
+ *  to an HTMLCanvasElement. Issue #163 Phase 3a. */
 export function createCircleTexture(size: number): CanvasTexture {
+    // Two branches because the TS overloads for `getContext('2d')` on
+    // HTMLCanvasElement vs OffscreenCanvas don't unify — each side
+    // narrows to its own context type.
+    if (typeof document === 'undefined') {
+        const canvas = new OffscreenCanvas(size, size);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('createCircleTexture: 2d context unavailable');
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+        ctx.fillStyle = 'white';
+        ctx.fill();
+        return new CanvasTexture(canvas as unknown as HTMLCanvasElement);
+    }
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
@@ -26,6 +43,49 @@ export function createCircleTexture(size: number): CanvasTexture {
     ctx.fillStyle = 'white';
     ctx.fill();
     return new CanvasTexture(canvas);
+}
+
+/**
+ * Headless renderer core. Build a Three.js WebGLRenderer over an
+ * existing canvas (HTMLCanvasElement on the main thread,
+ * OffscreenCanvas inside a worker). No wrapper element, no DOM
+ * mounting, no overlay — those are presentation concerns belonging
+ * to the main-thread layer. Issue #163 Phase 3a.
+ *
+ * When `devicePixelRatio` is omitted, falls back to
+ * `window.devicePixelRatio` if available, else 1 (worker context).
+ */
+export function createRendererCore({
+    canvas, width, height, clearColor = 0x000000, renderPx,
+    preserveDrawingBuffer = false, devicePixelRatio,
+}: {
+    canvas: HTMLCanvasElement | OffscreenCanvas;
+    width: number;
+    height: number;
+    clearColor?: number;
+    renderPx?: number;
+    preserveDrawingBuffer?: boolean;
+    devicePixelRatio?: number;
+}): { renderer: WebGLRenderer; scene: Scene; camera: OrthographicCamera } {
+    const renderer = new WebGLRenderer({
+        canvas: canvas as HTMLCanvasElement,
+        antialias: false,
+        preserveDrawingBuffer,
+    });
+    renderer.setSize(width, height, false); // updateStyle=false: no DOM style writes
+    const dpr = devicePixelRatio
+        ?? (typeof window !== 'undefined' ? window.devicePixelRatio : 1);
+    const pixelRatio = (typeof renderPx === 'number' && renderPx > 0)
+        ? renderPx / width
+        : dpr;
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setClearColor(clearColor, 1);
+
+    const scene = new Scene();
+    const camera = new OrthographicCamera(0, width, 0, height, -1, 1);
+    camera.position.z = 1;
+
+    return { renderer, scene, camera };
 }
 
 /** Create a WebGLRenderer, orthographic camera (y-down), and optional overlay canvas. */
