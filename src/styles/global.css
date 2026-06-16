@@ -334,6 +334,25 @@ main {
     margin: 0 auto;
 }
 
+/* @fastled/gfx FPS counter widget. Mounted by gfx.mountFpsWidget()
+   when showFps is on; click-to-hide or `f`-key toggle. See #170 §2 —
+   moved here from `el.style.cssText = ...` to keep style out of TS. */
+.gfx-fps-counter {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: nowrap;
+    pointer-events: auto;
+    cursor: pointer;
+    user-select: none;
+    z-index: 10;
+}
+
 /* ── Canvas ─────────────────────────────────────────────────── */
 
 canvas {
