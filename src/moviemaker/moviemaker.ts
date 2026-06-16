@@ -425,23 +425,31 @@ export function init(container: HTMLElement) {
         dom_time_current.textContent = formatTime(seekTime);
     }
 
-    dom_progress_track.addEventListener('mousedown', (e: MouseEvent) => {
+    // Pointer Events (covers mouse + touch + stylus uniformly) so the
+    // video scrubber works on touch devices. Issue #178.
+    dom_progress_track.addEventListener('pointerdown', (e: PointerEvent) => {
         if (videoSource.sourceType !== 'video') return;
         isScrubbing = true;
         dom_progress_thumb.classList.add('dragging');
+        // Capture the pointer so move/up still fire when the user drags off
+        // the track. PointerEvents handles this with one method call.
+        dom_progress_track.setPointerCapture(e.pointerId);
         seekToPosition(e.clientX);
     }, { signal });
 
-    document.addEventListener('mousemove', (e) => {
+    dom_progress_track.addEventListener('pointermove', (e: PointerEvent) => {
         if (!isScrubbing) return;
         seekToPosition(e.clientX);
     }, { signal });
 
-    document.addEventListener('mouseup', () => {
+    function endScrub(e: PointerEvent) {
         if (!isScrubbing) return;
         isScrubbing = false;
         dom_progress_thumb.classList.remove('dragging');
-    }, { signal });
+        dom_progress_track.releasePointerCapture(e.pointerId);
+    }
+    dom_progress_track.addEventListener('pointerup', endScrub, { signal });
+    dom_progress_track.addEventListener('pointercancel', endScrub, { signal });
 
     // Unload source — return to welcome screen
     dom_btn_unload_source.addEventListener('click', () => {
