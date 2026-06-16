@@ -207,3 +207,29 @@
     color: var(--color-lm-text-muted);
     margin: 0 0 24px;
 }
+
+/* Webcam error overlay (issue #170 — moved from inline cssText). */
+.webcam-error {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--color-lm-text-secondary);
+    font-size: 0.9rem;
+    max-width: 360px;
+}
+.webcam-error-icon {
+    font-size: 2rem;
+    margin-bottom: 12px;
+}
+.webcam-error-title {
+    color: var(--color-lm-text);
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+.webcam-error-hint {
+    margin-top: 12px;
+    font-size: 0.78rem;
+    color: var(--color-lm-text-muted);
+}

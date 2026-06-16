@@ -334,6 +334,22 @@ main {
     margin: 0 auto;
 }
 
+/* @fastled/gfx hover tooltip (e.g. LED-index readout in demo's /play
+   view). Issue #170 — moved here from inline cssText. Opacity is
+   driven from TS for the show/hide animation. */
+.gfx-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font: 12px monospace;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
 /* @fastled/gfx FPS counter widget. Mounted by gfx.mountFpsWidget()
    when showFps is on; click-to-hide or `f`-key toggle. See #170 §2 —
    moved here from `el.style.cssText = ...` to keep style out of TS. */

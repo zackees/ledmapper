@@ -111,13 +111,10 @@ export function init(container: HTMLElement) {
     overlayCanvas.addEventListener('touchend', hideOverlay, { passive: true, signal });
     overlayCanvas.addEventListener('touchcancel', hideOverlay, { passive: true, signal });
 
-    // LED index tooltip
+    // LED index tooltip. Styling lives in src/styles/global.css under
+    // `.gfx-tooltip` (issue #170) so the widget stays themeable.
     const tooltip = document.createElement('div');
-    tooltip.style.cssText =
-        'position:absolute;pointer-events:none;' +
-        'background:rgba(0,0,0,0.85);color:#fff;' +
-        'padding:4px 8px;border-radius:4px;font:12px monospace;white-space:nowrap;' +
-        'opacity:0;transition:opacity 0.15s;';
+    tooltip.className = 'gfx-tooltip';
     wrapper.appendChild(tooltip);
 
     let tooltipLedIdx = -1;
