@@ -32,9 +32,7 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
     opts.parent.appendChild(wrapper);
 
     const canvas = document.createElement('canvas');
-    canvas.style.display = 'block';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
+    canvas.className = 'gfx-render-canvas';
     wrapper.appendChild(canvas);
 
     let overlayCanvas: HTMLCanvasElement | undefined;
@@ -43,7 +41,7 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
         overlayCanvas = document.createElement('canvas');
         overlayCanvas.width = paneSize;
         overlayCanvas.height = paneSize;
-        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+        overlayCanvas.className = 'gfx-overlay-canvas';
         wrapper.appendChild(overlayCanvas);
         const ctx = overlayCanvas.getContext('2d');
         if (!ctx) throw new Error('createGfx: overlay 2d context unavailable');
