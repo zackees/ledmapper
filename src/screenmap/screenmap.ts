@@ -556,12 +556,14 @@ export function init(container: HTMLElement) {
                 const captureContainer = container.querySelector<HTMLElement>('#captureContainer');
                 if (captureContainer) {
                     captureContainer.appendChild(videoElement);
-                    captureContainer.addEventListener('mouseenter', () => {
-                        captureContainer.style.opacity = '0';
-                    }, { signal });
-                    captureContainer.addEventListener('mouseleave', () => {
-                        captureContainer.style.opacity = '1';
-                    }, { signal });
+                    // Pointer-Events instead of mouseenter/mouseleave so the
+                    // touch-tap path (iOS Safari has no hover) also gets the
+                    // opacity fade. Issue #178.
+                    const onIn = () => { captureContainer.style.opacity = '0'; };
+                    const onOut = () => { captureContainer.style.opacity = '1'; };
+                    captureContainer.addEventListener('pointerenter', onIn, { signal });
+                    captureContainer.addEventListener('pointerleave', onOut, { signal });
+                    captureContainer.addEventListener('pointercancel', onOut, { signal });
                 }
             }).catch((err: unknown) => {
                 if (signal.aborted) return;
