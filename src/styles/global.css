@@ -159,6 +159,11 @@ input[type="button"]:disabled {
     color: var(--color-lm-text-muted);
     cursor: not-allowed;
     box-shadow: none;
+    /* Non-color signal for color-impaired users: a dashed border. The
+       background+color shift already communicates state to most users,
+       but red-green colorblind users can lose the surface-3 vs surface-1
+       contrast. Issue #177. */
+    border: 1px dashed var(--color-lm-border-hover);
 }
 
 /* ── File Inputs ────────────────────────────────────────────── */

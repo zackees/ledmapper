@@ -208,6 +208,7 @@ export function init(container: HTMLElement) {
             dom_progress_thumb.style.left = '0%';
             dom_btn_play_pause.innerHTML = '&#9654;';
             dom_btn_play_pause.title = 'Play';
+            dom_btn_play_pause.setAttribute('aria-label', 'Play');
         }
     }
 
@@ -407,7 +408,9 @@ export function init(container: HTMLElement) {
     dom_btn_play_pause.addEventListener('click', () => {
         const nowPlaying = videoSource.playPause();
         dom_btn_play_pause.innerHTML = nowPlaying ? '&#9646;&#9646;' : '&#9654;';
-        dom_btn_play_pause.title = nowPlaying ? 'Pause' : 'Play';
+        const label = nowPlaying ? 'Pause' : 'Play';
+        dom_btn_play_pause.title = label;
+        dom_btn_play_pause.setAttribute('aria-label', label);
     }, { signal });
 
     // Progress bar scrubbing
