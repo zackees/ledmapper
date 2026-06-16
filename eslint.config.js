@@ -117,8 +117,6 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unnecessary-condition': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
-      '@typescript-eslint/restrict-template-expressions': 'off',
-      '@typescript-eslint/restrict-plus-operands': 'off',
     },
   },
   { ignores: ['dist/', 'public/', 'node_modules/', '.tmp/', 'tests/**/*.js'] },

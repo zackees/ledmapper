@@ -481,8 +481,8 @@ ShapeEditor.prototype.drawGizmoHandles = function (this: ShapeEditor) {
         // Draw rotation handle (arc with arrowhead)
         const isRotHover = self.gizmoHover === 'rotate' || self.gizmoActive === 'rotate';
         const rotColor = isRotHover ? '#60a5fa' : '#3b82f6';
-        const rx = handles.rotate.x;
-        const ry = handles.rotate.y;
+        const rx: number = handles.rotate.x;
+        const ry: number = handles.rotate.y;
         const arcR = isRotHover ? 9 : 7;
         const arcStart = -Math.PI * 1.25;
         const arcEnd = Math.PI * 0.05;
@@ -634,7 +634,7 @@ ShapeEditor.prototype.drawBgGizmoHandles = function (this: ShapeEditor) {
         // Rotation handle
         const isRotHover = self.bgGizmoHover === 'rotate' || self.bgGizmoActive === 'rotate';
         const rotColor = isRotHover ? '#fbbf24' : '#f59e0b';
-        const rx = handles.rotate.x, ry = handles.rotate.y;
+        const rx: number = handles.rotate.x, ry: number = handles.rotate.y;
         const arcR = isRotHover ? 9 : 7;
         self.overlayCtx.strokeStyle = rotColor;
         self.overlayCtx.lineWidth = 2;

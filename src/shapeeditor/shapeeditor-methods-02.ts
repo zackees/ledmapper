@@ -723,7 +723,7 @@ ShapeEditor.prototype.renderBackupRow = function (this: ShapeEditor) {
         const m = b.meta;
         const stripCount = typeof m.stripCount === 'number' ? m.stripCount : 0;
         const ledCount = typeof m.ledCount === 'number' ? m.ledCount : 0;
-        const when = typeof m.savedAt === 'number' ? self._relativeTime(m.savedAt) : '';
+        const when: string = typeof m.savedAt === 'number' ? self._relativeTime(m.savedAt) as string : '';
         const summary = `${String(stripCount)} strip${stripCount === 1 ? '' : 's'} · ${String(ledCount)} LED${ledCount === 1 ? '' : 's'} · ${when}`;
         if (self.dom_strips_backup_summary) self.dom_strips_backup_summary.textContent = summary;
         self.dom_strips_backup_row.style.display = '';
@@ -787,7 +787,7 @@ ShapeEditor.prototype.renderSelectedStripRow = function (this: ShapeEditor) {
         const pin = self._pinOfStrip(s);
         self.dom_strips_selected_row.style.display = '';
         if (self.dom_strips_selected_label) {
-            self.dom_strips_selected_label.textContent = `Selected: ${s.name} (${pin})`;
+            self.dom_strips_selected_label.textContent = `Selected: ${s.name} (${String(pin)})`;
         }
         if (self.dom_strips_move_pin) {
             self.dom_strips_move_pin.innerHTML = '';
