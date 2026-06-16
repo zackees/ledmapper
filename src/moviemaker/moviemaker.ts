@@ -13,6 +13,7 @@ import { createRecording } from './recording';
 import { drawMoviemakerOverlay } from './overlay';
 import { createLedPreview } from './preview';
 import { wireSliderReadout } from '../ui/sliders';
+import { setupToggleButton } from '../ui/toggle-button';
 import { withPrefix } from '../services/storage';
 import { createCanvasRecorder, dimensionsForAspect, type AspectPreset } from '../render/canvas-recorder';
 import { PREVIEW_AUTO_MAX_SPARSE, PREVIEW_AUTO_FLOOR } from '../bloom-utils';
@@ -93,6 +94,15 @@ export function init(container: HTMLElement) {
 
     const ac = new AbortController();
     const { signal } = ac;
+
+    // Play/Pause toggle — set up early so `updateElementStates()` can call
+    // `playPauseCtl.setState('off')` before any user interaction. Glyph
+    // lives in moviemaker.css under `.btn-play-pause[data-state="..."]`
+    // (#192).
+    const playPauseCtl = setupToggleButton(dom_btn_play_pause, {
+        off: { state: 'paused', label: 'Play' },
+        on:  { state: 'playing', label: 'Pause' },
+    }, 'off', () => { videoSource.playPause(); }, { signal });
 
     // ── State ───────────────────────────────────────────────────────────────────
     let screenmap_pts: [number, number][] = [];
@@ -206,9 +216,7 @@ export function init(container: HTMLElement) {
             dom_time_current.textContent = '0:00';
             dom_progress_fill.style.width = '0%';
             dom_progress_thumb.style.left = '0%';
-            dom_btn_play_pause.innerHTML = '&#9654;';
-            dom_btn_play_pause.title = 'Play';
-            dom_btn_play_pause.setAttribute('aria-label', 'Play');
+            playPauseCtl.setState('off');
         }
     }
 
@@ -404,14 +412,9 @@ export function init(container: HTMLElement) {
         }
     }, { signal });
 
-    // Play/Pause
-    dom_btn_play_pause.addEventListener('click', () => {
-        const nowPlaying = videoSource.playPause();
-        dom_btn_play_pause.innerHTML = nowPlaying ? '&#9646;&#9646;' : '&#9654;';
-        const label = nowPlaying ? 'Pause' : 'Play';
-        dom_btn_play_pause.title = label;
-        dom_btn_play_pause.setAttribute('aria-label', label);
-    }, { signal });
+    // Play/Pause toggle was set up at the top of init (see #192) so
+    // updateElementStates() can flip it via playPauseCtl.setState. The
+    // click handler is already registered; nothing to wire here.
 
     // Progress bar scrubbing.
     // Cache the track's bounding rect at pointerdown so every pointermove

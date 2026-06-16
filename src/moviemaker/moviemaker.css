@@ -116,6 +116,16 @@
     color: var(--color-lm-accent);
 }
 
+/* Glyph for play/pause — driven from data-state set by setupToggleButton
+   (#192). The button element itself stays empty; CSS owns the icon. */
+.btn-play-pause::before {
+    content: '\25B6';   /* ▶ play */
+}
+.btn-play-pause[data-state="playing"]::before {
+    content: '\23F8';   /* ⏸ pause */
+    letter-spacing: -2px; /* visual centering — ⏸ has built-in side bearings */
+}
+
 /* ── Canvas Toolbar (inline record button) ─────────────────── */
 
 .canvas-toolbar {
