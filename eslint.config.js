@@ -176,7 +176,6 @@ export default tseslint.config(
       // Pre-existing inline-color / cssText violations, migrating per #170:
       'src/shapeeditor/shapeeditor-methods-*.ts',
       'src/shapeeditor/shapeeditor-init.ts',
-      'src/moviemaker/moviemaker.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

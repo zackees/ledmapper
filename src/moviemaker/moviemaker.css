@@ -36,6 +36,7 @@
 
 .video-progress-bar {
     @apply hidden items-center gap-2 self-stretch;
+    --mm-progress-pct: 0%;
     padding: 6px 12px;
     background: rgba(10, 10, 10, 0.75);
     backdrop-filter: blur(8px);
@@ -66,13 +67,13 @@
     @apply h-full pointer-events-none;
     background: var(--color-lm-accent);
     border-radius: 2px;
-    width: 0%;
+    width: var(--mm-progress-pct);
 }
 
 .progress-thumb {
     @apply absolute rounded-full opacity-0;
     top: 50%;
-    left: 0%;
+    left: var(--mm-progress-pct);
     width: 12px;
     height: 12px;
     background: var(--color-lm-accent);
@@ -747,6 +748,11 @@
 .custom-popup-class li {
     margin-bottom: 8px;
     color: var(--color-lm-text-secondary);
+}
+
+.movie-help-dialog {
+    text-align: left;
+    margin-bottom: 15px;
 }
 
 /* ═══════════════════════════════════════════════════════════════
