@@ -122,16 +122,14 @@ export function createRendererAndScene({ width, height, parent, clearColor = 0x0
     wrapper.className = 'lm-canvas-wrapper';
     parent.appendChild(wrapper);
 
-    renderer.domElement.style.display = 'block';
-    renderer.domElement.style.width = '100%';
-    renderer.domElement.style.height = '100%';
+    renderer.domElement.classList.add('gfx-render-canvas');
     wrapper.appendChild(renderer.domElement);
 
     if (enableOverlay) {
         const overlayCanvas = document.createElement('canvas');
         overlayCanvas.width = width;
         overlayCanvas.height = height;
-        overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+        overlayCanvas.className = 'gfx-overlay-canvas';
         wrapper.appendChild(overlayCanvas);
         const overlayCtx = overlayCanvas.getContext('2d');
         if (!overlayCtx) throw new Error('createRendererAndScene: overlay 2d context unavailable');
