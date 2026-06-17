@@ -1,13 +1,13 @@
 /**
- * Shared categorized-accordion preset picker.
+ * Shared segmented-tabs preset picker.
  *
  * One picker module used by Record (moviemaker, `mode: 'compact'`) and
- * Create (shapeeditor, `mode: 'inline'`) so the preset list — currently
- * 13 entries and growing — is collated into a small number of
- * collapsible categories rather than a flat wrap-row that overflows
- * the sidebar.
- *
- * Issue #206.
+ * Create (shapeeditor, `mode: 'inline'`). Presets are grouped into a
+ * small number of categories; the picker shows the category tabs in
+ * one row and the items for the active tab in the next row. Two rows
+ * total at rest — issue #209 follow-up to the original accordion
+ * shipped in #207 / #206 (the accordion's full-width category bars
+ * were too dominant in the moviemaker top-bar layout).
  */
 
 import bakedManifest, {
@@ -19,13 +19,13 @@ import bakedManifest, {
 export type { PresetCategory, PresetEntry, PresetManifest };
 
 export interface PresetPickerOptions {
-    /** Visual density: compact for the Record sidebar, inline for Create. */
+    /** Visual density: compact for the Record sidebar/top-bar, inline for Create. */
     mode: 'compact' | 'inline';
     /** Fires when the user clicks a preset button. Receives the file name. */
     onChoose: (file: string) => void | Promise<void>;
-    /** Highlight this preset on mount and open its category. */
+    /** Highlight this preset on mount and activate its category tab. */
     initialSelection?: string;
-    /** localStorage key for the open-category id. */
+    /** localStorage key for the active-category id. */
     storageKey?: string;
     /** Lifecycle abort: remove listeners + detach when fired. */
     signal?: AbortSignal;
@@ -36,7 +36,7 @@ export interface PresetPickerOptions {
 }
 
 export interface PresetPickerHandle {
-    /** Mark a preset button active (highlight) and open its category. */
+    /** Mark a preset button active and switch the active tab to its category. */
     setActive(file: string): void;
     /** Detach event listeners and clear DOM. Idempotent. */
     destroy(): void;
@@ -55,7 +55,7 @@ interface RenderGroup {
  * Group presets by category id, preserving the manifest's category
  * order. Presets whose `category` does not match any known id (or is
  * missing) fall into a trailing "Other" group. Empty groups are
- * omitted so the picker never shows a category with zero entries.
+ * omitted so the picker never shows a tab with zero entries.
  */
 function groupPresets(presets: PresetEntry[], categories: PresetCategory[]): RenderGroup[] {
     const buckets = new Map<string, PresetEntry[]>();
@@ -107,24 +107,24 @@ export function mountPresetPicker(
     const storageKey = opts.storageKey ?? DEFAULT_STORAGE_KEY;
     const uid = ++pickerUid;
 
-    // Decide which category to open first.
-    let initialOpenId: string | null = null;
+    // Decide which tab is initially active.
+    let activeId: string | null = null;
     if (opts.initialSelection) {
-        initialOpenId = categoryOf(opts.initialSelection, groups);
+        activeId = categoryOf(opts.initialSelection, groups);
     }
-    if (!initialOpenId) {
+    if (!activeId) {
         try {
             const stored = localStorage.getItem(storageKey);
             if (stored && groups.some((g) => g.id === stored)) {
-                initialOpenId = stored;
+                activeId = stored;
             }
         } catch {
             // localStorage may throw in privacy mode — fall through.
         }
     }
-    if (!initialOpenId) {
+    if (!activeId) {
         const firstGroup = groups[0];
-        if (firstGroup) initialOpenId = firstGroup.id;
+        if (firstGroup) activeId = firstGroup.id;
     }
 
     // Build DOM.
@@ -134,40 +134,69 @@ export function mountPresetPicker(
     root.setAttribute('role', 'group');
     root.setAttribute('aria-label', 'Screenmap presets');
 
+    const tabsEl = document.createElement('div');
+    tabsEl.className = 'preset-picker-tabs';
+    tabsEl.setAttribute('role', 'tablist');
+
+    const itemsEl = document.createElement('div');
+    itemsEl.className = 'preset-picker-items';
+
+    const tabsById = new Map<string, HTMLButtonElement>();
+    const panelsById = new Map<string, HTMLElement>();
     const buttonsByFile = new Map<string, HTMLButtonElement>();
-    const categoryEls = new Map<string, { wrapper: HTMLElement; header: HTMLButtonElement; body: HTMLElement }>();
+
+    function setActiveTab(id: string): void {
+        if (!tabsById.has(id)) return;
+        activeId = id;
+        for (const [tabId, tab] of tabsById) {
+            const selected = tabId === id;
+            tab.setAttribute('aria-selected', String(selected));
+            tab.tabIndex = selected ? 0 : -1;
+        }
+        for (const [panelId, panel] of panelsById) {
+            panel.hidden = panelId !== id;
+        }
+        try {
+            localStorage.setItem(storageKey, id);
+        } catch {
+            // ignore privacy-mode failures
+        }
+    }
 
     for (const group of groups) {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'preset-category';
-        wrapper.dataset.category = group.id;
-        wrapper.dataset.open = String(group.id === initialOpenId);
+        const tabId = `preset-picker-${String(uid)}-${group.id}-tab`;
+        const panelId = `preset-picker-${String(uid)}-${group.id}-panel`;
 
-        const bodyId = `preset-picker-${String(uid)}-${group.id}-body`;
-        const header = document.createElement('button');
-        header.type = 'button';
-        header.className = 'preset-category-header';
-        header.setAttribute('aria-expanded', String(group.id === initialOpenId));
-        header.setAttribute('aria-controls', bodyId);
-        const chevronEl = document.createElement('span');
-        chevronEl.className = 'preset-category-chevron';
-        chevronEl.setAttribute('aria-hidden', 'true');
+        const tab = document.createElement('button');
+        tab.type = 'button';
+        tab.id = tabId;
+        tab.className = 'preset-picker-tab';
+        tab.dataset.category = group.id;
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('aria-controls', panelId);
+        tab.setAttribute('aria-selected', String(group.id === activeId));
+        tab.tabIndex = group.id === activeId ? 0 : -1;
+
         const labelEl = document.createElement('span');
-        labelEl.className = 'preset-category-label';
+        labelEl.className = 'preset-picker-tab-label';
         labelEl.textContent = group.label;
         const countEl = document.createElement('span');
-        countEl.className = 'preset-category-count';
+        countEl.className = 'preset-picker-tab-count';
         countEl.setAttribute('aria-hidden', 'true');
         countEl.textContent = String(group.entries.length);
-        header.appendChild(chevronEl);
-        header.appendChild(labelEl);
-        header.appendChild(countEl);
+        tab.appendChild(labelEl);
+        tab.appendChild(countEl);
 
-        const body = document.createElement('div');
-        body.id = bodyId;
-        body.className = 'preset-category-body';
-        body.setAttribute('role', 'group');
-        body.setAttribute('aria-label', group.label);
+        tab.addEventListener('click', () => {
+            setActiveTab(group.id);
+        }, { signal: opts.signal });
+
+        const panel = document.createElement('div');
+        panel.id = panelId;
+        panel.className = 'preset-picker-panel';
+        panel.setAttribute('role', 'tabpanel');
+        panel.setAttribute('aria-labelledby', tabId);
+        panel.hidden = group.id !== activeId;
 
         for (const entry of group.entries) {
             const btn = document.createElement('button');
@@ -181,39 +210,48 @@ export function mountPresetPicker(
                 });
             }, { signal: opts.signal });
             buttonsByFile.set(entry.file, btn);
-            body.appendChild(btn);
+            panel.appendChild(btn);
         }
 
-        header.addEventListener('click', () => {
-            const wasOpen = wrapper.dataset.open === 'true';
-            // Single-open behavior: collapse all, then open the clicked one
-            // if it was closed. Re-clicking the open one collapses it.
-            for (const [, els] of categoryEls) {
-                els.wrapper.dataset.open = 'false';
-                els.header.setAttribute('aria-expanded', 'false');
-            }
-            if (!wasOpen) {
-                wrapper.dataset.open = 'true';
-                header.setAttribute('aria-expanded', 'true');
-                try {
-                    localStorage.setItem(storageKey, group.id);
-                } catch {
-                    // ignore privacy-mode failures
-                }
-            }
-        }, { signal: opts.signal });
-
-        wrapper.appendChild(header);
-        wrapper.appendChild(body);
-        root.appendChild(wrapper);
-        categoryEls.set(group.id, { wrapper, header, body });
+        tabsById.set(group.id, tab);
+        panelsById.set(group.id, panel);
+        tabsEl.appendChild(tab);
+        itemsEl.appendChild(panel);
     }
+
+    // Arrow-key navigation across tabs (WAI-ARIA tabs pattern).
+    tabsEl.addEventListener('keydown', (e: KeyboardEvent) => {
+        const order = Array.from(tabsById.keys());
+        const currentIdx = activeId === null ? -1 : order.indexOf(activeId);
+        if (currentIdx === -1) return;
+        let nextIdx: number;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            nextIdx = (currentIdx + 1) % order.length;
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            nextIdx = (currentIdx - 1 + order.length) % order.length;
+        } else if (e.key === 'Home') {
+            nextIdx = 0;
+        } else if (e.key === 'End') {
+            nextIdx = order.length - 1;
+        } else {
+            return;
+        }
+        e.preventDefault();
+        const nextId = order[nextIdx];
+        if (nextId !== undefined) {
+            setActiveTab(nextId);
+            tabsById.get(nextId)?.focus();
+        }
+    }, { signal: opts.signal });
+
+    root.appendChild(tabsEl);
+    root.appendChild(itemsEl);
 
     if (groups.length === 0) {
         const empty = document.createElement('p');
         empty.className = 'preset-picker-empty';
         empty.textContent = 'No presets available.';
-        root.appendChild(empty);
+        root.replaceChildren(empty);
     }
 
     host.appendChild(root);
@@ -230,13 +268,7 @@ export function mountPresetPicker(
         if (!btn) return;
         btn.classList.add('active-preset');
         const cat = categoryOf(file, groups);
-        if (cat && categoryEls.has(cat)) {
-            for (const [id, els] of categoryEls) {
-                const open = id === cat;
-                els.wrapper.dataset.open = String(open);
-                els.header.setAttribute('aria-expanded', String(open));
-            }
-        }
+        if (cat) setActiveTab(cat);
     }
 
     let destroyed = false;
@@ -245,7 +277,8 @@ export function mountPresetPicker(
         destroyed = true;
         if (root.parentNode) root.parentNode.removeChild(root);
         buttonsByFile.clear();
-        categoryEls.clear();
+        tabsById.clear();
+        panelsById.clear();
     }
 
     if (opts.signal) {
