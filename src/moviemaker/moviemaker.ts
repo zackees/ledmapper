@@ -6,7 +6,8 @@ import { saveScreenmap, getScreenmap } from '../screenmap-store';
 import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension, buildVideoChannelMap } from './transforms';
 import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
 import { loadPresetText } from '../preset-loader';
-import screenmapPresets from 'virtual:screenmap-presets';
+import screenmapManifest from 'virtual:screenmap-presets';
+import { mountPresetPicker } from '../ui/preset-picker';
 import { createBlurPipeline } from './blur-pipeline';
 import { createVideoSource } from './video-source';
 import { createRecording } from './recording';
@@ -42,8 +43,8 @@ export function init(container: HTMLElement) {
     const dom_btn_load_video    = qe<HTMLButtonElement>('#btn_load_video');
     const dom_btn_start_webcam  = qe<HTMLButtonElement>('#btn_start_webcam');
     const dom_btn_upload_screenmap  = qei('#btn_upload_screenmap');
-    const dom_preset_buttons = container.querySelector('.preset-buttons');
-    const dom_screenmap_group = dom_preset_buttons?.closest('.control-group');
+    const dom_preset_mount = container.querySelector<HTMLElement>('.preset-picker-mount');
+    const dom_screenmap_group = dom_preset_mount?.closest('.control-group');
     const dom_source_hint = container.querySelector('#screenmap_gate_hint');
     const dom_btn_unload_source = qe<HTMLButtonElement>('#btn_unload_source');
     const dom_btn_play_pause    = qe<HTMLButtonElement>('#btn_play_pause');
@@ -276,42 +277,23 @@ export function init(container: HTMLElement) {
         updateElementStates();
     }
 
-    let presetButtons: HTMLButtonElement[] = [];
+    const presetPicker = dom_preset_mount
+        ? mountPresetPicker(dom_preset_mount, {
+            mode: 'compact',
+            storageKey: 'lm.presetPicker.openCategory.moviemaker',
+            signal,
+            onChoose: async (presetFile: string) => {
+                try {
+                    loadScreenmapFromParsed(parseScreenmapMultiStrip(await loadPresetText(presetFile)));
+                    presetPicker?.setActive(presetFile);
+                } catch (error) {
+                    void errorDialog('Error loading preset', String(error));
+                }
+            },
+        })
+        : null;
 
-    function clearPresetActive() {
-        presetButtons.forEach((b) => { b.classList.remove('active-preset'); });
-    }
-
-    if (dom_preset_buttons) {
-        for (const preset of screenmapPresets as { file: string; name: string }[]) {
-            const btn = document.createElement('button');
-            btn.id = `btn_preset_${preset.file.replace(/\.json$/i, '')}`;
-            btn.type = 'button';
-            btn.className = 'preset-btn';
-            btn.dataset.presetFile = preset.file;
-            btn.textContent = preset.name;
-            dom_preset_buttons.appendChild(btn);
-        }
-        presetButtons = Array.from(dom_preset_buttons.querySelectorAll('button[data-preset-file]'));
-        for (const btn of presetButtons) {
-            const presetFile = btn.dataset.presetFile;
-            if (!presetFile) continue;
-
-            btn.addEventListener('click', () => {
-                void (async () => {
-                    clearPresetActive();
-                    btn.classList.add('active-preset');
-                    try {
-                        loadScreenmapFromParsed(parseScreenmapMultiStrip(await loadPresetText(presetFile)));
-                    } catch (error) {
-                        void errorDialog('Error loading preset', String(error));
-                    }
-                })();
-            }, { signal });
-        }
-    }
-
-    // Restore stored screenmap, or fall back to 16x16 preset
+    // Restore stored screenmap, or fall back to the first preset in the manifest.
     const storedScreenmap = getScreenmap();
     let restoredFromStore = false;
     if (storedScreenmap) {
@@ -322,8 +304,18 @@ export function init(container: HTMLElement) {
             console.error('Failed to restore stored screenmap:', error);
         }
     }
-    if (!restoredFromStore && presetButtons.length > 0) {
-        presetButtons[0]?.click();
+    if (!restoredFromStore && presetPicker) {
+        const firstPreset = screenmapManifest.presets[0];
+        if (firstPreset) {
+            void (async () => {
+                try {
+                    loadScreenmapFromParsed(parseScreenmapMultiStrip(await loadPresetText(firstPreset.file)));
+                    presetPicker.setActive(firstPreset.file);
+                } catch (error) {
+                    console.error('Failed to autoload first preset:', error);
+                }
+            })();
+        }
     }
 
     // Wire welcome overlay buttons to sidebar buttons
@@ -489,7 +481,7 @@ export function init(container: HTMLElement) {
             void errorDialog('Wrong file type', 'Please choose a .csv or .json screenmap file.');
             return;
         }
-        clearPresetActive();
+        presetPicker?.setActive('');
         screenmapValid = false;
         updateElementStates();
         file.text().then((text: string) => {

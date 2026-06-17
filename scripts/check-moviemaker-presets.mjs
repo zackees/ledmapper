@@ -11,12 +11,29 @@ const template = readFileSync(join(repoRoot, 'src', 'moviemaker', 'template.html
 const moviemaker = readFileSync(join(repoRoot, 'src', 'moviemaker', 'moviemaker.ts'), 'utf-8');
 const viteConfig = readFileSync(join(repoRoot, 'vite.config.js'), 'utf-8');
 
+// Schema-v2 invariants (issue #206): manifest carries a schemaVersion, a
+// categories array, and every preset has a category that matches a
+// declared category id.
+assert.equal(manifest.schemaVersion, 2, 'manifest.json must declare "schemaVersion": 2');
+assert.ok(Array.isArray(manifest.categories) && manifest.categories.length > 0,
+    'manifest.json must declare a non-empty "categories" array');
+const categoryIds = manifest.categories.map(c => c.id);
+assert.equal(new Set(categoryIds).size, categoryIds.length, 'manifest.json category ids must be unique');
+for (const cat of manifest.categories) {
+    assert.equal(typeof cat.id, 'string', `category missing id: ${JSON.stringify(cat)}`);
+    assert.equal(typeof cat.label, 'string', `category missing label: ${JSON.stringify(cat)}`);
+}
+
 const presets = manifest.presets || [];
 assert.ok(presets.length > 0, 'manifest.json must declare at least one preset');
 
-// Every manifest entry has a name and points at an existing screenmap file.
+const categoryIdSet = new Set(categoryIds);
 for (const preset of presets) {
     assert.ok(preset.file && preset.name, `Preset entry missing file/name: ${JSON.stringify(preset)}`);
+    assert.equal(typeof preset.category, 'string',
+        `Preset entry missing category: ${JSON.stringify(preset)}`);
+    assert.ok(categoryIdSet.has(preset.category),
+        `Preset category "${preset.category}" not declared in manifest.categories: ${JSON.stringify(preset)}`);
     assert.ok(
         existsSync(join(repoRoot, 'public', 'screenmaps', preset.file)),
         `Preset file listed in manifest.json does not exist: ${preset.file}`
@@ -28,16 +45,17 @@ const names = presets.map(p => p.name);
 assert.equal(new Set(files).size, files.length, 'manifest.json preset files must be unique');
 assert.equal(new Set(names).size, names.length, 'manifest.json preset names must be unique');
 
-// Buttons are generated from the manifest at build time — the template must
-// not hand-maintain a preset list.
+// Buttons are rendered by the shared preset-picker module (issue #206) —
+// the moviemaker template now provides a mount point and the wiring goes
+// through `mountPresetPicker`.
 assert.ok(
-    !/data-preset-file/.test(template),
-    'src/moviemaker/template.html must not hardcode preset buttons; they are generated from manifest.json via virtual:screenmap-presets.'
+    /class="preset-picker-mount"/.test(template),
+    'src/moviemaker/template.html must contain a <div class="preset-picker-mount"> for the shared accordion picker.'
 );
 
 assert.ok(
     /from\s+['"]virtual:screenmap-presets['"]/.test(moviemaker),
-    'Moviemaker must import presets from virtual:screenmap-presets.'
+    'Moviemaker must import the baked manifest from virtual:screenmap-presets.'
 );
 
 assert.ok(
@@ -46,11 +64,11 @@ assert.ok(
 );
 
 assert.ok(
-    /querySelectorAll\(\s*['"]button\[data-preset-file\]['"]\s*\)/.test(moviemaker),
-    'Moviemaker must bind preset buttons from [data-preset-file] attributes.'
+    /from\s+['"]\.\.\/ui\/preset-picker['"]/.test(moviemaker),
+    'Moviemaker must import mountPresetPicker from "../ui/preset-picker".'
 );
 
 assert.ok(
-    /btn\.dataset\.presetFile/.test(moviemaker),
-    'Moviemaker preset binding should use dataset.presetFile when loading presets.'
+    /mountPresetPicker\s*\(/.test(moviemaker),
+    'Moviemaker must call mountPresetPicker to render the preset accordion.'
 );

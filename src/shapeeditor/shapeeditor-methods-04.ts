@@ -11,6 +11,8 @@ import { fileHasExtension } from '../drag-drop';
 import { saveScreenmap, notePinMutation } from '../screenmap-store';
 import { safeStorage } from '../services/storage';
 import { fireDialog, errorDialog } from '../ui/dialogs';
+import { mountPresetPicker } from '../ui/preset-picker';
+import type { PresetCategory } from '../ui/preset-picker';
 
 import type { PresetEntry } from './shapeeditor-types';
 
@@ -231,7 +233,7 @@ ShapeEditor.prototype.loadScreenmapFile = function (this: ShapeEditor, file: Fil
             void errorDialog('Wrong file type', 'Please choose a .json screenmap file.');
             return;
         }
-        self.dom_sel_preset.value = '';
+        self.presetPicker?.setActive('');
         file.text().then((arg: any) => self.load_screenmap_data(arg)).catch((error: unknown) => {
             void errorDialog('Error reading screenmap file', String(error));
         });
@@ -243,22 +245,51 @@ ShapeEditor.prototype.loadPresetsFromManifest = async function (this: ShapeEdito
         try {
             const resp = await fetch('/screenmaps/manifest.json');
             const manifest: unknown = await resp.json();
-            const presets: unknown = typeof manifest === 'object' && manifest !== null
+            const rawPresets: unknown = typeof manifest === 'object' && manifest !== null
                 ? (manifest as Record<string, unknown>).presets
                 : undefined;
-            self.loadedPresets = Array.isArray(presets)
-                ? presets.filter((p): p is PresetEntry =>
+            const rawCategories: unknown = typeof manifest === 'object' && manifest !== null
+                ? (manifest as Record<string, unknown>).categories
+                : undefined;
+            self.loadedPresets = Array.isArray(rawPresets)
+                ? rawPresets.filter((p): p is PresetEntry =>
                     typeof p === 'object' && p !== null
                     && typeof (p as Record<string, unknown>).file === 'string'
                     && typeof (p as Record<string, unknown>).name === 'string')
                 : [];
-            self.dom_sel_preset.innerHTML = '<option value="">-- Select preset --</option>';
+            const categories: PresetCategory[] = Array.isArray(rawCategories)
+                ? rawCategories.filter((c): c is PresetCategory =>
+                    typeof c === 'object' && c !== null
+                    && typeof (c as Record<string, unknown>).id === 'string'
+                    && typeof (c as Record<string, unknown>).label === 'string')
+                : [];
+            // Mount the shared accordion picker. The on-click load path goes
+            // through the picker's `onChoose` callback instead of a
+            // <select>-change event.
+            const loadPresetFile = async (file: string) => {
+                try {
+                    const r = await fetch(`/screenmaps/${file}`);
+                    self.load_screenmap_data(await r.text());
+                    self.presetPicker?.setActive(file);
+                } catch (e: unknown) {
+                    console.warn('Failed to load preset:', e);
+                }
+            };
+            if (self.presetPicker) {
+                self.presetPicker.destroy();
+                self.presetPicker = null;
+            }
+            self.presetPicker = mountPresetPicker(self.dom_sel_preset_mount, {
+                mode: 'inline',
+                storageKey: 'lm.presetPicker.openCategory.shapeeditor',
+                signal: self.signal,
+                presets: self.loadedPresets,
+                categories,
+                onChoose: loadPresetFile,
+            });
+            // Keep populating the right-click context-menu submenu — it
+            // works off the same loadedPresets list.
             for (const preset of self.loadedPresets) {
-                const opt = document.createElement('option');
-                opt.value = preset.file;
-                opt.textContent = preset.name;
-                self.dom_sel_preset.appendChild(opt);
-                // Also add to context menu submenu
                 self.makeCtxBtn(preset.name, `load-preset:${preset.file}`, self.ctxLoadSubmenu);
             }
             // Restore stored screenmap (autosave/backup-aware), then fall
@@ -268,14 +299,14 @@ ShapeEditor.prototype.loadPresetsFromManifest = async function (this: ShapeEdito
             if (autoLoaded) {
                 // already loaded
             } else if (self.loadedPresets.length > 0) {
-                self.dom_sel_preset.value = self.nn(self.loadedPresets[0]).file;
-                self.dom_sel_preset.dispatchEvent(new Event('change'));
+                const first = self.nn(self.loadedPresets[0]);
+                void loadPresetFile(first.file);
             }
             self._updateHintStrip();
             self._maybeAutoOpenHelpOnLaunch();
         } catch (e: unknown) {
             console.warn("Failed to load preset manifest:", e);
-            self.dom_sel_preset.innerHTML = '<option value="">No presets available</option>';
+            self.dom_sel_preset_mount.textContent = 'No presets available';
             self._maybeAutoOpenHelpOnLaunch();
         }
     };

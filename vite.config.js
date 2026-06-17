@@ -24,7 +24,7 @@ const presetManifestPlugin = () => {
       if (id !== resolvedId) return;
       this.addWatchFile(manifestPath);
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-      return `export default ${JSON.stringify(manifest.presets || [])};`;
+      return `export default ${JSON.stringify(manifest)};`;
     },
   };
 };

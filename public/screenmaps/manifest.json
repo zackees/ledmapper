@@ -1,56 +1,75 @@
 {
-    "presets":  [
-                    {
-                        "file":  "16x16_grid.json",
-                        "name":  "16x16 Grid"
-                    },
-                    {
-                        "file":  "16x16_serpentine.json",
-                        "name":  "16x16 Serpentine"
-                    },
-                    {
-                        "file":  "8x8_grid.json",
-                        "name":  "8x8 Grid"
-                    },
-                    {
-                        "file":  "strip_60.json",
-                        "name":  "Strip 60"
-                    },
-                    {
-                        "file":  "ring_24.json",
-                        "name":  "Ring 24"
-                    },
-                    {
-                        "file":  "32x32_quad_serpentine.json",
-                        "name":  "32x32 Quad Serpentine"
-                    },
-                    {
-                        "file":  "spaceface.json",
-                        "name":  "Space Face"
-                    },
-                    {
-                        "file":  "piano_grand.json",
-                        "name":  "Piano Grand"
-                    },
-                    {
-                        "file":  "keytar.json",
-                        "name":  "Keytar"
-                    },
-                    {
-                        "file":  "64x64_serpentine.json",
-                        "name":  "64x64 Serpentine"
-                    },
-                    {
-                        "file":  "64x64_quad_serpentine.json",
-                        "name":  "64x64 Quad Serpentine"
-                    },
-                    {
-                        "file":  "22x22_serpentine.json",
-                        "name":  "22x22 Serpentine"
-                    },
-                    {
-                        "file":  "44x44_quad_serpentine.json",
-                        "name":  "44x44 Quad Pinwheel"
-                    }
-                ]
+    "schemaVersion": 2,
+    "categories": [
+        { "id": "grids",  "label": "Grids" },
+        { "id": "strips", "label": "Strips & Rings" },
+        { "id": "shapes", "label": "Shapes" }
+    ],
+    "presets": [
+        {
+            "file":     "16x16_grid.json",
+            "name":     "16x16 Grid",
+            "category": "grids"
+        },
+        {
+            "file":     "16x16_serpentine.json",
+            "name":     "16x16 Serpentine",
+            "category": "grids"
+        },
+        {
+            "file":     "8x8_grid.json",
+            "name":     "8x8 Grid",
+            "category": "grids"
+        },
+        {
+            "file":     "strip_60.json",
+            "name":     "Strip 60",
+            "category": "strips"
+        },
+        {
+            "file":     "ring_24.json",
+            "name":     "Ring 24",
+            "category": "strips"
+        },
+        {
+            "file":     "32x32_quad_serpentine.json",
+            "name":     "32x32 Quad Serpentine",
+            "category": "grids"
+        },
+        {
+            "file":     "spaceface.json",
+            "name":     "Space Face",
+            "category": "shapes"
+        },
+        {
+            "file":     "piano_grand.json",
+            "name":     "Piano Grand",
+            "category": "shapes"
+        },
+        {
+            "file":     "keytar.json",
+            "name":     "Keytar",
+            "category": "shapes"
+        },
+        {
+            "file":     "64x64_serpentine.json",
+            "name":     "64x64 Serpentine",
+            "category": "grids"
+        },
+        {
+            "file":     "64x64_quad_serpentine.json",
+            "name":     "64x64 Quad Serpentine",
+            "category": "grids"
+        },
+        {
+            "file":     "22x22_serpentine.json",
+            "name":     "22x22 Serpentine",
+            "category": "grids"
+        },
+        {
+            "file":     "44x44_quad_serpentine.json",
+            "name":     "44x44 Quad Pinwheel",
+            "category": "grids"
+        }
+    ]
 }

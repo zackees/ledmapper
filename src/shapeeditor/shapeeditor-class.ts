@@ -12,6 +12,7 @@ import type { BackupMeta } from '../screenmap-store';
 
 import { type StripStore } from './strips-model';
 import { type Selection } from './selection';
+import type { PresetPickerHandle } from '../ui/preset-picker';
 
 import type { UndoAction, InsertDialogOpts, OBBox, GizmoDragStart, BgGizmoDragStart, BgImageBBox, GizmoHandle, RulerEntry, RulerDragStart, RulerDragHandle, ConnectorDrag, StartHandleDrag, PlacingState, PasteStateActive, StripDragPt, PresetEntry } from './shapeeditor-types';
 
@@ -264,7 +265,8 @@ export class ShapeEditor {
     declare mainEl: HTMLElement;
     declare dom_btn_new: HTMLButtonElement;
     declare dom_btn_upload_screenmap: HTMLInputElement;
-    declare dom_sel_preset: HTMLSelectElement;
+    declare dom_sel_preset_mount: HTMLElement;
+    declare presetPicker: PresetPickerHandle | null;
     declare dom_txt_scale: HTMLInputElement;
     declare dom_txt_scale_x: HTMLInputElement;
     declare dom_txt_scale_y: HTMLInputElement;
