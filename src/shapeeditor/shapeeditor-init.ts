@@ -30,7 +30,8 @@ this.container.classList.add('shapeeditor-root');
 this.mainEl.classList.add('shapeeditor-main');
         this.dom_btn_new = this.qeb('#btn_new');
         this.dom_btn_upload_screenmap = this.qei('#btn_upload_screenmap');
-        this.dom_sel_preset = this.qe<HTMLSelectElement>('#sel_preset');
+        this.dom_sel_preset_mount = this.qe<HTMLElement>('#sel_preset_mount');
+        this.presetPicker = null;
         this.dom_txt_scale = this.qei('#txt_scale');
         this.dom_txt_scale_x = this.qei('#txt_scale_x');
         this.dom_txt_scale_y = this.qei('#txt_scale_y');
@@ -650,7 +651,7 @@ this.dom_btn_new.addEventListener('click', () => {
         // single-LED screenmap that would auto-load on next launch.
         const hadBackupPromote = promoteToBackup();
         this.clearEditingState();
-        this.dom_sel_preset.value = '';
+        this.presetPicker?.setActive('');
         this.screenmap_pts = [[0, 0]];
         this.rawPts = [[0, 0]];
         this.stripInfo = null;
@@ -692,17 +693,9 @@ if (this.imageDropTarget) wireFileDropTarget({
         },
         signal: this.signal,
     });
-this.dom_sel_preset.addEventListener('change', () => { void (async () => {
-        const file = this.dom_sel_preset.value;
-        if (!file) return;
-        try {
-            const resp = await fetch(`/screenmaps/${file}`);
-            const text = await resp.text();
-            this.load_screenmap_data(text);
-        } catch (e: unknown) {
-            console.warn("Failed to load preset:", e);
-        }
-    })(); }, { signal: this.signal });
+        // Preset-load click handling is wired through the shared picker
+        // mounted in `loadPresetsFromManifest`; no select-change listener
+        // needed here anymore (issue #206).
         this.bgImageObjectURL = null;
         this.bgImageControls = [this.dom_txt_image_opacity, this.dom_txt_image_scale,
         this.dom_txt_image_rotate, this.dom_txt_image_tx, this.dom_txt_image_ty,

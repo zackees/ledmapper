@@ -59,9 +59,13 @@ test.describe('Moviemaker drag-and-drop', () => {
         await page.goto('/moviemaker/');
         await page.locator('[data-trigger="btn_start_webcam"]').click();
         await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 });
-        // Activate a preset first so we can observe the drop clearing it
-        await page.locator('#btn_preset_8x8_grid').click();
-        await expect(page.locator('#btn_preset_8x8_grid')).toHaveClass(/active-preset/);
+        // Activate a preset first so we can observe the drop clearing it.
+        // The preset accordion (issue #206) groups buttons by category; the
+        // 8x8 Grid lives in the "Grids" category which is open by default
+        // because the autoload picks 16x16_grid as the initial selection.
+        const presetBtn = page.locator('button[data-preset-file="8x8_grid.json"]');
+        await presetBtn.click();
+        await expect(presetBtn).toHaveClass(/active-preset/);
 
         await dropFixture(page, '#screenmap_drop_target', SCREENMAP_FIXTURE, 'test-screenmap.json', 'application/json');
         await expect(page.locator('.preset-btn.active-preset')).toHaveCount(0);
@@ -108,7 +112,7 @@ test.describe('Shape editor drag-and-drop', () => {
         await dropFixture(page, '#screenmap_drop_target', SCREENMAP_FIXTURE, 'test-screenmap.json', 'application/json');
         // Fixture has diameter 0.25; load populates the diameter field from the file
         await expect(page.locator('#txt_diameter')).toHaveValue('0.25');
-        await expect(page.locator('#sel_preset')).toHaveValue('');
+        await expect(page.locator('#sel_preset_mount .preset-btn.active-preset')).toHaveCount(0);
     });
 
     test('dropping an image onto the image row enables background controls', async ({ page }) => {

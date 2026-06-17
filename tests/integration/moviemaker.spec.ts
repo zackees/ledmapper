@@ -83,7 +83,7 @@ test.describe('Video Maker', () => {
         await page.goto('/moviemaker/');
         // The Screenmap presets group is dimmed/non-interactive and the gate
         // hint is visible before any source is loaded.
-        const group = page.locator('.preset-buttons').locator('xpath=ancestor::*[contains(@class,"control-group")][1]');
+        const group = page.locator('.preset-picker-mount').locator('xpath=ancestor::*[contains(@class,"control-group")][1]');
         await expect(group).toHaveClass(/disabled/);
         await expect(page.locator('#screenmap_gate_hint')).not.toHaveClass(/hidden/);
     });

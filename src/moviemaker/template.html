@@ -21,9 +21,11 @@
                     <div class="control-group">
                         <p id="screenmap_gate_hint" class="field-label">Load a video source to choose a layout.</p>
                         <span class="field-label">Presets</span>
-                        <!-- Buttons are generated from public/screenmaps/manifest.json
-                             (baked into the bundle via virtual:screenmap-presets) -->
-                        <div class="button-row preset-buttons"></div>
+                        <!-- The categorized accordion picker is mounted here by
+                             src/ui/preset-picker (issue #206), populated from
+                             public/screenmaps/manifest.json baked via
+                             virtual:screenmap-presets. -->
+                        <div class="preset-picker-mount"></div>
                         <div id="screenmap_drop_target" class="drop-zone">
                             <label class="field-label" for="btn_upload_screenmap">Upload custom</label>
                             <input type="file" id="btn_upload_screenmap" accept=".csv,.json">

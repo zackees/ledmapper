@@ -395,36 +395,6 @@
     cursor: not-allowed;
 }
 
-/* ── Preset Pills ─────────────────────────────────────────────
-   Container layout (.preset-buttons) lives on the shared
-   `.button-row` class in src/styles/global.css — only the
-   per-pill styling stays tool-specific here. */
-
-.preset-btn {
-    font-size: 0.72rem;
-    padding: 4px 12px;
-    background: transparent;
-    border: 1px solid var(--color-lm-border);
-    border-radius: var(--radius-lm-pill);
-    color: var(--color-lm-text-secondary);
-}
-
-.preset-btn:hover {
-    background: var(--color-lm-accent-subtle);
-    border-color: var(--color-lm-accent);
-    color: var(--color-lm-accent);
-}
-
-.preset-btn.active-preset {
-    background: var(--color-lm-accent-subtle);
-    border-color: var(--color-lm-accent);
-    color: var(--color-lm-accent);
-}
-
-.preset-btn.active-preset:hover {
-    background: rgba(59, 130, 246, 0.18);
-}
-
 /* ── Sliders ────────────────────────────────────────────────── */
 
 .slider-container {

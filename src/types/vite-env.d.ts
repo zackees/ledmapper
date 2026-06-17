@@ -11,6 +11,22 @@ declare module '*?url' {
 }
 
 declare module 'virtual:screenmap-presets' {
-  const presets: unknown[];
-  export default presets;
+  export interface PresetCategory {
+    id: string;
+    label: string;
+  }
+  export interface PresetEntry {
+    file: string;
+    name: string;
+    category?: string;
+    dimensions?: [number, number];
+    ledCount?: number;
+  }
+  export interface PresetManifest {
+    schemaVersion?: number;
+    categories?: PresetCategory[];
+    presets: PresetEntry[];
+  }
+  const manifest: PresetManifest;
+  export default manifest;
 }

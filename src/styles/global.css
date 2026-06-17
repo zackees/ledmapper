@@ -451,6 +451,106 @@ canvas {
 .control-row.is-disabled,
 .control-stack.is-disabled { @apply opacity-50 pointer-events-none; }
 
+/* ── Preset Picker ──────────────────────────────────────────────
+   Shared categorized-accordion preset picker (issue #206).
+   Used by Record (moviemaker) in `compact` mode and Create
+   (shapeeditor) in `inline` mode. `.preset-btn` is the per-pill
+   style that was tool-local to moviemaker before the picker was
+   shared. */
+
+.preset-btn {
+    font-size: 0.72rem;
+    padding: 4px 12px;
+    background: transparent;
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm-pill);
+    color: var(--color-lm-text-secondary);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.preset-btn:hover {
+    background: var(--color-lm-accent-subtle);
+    border-color: var(--color-lm-accent);
+    color: var(--color-lm-accent);
+}
+
+.preset-btn.active-preset,
+.preset-btn.active-preset:hover {
+    background: var(--color-lm-accent-subtle);
+    border-color: var(--color-lm-accent);
+    color: var(--color-lm-accent);
+}
+
+.preset-btn.active-preset:hover {
+    background: rgba(59, 130, 246, 0.18);
+}
+
+.preset-picker { @apply flex flex-col gap-1.5 w-full; }
+
+.preset-category { @apply flex flex-col; }
+
+.preset-category-header {
+    @apply flex items-center gap-2 w-full text-left;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 4px 8px;
+    background: transparent;
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm);
+    color: var(--color-lm-text-secondary);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.preset-category-header:hover {
+    background: var(--color-lm-accent-subtle);
+    border-color: var(--color-lm-accent);
+    color: var(--color-lm-accent);
+}
+
+.preset-category-chevron {
+    display: inline-block;
+    width: 0.7rem;
+    text-align: center;
+    transition: transform var(--lm-dur) var(--lm-ease);
+}
+
+.preset-category-chevron::before { content: "▸"; }
+
+.preset-category[data-open="true"] > .preset-category-header .preset-category-chevron::before {
+    content: "▾";
+}
+
+.preset-category-label { @apply flex-1; }
+
+.preset-category-count {
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border-radius: var(--radius-lm-pill);
+    background: var(--color-lm-surface-3);
+    color: var(--color-lm-text-muted);
+}
+
+.preset-category-body { @apply flex flex-wrap gap-1.5; padding: 6px 2px 2px; }
+
+.preset-category[data-open="false"] > .preset-category-body { display: none; }
+
+.preset-picker-empty {
+    font-size: 0.75rem;
+    color: var(--color-lm-text-muted);
+    padding: 4px 0;
+}
+
+.preset-picker[data-mode="inline"] {
+    @apply flex-row flex-wrap items-start gap-3;
+}
+
+.preset-picker[data-mode="inline"] .preset-category {
+    min-width: 220px;
+}
+
 /* ── Source Selection Cards ─────────────────────────────────── */
 
 .source-card {
