@@ -224,7 +224,7 @@ export function mountPresetPicker(
         const order = Array.from(tabsById.keys());
         const currentIdx = activeId === null ? -1 : order.indexOf(activeId);
         if (currentIdx === -1) return;
-        let nextIdx = -1;
+        let nextIdx: number;
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
             nextIdx = (currentIdx + 1) % order.length;
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
