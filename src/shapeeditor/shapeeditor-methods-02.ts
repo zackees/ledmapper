@@ -6,6 +6,7 @@ import { ShapeEditor } from './shapeeditor-class';
 import type { StripSnapshot } from './strips-model';
 
 import { getStripColors } from '../common';
+import { gfxColors } from '../ui/theme';
 
 import { getScreenmap, getBackup, restoreBackup, notePinMutation } from '../screenmap-store';
 import { safeStorage } from '../services/storage';
@@ -515,9 +516,9 @@ ShapeEditor.prototype.hideContextMenu = function (this: ShapeEditor) {
 
 ShapeEditor.prototype.hslAccentForStrip = function (this: ShapeEditor, s: number, total: number): string {
 
-        if (total <= 1) return '#3b82f6';
+        if (total <= 1) return gfxColors.accentBlue();
         const colors = getStripColors(total);
-        return colors[s] ?? '#3b82f6';
+        return colors[s] ?? gfxColors.accentBlue();
     };
 
 ShapeEditor.prototype._withinPinNeighbor = function (this: ShapeEditor, stripIdx: number, dir: 1 | -1) {

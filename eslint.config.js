@@ -174,11 +174,9 @@ export default tseslint.config(
       // through gfxColors.* — see #170.
       'src/ui/theme.ts',
       // Pre-existing inline-color / cssText violations, migrating per #170:
-      'src/shapeeditor/shapeeditor-methods-02.ts',
       'src/shapeeditor/shapeeditor-methods-03.ts',
       'src/shapeeditor/shapeeditor-methods-04.ts',
       'src/shapeeditor/shapeeditor-methods-05.ts',
-      'src/shapeeditor/shapeeditor-methods-06.ts',
       'src/shapeeditor/shapeeditor-methods-07.ts',
       'src/shapeeditor/shapeeditor-methods-08.ts',
     ],
