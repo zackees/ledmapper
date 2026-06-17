@@ -452,11 +452,13 @@ canvas {
 .control-stack.is-disabled { @apply opacity-50 pointer-events-none; }
 
 /* ── Preset Picker ──────────────────────────────────────────────
-   Shared categorized-accordion preset picker (issue #206).
-   Used by Record (moviemaker) in `compact` mode and Create
-   (shapeeditor) in `inline` mode. `.preset-btn` is the per-pill
-   style that was tool-local to moviemaker before the picker was
-   shared. */
+   Shared segmented-tabs preset picker (issue #209, follow-up to
+   the accordion from #206/#207). Two rows at rest: row 1 is the
+   category tabs (segmented control), row 2 is the items for the
+   active tab. Used by Record (moviemaker) in `compact` mode and
+   Create (shapeeditor) in `inline` mode. `.preset-btn` is the
+   per-pill style that was tool-local to moviemaker before the
+   picker was shared. */
 
 .preset-btn {
     font-size: 0.72rem;
@@ -488,54 +490,57 @@ canvas {
 
 .preset-picker { @apply flex flex-col gap-1.5 w-full; }
 
-.preset-category { @apply flex flex-col; }
+.preset-picker-tabs { @apply flex flex-wrap gap-1.5; }
 
-.preset-category-header {
-    @apply flex items-center gap-2 w-full text-left;
+.preset-picker-tab {
+    @apply flex items-center gap-1.5;
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    padding: 4px 8px;
+    padding: 4px 10px;
     background: transparent;
     border: 1px solid var(--color-lm-border);
-    border-radius: var(--radius-lm);
+    border-radius: var(--radius-lm-pill);
     color: var(--color-lm-text-secondary);
     cursor: pointer;
     font-family: inherit;
 }
 
-.preset-category-header:hover {
+.preset-picker-tab:hover {
     background: var(--color-lm-accent-subtle);
     border-color: var(--color-lm-accent);
     color: var(--color-lm-accent);
 }
 
-.preset-category-chevron {
-    display: inline-block;
-    width: 0.7rem;
-    text-align: center;
-    transition: transform var(--lm-dur) var(--lm-ease);
+.preset-picker-tab[aria-selected="true"],
+.preset-picker-tab[aria-selected="true"]:hover {
+    background: var(--color-lm-accent);
+    border-color: var(--color-lm-accent);
+    color: var(--color-lm-text);
 }
 
-.preset-category-chevron::before { content: "▸"; }
+.preset-picker-tab-label { @apply font-medium; }
 
-.preset-category[data-open="true"] > .preset-category-header .preset-category-chevron::before {
-    content: "▾";
-}
-
-.preset-category-label { @apply flex-1; }
-
-.preset-category-count {
+.preset-picker-tab-count {
     font-size: 0.65rem;
-    padding: 1px 6px;
+    padding: 0 5px;
+    min-width: 1.1rem;
+    text-align: center;
     border-radius: var(--radius-lm-pill);
     background: var(--color-lm-surface-3);
     color: var(--color-lm-text-muted);
 }
 
-.preset-category-body { @apply flex flex-wrap gap-1.5; padding: 6px 2px 2px; }
+.preset-picker-tab[aria-selected="true"] .preset-picker-tab-count {
+    background: rgba(255, 255, 255, 0.18);
+    color: var(--color-lm-text);
+}
 
-.preset-category[data-open="false"] > .preset-category-body { display: none; }
+.preset-picker-items { @apply flex flex-col; }
+
+.preset-picker-panel { @apply flex flex-wrap gap-1.5; padding: 2px 0; }
+
+.preset-picker-panel[hidden] { display: none; }
 
 .preset-picker-empty {
     font-size: 0.75rem;
@@ -544,11 +549,11 @@ canvas {
 }
 
 .preset-picker[data-mode="inline"] {
-    @apply flex-row flex-wrap items-start gap-3;
+    @apply flex-row flex-wrap items-center gap-3;
 }
 
-.preset-picker[data-mode="inline"] .preset-category {
-    min-width: 220px;
+.preset-picker[data-mode="inline"] .preset-picker-items {
+    @apply flex-1;
 }
 
 /* ── Source Selection Cards ─────────────────────────────────── */
