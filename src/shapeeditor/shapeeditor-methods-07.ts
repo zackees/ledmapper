@@ -6,6 +6,7 @@ import { BufferGeometry, Float32BufferAttribute, DynamicDrawUsage, LineSegments,
 
 import type { PanelOpts, WiringStyle, DataInCorner, RotationDeg } from './panel-catalog';
 import { getStripColors } from '../common';
+import { gfxColors, withAlpha } from '../ui/theme';
 
 import { notePinMutation } from '../screenmap-store';
 
@@ -614,8 +615,8 @@ ShapeEditor.prototype._drawPlacingGhost = function (this: ShapeEditor) {
         if (pts.length === 0) return;
         ctx.save();
         ctx.lineWidth = 1;
-        ctx.strokeStyle = 'rgba(59,130,246,0.9)';
-        ctx.fillStyle = 'rgba(59,130,246,0.4)';
+        ctx.strokeStyle = withAlpha(gfxColors.accentBlue(), 0.9);
+        ctx.fillStyle = withAlpha(gfxColors.accentBlue(), 0.4);
         // Connecting polyline (wiring order)
         ctx.beginPath();
         for (let i = 0; i < pts.length; i++) {
@@ -633,7 +634,7 @@ ShapeEditor.prototype._drawPlacingGhost = function (this: ShapeEditor) {
         }
         // Crosshair at origin
         const [ocx, ocy] = self.toCanvasCoords(wx, wy);
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.strokeStyle = withAlpha(gfxColors.textStrong(), 0.8);
         ctx.beginPath();
         ctx.moveTo(ocx - 6, ocy); ctx.lineTo(ocx + 6, ocy);
         ctx.moveTo(ocx, ocy - 6); ctx.lineTo(ocx, ocy + 6);
