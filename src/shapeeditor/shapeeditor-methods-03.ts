@@ -362,7 +362,6 @@ ShapeEditor.prototype._previewConnectorTarget = function (this: ShapeEditor, upI
 
         self.renderStripsPanel();
         if (targetIdx === null) return;
-        if (!self.dom_strips_list) return;
         const upRow = self.dom_strips_list.querySelector(`.strip-row[data-strip-idx="${String(upIdx)}"]`);
         const tgtRow = self.dom_strips_list.querySelector(`.strip-row[data-strip-idx="${String(targetIdx)}"]`);
         if (upRow && tgtRow && upRow !== tgtRow) {
