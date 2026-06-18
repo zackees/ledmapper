@@ -74,7 +74,7 @@ ShapeEditor.prototype._updatePasteGhostFromCanvas = function (this: ShapeEditor,
 
         if (!self.pasteState) return;
         let [wx, wy] = self._canvasToWorldPx(cx, cy);
-        if (self.dom_pp_snap?.checked) {
+        if (self.dom_pp_snap.checked) {
             const gpx = self._gridSizePx();
             [wx, wy] = snapToGrid([wx, wy], gpx);
         }
@@ -125,7 +125,7 @@ ShapeEditor.prototype._commitPasteAt = function (this: ShapeEditor, cx: number, 
 
         if (!self.pasteState) return;
         let [wx, wy] = self._canvasToWorldPx(cx, cy);
-        if (self.dom_pp_snap?.checked) {
+        if (self.dom_pp_snap.checked) {
             const gpx = self._gridSizePx();
             [wx, wy] = snapToGrid([wx, wy], gpx);
         }
@@ -330,14 +330,14 @@ ShapeEditor.prototype._openInsertDialog = async function (this: ShapeEditor) {
             // Snapshot current accordion values for initial form state
             const initial = {
                 catalogId: PANEL_CATALOG[0] ? PANEL_CATALOG[0].id : '',
-                wiring: self.dom_pp_wiring ? self.dom_pp_wiring.value : 'serpentine',
-                corner: self.dom_pp_corner ? self.dom_pp_corner.value : 'TL',
-                rotation: self.dom_pp_rotation ? self.dom_pp_rotation.value : '0',
-                flipH: self.dom_pp_flipH ? self.dom_pp_flipH.checked : false,
-                flipV: self.dom_pp_flipV ? self.dom_pp_flipV.checked : false,
-                spacing: self.dom_pp_spacing ? self.dom_pp_spacing.value : '1',
-                snap: self.dom_pp_snap ? self.dom_pp_snap.checked : true,
-                grid: self.dom_pp_grid ? self.dom_pp_grid.value : '1',
+                wiring: self.dom_pp_wiring.value,
+                corner: self.dom_pp_corner.value,
+                rotation: self.dom_pp_rotation.value,
+                flipH: self.dom_pp_flipH.checked,
+                flipV: self.dom_pp_flipV.checked,
+                spacing: self.dom_pp_spacing.value,
+                snap: self.dom_pp_snap.checked,
+                grid: self.dom_pp_grid.value,
             };
 
             const catalogOptions = PANEL_CATALOG.map((e) => `<option value="${e.id}">${e.label}</option>`).join('');
@@ -532,14 +532,14 @@ ShapeEditor.prototype._readInsertDialog = function (this: ShapeEditor): InsertDi
 ShapeEditor.prototype._writeAccordionFromDialog = function (this: ShapeEditor, opts: InsertDialogOpts) {
     const self = this;
 
-        if (self.dom_pp_wiring && opts.wiring) self.dom_pp_wiring.value = opts.wiring;
-        if (self.dom_pp_corner && opts.corner) self.dom_pp_corner.value = opts.corner;
-        if (self.dom_pp_rotation && (opts.rotation || opts.rotation === 0)) self.dom_pp_rotation.value = String(opts.rotation);
-        if (self.dom_pp_flipH) self.dom_pp_flipH.checked = opts.flipH;
-        if (self.dom_pp_flipV) self.dom_pp_flipV.checked = opts.flipV;
-        if (self.dom_pp_spacing && (opts.spacing || opts.spacing === 0)) self.dom_pp_spacing.value = String(opts.spacing);
-        if (self.dom_pp_snap) self.dom_pp_snap.checked = opts.snap;
-        if (self.dom_pp_grid && (opts.grid || opts.grid === 0)) self.dom_pp_grid.value = String(opts.grid);
+        if (opts.wiring) self.dom_pp_wiring.value = opts.wiring;
+        if (opts.corner) self.dom_pp_corner.value = opts.corner;
+        if (opts.rotation || opts.rotation === 0) self.dom_pp_rotation.value = String(opts.rotation);
+        self.dom_pp_flipH.checked = opts.flipH;
+        self.dom_pp_flipV.checked = opts.flipV;
+        if (opts.spacing || opts.spacing === 0) self.dom_pp_spacing.value = String(opts.spacing);
+        self.dom_pp_snap.checked = opts.snap;
+        if (opts.grid || opts.grid === 0) self.dom_pp_grid.value = String(opts.grid);
     };
 
 ShapeEditor.prototype._submitInsertDialog = function (this: ShapeEditor, opts: InsertDialogOpts) {

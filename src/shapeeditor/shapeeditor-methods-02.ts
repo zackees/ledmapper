@@ -538,7 +538,6 @@ ShapeEditor.prototype._withinPinNeighbor = function (this: ShapeEditor, stripIdx
 ShapeEditor.prototype.renderStripsPanel = function (this: ShapeEditor) {
     const self = this;
 
-        if (!self.dom_strips_list) return;
         const strips = self.stripStore.getStrips();
         self.dom_strips_list.innerHTML = '';
         // Keep the panel visible whenever we have a backup to surface — even
@@ -546,11 +545,11 @@ ShapeEditor.prototype.renderStripsPanel = function (this: ShapeEditor) {
         // backup…" after pressing New.
         const haveBackup = !!getBackup();
         if (strips.length === 0) {
-            if (self.dom_strips_panel) self.dom_strips_panel.style.display = haveBackup ? '' : 'none';
+            self.dom_strips_panel.style.display = haveBackup ? '' : 'none';
             self.renderSelectedStripRow();
             return;
         }
-        if (self.dom_strips_panel) self.dom_strips_panel.style.display = '';
+        self.dom_strips_panel.style.display = '';
         self.dom_strips_list.classList.toggle('chain-mode', self.editorMode === 'chain');
         self.dom_strips_list.classList.toggle('reorder-mode', self.editorMode === 'reorder');
         const selStripIdx = self.selection.getStripIdx();
@@ -714,11 +713,10 @@ ShapeEditor.prototype.renderStripsPanel = function (this: ShapeEditor) {
 ShapeEditor.prototype.renderBackupRow = function (this: ShapeEditor) {
     const self = this;
 
-        if (!self.dom_strips_backup_row) return;
         const b = getBackup();
         if (!b?.meta) {
             self.dom_strips_backup_row.style.display = 'none';
-            if (self.dom_strips_btn_restore_backup) self.dom_strips_btn_restore_backup.disabled = true;
+            self.dom_strips_btn_restore_backup.disabled = true;
             return;
         }
         const m = b.meta;
@@ -726,9 +724,9 @@ ShapeEditor.prototype.renderBackupRow = function (this: ShapeEditor) {
         const ledCount = typeof m.ledCount === 'number' ? m.ledCount : 0;
         const when: string = typeof m.savedAt === 'number' ? self._relativeTime(m.savedAt) as string : '';
         const summary = `${String(stripCount)} strip${stripCount === 1 ? '' : 's'} · ${String(ledCount)} LED${ledCount === 1 ? '' : 's'} · ${when}`;
-        if (self.dom_strips_backup_summary) self.dom_strips_backup_summary.textContent = summary;
+        self.dom_strips_backup_summary.textContent = summary;
         self.dom_strips_backup_row.style.display = '';
-        if (self.dom_strips_btn_restore_backup) self.dom_strips_btn_restore_backup.disabled = false;
+        self.dom_strips_btn_restore_backup.disabled = false;
     };
 
 ShapeEditor.prototype.doRestoreBackupFromButton = function (this: ShapeEditor) {
@@ -757,15 +755,11 @@ ShapeEditor.prototype.setEditorMode = function (this: ShapeEditor, mode: string 
         self.editorMode = m;
         self.connectorDrag = null;
         self.startHandleDrag = null;
-        if (m && self.dom_strips_panel) (self.dom_strips_panel as HTMLDetailsElement).open = true;
-        if (self.dom_strips_btn_chain) {
-            self.dom_strips_btn_chain.classList.toggle('active', m === 'chain');
-            self.dom_strips_btn_chain.setAttribute('aria-pressed', m === 'chain' ? 'true' : 'false');
-        }
-        if (self.dom_strips_btn_reorder) {
-            self.dom_strips_btn_reorder.classList.toggle('active', m === 'reorder');
-            self.dom_strips_btn_reorder.setAttribute('aria-pressed', m === 'reorder' ? 'true' : 'false');
-        }
+        if (m) (self.dom_strips_panel as HTMLDetailsElement).open = true;
+        self.dom_strips_btn_chain.classList.toggle('active', m === 'chain');
+        self.dom_strips_btn_chain.setAttribute('aria-pressed', m === 'chain' ? 'true' : 'false');
+        self.dom_strips_btn_reorder.classList.toggle('active', m === 'reorder');
+        self.dom_strips_btn_reorder.setAttribute('aria-pressed', m === 'reorder' ? 'true' : 'false');
         // Reorder mode dims the canvas (§1.6); wrapper exists post-initRenderer.
         if (self.wrapper) self.wrapper.classList.toggle('canvas-dim', m === 'reorder');
         self._hideConnectorMenu();
@@ -777,7 +771,6 @@ ShapeEditor.prototype.setEditorMode = function (this: ShapeEditor, mode: string 
 ShapeEditor.prototype.renderSelectedStripRow = function (this: ShapeEditor) {
     const self = this;
 
-        if (!self.dom_strips_selected_row) return;
         const strips = self.stripStore.getStrips();
         const sIdx = self.selection.getStripIdx();
         if (sIdx === null || sIdx < 0 || sIdx >= strips.length) {
@@ -787,29 +780,25 @@ ShapeEditor.prototype.renderSelectedStripRow = function (this: ShapeEditor) {
         const s = self.nn(strips[sIdx]);
         const pin = self._pinOfStrip(s);
         self.dom_strips_selected_row.style.display = '';
-        if (self.dom_strips_selected_label) {
-            self.dom_strips_selected_label.textContent = `Selected: ${s.name} (${String(pin)})`;
+        self.dom_strips_selected_label.textContent = `Selected: ${s.name} (${String(pin)})`;
+        self.dom_strips_move_pin.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Move to pin…';
+        placeholder.selected = true;
+        placeholder.disabled = true;
+        self.dom_strips_move_pin.appendChild(placeholder);
+        for (const p of self.stripStore.getPinOrder()) {
+            if (p === pin) continue;
+            const opt = document.createElement('option');
+            opt.value = p;
+            opt.textContent = p;
+            self.dom_strips_move_pin.appendChild(opt);
         }
-        if (self.dom_strips_move_pin) {
-            self.dom_strips_move_pin.innerHTML = '';
-            const placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.textContent = 'Move to pin…';
-            placeholder.selected = true;
-            placeholder.disabled = true;
-            self.dom_strips_move_pin.appendChild(placeholder);
-            for (const p of self.stripStore.getPinOrder()) {
-                if (p === pin) continue;
-                const opt = document.createElement('option');
-                opt.value = p;
-                opt.textContent = p;
-                self.dom_strips_move_pin.appendChild(opt);
-            }
-            const newOpt = document.createElement('option');
-            newOpt.value = '__new__';
-            newOpt.textContent = 'New pin…';
-            self.dom_strips_move_pin.appendChild(newOpt);
-        }
+        const newOpt = document.createElement('option');
+        newOpt.value = '__new__';
+        newOpt.textContent = 'New pin…';
+        self.dom_strips_move_pin.appendChild(newOpt);
     };
 
 ShapeEditor.prototype._reverseStripInPlace = function (this: ShapeEditor, stripIdx: number) {

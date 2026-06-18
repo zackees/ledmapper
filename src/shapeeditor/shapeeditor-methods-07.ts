@@ -533,19 +533,19 @@ ShapeEditor.prototype.animate = function (this: ShapeEditor) {
 ShapeEditor.prototype._readPanelOpts = function (this: ShapeEditor): PanelOpts {
     const self = this;
 
-        const rot = self.dom_pp_rotation ? parseInt(self.dom_pp_rotation.value, 10) || 0 : 0;
+        const rot = parseInt(self.dom_pp_rotation.value, 10) || 0;
         // Clamp to the valid RotationDeg union
         const validRots: RotationDeg[] = [0, 90, 180, 270];
         const rotation = (validRots.includes(rot as RotationDeg)
             ? rot
             : 0) as RotationDeg;
         return {
-            wiring: (self.dom_pp_wiring ? self.dom_pp_wiring.value : 'serpentine') as WiringStyle,
-            dataInCorner: (self.dom_pp_corner ? self.dom_pp_corner.value : 'TL') as DataInCorner,
+            wiring: self.dom_pp_wiring.value as WiringStyle,
+            dataInCorner: self.dom_pp_corner.value as DataInCorner,
             rotation,
-            flipH: self.dom_pp_flipH ? self.dom_pp_flipH.checked : false,
-            flipV: self.dom_pp_flipV ? self.dom_pp_flipV.checked : false,
-            spacing: self.dom_pp_spacing ? (parseFloat(self.dom_pp_spacing.value) || 1) : 1,
+            flipH: self.dom_pp_flipH.checked,
+            flipV: self.dom_pp_flipV.checked,
+            spacing: parseFloat(self.dom_pp_spacing.value) || 1,
         };
     };
 
@@ -558,7 +558,7 @@ ShapeEditor.prototype._enterPlacing = function (this: ShapeEditor, catalogId: st
         const localPts = generatePanelPoints(entry, opts);
         self.placingState = { entry, opts, localPts, ghostWorld: null };
         self._updateHintStrip();
-        if (self.dom_pp_status) self.dom_pp_status.textContent = `Placing ${entry.label} — click canvas (Esc to cancel)`;
+        self.dom_pp_status.textContent = `Placing ${entry.label} — click canvas (Esc to cancel)`;
         self._oc().style.cursor = 'crosshair';
         self.setNeedsRender();
     };
@@ -568,7 +568,7 @@ ShapeEditor.prototype._cancelPlacing = function (this: ShapeEditor) {
 
         self.placingState = null;
         self.pendingNewStripPin = null;
-        if (self.dom_pp_status) self.dom_pp_status.textContent = '';
+        self.dom_pp_status.textContent = '';
         self._oc().style.cursor = 'default';
         self.setNeedsRender();
         self._updateHintStrip();
@@ -586,7 +586,7 @@ ShapeEditor.prototype._canvasToWorldPx = function (this: ShapeEditor, cx: number
 ShapeEditor.prototype._gridSizePx = function (this: ShapeEditor) {
     const self = this;
 
-        const grid = self.dom_pp_grid ? (parseFloat(self.dom_pp_grid.value) || 1) : 1;
+        const grid = parseFloat(self.dom_pp_grid.value) || 1;
         const fs = self.fitScale > 0 ? self.fitScale : 1;
         return grid * fs;
     };
@@ -596,7 +596,7 @@ ShapeEditor.prototype._updateGhostFromCanvas = function (this: ShapeEditor, cx: 
 
         if (!self.placingState) return;
         let [wx, wy] = self._canvasToWorldPx(cx, cy);
-        if (self.dom_pp_snap?.checked) {
+        if (self.dom_pp_snap.checked) {
             const gpx = self._gridSizePx();
             [wx, wy] = snapToGrid([wx, wy], gpx);
         }
@@ -688,7 +688,7 @@ ShapeEditor.prototype._commitPlacingAt = function (this: ShapeEditor, cx: number
         const entry = self.placingState.entry;
         const opts = self.placingState.opts;
         let [wx, wy] = self._canvasToWorldPx(cx, cy);
-        if (self.dom_pp_snap?.checked) {
+        if (self.dom_pp_snap.checked) {
             const gpx = self._gridSizePx();
             [wx, wy] = snapToGrid([wx, wy], gpx);
         }
@@ -713,7 +713,7 @@ ShapeEditor.prototype._commitPlacingAt = function (this: ShapeEditor, cx: number
         self.renderStripsPanel();
         self.setNeedsGeometryUpdate();
         self.placingState = null;
-        if (self.dom_pp_status) self.dom_pp_status.textContent = `Placed ${entry.label} as ${String(name)}`;
+        self.dom_pp_status.textContent = `Placed ${entry.label} as ${String(name)}`;
         self._oc().style.cursor = 'default';
         self._updateHintStrip();
     };

@@ -459,10 +459,8 @@ this.dom_btn_redo.addEventListener('click', (...args: any[]) => (this.performRed
         this.dom_strips_backup_row = (this.container.querySelector<HTMLElement>('#strips_backup_row'))!;
         this.dom_strips_backup_summary = (this.container.querySelector<HTMLElement>('#strips_backup_summary'))!;
         this.dom_strips_btn_restore_backup = (this.container.querySelector<HTMLButtonElement>('#strips_btn_restore_backup'))!;
-if (this.dom_strips_btn_restore_backup) {
         this.dom_strips_btn_restore_backup.addEventListener('click', (...args: any[]) => (this.doRestoreBackupFromButton as any)(...args), { signal: this.signal });
-    }
-if (this.dom_strips_list) {
+
         this.dom_strips_list.addEventListener('click', (e: MouseEvent) => { void (async () => {
             const tgt = e.target as Element | null;
             const btn = tgt?.closest('button[data-action]');
@@ -592,14 +590,12 @@ if (this.dom_strips_list) {
             panelDragState = null;
             clearDragOver();
         }, { signal: this.signal });
-    }
+
         this.dom_strips_btn_add_pin = (this.container.querySelector<HTMLElement>('#strips_btn_add_pin'))!;
-if (this.dom_strips_btn_add_pin) {
         this.dom_strips_btn_add_pin.addEventListener('click', () => { this.doAddPin(); }, { signal: this.signal });
-    }
+
         this.dom_strips_btn_chain = (this.container.querySelector<HTMLElement>('#strips_btn_chain'))!;
         this.dom_strips_btn_reorder = (this.container.querySelector<HTMLElement>('#strips_btn_reorder'))!;
-if (this.dom_strips_btn_chain) {
         this.dom_strips_btn_chain.addEventListener('click', () => {
             this.setEditorMode(this.editorMode === 'chain' ? null : 'chain');
         }, { signal: this.signal });
@@ -610,16 +606,13 @@ if (this.dom_strips_btn_chain) {
                 this.dom_strips_btn_chain.hidden = true;
             }
         } catch { /* matchMedia unavailable */ }
-    }
-if (this.dom_strips_btn_reorder) {
         this.dom_strips_btn_reorder.addEventListener('click', () => {
             this.setEditorMode(this.editorMode === 'reorder' ? null : 'reorder');
         }, { signal: this.signal });
-    }
+
         this.dom_strips_selected_row = (this.container.querySelector<HTMLElement>('#strips_selected_row'))!;
         this.dom_strips_selected_label = (this.container.querySelector<HTMLElement>('#strips_selected_label'))!;
         this.dom_strips_move_pin = (this.container.querySelector<HTMLSelectElement>('#strips_move_pin'))!;
-if (this.dom_strips_move_pin) {
         this.dom_strips_move_pin.addEventListener('change', () => {
             const sIdx = this.selection.getStripIdx();
             const value = this.dom_strips_move_pin.value;
@@ -627,15 +620,13 @@ if (this.dom_strips_move_pin) {
             if (value === '__new__') this.doRepinStrip(sIdx, this._nextFreePinId());
             else this.doRepinStrip(sIdx, value);
         }, { signal: this.signal });
-    }
         this.dom_strips_show_chain = (this.container.querySelector<HTMLInputElement>('#strips_show_chain'))!;
-        this.showChainArrows = this.dom_strips_show_chain ? this.dom_strips_show_chain.checked : true;
-if (this.dom_strips_show_chain) {
+        this.showChainArrows = this.dom_strips_show_chain.checked;
         this.dom_strips_show_chain.addEventListener('change', () => {
             this.showChainArrows = this.dom_strips_show_chain.checked;
             this.setNeedsRender();
         }, { signal: this.signal });
-    }
+
         this.connectorMenuEl = null;
 window.addEventListener('mousedown', (e) => {
         if (this.connectorMenuEl && !this.connectorMenuEl.contains(e.target as Node | null)) {
@@ -673,26 +664,26 @@ this.dom_btn_new.addEventListener('click', () => {
         }
     }, { signal: this.signal });
         this.screenmapDropTarget = (this.container.querySelector('#screenmap_drop_target'))!;
-if (this.screenmapDropTarget) wireFileSource({
-        input: this.dom_btn_upload_screenmap,
-        target: this.screenmapDropTarget,
-        onFile: (file: File | null | undefined) => this.loadScreenmapFile(file),
-        signal: this.signal,
-    });
+        wireFileSource({
+            input: this.dom_btn_upload_screenmap,
+            target: this.screenmapDropTarget,
+            onFile: (file: File | null | undefined) => this.loadScreenmapFile(file),
+            signal: this.signal,
+        });
         this.imageDropTarget = (this.container.querySelector('#image_drop_target'))!;
-if (this.imageDropTarget) wireFileDropTarget({
-        target: this.imageDropTarget,
-        input: this.dom_btn_upload_image,
-        onFile: (file) => {
-            if (!file) return;
-            if (!file.type.startsWith('image/')) {
-                void errorDialog('Wrong file type', 'Please drop an image file.');
-                return;
-            }
-            this.loadBackgroundImage(file);
-        },
-        signal: this.signal,
-    });
+        wireFileDropTarget({
+            target: this.imageDropTarget,
+            input: this.dom_btn_upload_image,
+            onFile: (file) => {
+                if (!file) return;
+                if (!file.type.startsWith('image/')) {
+                    void errorDialog('Wrong file type', 'Please drop an image file.');
+                    return;
+                }
+                this.loadBackgroundImage(file);
+            },
+            signal: this.signal,
+        });
         // Preset-load click handling is wired through the shared picker
         // mounted in `loadPresetsFromManifest`; no select-change listener
         // needed here anymore (issue #206).
@@ -856,10 +847,7 @@ window.addEventListener('resize', (...args: any[]) => (this.handleResize as any)
         this.dom_pp_grid = (this.container.querySelector<HTMLInputElement>('#pp_grid'))!;
         this.dom_pp_status = (this.container.querySelector<HTMLElement>('#pp_status'))!;
         this.dom_pp_open_dialog = (this.container.querySelector<HTMLElement>('#pp_open_dialog'))!;
-if (this.dom_pp_open_dialog) {
         this.dom_pp_open_dialog.addEventListener('click', () => { void this._openInsertDialog(); }, { signal: this.signal });
-    }
-if (this.dom_panel_buttons) {
         for (const entry of PANEL_CATALOG) {
             const btn = document.createElement('button');
             btn.type = 'button';
@@ -869,7 +857,6 @@ if (this.dom_panel_buttons) {
             btn.addEventListener('click', () => { this._enterPlacing(entry.id); }, { signal: this.signal });
             this.dom_panel_buttons.appendChild(btn);
         }
-    }
 document.addEventListener('paste', (e) => {
         const t = e.target;
         if (t && ((t as HTMLElement).tagName === 'INPUT' || (t as HTMLElement).tagName === 'TEXTAREA' || (t as HTMLElement).isContentEditable)) return;
