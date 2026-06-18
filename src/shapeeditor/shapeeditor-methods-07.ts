@@ -401,7 +401,7 @@ ShapeEditor.prototype.updateLabels = function (this: ShapeEditor, transformedPts
 
         self._infoDiv().innerHTML =
             `Points: ${String(self.screenmap_pts.length)}<br>Size: ${physW} &times; ${physH} cm` +
-            `<br><span style="opacity:0.5;font-size:12px">Shift+click: insert between &nbsp; Ctrl+click: extend end</span>`;
+            `<br><span class="shapeeditor-info-hint">Shift+click: insert between &nbsp; Ctrl+click: extend end</span>`;
     };
 
 ShapeEditor.prototype.handleResize = function (this: ShapeEditor) {

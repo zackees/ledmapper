@@ -402,6 +402,13 @@
     color: #93c5fd;
 }
 
+/* Secondary hint text rendered next to the canvas info readout.
+   Used by methods-07.ts after migrating off an inline `style=""` (#170). */
+.shapeeditor-info-hint {
+    opacity: 0.5;
+    font-size: 12px;
+}
+
 /* Connector rows between same-pin strips (visible in Chain mode) */
 .connector-row {
     @apply select-none;
