@@ -11,6 +11,7 @@ import { fileHasExtension } from '../drag-drop';
 import { saveScreenmap, notePinMutation } from '../screenmap-store';
 import { safeStorage } from '../services/storage';
 import { fireDialog, errorDialog } from '../ui/dialogs';
+import { gfxColors, withAlpha } from '../ui/theme';
 import { mountPresetPicker } from '../ui/preset-picker';
 import type { PresetCategory } from '../ui/preset-picker';
 
@@ -23,10 +24,10 @@ ShapeEditor.prototype._openHelpOverlay = async function (this: ShapeEditor) {
             if (self.signal.aborted) return;
             const dismissed = safeStorage.get('lm:shapeeditor-helpDismissed') === '1';
             const html = `
-                <div style="text-align:left;font:13px/1.45 'Outfit',system-ui,sans-serif;color:#e5e7eb;display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+                <div class="help-overlay-grid">
                     <div>
-                        <h3 style="margin:0 0 6px 0;font-size:14px;color:#93c5fd;">Mouse</h3>
-                        <ul style="margin:0;padding-left:18px;">
+                        <h3 class="help-overlay-h3">Mouse</h3>
+                        <ul class="help-overlay-ul">
                             <li>Drag canvas: pan</li>
                             <li>R-drag: zoom</li>
                             <li>Click LED: select its strip</li>
@@ -43,8 +44,8 @@ ShapeEditor.prototype._openHelpOverlay = async function (this: ShapeEditor) {
                         </ul>
                     </div>
                     <div>
-                        <h3 style="margin:0 0 6px 0;font-size:14px;color:#93c5fd;">Keyboard</h3>
-                        <ul style="margin:0;padding-left:18px;">
+                        <h3 class="help-overlay-h3">Keyboard</h3>
+                        <ul class="help-overlay-ul">
                             <li><b>I</b> — Insert panel</li>
                             <li><b>Ctrl+V</b> — Paste screenmap</li>
                             <li><b>?</b> / <b>F1</b> — This help</li>
@@ -52,8 +53,8 @@ ShapeEditor.prototype._openHelpOverlay = async function (this: ShapeEditor) {
                             <li><b>Delete</b> — Remove selection</li>
                             <li><b>Esc</b> — Cancel / exit point-edit</li>
                         </ul>
-                        <h3 style="margin:12px 0 6px 0;font-size:14px;color:#93c5fd;">Touch</h3>
-                        <ul style="margin:0;padding-left:18px;">
+                        <h3 class="help-overlay-h3 is-spaced-top">Touch</h3>
+                        <ul class="help-overlay-ul">
                             <li>Tap LED: select strip</li>
                             <li>Drag LED: move whole strip</li>
                             <li>Drag empty space: pan</li>
@@ -64,9 +65,9 @@ ShapeEditor.prototype._openHelpOverlay = async function (this: ShapeEditor) {
                         </ul>
                     </div>
                 </div>
-                <div id="help_chains_pins" style="margin-top:14px;text-align:left;font:13px/1.45 'Outfit',system-ui,sans-serif;color:#e5e7eb;">
-                    <h3 style="margin:0 0 6px 0;font-size:14px;color:#93c5fd;">Chains and Pins</h3>
-                    <ul style="margin:0;padding-left:18px;">
+                <div id="help_chains_pins" class="help-overlay-section is-spaced-top">
+                    <h3 class="help-overlay-h3">Chains and Pins</h3>
+                    <ul class="help-overlay-ul">
                         <li><b>Chain</b> mode: drag a connector arrowhead to rewire strips; right-click an arrow for Swap / Split / Move options</li>
                         <li><b>Reorder</b> mode: move strips within a pin with the ▲/▼ arrows; drag a grip across pin headers to repin</li>
                         <li><b>+ Pin</b>: move the selected strip onto a fresh pin</li>
@@ -74,8 +75,8 @@ ShapeEditor.prototype._openHelpOverlay = async function (this: ShapeEditor) {
                         <li>Pin names are labels; export order, not name, determines FastLED <code>addLeds</code> call order</li>
                     </ul>
                 </div>
-                <div style="margin-top:14px;text-align:left;">
-                    <label style="font-size:12px;color:#9ca3af;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+                <div class="help-overlay-dismiss-row">
+                    <label class="help-overlay-dismiss-label">
                         <input id="help_dont_show" type="checkbox" ${dismissed ? 'checked' : ''}>
                         Don't show on launch
                     </label>
@@ -382,15 +383,11 @@ ShapeEditor.prototype.showDeleteBgConfirm = function (this: ShapeEditor) {
 
         if (self.deleteBgConfirmEl) return; // already showing
         self.deleteBgConfirmEl = document.createElement('div');
-        self.deleteBgConfirmEl.style.cssText =
-            'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:100;' +
-            'background:#1e1e1e;border:1px solid #444;border-radius:8px;' +
-            'padding:16px 24px;box-shadow:0 4px 20px rgba(0,0,0,0.6);text-align:center;' +
-            'font:14px/1.4 "Outfit",system-ui,sans-serif;color:#eee;';
+        self.deleteBgConfirmEl.className = 'delete-bg-confirm';
         self.deleteBgConfirmEl.innerHTML =
-            '<div style="margin-bottom:12px">Delete background image?</div>' +
-            '<button data-bg-del="yes" style="padding:6px 16px;margin:0 6px;background:#ef4444;color:#fff;border:none;border-radius:4px;cursor:pointer;font:inherit">Delete</button>' +
-            '<button data-bg-del="no" style="padding:6px 16px;margin:0 6px;background:#333;color:#eee;border:1px solid #555;border-radius:4px;cursor:pointer;font:inherit">Cancel</button>';
+            '<div class="delete-bg-confirm-prompt">Delete background image?</div>' +
+            '<button data-bg-del="yes" class="delete-bg-confirm-btn delete-bg-confirm-btn--yes">Delete</button>' +
+            '<button data-bg-del="no" class="delete-bg-confirm-btn delete-bg-confirm-btn--no">Cancel</button>';
         self.deleteBgConfirmEl.addEventListener('click', (e: MouseEvent) => {
             const val = (e.target as HTMLElement | null)?.dataset.bgDel;
             if (val === 'yes') self.removeBackgroundImage();
@@ -591,9 +588,9 @@ ShapeEditor.prototype.drawRuler = function (this: ShapeEditor) {
         ctx.lineTo(bx - nx * bandHalf, by - ny * bandHalf);
         ctx.lineTo(ax - nx * bandHalf, ay - ny * bandHalf);
         ctx.closePath();
-        ctx.fillStyle = 'rgba(20, 20, 20, 0.8)';
+        ctx.fillStyle = withAlpha(gfxColors.bgPopover(), 0.8);
         ctx.fill();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.strokeStyle = withAlpha(gfxColors.textStrong(), 0.15);
         ctx.lineWidth = 1;
         ctx.stroke();
 
@@ -613,7 +610,7 @@ ShapeEditor.prototype.drawRuler = function (this: ShapeEditor) {
             const isMajor = (i % majorEvery === 0);
             const tickLen = isMajor ? 8 : 4;
 
-            ctx.strokeStyle = isMajor ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.25)';
+            ctx.strokeStyle = isMajor ? withAlpha(gfxColors.textStrong(), 0.6) : withAlpha(gfxColors.textStrong(), 0.25);
             ctx.lineWidth = isMajor ? 1 : 0.5;
             ctx.beginPath();
             ctx.moveTo(tx - nx * bandHalf, ty - ny * bandHalf);
@@ -633,7 +630,7 @@ ShapeEditor.prototype.drawRuler = function (this: ShapeEditor) {
                 ctx.translate(tx + nx * (bandHalf + 10), ty + ny * (bandHalf + 10));
                 ctx.rotate(Math.atan2(dy, dx));
                 ctx.font = '9px "IBM Plex Mono", monospace';
-                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.fillStyle = withAlpha(gfxColors.textStrong(), 0.5);
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(label, 0, 0);
@@ -650,7 +647,7 @@ ShapeEditor.prototype.drawRuler = function (this: ShapeEditor) {
         const flipText = angle > Math.PI / 2 || angle < -Math.PI / 2;
         ctx.rotate(flipText ? angle + Math.PI : angle);
         ctx.font = 'bold 11px "IBM Plex Mono", monospace';
-        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.fillStyle = withAlpha(gfxColors.textStrong(), 0.75);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(lenCm.toFixed(2) + ' cm', 0, 0);
@@ -660,9 +657,9 @@ ShapeEditor.prototype.drawRuler = function (this: ShapeEditor) {
         for (const [hx, hy] of [[ax, ay], [bx, by]] as [number, number][]) {
             ctx.beginPath();
             ctx.arc(hx, hy, self.RULER_HANDLE_R, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(59,130,246,0.85)';
+            ctx.fillStyle = withAlpha(gfxColors.accentBlue(), 0.85);
             ctx.fill();
-            ctx.strokeStyle = '#fff';
+            ctx.strokeStyle = gfxColors.textStrong();
             ctx.lineWidth = 1.5;
             ctx.stroke();
         }
@@ -672,7 +669,7 @@ ShapeEditor.prototype.drawRuler = function (this: ShapeEditor) {
         ctx.translate(ax + nx * (bandHalf + 10), ay + ny * (bandHalf + 10));
         ctx.rotate(Math.atan2(dy, dx));
         ctx.font = '9px "IBM Plex Mono", monospace';
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fillStyle = withAlpha(gfxColors.textStrong(), 0.5);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('0', 0, 0);
@@ -717,7 +714,7 @@ ShapeEditor.prototype.drawChainArrows = function (this: ShapeEditor, pts: [numbe
         const pinColors = getPinColors(pinOrder.length);
         const pinColorOf = (strip: StripEntry) => {
             const i = pinOrder.indexOf(self._pinOfStrip(strip));
-            return pinColors[i >= 0 ? i : 0] ?? '#3b82f6';
+            return pinColors[i >= 0 ? i : 0] ?? gfxColors.accentBlue();
         };
         // Refresh canvas-space geometry used by Chain-mode hit-tests.
         self._chainGeom.connectors.length = 0;
@@ -735,8 +732,8 @@ ShapeEditor.prototype.drawChainArrows = function (this: ShapeEditor, pts: [numbe
         }
         ctx.save();
         ctx.globalAlpha = 0.9;
-        ctx.strokeStyle = '#3b82f6';
-        ctx.fillStyle = '#3b82f6';
+        ctx.strokeStyle = gfxColors.accentBlue();
+        ctx.fillStyle = gfxColors.accentBlue();
         ctx.lineWidth = 1.5;
         ctx.setLineDash([6, 4]);
         let badgeN = 1;
@@ -757,7 +754,7 @@ ShapeEditor.prototype.drawChainArrows = function (this: ShapeEditor, pts: [numbe
                 ctx.beginPath();
                 ctx.arc(x2 + 12, y2 - 12, 6, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+                ctx.strokeStyle = withAlpha(gfxColors.textStrong(), 0.8);
                 ctx.lineWidth = 1;
                 ctx.beginPath();
                 ctx.arc(x2 + 12, y2 - 12, 6, 0, Math.PI * 2);
@@ -767,8 +764,8 @@ ShapeEditor.prototype.drawChainArrows = function (this: ShapeEditor, pts: [numbe
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(self._pinOfStrip(b), x2 + 21, y2 - 12);
-                ctx.strokeStyle = '#3b82f6';
-                ctx.fillStyle = '#3b82f6';
+                ctx.strokeStyle = gfxColors.accentBlue();
+                ctx.fillStyle = gfxColors.accentBlue();
                 ctx.lineWidth = 1.5;
                 ctx.setLineDash([6, 4]);
                 self._chainGeom.crossBadges.push({ up: s, down: s + 1, x: x2 + 12, y: y2 - 12 });
@@ -796,14 +793,14 @@ ShapeEditor.prototype.drawChainArrows = function (this: ShapeEditor, pts: [numbe
             // numbered badge at midpoint
             const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
             ctx.setLineDash([]);
-            ctx.fillStyle = '#0a0a0a';
+            ctx.fillStyle = gfxColors.bgPopoverStrong();
             ctx.beginPath();
             ctx.arc(mx, my, 9, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = '#3b82f6';
+            ctx.strokeStyle = gfxColors.accentBlue();
             ctx.lineWidth = 1.5;
             ctx.stroke();
-            ctx.fillStyle = '#3b82f6';
+            ctx.fillStyle = gfxColors.accentBlue();
             ctx.font = '10px "IBM Plex Mono", monospace';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -834,7 +831,7 @@ ShapeEditor.prototype._drawChainDragGhost = function (this: ShapeEditor) {
         if (ax === null || ay === null) return;
         ctx.save();
         ctx.globalAlpha = 0.95;
-        ctx.strokeStyle = '#22d3ee';
+        ctx.strokeStyle = gfxColors.accentCyan();
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 4]);
         ctx.beginPath();
@@ -846,7 +843,7 @@ ShapeEditor.prototype._drawChainDragGhost = function (this: ShapeEditor) {
             const h = handles.find((e) => e.strip === drag.targetIdx);
             if (h) {
                 ctx.setLineDash([]);
-                ctx.strokeStyle = '#22d3ee';
+                ctx.strokeStyle = gfxColors.accentCyan();
                 ctx.lineWidth = 2.5;
                 ctx.beginPath();
                 ctx.arc(h.x, h.y, 13, 0, Math.PI * 2);
