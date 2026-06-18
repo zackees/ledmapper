@@ -454,6 +454,101 @@
     border-radius: 4px;
 }
 
+/* shapeeditor renderer + tooltip + context-menu chrome — extracted
+   from methods-03.ts `style.cssText = '...'` blobs (#170). These
+   elements are appended to document.body (context menu) or to
+   `.shapeeditor-main` (renderer/tooltip), so the classes are
+   unscoped to match the existing pattern. */
+.shapeeditor-three-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.shapeeditor-overlay-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+.shapeeditor-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.85);
+    color: var(--fastled-text-strong);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font: 12px monospace;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.shapeeditor-ctx-menu,
+.shapeeditor-ctx-submenu {
+    position: fixed;
+    display: none;
+    z-index: 9999;
+    background: var(--fastled-bg-popover);
+    border: 1px solid var(--fastled-border-popover);
+    border-radius: 6px;
+    padding: 6px 0;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.shapeeditor-ctx-menu { min-width: 240px; }
+
+.shapeeditor-ctx-submenu {
+    position: absolute;
+    left: 100%;
+    top: 0;
+    min-width: 220px;
+    white-space: nowrap;
+}
+
+.shapeeditor-ctx-load-wrapper { position: relative; }
+
+.shapeeditor-ctx-load-trigger {
+    background: none;
+    color: var(--color-lm-text);
+}
+
+.shapeeditor-ctx-load-trigger.is-active {
+    background: var(--fastled-accent-blue);
+    color: var(--fastled-text-strong);
+}
+
+/* Bottom-left info readout + center placeholder. The shared base
+   (`labelStyle` in TS) is captured by .shapeeditor-canvas-label; the
+   per-element placement adds position offsets. */
+.shapeeditor-canvas-label {
+    position: absolute;
+    pointer-events: none;
+    color: var(--fastled-text-strong);
+    font: bold 13px/1 "Outfit", system-ui, sans-serif;
+    text-shadow: 0 0 3px var(--color-lm-bg), 0 0 3px var(--color-lm-bg);
+}
+
+.shapeeditor-info-div {
+    bottom: 10px;
+    left: 10px;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.shapeeditor-placeholder {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    color: var(--fastled-text-strong);
+    font: 24px sans-serif;
+}
+
 /* Connector rows between same-pin strips (visible in Chain mode) */
 .connector-row {
     @apply select-none;
