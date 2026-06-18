@@ -7,6 +7,7 @@ import { WebGLRenderer, Scene, OrthographicCamera } from 'three';
 import { notePinMutation } from '../screenmap-store';
 import { safeStorage } from '../services/storage';
 import { fireDialog } from '../ui/dialogs';
+import { gfxColors } from '../ui/theme';
 
 import { hintTextFor } from './hints';
 
@@ -447,7 +448,7 @@ ShapeEditor.prototype.doDeleteStripPrompt = async function (this: ShapeEditor, s
             icon: 'warning',
             showCancelButton: true,
             confirmButtonText: 'Delete',
-            confirmButtonColor: '#ef4444',
+            confirmButtonColor: gfxColors.accentRed(),
         });
         if (!result.isConfirmed) return;
         const removed = self._removeStripPoints(stripIdx);
@@ -535,7 +536,7 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
         self.wrapper.style.inset = '0';
         self.mainEl.appendChild(self.wrapper);
 
-        self.renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;';
+        self.renderer.domElement.className = 'shapeeditor-three-canvas';
         self.wrapper.appendChild(self.renderer.domElement);
 
         // Overlay canvas for rainbow lines, arrows, and labels (always visible)
@@ -543,26 +544,20 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
         const dpr = window.devicePixelRatio || 1;
         self.overlayCanvas.width = width * dpr;
         self.overlayCanvas.height = height * dpr;
-        self.overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;touch-action:none;';
+        self.overlayCanvas.className = 'shapeeditor-overlay-canvas';
         self.wrapper.appendChild(self.overlayCanvas);
         self.overlayCtx = self.overlayCanvas.getContext('2d');
         self._octx().scale(dpr, dpr);
 
         // LED index tooltip
         self.tooltip = document.createElement('div');
-        self.tooltip.style.cssText =
-            'position:absolute;pointer-events:none;' +
-            'background:rgba(0,0,0,0.85);color:#fff;' +
-            'padding:4px 8px;border-radius:4px;font:12px monospace;white-space:nowrap;' +
-            'opacity:0;transition:opacity 0.15s;';
+        self.tooltip.className = 'shapeeditor-tooltip';
         self.wrapper.appendChild(self.tooltip);
 
-        // Right-click context menu (inline styles — lives on document.body, outside tool CSS scope)
+        // Right-click context menu. Lives on document.body but the
+        // shapeeditor CSS classes are unscoped so they still apply.
         self.ctxMenu = document.createElement('div');
-        self.ctxMenu.style.cssText =
-            'position:fixed;display:none;z-index:9999;' +
-            'background:#1e1e1e;border:1px solid #444;border-radius:6px;' +
-            'padding:6px 0;box-shadow:0 4px 16px rgba(0,0,0,0.5);min-width:240px;';
+        self.ctxMenu.className = 'shapeeditor-ctx-menu';
 
         // ── File operations (wrapped for show/hide) ──
         self.ctxFileOps = document.createElement('div');
@@ -572,29 +567,26 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
 
         // Load Screenmap with submenu
         const ctxLoadWrapper = document.createElement('div');
-        ctxLoadWrapper.style.cssText = 'position:relative;';
+        ctxLoadWrapper.className = 'shapeeditor-ctx-load-wrapper';
         self.ctxFileOps.appendChild(ctxLoadWrapper);
         self.ctxBtnLoadScreenmap = document.createElement('button');
         self.ctxBtnLoadScreenmap.textContent = 'Load Screenmap \u25B8';
-        self.ctxBtnLoadScreenmap.className = self.ctxBtnClass;
+        self.ctxBtnLoadScreenmap.className = `${self.ctxBtnClass} shapeeditor-ctx-load-trigger`;
         ctxLoadWrapper.appendChild(self.ctxBtnLoadScreenmap);
 
         self.ctxLoadSubmenu = document.createElement('div');
-        self.ctxLoadSubmenu.style.cssText =
-            'position:absolute;left:100%;top:0;display:none;' +
-            'background:#1e1e1e;border:1px solid #444;border-radius:6px;' +
-            'padding:6px 0;box-shadow:0 4px 16px rgba(0,0,0,0.5);min-width:220px;white-space:nowrap;';
+        self.ctxLoadSubmenu.className = 'shapeeditor-ctx-submenu';
         ctxLoadWrapper.appendChild(self.ctxLoadSubmenu);
 
         // "Upload file…" always first in submenu
         self.makeCtxBtn('Upload file\u2026', 'upload-screenmap', self.ctxLoadSubmenu);
 
         ctxLoadWrapper.addEventListener('mouseenter', () => {
-            if (self.ctxBtnLoadScreenmap) { self.ctxBtnLoadScreenmap.style.background = '#3b82f6'; self.ctxBtnLoadScreenmap.style.color = '#fff'; }
+            if (self.ctxBtnLoadScreenmap) self.ctxBtnLoadScreenmap.classList.add('is-active');
             if (self.ctxLoadSubmenu) self.ctxLoadSubmenu.style.display = '';
         });
         ctxLoadWrapper.addEventListener('mouseleave', () => {
-            if (self.ctxBtnLoadScreenmap) { self.ctxBtnLoadScreenmap.style.background = 'none'; self.ctxBtnLoadScreenmap.style.color = '#eee'; }
+            if (self.ctxBtnLoadScreenmap) self.ctxBtnLoadScreenmap.classList.remove('is-active');
             if (self.ctxLoadSubmenu) self.ctxLoadSubmenu.style.display = 'none';
         });
 
@@ -722,14 +714,12 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
 
         self._wireTouchHandlers(self.signal);
 
-        const labelStyle = 'position:absolute;pointer-events:none;color:#fff;font:bold 13px/1 "Outfit",system-ui,sans-serif;text-shadow:0 0 3px #000,0 0 3px #000;';
-
         self.infoDiv = document.createElement('div');
-        self.infoDiv.style.cssText = labelStyle + 'bottom:10px;left:10px;font-size:14px;line-height:1.6;';
+        self.infoDiv.className = 'shapeeditor-canvas-label shapeeditor-info-div';
         self.wrapper.appendChild(self.infoDiv);
 
         self.placeholderDiv = document.createElement('div');
-        self.placeholderDiv.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;color:#fff;font:24px sans-serif;';
+        self.placeholderDiv.className = 'shapeeditor-placeholder';
         self.placeholderDiv.textContent = 'Upload a screenmap file to begin';
         self.wrapper.appendChild(self.placeholderDiv);
 
