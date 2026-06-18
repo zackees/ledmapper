@@ -4,6 +4,7 @@
 import { ShapeEditor } from './shapeeditor-class';
 
 import { getStripColors, stripStartEndLabels } from '../common';
+import { gfxColors, withAlpha } from '../ui/theme';
 
 import type { GizmoHandle } from './shapeeditor-types';
 
@@ -84,10 +85,10 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
         // Draw oriented bounding box outline
         if (self.gizmoHover === 'translate' || self.gizmoActive === 'translate') {
             self.overlayCtx.globalAlpha = self.gizmoActive === 'translate' ? 0.8 : 0.5;
-            self.overlayCtx.strokeStyle = '#3b82f6';
+            self.overlayCtx.strokeStyle = gfxColors.accentBlue();
         } else {
             self.overlayCtx.globalAlpha = 0.3;
-            self.overlayCtx.strokeStyle = '#888';
+            self.overlayCtx.strokeStyle = gfxColors.textMuted();
         }
         self.overlayCtx.lineWidth = 1;
         self.overlayCtx.setLineDash([6, 4]);
@@ -149,7 +150,7 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
                 if (hasMultiStrip) {
                     const rawIdx = idxToStrip?.[i] ?? 0;
                     const stripIdx = rawIdx >= 0 ? rawIdx : 0;
-                    self.overlayCtx.strokeStyle = stripColors?.[stripIdx] ?? '#ffffff';
+                    self.overlayCtx.strokeStyle = stripColors?.[stripIdx] ?? gfxColors.textStrong();
                 } else {
                     const hue = (120 + i * 2) % 360;
                     self.overlayCtx.strokeStyle = `hsl(${String(hue)}, 100%, 50%)`;
@@ -179,14 +180,14 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
                 }
             }
             for (let i = 2; i < pts.length - 1; i++) {
-                self.fillCircle(self.nn(pts[i])[0], self.nn(pts[i])[1], 4, 'rgba(255,255,255,0.5)');
+                self.fillCircle(self.nn(pts[i])[0], self.nn(pts[i])[1], 4, withAlpha(gfxColors.textStrong(), 0.5));
             }
         }
 
         // Highlighted edge for "insert between"
         if (self.highlightedEdgeIdx >= 0 && self.highlightedEdgeIdx < pts.length - 1) {
             self.overlayCtx.globalAlpha = 1;
-            self.overlayCtx.strokeStyle = '#00ffff';
+            self.overlayCtx.strokeStyle = gfxColors.accentCyan();
             self.overlayCtx.lineWidth = 4;
             self.overlayCtx.beginPath();
             self.overlayCtx.moveTo(self.nn(pts[self.highlightedEdgeIdx])[0], self.nn(pts[self.highlightedEdgeIdx])[1]);
@@ -195,7 +196,7 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
             // Midpoint marker
             const mx = (self.nn(pts[self.highlightedEdgeIdx])[0] + self.nn(pts[self.highlightedEdgeIdx + 1])[0]) / 2;
             const my = (self.nn(pts[self.highlightedEdgeIdx])[1] + self.nn(pts[self.highlightedEdgeIdx + 1])[1]) / 2;
-            self.overlayCtx.fillStyle = '#00ffff';
+            self.overlayCtx.fillStyle = gfxColors.accentCyan();
             self.overlayCtx.beginPath();
             self.overlayCtx.arc(mx, my, 5, 0, Math.PI * 2);
             self.overlayCtx.fill();
@@ -218,8 +219,8 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
         self.overlayCtx.globalAlpha = 1;
         const hasMultiStripLabels = self.stripInfo && self.stripInfo.strips.length > 1;
         const labelItems = [];
-        const START_COLOR = 'rgba(0,255,0,1)';
-        const END_COLOR = 'rgba(255,0,0,1)';
+        const START_COLOR = gfxColors.ledStart();
+        const END_COLOR = gfxColors.ledEnd();
         if (hasMultiStripLabels) {
             for (let s = 0; s < self._si().strips.length; s++) {
                 const st = self.nn(self._si().strips[s]);
@@ -234,7 +235,7 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
                 }
             }
         } else {
-            if (pts.length > 1) self.fillCircle(self.nn(pts[1])[0], self.nn(pts[1])[1], 6, 'rgba(0,255,0,0.5)');
+            if (pts.length > 1) self.fillCircle(self.nn(pts[1])[0], self.nn(pts[1])[1], 6, withAlpha(gfxColors.ledStart(), 0.5));
             const singleStrip = (self.stripInfo?.strips.length === 1)
                 ? { name: self.stripInfo.strips[0]?.name ?? '', count: pts.length }
                 : { name: '', count: pts.length };
@@ -246,7 +247,7 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
         }
         self.labelRenderer.draw(self.overlayCtx, labelItems, {
             font: 'bold 13px "Outfit", system-ui, sans-serif',
-            textColor: '#fff',
+            textColor: gfxColors.textStrong(),
             bounds: { x: 0, y: 0, w: self.canvasW, h: self.canvasH },
             obstacles: () => pts.map(([x, y]: [number, number]) => ({ x: x - 3, y: y - 3, w: 6, h: 6 })),
         });
@@ -269,7 +270,7 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
                 if (isFinite(minX)) {
                     const pad = 10;
                     self.overlayCtx.globalAlpha = 0.9;
-                    self.overlayCtx.strokeStyle = '#3b82f6';
+                    self.overlayCtx.strokeStyle = gfxColors.accentBlue();
                     self.overlayCtx.lineWidth = 2;
                     self.overlayCtx.setLineDash([6, 4]);
                     self.overlayCtx.strokeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2);
@@ -282,13 +283,13 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
         if (self.selectedIdx >= 0 && self.selectedIdx < pts.length) {
             const [sx, sy] = self.nn(pts[self.selectedIdx]);
             self.overlayCtx.globalAlpha = 1;
-            self.overlayCtx.strokeStyle = '#00ffff';
+            self.overlayCtx.strokeStyle = gfxColors.accentCyan();
             self.overlayCtx.lineWidth = 2;
             self.overlayCtx.beginPath();
             self.overlayCtx.arc(sx, sy, 10, 0, Math.PI * 2);
             self.overlayCtx.stroke();
             // Pulsing inner glow
-            self.overlayCtx.strokeStyle = 'rgba(0,255,255,0.4)';
+            self.overlayCtx.strokeStyle = withAlpha(gfxColors.accentCyan(), 0.4);
             self.overlayCtx.lineWidth = 4;
             self.overlayCtx.beginPath();
             self.overlayCtx.arc(sx, sy, 14, 0, Math.PI * 2);
@@ -324,8 +325,8 @@ ShapeEditor.prototype._drawSnapGuides = function (this: ShapeEditor) {
     if (!self.stripDragActive) return;
     if (self.stripSnapXTargets.length === 0 && self.stripSnapYTargets.length === 0) return;
     const ctx = self.overlayCtx;
-    const INACTIVE = 'rgba(220, 80, 80, 0.18)';  // greyed red
-    const ACTIVE   = 'rgba(220, 38, 38, 0.80)';  // deep red, 80% opacity
+    const INACTIVE = withAlpha(gfxColors.accentRed(), 0.18);  // greyed red
+    const ACTIVE   = withAlpha(gfxColors.accentRed(), 0.80);  // deep red, 80% opacity
     ctx.save();
     ctx.setLineDash([6, 4]);
     for (const tx of self.stripSnapXTargets) {
@@ -469,7 +470,7 @@ ShapeEditor.prototype.drawGizmoHandles = function (this: ShapeEditor) {
 
         // Draw rotation connecting line (dashed)
         const topCenter = handles.edges.top;
-        self._octx().strokeStyle = '#3b82f6';
+        self._octx().strokeStyle = gfxColors.accentBlue();
         self._octx().lineWidth = 1;
         self._octx().setLineDash([4, 3]);
         self._octx().beginPath();
@@ -480,7 +481,7 @@ ShapeEditor.prototype.drawGizmoHandles = function (this: ShapeEditor) {
 
         // Draw rotation handle (arc with arrowhead)
         const isRotHover = self.gizmoHover === 'rotate' || self.gizmoActive === 'rotate';
-        const rotColor = isRotHover ? '#60a5fa' : '#3b82f6';
+        const rotColor = isRotHover ? gfxColors.accentBlueHover() : gfxColors.accentBlue();
         const rx: number = handles.rotate.x;
         const ry: number = handles.rotate.y;
         const arcR = isRotHover ? 9 : 7;
@@ -515,7 +516,7 @@ ShapeEditor.prototype.drawGizmoHandles = function (this: ShapeEditor) {
             self._octx().rotate(rotRad);
             self._octx().fillStyle = color;
             self._octx().fillRect(-w / 2, -ht / 2, w, ht);
-            self._octx().strokeStyle = '#fff';
+            self._octx().strokeStyle = gfxColors.textStrong();
             self._octx().lineWidth = 1;
             self._octx().strokeRect(-w / 2, -ht / 2, w, ht);
             self._octx().restore();
@@ -526,7 +527,7 @@ ShapeEditor.prototype.drawGizmoHandles = function (this: ShapeEditor) {
             const id = 'corner-' + key;
             const active = self.gizmoHover === id || self.gizmoActive === id;
             const size = active ? 12 : 10;
-            const color = active ? '#60a5fa' : '#3b82f6';
+            const color = active ? gfxColors.accentBlueHover() : gfxColors.accentBlue();
             drawHandle(h, size, size, color);
         }
 
@@ -537,7 +538,7 @@ ShapeEditor.prototype.drawGizmoHandles = function (this: ShapeEditor) {
             const isHoriz = (key === 'top' || key === 'bottom');
             const w = isHoriz ? (active ? 18 : 16) : (active ? 10 : 8);
             const ht = isHoriz ? (active ? 10 : 8) : (active ? 18 : 16);
-            const color = active ? '#60a5fa' : '#3b82f6';
+            const color = active ? gfxColors.accentBlueHover() : gfxColors.accentBlue();
             drawHandle(h, w, ht, color);
         }
 
@@ -604,10 +605,10 @@ ShapeEditor.prototype.drawBgGizmoHandles = function (this: ShapeEditor) {
         const isTranslating = self.bgGizmoHover === 'translate' || self.bgGizmoActive === 'translate';
         if (isTranslating) {
             self.overlayCtx.globalAlpha = self.bgGizmoActive === 'translate' ? 0.8 : 0.5;
-            self.overlayCtx.strokeStyle = '#f59e0b';
+            self.overlayCtx.strokeStyle = gfxColors.accentAmber();
         } else {
             self.overlayCtx.globalAlpha = 0.3;
-            self.overlayCtx.strokeStyle = '#888';
+            self.overlayCtx.strokeStyle = gfxColors.textMuted();
         }
         self.overlayCtx.lineWidth = 1;
         self.overlayCtx.setLineDash([6, 4]);
@@ -622,7 +623,7 @@ ShapeEditor.prototype.drawBgGizmoHandles = function (this: ShapeEditor) {
 
         // Rotation connecting line
         const topCenter = handles.edges.top;
-        self.overlayCtx.strokeStyle = '#f59e0b';
+        self.overlayCtx.strokeStyle = gfxColors.accentAmber();
         self.overlayCtx.lineWidth = 1;
         self.overlayCtx.setLineDash([4, 3]);
         self.overlayCtx.beginPath();
@@ -633,7 +634,7 @@ ShapeEditor.prototype.drawBgGizmoHandles = function (this: ShapeEditor) {
 
         // Rotation handle
         const isRotHover = self.bgGizmoHover === 'rotate' || self.bgGizmoActive === 'rotate';
-        const rotColor = isRotHover ? '#fbbf24' : '#f59e0b';
+        const rotColor = isRotHover ? gfxColors.accentAmberHover() : gfxColors.accentAmber();
         const rx: number = handles.rotate.x, ry: number = handles.rotate.y;
         const arcR = isRotHover ? 9 : 7;
         self.overlayCtx.strokeStyle = rotColor;
@@ -660,7 +661,7 @@ ShapeEditor.prototype.drawBgGizmoHandles = function (this: ShapeEditor) {
             self._octx().rotate(rotRad);
             self._octx().fillStyle = color;
             self._octx().fillRect(-w / 2, -ht / 2, w, ht);
-            self._octx().strokeStyle = '#fff';
+            self._octx().strokeStyle = gfxColors.textStrong();
             self._octx().lineWidth = 1;
             self._octx().strokeRect(-w / 2, -ht / 2, w, ht);
             self._octx().restore();
@@ -670,7 +671,7 @@ ShapeEditor.prototype.drawBgGizmoHandles = function (this: ShapeEditor) {
             const id = 'corner-' + key;
             const active = self.bgGizmoHover === id || self.bgGizmoActive === id;
             const size = active ? 12 : 10;
-            drawHandle(h, size, size, active ? '#fbbf24' : '#f59e0b');
+            drawHandle(h, size, size, active ? gfxColors.accentAmberHover() : gfxColors.accentAmber());
         }
 
         for (const [key, h] of Object.entries(handles.edges as Record<string, GizmoHandle>)) {
@@ -679,7 +680,7 @@ ShapeEditor.prototype.drawBgGizmoHandles = function (this: ShapeEditor) {
             const isHoriz = (key === 'top' || key === 'bottom');
             const w = isHoriz ? (active ? 18 : 16) : (active ? 10 : 8);
             const ht = isHoriz ? (active ? 10 : 8) : (active ? 18 : 16);
-            drawHandle(h, w, ht, active ? '#fbbf24' : '#f59e0b');
+            drawHandle(h, w, ht, active ? gfxColors.accentAmberHover() : gfxColors.accentAmber());
         }
 
         self.overlayCtx.restore();
@@ -862,9 +863,9 @@ ShapeEditor.prototype._drawMarqueeRect = function (this: ShapeEditor) {
     if (w < 1 && h < 1) return;
     ctx.save();
     ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(0, 200, 255, 0.10)';
+    ctx.fillStyle = withAlpha(gfxColors.accentCyan(), 0.10);
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#00c8ff';
+    ctx.strokeStyle = gfxColors.accentCyan();
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 4]);
     ctx.strokeRect(x, y, w, h);
@@ -995,7 +996,7 @@ ShapeEditor.prototype._drawGizmoPreviewOverlay = function (this: ShapeEditor, pt
             }
         }
         ctx.globalAlpha = self.overlayAlpha * 0.55;
-        ctx.strokeStyle = '#9ca3af';
+        ctx.strokeStyle = gfxColors.textMuted();
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         let penDown = false;
@@ -1018,7 +1019,7 @@ ShapeEditor.prototype._drawGizmoPreviewOverlay = function (this: ShapeEditor, pt
         const [tx1, ty1] = txPt(x1, y1);
         const [tx2, ty2] = txPt(x2, y2);
         ctx.globalAlpha = 1;
-        ctx.strokeStyle = '#00ffff';
+        ctx.strokeStyle = gfxColors.accentCyan();
         ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.moveTo(tx1, ty1);
@@ -1031,7 +1032,7 @@ ShapeEditor.prototype._drawGizmoPreviewOverlay = function (this: ShapeEditor, pt
         const [sx, sy] = self.nn(pts[self.selectedIdx]);
         const [tsx, tsy] = txPt(sx, sy);
         ctx.globalAlpha = 1;
-        ctx.strokeStyle = '#00ffff';
+        ctx.strokeStyle = gfxColors.accentCyan();
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(tsx, tsy, 10, 0, Math.PI * 2);
@@ -1104,7 +1105,7 @@ ShapeEditor.prototype._drawStripRotateHandle = function (this: ShapeEditor) {
     if (!h) return;
     const ctx = self.overlayCtx;
     const isActive = self.stripRotateActive || self.stripRotateHover;
-    const color = isActive ? '#c084fc' : '#a855f7'; // tailwind purple-400 / purple-500
+    const color = isActive ? gfxColors.accentPurpleHover() : gfxColors.accentPurple(); // tailwind purple-400 / purple-500
     ctx.save();
     ctx.globalAlpha = 0.95;
     // Dashed connector
