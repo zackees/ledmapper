@@ -173,8 +173,6 @@ export default tseslint.config(
       // when getComputedStyle is unavailable. Everything else reads
       // through gfxColors.* — see #170.
       'src/ui/theme.ts',
-      // Pre-existing inline-color / cssText violations, migrating per #170:
-      'src/shapeeditor/shapeeditor-methods-05.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',
