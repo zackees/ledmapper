@@ -453,12 +453,12 @@ window.__shapeeditorDebug = {
         this.redoStack = [];
 this.dom_btn_undo.addEventListener('click', (...args: any[]) => (this.performUndo as any)(...args), { signal: this.signal });
 this.dom_btn_redo.addEventListener('click', (...args: any[]) => (this.performRedo as any)(...args), { signal: this.signal });
-        this.dom_strips_panel = (this.container.querySelector<HTMLElement>('#strips_panel'))!;
-        this.dom_strips_list = (this.container.querySelector<HTMLElement>('#strips_list'))!;
+        this.dom_strips_panel = this.qe<HTMLElement>('#strips_panel');
+        this.dom_strips_list = this.qe<HTMLElement>('#strips_list');
         this.collapsedPins = new Set();
-        this.dom_strips_backup_row = (this.container.querySelector<HTMLElement>('#strips_backup_row'))!;
-        this.dom_strips_backup_summary = (this.container.querySelector<HTMLElement>('#strips_backup_summary'))!;
-        this.dom_strips_btn_restore_backup = (this.container.querySelector<HTMLButtonElement>('#strips_btn_restore_backup'))!;
+        this.dom_strips_backup_row = this.qe<HTMLElement>('#strips_backup_row');
+        this.dom_strips_backup_summary = this.qe<HTMLElement>('#strips_backup_summary');
+        this.dom_strips_btn_restore_backup = this.qeb('#strips_btn_restore_backup');
         this.dom_strips_btn_restore_backup.addEventListener('click', (...args: any[]) => (this.doRestoreBackupFromButton as any)(...args), { signal: this.signal });
 
         this.dom_strips_list.addEventListener('click', (e: MouseEvent) => { void (async () => {
@@ -591,11 +591,11 @@ this.dom_btn_redo.addEventListener('click', (...args: any[]) => (this.performRed
             clearDragOver();
         }, { signal: this.signal });
 
-        this.dom_strips_btn_add_pin = (this.container.querySelector<HTMLElement>('#strips_btn_add_pin'))!;
+        this.dom_strips_btn_add_pin = this.qe<HTMLElement>('#strips_btn_add_pin');
         this.dom_strips_btn_add_pin.addEventListener('click', () => { this.doAddPin(); }, { signal: this.signal });
 
-        this.dom_strips_btn_chain = (this.container.querySelector<HTMLElement>('#strips_btn_chain'))!;
-        this.dom_strips_btn_reorder = (this.container.querySelector<HTMLElement>('#strips_btn_reorder'))!;
+        this.dom_strips_btn_chain = this.qe<HTMLElement>('#strips_btn_chain');
+        this.dom_strips_btn_reorder = this.qe<HTMLElement>('#strips_btn_reorder');
         this.dom_strips_btn_chain.addEventListener('click', () => {
             this.setEditorMode(this.editorMode === 'chain' ? null : 'chain');
         }, { signal: this.signal });
@@ -610,9 +610,9 @@ this.dom_btn_redo.addEventListener('click', (...args: any[]) => (this.performRed
             this.setEditorMode(this.editorMode === 'reorder' ? null : 'reorder');
         }, { signal: this.signal });
 
-        this.dom_strips_selected_row = (this.container.querySelector<HTMLElement>('#strips_selected_row'))!;
-        this.dom_strips_selected_label = (this.container.querySelector<HTMLElement>('#strips_selected_label'))!;
-        this.dom_strips_move_pin = (this.container.querySelector<HTMLSelectElement>('#strips_move_pin'))!;
+        this.dom_strips_selected_row = this.qe<HTMLElement>('#strips_selected_row');
+        this.dom_strips_selected_label = this.qe<HTMLElement>('#strips_selected_label');
+        this.dom_strips_move_pin = this.qe<HTMLSelectElement>('#strips_move_pin');
         this.dom_strips_move_pin.addEventListener('change', () => {
             const sIdx = this.selection.getStripIdx();
             const value = this.dom_strips_move_pin.value;
@@ -620,7 +620,7 @@ this.dom_btn_redo.addEventListener('click', (...args: any[]) => (this.performRed
             if (value === '__new__') this.doRepinStrip(sIdx, this._nextFreePinId());
             else this.doRepinStrip(sIdx, value);
         }, { signal: this.signal });
-        this.dom_strips_show_chain = (this.container.querySelector<HTMLInputElement>('#strips_show_chain'))!;
+        this.dom_strips_show_chain = this.qei('#strips_show_chain');
         this.showChainArrows = this.dom_strips_show_chain.checked;
         this.dom_strips_show_chain.addEventListener('change', () => {
             this.showChainArrows = this.dom_strips_show_chain.checked;
@@ -663,14 +663,14 @@ this.dom_btn_new.addEventListener('click', () => {
             void this._toastInfo('New layout — previous layout kept as backup');
         }
     }, { signal: this.signal });
-        this.screenmapDropTarget = (this.container.querySelector('#screenmap_drop_target'))!;
+        this.screenmapDropTarget = this.qe<HTMLElement>('#screenmap_drop_target');
         wireFileSource({
             input: this.dom_btn_upload_screenmap,
             target: this.screenmapDropTarget,
             onFile: (file: File | null | undefined) => this.loadScreenmapFile(file),
             signal: this.signal,
         });
-        this.imageDropTarget = (this.container.querySelector('#image_drop_target'))!;
+        this.imageDropTarget = this.qe<HTMLElement>('#image_drop_target');
         wireFileDropTarget({
             target: this.imageDropTarget,
             input: this.dom_btn_upload_image,
@@ -836,17 +836,17 @@ window.addEventListener('resize', (...args: any[]) => (this.handleResize as any)
         this.placingState = null;
         this.pendingNewStripPin = null;
         this.pasteState = null;
-        this.dom_panel_buttons = (this.container.querySelector<HTMLElement>('#panel_catalog_buttons'))!;
-        this.dom_pp_wiring = (this.container.querySelector<HTMLSelectElement>('#pp_wiring'))!;
-        this.dom_pp_corner = (this.container.querySelector<HTMLSelectElement>('#pp_corner'))!;
-        this.dom_pp_rotation = (this.container.querySelector<HTMLSelectElement>('#pp_rotation'))!;
-        this.dom_pp_flipH = (this.container.querySelector<HTMLInputElement>('#pp_flipH'))!;
-        this.dom_pp_flipV = (this.container.querySelector<HTMLInputElement>('#pp_flipV'))!;
-        this.dom_pp_spacing = (this.container.querySelector<HTMLInputElement>('#pp_spacing'))!;
-        this.dom_pp_snap = (this.container.querySelector<HTMLInputElement>('#pp_snap'))!;
-        this.dom_pp_grid = (this.container.querySelector<HTMLInputElement>('#pp_grid'))!;
-        this.dom_pp_status = (this.container.querySelector<HTMLElement>('#pp_status'))!;
-        this.dom_pp_open_dialog = (this.container.querySelector<HTMLElement>('#pp_open_dialog'))!;
+        this.dom_panel_buttons = this.qe<HTMLElement>('#panel_catalog_buttons');
+        this.dom_pp_wiring = this.qe<HTMLSelectElement>('#pp_wiring');
+        this.dom_pp_corner = this.qe<HTMLSelectElement>('#pp_corner');
+        this.dom_pp_rotation = this.qe<HTMLSelectElement>('#pp_rotation');
+        this.dom_pp_flipH = this.qei('#pp_flipH');
+        this.dom_pp_flipV = this.qei('#pp_flipV');
+        this.dom_pp_spacing = this.qei('#pp_spacing');
+        this.dom_pp_snap = this.qei('#pp_snap');
+        this.dom_pp_grid = this.qei('#pp_grid');
+        this.dom_pp_status = this.qe<HTMLElement>('#pp_status');
+        this.dom_pp_open_dialog = this.qe<HTMLElement>('#pp_open_dialog');
         this.dom_pp_open_dialog.addEventListener('click', () => { void this._openInsertDialog(); }, { signal: this.signal });
         for (const entry of PANEL_CATALOG) {
             const btn = document.createElement('button');
