@@ -177,7 +177,6 @@ export default tseslint.config(
       'src/shapeeditor/shapeeditor-methods-03.ts',
       'src/shapeeditor/shapeeditor-methods-04.ts',
       'src/shapeeditor/shapeeditor-methods-05.ts',
-      'src/shapeeditor/shapeeditor-methods-07.ts',
       'src/shapeeditor/shapeeditor-methods-08.ts',
     ],
     rules: {
