@@ -549,6 +549,92 @@
     font: 24px sans-serif;
 }
 
+/* Keyboard-help overlay rendered inside a SweetAlert popup. Extracted
+   from methods-04.ts inline `style="..."` attributes (#170). */
+.help-overlay-grid {
+    text-align: left;
+    font: 13px/1.45 "Outfit", system-ui, sans-serif;
+    color: var(--fastled-text-strong);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+.help-overlay-section {
+    text-align: left;
+    font: 13px/1.45 "Outfit", system-ui, sans-serif;
+    color: var(--fastled-text-strong);
+}
+
+.help-overlay-section.is-spaced-top { margin-top: 14px; }
+
+.help-overlay-h3 {
+    margin: 0 0 6px 0;
+    font-size: 14px;
+    color: var(--fastled-text-link);
+}
+
+.help-overlay-h3.is-spaced-top { margin-top: 12px; }
+
+.help-overlay-ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.help-overlay-dismiss-row {
+    margin-top: 14px;
+    text-align: left;
+}
+
+.help-overlay-dismiss-label {
+    font-size: 12px;
+    color: var(--color-lm-text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+/* Delete-background-image inline confirm popover (#170 — was a
+   `style.cssText` blob plus inline `style=""` on two buttons). */
+.delete-bg-confirm {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 100;
+    background: var(--fastled-bg-popover);
+    border: 1px solid var(--fastled-border-popover);
+    border-radius: 8px;
+    padding: 16px 24px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+    text-align: center;
+    font: 14px/1.4 "Outfit", system-ui, sans-serif;
+    color: var(--color-lm-text);
+}
+
+.delete-bg-confirm-prompt { margin-bottom: 12px; }
+
+.delete-bg-confirm-btn {
+    padding: 6px 16px;
+    margin: 0 6px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font: inherit;
+}
+
+.delete-bg-confirm-btn--yes {
+    background: var(--fastled-accent-red);
+    color: var(--fastled-text-strong);
+}
+
+.delete-bg-confirm-btn--no {
+    background: var(--color-lm-surface-3);
+    color: var(--color-lm-text);
+    border: 1px solid var(--color-lm-border);
+}
+
 /* Connector rows between same-pin strips (visible in Chain mode) */
 .connector-row {
     @apply select-none;
