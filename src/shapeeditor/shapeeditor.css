@@ -409,6 +409,51 @@
     font-size: 12px;
 }
 
+/* Insert Panel dialog — extracted from methods-08.ts after migrating
+   off ~13 inline `style="..."` attributes in the Swal HTML template (#170).
+   These classes render inside the SweetAlert popup so they live in
+   shapeeditor.css (unscoped, matching the existing pattern). */
+.ins-dialog-form {
+    text-align: left;
+    font: 13px/1.4 "Outfit", system-ui, sans-serif;
+    color: var(--fastled-text-strong);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 10px;
+    align-items: center;
+}
+
+.ins-dialog-form select,
+.ins-dialog-form input[type="number"] {
+    padding: 3px;
+}
+
+.ins-dialog-form input.ins-dialog-grid-input {
+    width: 80px;
+}
+
+.ins-dialog-inline-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.ins-dialog-inline-label.is-spaced {
+    margin-right: 10px;
+}
+
+.ins-dialog-preview-row {
+    margin-top: 12px;
+    display: flex;
+    justify-content: center;
+}
+
+.ins-dialog-preview-canvas {
+    background: var(--color-lm-bg);
+    border: 1px solid var(--color-lm-border);
+    border-radius: 4px;
+}
+
 /* Connector rows between same-pin strips (visible in Chain mode) */
 .connector-row {
     @apply select-none;

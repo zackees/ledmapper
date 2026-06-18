@@ -8,6 +8,7 @@ import type { WiringStyle, DataInCorner, RotationDeg } from './panel-catalog';
 
 import { notePinMutation } from '../screenmap-store';
 import { fireDialog } from '../ui/dialogs';
+import { gfxColors, withAlpha } from '../ui/theme';
 
 import { PANEL_CATALOG, getCatalogEntry, generatePanelPoints } from './panel-catalog';
 import { snapToGrid } from './grid-snap';
@@ -89,8 +90,8 @@ ShapeEditor.prototype._drawPasteGhost = function (this: ShapeEditor) {
         const [wx, wy] = self.pasteState.ghostWorld;
         ctx.save();
         ctx.lineWidth = 1;
-        ctx.strokeStyle = 'rgba(168,85,247,0.9)';
-        ctx.fillStyle = 'rgba(168,85,247,0.4)';
+        ctx.strokeStyle = withAlpha(gfxColors.accentPurple(), 0.9);
+        ctx.fillStyle = withAlpha(gfxColors.accentPurple(), 0.4);
         for (const strip of self.pasteState.strips) {
             if (!strip.offsetsLocal) continue;
             // Polyline of this strip
@@ -111,7 +112,7 @@ ShapeEditor.prototype._drawPasteGhost = function (this: ShapeEditor) {
         }
         // Crosshair at drop centroid
         const [ocx, ocy] = self.toCanvasCoords(wx, wy);
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.strokeStyle = withAlpha(gfxColors.textStrong(), 0.8);
         ctx.beginPath();
         ctx.moveTo(ocx - 6, ocy); ctx.lineTo(ocx + 6, ocy);
         ctx.moveTo(ocx, ocy - 6); ctx.lineTo(ocx, ocy + 6);
@@ -341,39 +342,39 @@ ShapeEditor.prototype._openInsertDialog = async function (this: ShapeEditor) {
 
             const catalogOptions = PANEL_CATALOG.map((e) => `<option value="${e.id}">${e.label}</option>`).join('');
             const html = `
-                <div style="text-align:left;font:13px/1.4 'Outfit',system-ui,sans-serif;color:#e5e7eb;display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;">
+                <div class="ins-dialog-form">
                     <label for="ins_catalog">Panel</label>
-                    <select id="ins_catalog" style="padding:3px;">${catalogOptions}</select>
+                    <select id="ins_catalog">${catalogOptions}</select>
                     <label for="ins_wiring">Wiring</label>
-                    <select id="ins_wiring" style="padding:3px;">
+                    <select id="ins_wiring">
                         <option value="serpentine">Serpentine</option>
                         <option value="progressive">Progressive</option>
                     </select>
                     <label for="ins_corner">Data In</label>
-                    <select id="ins_corner" style="padding:3px;">
+                    <select id="ins_corner">
                         <option value="TL">TL</option><option value="TR">TR</option>
                         <option value="BL">BL</option><option value="BR">BR</option>
                     </select>
                     <label for="ins_rotation">Rotate</label>
-                    <select id="ins_rotation" style="padding:3px;">
+                    <select id="ins_rotation">
                         <option value="0">0°</option><option value="90">90°</option>
                         <option value="180">180°</option><option value="270">270°</option>
                     </select>
                     <label>Flips</label>
                     <div>
-                        <label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;"><input id="ins_flipH" type="checkbox"> H</label>
-                        <label style="display:inline-flex;align-items:center;gap:4px;"><input id="ins_flipV" type="checkbox"> V</label>
+                        <label class="ins-dialog-inline-label is-spaced"><input id="ins_flipH" type="checkbox"> H</label>
+                        <label class="ins-dialog-inline-label"><input id="ins_flipV" type="checkbox"> V</label>
                     </div>
                     <label for="ins_spacing">Spacing</label>
-                    <input id="ins_spacing" type="number" step="0.1" min="0.01" style="padding:3px;">
+                    <input id="ins_spacing" type="number" step="0.1" min="0.01">
                     <label>Snap / Grid</label>
                     <div>
-                        <label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;"><input id="ins_snap" type="checkbox"> Snap</label>
-                        <input id="ins_grid" type="number" step="0.1" min="0.01" style="padding:3px;width:80px;">
+                        <label class="ins-dialog-inline-label is-spaced"><input id="ins_snap" type="checkbox"> Snap</label>
+                        <input id="ins_grid" type="number" step="0.1" min="0.01" class="ins-dialog-grid-input">
                     </div>
                 </div>
-                <div style="margin-top:12px;display:flex;justify-content:center;">
-                    <canvas id="ins_preview" width="320" height="200" style="background:#0d0d0d;border:1px solid #333;border-radius:4px;"></canvas>
+                <div class="ins-dialog-preview-row">
+                    <canvas id="ins_preview" width="320" height="200" class="ins-dialog-preview-canvas"></canvas>
                 </div>
             `;
 
@@ -455,7 +456,7 @@ ShapeEditor.prototype._openInsertDialog = async function (this: ShapeEditor) {
                         const cxOff = preview.width / 2 - ((xmin + xmax) / 2) * sc;
                         const cyOff = preview.height / 2 - ((ymin + ymax) / 2) * sc;
                         // Polyline
-                        ctx.strokeStyle = '#3b82f6';
+                        ctx.strokeStyle = gfxColors.accentBlue();
                         ctx.lineWidth = 1;
                         ctx.beginPath();
                         for (let i = 0; i < pts.length; i++) {
@@ -464,7 +465,7 @@ ShapeEditor.prototype._openInsertDialog = async function (this: ShapeEditor) {
                             if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
                         }
                         ctx.stroke();
-                        ctx.fillStyle = '#93c5fd';
+                        ctx.fillStyle = gfxColors.textLink();
                         for (const [px, py] of pts) {
                             const x = px * sc + cxOff;
                             const y = py * sc + cyOff;
@@ -474,7 +475,7 @@ ShapeEditor.prototype._openInsertDialog = async function (this: ShapeEditor) {
                         }
                         // First LED green
                         if (pts.length > 0) {
-                            ctx.fillStyle = '#4caf50';
+                            ctx.fillStyle = gfxColors.accentGreen();
                             ctx.beginPath();
                             ctx.arc(self.nn(pts[0])[0] * sc + cxOff, self.nn(pts[0])[1] * sc + cyOff, 3, 0, Math.PI * 2);
                             ctx.fill();
