@@ -2,6 +2,25 @@ import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'path';
 import fs from 'fs';
+import { execSync } from 'child_process';
+
+// Build-version string baked into the bundle via `define` below (issue
+// #230's copy-diagnostics button reads it as `__APP_VERSION__`). Read once
+// at config-eval time so dev server + build share the same value.
+// `git rev-parse` fails outside a git checkout (e.g. some archive-based
+// deploy sandboxes), so it's wrapped in a try/catch with an 'unknown'
+// fallback rather than failing the whole build.
+function getGitSha() {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
+const APP_VERSION = `${getGitSha()} (${new Date().toISOString().slice(0, 10)})`;
 
 const certPath = resolve(__dirname, '.certs/cert.pem');
 const keyPath = resolve(__dirname, '.certs/key.pem');
@@ -32,6 +51,9 @@ const presetManifestPlugin = () => {
 export default defineConfig({
   root: 'src',
   publicDir: '../public',
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   plugins: [tailwindcss(), presetManifestPlugin(), {
     name: 'spa-fallback',
     configureServer(server) {
