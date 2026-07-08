@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures.ts';
 import fs from 'fs';
+import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
 
 // Regression guard for issue #8: recording through a 64x64 screenmap used to
 // drop the render loop to ~43fps (synchronous full-res gl.readPixels each
@@ -67,8 +68,8 @@ async function measureRecordingFps(page, presetSelector) {
     return fps;
 }
 
-test.describe('Moviemaker 64x64 recording framerate', () => {
-    test.skip(!!process.env.CI, 'WebGL recording requires GPU, skipped in CI');
+test.describe('Moviemaker 64x64 recording framerate @gpu', () => {
+    test.skip(shouldSkipGpuTest(), 'WebGL recording requires GPU, skipped in CI (set GPU_CI=1 to run)');
     test.skip(!fs.existsSync(VIDEO_PATH), `repro video not found: ${VIDEO_PATH}`);
 
     test('recording through 64x64 screenmap holds 60fps (within jitter)', async ({ page }) => {

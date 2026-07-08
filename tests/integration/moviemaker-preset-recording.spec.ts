@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures.ts';
 import path from 'path';
+import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
 
 const VIDEO_PATH = path.resolve('tests/fixtures/test-video.mp4');
 
@@ -37,8 +38,8 @@ async function recordExpectingDownload(page, durationMs = 1500) {
     await expect(page.locator('.swal2-popup')).toHaveCount(0);
 }
 
-test.describe('Moviemaker preset recording (No Screenmap regression)', () => {
-    test.skip(!!process.env.CI, 'WebGL recording tests require GPU, skipped in CI');
+test.describe('Moviemaker preset recording (No Screenmap regression) @gpu', () => {
+    test.skip(shouldSkipGpuTest(), 'WebGL recording tests require GPU, skipped in CI (set GPU_CI=1 to run)');
 
     test.beforeEach(async ({ page }) => {
         // Start from a clean slate so the default preset autoload path runs.
