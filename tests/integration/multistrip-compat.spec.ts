@@ -1,15 +1,14 @@
 import { test, expect } from './fixtures.ts';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
+import { countScreenmapLeds, countScreenmapStrips } from '../helpers/screenmap-count.ts';
 import path from 'path';
 import fs from 'fs';
 
 const MULTI_SCREENMAP_PATH = path.resolve('tests/fixtures/test-screenmap-multi.json');
 const MULTI_SCREENMAP_JSON = fs.readFileSync(MULTI_SCREENMAP_PATH, 'utf-8');
 
-// Total LEDs across all strips in the multi-strip fixture
-const multiScreenmap = JSON.parse(MULTI_SCREENMAP_JSON);
-const TOTAL_LEDS = Object.values(multiScreenmap.map)
-    .reduce((sum, strip) => sum + strip.x.length, 0);
+// Total LEDs across all strips in the multi-strip fixture (v2 schema).
+const TOTAL_LEDS = countScreenmapLeds(JSON.parse(MULTI_SCREENMAP_JSON));
 
 test.describe('Multi-strip screenmap compatibility', () => {
 
@@ -66,9 +65,8 @@ test.describe('Multi-strip screenmap compatibility', () => {
         // Persisted screenmap should round-trip the multi-strip structure
         const stored = await page.evaluate(() => localStorage.getItem('lm:screenmap'));
         expect(stored).toBeTruthy();
-        const storedJson = JSON.parse(stored);
-        const storedLeds = Object.values(storedJson.map)
-            .reduce((sum, strip) => sum + strip.x.length, 0);
+        // The store re-emits v2 (issue #144), so count schema-agnostically.
+        const storedLeds = countScreenmapLeds(JSON.parse(stored));
         expect(storedLeds).toBe(TOTAL_LEDS);
 
         // Let a couple of animation frames run so overlay/strip drawing executes
@@ -130,8 +128,7 @@ test.describe('Multi-strip screenmap compatibility', () => {
         // Verify localStorage was actually populated
         const stored = await page.evaluate(() => localStorage.getItem('lm:screenmap'));
         expect(stored, 'localStorage should contain screenmap after upload').toBeTruthy();
-        const parsed = JSON.parse(stored);
-        expect(Object.keys(parsed.map).length).toBe(2); // 2 strips
+        expect(countScreenmapStrips(JSON.parse(stored))).toBe(2); // 2 strips
 
         // Now visit each tool page and check for JS errors
         const toolPages = ['/demo/', '/moviemaker/', '/movieplayer/', '/shapeeditor/'];

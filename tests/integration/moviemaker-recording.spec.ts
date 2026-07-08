@@ -4,18 +4,15 @@ import fs from 'fs';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
 import { mockWebcamStripes } from '../helpers/webcam-mock-stripes.ts';
 import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
+import { countScreenmapLeds } from '../helpers/screenmap-count.ts';
 
 const VIDEO_PATH = path.resolve('tests/fixtures/test-video.mp4');
 const SCREENMAP_PATH = path.resolve('tests/fixtures/test-screenmap.json');
 
 // Read the screenmap to know LED count for validation. Fixtures are v2
-// (top-level `segments` array, issue #144); v1 `map` objects still count
-// for third-party files.
-function countLeds(json) {
-    const strips = Array.isArray(json.segments) ? json.segments : Object.values(json.map);
-    return strips.reduce((sum, strip) => sum + strip.x.length, 0);
-}
-const SCREENMAP_LED_COUNT = countLeds(JSON.parse(fs.readFileSync(SCREENMAP_PATH, 'utf-8')));
+// (top-level `segments` array, issue #144); the shared helper also counts
+// v1 `map` objects from third-party files.
+const SCREENMAP_LED_COUNT = countScreenmapLeds(JSON.parse(fs.readFileSync(SCREENMAP_PATH, 'utf-8')));
 
 /**
  * Strip the FLED v1 header from a recorded buffer, returning just the
@@ -237,7 +234,7 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
 
             // Upload multi-strip screenmap (4 + 3 = 7 LEDs total)
             const MULTI_PATH = path.resolve('tests/fixtures/test-screenmap-multi.json');
-            const MULTI_TOTAL = countLeds(JSON.parse(fs.readFileSync(MULTI_PATH, 'utf-8')));
+            const MULTI_TOTAL = countScreenmapLeds(JSON.parse(fs.readFileSync(MULTI_PATH, 'utf-8')));
             await page.locator('#btn_upload_screenmap').setInputFiles(MULTI_PATH);
             await expect(page.locator('#rng_blur')).toBeEnabled({ timeout: 10000 });
 
