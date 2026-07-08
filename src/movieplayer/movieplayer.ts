@@ -10,6 +10,7 @@ import { parseRgbFrames, hasFledMagic } from '../render/rgb-video';
 import type { ParsedStrip } from '../types/domain';
 import type { Player } from '../gfx';
 import { createLogger } from '../debug-log';
+import { registerDebugState, unregisterDebugState, type MovieplayerDebugState } from '../debug-registry';
 
 const log = createLogger('movieplayer');
 import templateHtml from './template.html?raw';
@@ -53,6 +54,19 @@ export function init(container: HTMLElement) {
 
     const ac = new AbortController();
     const { signal } = ac;
+
+    // Live per-tool debug state on window.__lmDebug, ships always-on (prod
+    // included) — consumed by the copy-diagnostics payload and by
+    // Playwright assertions in place of brittle DOM/class probes. #225.
+    function getMovieplayerDebugState(): MovieplayerDebugState {
+        return {
+            frameCount,
+            ledCount: screenmap_pts.length,
+            playing: player?.playing ?? false,
+            loaded: player !== null,
+        };
+    }
+    registerDebugState('movieplayer', { getState: getMovieplayerDebugState });
 
     const main = qe<HTMLElement>(container, 'main');
 
@@ -347,6 +361,7 @@ export function init(container: HTMLElement) {
     });
 
     return function destroy() {
+        unregisterDebugState('movieplayer');
         teardownPlayer();
         recorder.stop();
         ac.abort();
