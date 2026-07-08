@@ -582,7 +582,9 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
 
         ctxLoadWrapper.addEventListener('mouseenter', () => {
             if (self.ctxBtnLoadScreenmap) self.ctxBtnLoadScreenmap.classList.add('is-active');
-            if (self.ctxLoadSubmenu) self.ctxLoadSubmenu.style.display = '';
+            // Explicit 'block': the .shapeeditor-ctx-submenu class carries
+            // `display: none` (#170), so '' would fall back to hidden.
+            if (self.ctxLoadSubmenu) self.ctxLoadSubmenu.style.display = 'block';
         });
         ctxLoadWrapper.addEventListener('mouseleave', () => {
             if (self.ctxBtnLoadScreenmap) self.ctxBtnLoadScreenmap.classList.remove('is-active');
