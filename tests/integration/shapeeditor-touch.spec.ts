@@ -136,13 +136,16 @@ test.describe('Shapeeditor touch gestures', () => {
         await seedAndOpen(page);
         // (10, 10) is far from any LED — empty canvas region near top-left
         await page.evaluate(() => window.__shapeeditorDebug.simulateLongPress(10, 10));
-        // Wait for context menu to become visible (its style.display is toggled)
+        // Wait for the context menu to become visible. Assert via computed
+        // style on the real .shapeeditor-ctx-menu element — the old
+        // inline-style heuristic (d.style.position === 'fixed') rotted when
+        // #170 hoisted those inline styles into the CSS class, and it masked
+        // a real regression where the menu never showed at all.
         await expect.poll(() => page.evaluate(() => {
-            // Find a context menu div — search by content for "Insert" or "Paste"
-            const all = Array.from(document.body.querySelectorAll('div'));
-            return all.some((d) => d.style.display !== 'none'
-                && d.style.position === 'fixed'
-                && /Insert|Paste|Help/i.test(d.textContent || ''));
+            const menu = document.querySelector('.shapeeditor-ctx-menu');
+            return menu !== null
+                && getComputedStyle(menu).display !== 'none'
+                && /Insert|Paste|Help/i.test(menu.textContent || '');
         }), { timeout: 2000 }).toBe(true);
     });
 

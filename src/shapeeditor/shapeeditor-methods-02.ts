@@ -497,8 +497,11 @@ ShapeEditor.prototype.showContextMenu = function (this: ShapeEditor, clientX: nu
         const onRuler = self.ctxMenuRulerIdx >= 0;
         if (self.ctxBtnDuplicateRuler) self.ctxBtnDuplicateRuler.style.display = onRuler ? 'block' : 'none';
         if (self.ctxBtnDeleteRuler) self.ctxBtnDeleteRuler.style.display = onRuler ? 'block' : 'none';
-        // Position - keep on screen
-        if (self.ctxMenu) { self.ctxMenu.style.left = `${String(clientX)}px`; self.ctxMenu.style.top = `${String(clientY)}px`; self.ctxMenu.style.display = ''; }
+        // Position - keep on screen. Must be an explicit 'block': the
+        // .shapeeditor-ctx-menu class now carries `display: none` (inline
+        // styles hoisted to CSS in #170), so clearing the inline value with
+        // '' falls back to the class and the menu never appears.
+        if (self.ctxMenu) { self.ctxMenu.style.left = `${String(clientX)}px`; self.ctxMenu.style.top = `${String(clientY)}px`; self.ctxMenu.style.display = 'block'; }
     };
 
 ShapeEditor.prototype.hideContextMenu = function (this: ShapeEditor) {
