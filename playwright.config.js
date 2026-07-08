@@ -6,6 +6,16 @@ const certPath = resolve(import.meta.dirname, '.certs/cert.pem');
 const hasHttps = fs.existsSync(certPath);
 const protocol = hasHttps ? 'https' : 'http';
 const isCI = !!process.env.CI;
+// Nightly SwiftShader GPU job (.github/workflows/gpu-nightly.yml) sets
+// GPU_CI=1 to run the @gpu-tagged WebGL specs under headless CPU rendering.
+const isGpuCI = !!process.env.GPU_CI;
+
+const ciArgs = isCI ? ['--disable-dev-shm-usage'] : [];
+// SwiftShader (CPU) WebGL args — load-bearing since Chrome ~130, per
+// Chromium docs' intended headless-testing opt-in.
+const gpuArgs = isGpuCI
+  ? ['--use-gl=angle', '--use-angle=swiftshader-webgl', '--enable-unsafe-swiftshader']
+  : [];
 
 export default defineConfig({
   testDir: './tests/integration',
@@ -23,9 +33,13 @@ export default defineConfig({
   // without retries. Local stays at 0 so flaky logic surfaces during
   // development.
   retries: isCI ? 2 : 0,
-  timeout: 30000,
+  // SwiftShader (CPU-rendered WebGL) is 10-30x slower than a real GPU;
+  // the recording/points-mesh specs need much more headroom in that mode.
+  timeout: isGpuCI ? 120000 : 30000,
   expect: {
-    timeout: 10000,
+    // expect polls must scale with the SwiftShader slowdown too, or
+    // toHaveClass/toBeEnabled waits flake long before the test timeout.
+    timeout: isGpuCI ? 30000 : 10000,
     toHaveScreenshot: {
       maxDiffPixelRatio: 0.05,
     },
@@ -37,7 +51,7 @@ export default defineConfig({
     // `/dev/shm` on ubuntu-latest runners is small (~64 MB); Chromium
     // defaults to using it for shared-memory rendering buffers and
     // crashes when it fills. Forcing /tmp avoids that path.
-    launchOptions: isCI ? { args: ['--disable-dev-shm-usage'] } : {},
+    launchOptions: { args: [...ciArgs, ...gpuArgs] },
   },
   projects: [
     {

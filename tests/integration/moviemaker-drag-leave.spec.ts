@@ -11,6 +11,7 @@
  */
 import { test, expect } from './fixtures.ts';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
+import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,8 +41,8 @@ function getZoom(page) {
 // Tests
 // ---------------------------------------------------------------------------
 
-test.describe('Moviemaker overlay drag — off-canvas release (issue #31)', () => {
-    test.skip(!!process.env.CI, 'WebGL pipeline requires GPU, skipped in CI');
+test.describe('Moviemaker overlay drag — off-canvas release (issue #31) @gpu', () => {
+    test.skip(shouldSkipGpuTest(), 'WebGL pipeline requires GPU, skipped in CI (set GPU_CI=1 to run)');
 
     test.beforeEach(async ({ page }) => {
         await mockWebcam(page);

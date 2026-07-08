@@ -31,6 +31,8 @@ npm test
 npm run test:integration
 ```
 
+Every push/PR runs lint + build + unit + a build-smoke check (`.github/workflows/ci.yml`); the full Playwright integration suite only runs on-demand (manual dispatch or the `integration` PR label, `.github/workflows/integration.yml`) since it's heavier. WebGL-dependent specs (tagged `@gpu` — moviemaker recording, resolution, drag, and fps tests) are skipped whenever `CI` is set without `GPU_CI`, since headless CI Chromium has no real GPU; they instead run nightly under headless SwiftShader rendering via `.github/workflows/gpu-nightly.yml` (also `workflow_dispatch`-able).
+
 ## Architecture
 
 **Vite SPA (single `src/index.html` + client-side router in `src/router.js`)** using vanilla JavaScript, Three.js, Tailwind CSS v4, and SweetAlert2. All dependencies managed via npm. ES modules throughout.

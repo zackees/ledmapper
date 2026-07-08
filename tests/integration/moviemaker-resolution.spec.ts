@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures.ts';
 import path from 'path';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
+import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
 
 const VIDEO_PATH = path.resolve('tests/fixtures/test-video.mp4');
 
@@ -15,8 +16,8 @@ function getCanvasSize(page) {
     return page.locator('#renderCanvas').evaluate(c => ({ w: c.width, h: c.height }));
 }
 
-test.describe('Moviemaker Resolution Control', () => {
-    test.skip(!!process.env.CI, 'WebGL tests require GPU, skipped in CI');
+test.describe('Moviemaker Resolution Control @gpu', () => {
+    test.skip(shouldSkipGpuTest(), 'WebGL tests require GPU, skipped in CI (set GPU_CI=1 to run)');
 
     test('resolution select exists with expected options', async ({ page }) => {
         await page.goto('/moviemaker/');

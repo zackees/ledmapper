@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
 import { mockWebcamStripes } from '../helpers/webcam-mock-stripes.ts';
+import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
 
 const VIDEO_PATH = path.resolve('tests/fixtures/test-video.mp4');
 const SCREENMAP_PATH = path.resolve('tests/fixtures/test-screenmap.json');
@@ -72,8 +73,8 @@ async function recordAndDownload(page, durationMs = 2000) {
 }
 
 // WebGL recording doesn't work in headless CI Chromium (no GPU)
-test.describe('Moviemaker Recording Workflow', () => {
-    test.skip(!!process.env.CI, 'WebGL recording tests require GPU, skipped in CI');
+test.describe('Moviemaker Recording Workflow @gpu', () => {
+    test.skip(shouldSkipGpuTest(), 'WebGL recording tests require GPU, skipped in CI (set GPU_CI=1 to run)');
 
     // The worker shares one browser context; earlier specs can leave a stored
     // screenmap via screenmap-store (e.g. the shapeeditor autosaves its default

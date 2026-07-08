@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures.ts';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
+import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
 
 // Regression guard for issue #26: dragging the shape used to rebuild the
 // transformed points array every frame, defeating the position-texture and
@@ -19,8 +20,8 @@ function resetPerf(page) {
     });
 }
 
-test.describe('Moviemaker drag performance (issue #26)', () => {
-    test.skip(!!process.env.CI, 'WebGL pipeline requires GPU, skipped in CI');
+test.describe('Moviemaker drag performance (issue #26) @gpu', () => {
+    test.skip(shouldSkipGpuTest(), 'WebGL pipeline requires GPU, skipped in CI (set GPU_CI=1 to run)');
 
     test.beforeEach(async ({ page }) => {
         await mockWebcam(page);
