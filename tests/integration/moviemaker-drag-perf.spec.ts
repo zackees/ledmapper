@@ -33,8 +33,8 @@ test.describe('Moviemaker drag performance (issue #26)', () => {
         await page.locator('[data-trigger="btn_start_webcam"]').click();
         await waitForSourceActive(page);
 
-        await page.locator('#btn_preset_64x64_serpentine').click();
-        await expect(page.locator('#btn_preset_64x64_serpentine')).toHaveClass(/active-preset/);
+        await page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]').click();
+        await expect(page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]')).toHaveClass(/active-preset/);
 
         // Let the animation loop reach steady state after the preset switch.
         await page.waitForTimeout(500);
@@ -74,8 +74,8 @@ test.describe('Moviemaker drag performance (issue #26)', () => {
         // Select the 16x16 preset explicitly (the worker-shared context may
         // hold a restored screenmap from an earlier spec) and disable blur so
         // the sampled colors come straight from the mock-webcam test pattern.
-        await page.locator('#btn_preset_16x16_grid').click();
-        await expect(page.locator('#btn_preset_16x16_grid')).toHaveClass(/active-preset/);
+        await page.locator('.preset-btn[data-preset-file="16x16_grid.json"]').click();
+        await expect(page.locator('.preset-btn[data-preset-file="16x16_grid.json"]')).toHaveClass(/active-preset/);
         const blur = page.locator('#rng_blur');
         await blur.fill('0');
         await blur.dispatchEvent('input');

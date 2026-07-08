@@ -6,6 +6,7 @@ import { getFrameIndex, flattenColorFrames } from './transforms';
 import { download_binary_as_file } from '../common';
 import { saveVideo } from '../video-store';
 import { prependFledHeader, PixelFormat } from '../render/rgb-video';
+import { logEvent } from '../debug-log';
 import type Swal from 'sweetalert2';
 
 type SwalInstance = typeof Swal;
@@ -37,6 +38,7 @@ export function createRecording({ getSwal, getScreenmapJson }: {
     async function endRecording(): Promise<void> {
         const flat = flattenColorFrames(colorFrames);
         if (flat === null) {
+            logEvent('recording', 'save-failed', { reason: 'no-frames' });
             if (getSwal) {
                 const swal = await getSwal();
                 void swal.fire('No Frames', 'No frames were captured during recording.', 'warning');
@@ -49,13 +51,15 @@ export function createRecording({ getSwal, getScreenmapJson }: {
                 // The record button is gated on screenmapValid in moviemaker.ts,
                 // so this is unreachable in normal use — guard so the cast
                 // can't silently produce a headerless file.
+                logEvent('recording', 'save-failed', { reason: 'no-screenmap-json', frames: colorFrames.length });
                 if (getSwal) {
                     const swal = await getSwal();
-                    void swal.fire('No Screenmap', 'A screenmap must be loaded before saving — open the Screenmap Editor first.', 'error');
+                    void swal.fire('Recording could not be saved', 'The LED layout state was lost during recording — this is a bug. Re-select your layout (or re-upload your screenmap) and record again.', 'error');
                 }
                 return;
             }
             const fledFile = prependFledHeader(flat, screenmapJson, PixelFormat.rgb8);
+            logEvent('recording', 'save-fled', { frames: colorFrames.length, bytes: fledFile.byteLength });
             download_binary_as_file(fledFile, `video${String(downloadIndex)}.fled`);
             downloadIndex++;
             // Hand the freshly recorded video to the Movie Player via IndexedDB

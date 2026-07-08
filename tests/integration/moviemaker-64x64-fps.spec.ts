@@ -1,4 +1,4 @@
-﻿import { test, expect } from './fixtures.ts';
+import { test, expect } from './fixtures.ts';
 import fs from 'fs';
 
 // Regression guard for issue #8: recording through a 64x64 screenmap used to
@@ -80,8 +80,8 @@ test.describe('Moviemaker 64x64 recording framerate', () => {
         const ua = await page.evaluate(() => navigator.userAgent);
         test.skip(/headless/i.test(ua), 'requires headed browser with real GPU (run with --headed)');
 
-        const fps8 = await measureRecordingFps(page, '#btn_preset_8x8_grid');
-        const fps64 = await measureRecordingFps(page, '#btn_preset_64x64_serpentine');
+        const fps8 = await measureRecordingFps(page, '.preset-btn[data-preset-file="8x8_grid.json"]');
+        const fps64 = await measureRecordingFps(page, '.preset-btn[data-preset-file="64x64_serpentine.json"]');
 
         console.log(`Recording FPS â€” 8x8 (64 LEDs): ${fps8.toFixed(1)}, 64x64 (4096 LEDs): ${fps64.toFixed(1)}`);
 

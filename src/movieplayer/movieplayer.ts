@@ -9,6 +9,7 @@ import { createCanvasRecorder } from '../render/canvas-recorder';
 import { parseRgbFrames, hasFledMagic } from '../render/rgb-video';
 import type { ParsedStrip } from '../types/domain';
 import type { Player } from '../gfx';
+import { logEvent } from '../debug-log';
 import templateHtml from './template.html?raw';
 export { default as css } from './movieplayer.css?url';
 
@@ -297,6 +298,7 @@ export function init(container: HTMLElement) {
 
         const parsed = parseRgbFrames(uint8_array, screenmap_pts.length);
         if (parsed.notMultiple) {
+            logEvent('movieplayer', 'load-failed', { reason: 'payload-mismatch', bytes: uint8_array.length });
             if (silent) { void clearVideo(); return; }
             void errorDialog('Corrupted video', 'Video payload does not match the embedded screenmap — file may be corrupted.');
             return;
@@ -325,6 +327,12 @@ export function init(container: HTMLElement) {
                 void errorDialog('Could not save video for next session', `Storage error: ${String(error)}\n\nThe video will play now but won't auto-restore on your next visit.`);
             });
         }
+        logEvent('movieplayer', 'movie-loaded', {
+            leds: screenmap_pts.length,
+            frames: frameCount,
+            autoplay,
+            source: persist ? 'file' : 'indexeddb-restore',
+        });
         setStatus(`${String(screenmap_pts.length)} LEDs · ${String(frameCount)} frames`, true);
         set_dom_btn_play(player.playing);
     }
