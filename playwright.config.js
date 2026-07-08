@@ -37,7 +37,9 @@ export default defineConfig({
   // the recording/points-mesh specs need much more headroom in that mode.
   timeout: isGpuCI ? 120000 : 30000,
   expect: {
-    timeout: 10000,
+    // expect polls must scale with the SwiftShader slowdown too, or
+    // toHaveClass/toBeEnabled waits flake long before the test timeout.
+    timeout: isGpuCI ? 30000 : 10000,
     toHaveScreenshot: {
       maxDiffPixelRatio: 0.05,
     },
