@@ -2,6 +2,39 @@
  * Video source management: file loading and webcam capture.
  */
 
+/**
+ * Translate a getUserMedia rejection into an actionable user message.
+ * The raw browser message ("Could not start video source",
+ * "Permission denied", …) is too generic to act on, so we key off the
+ * DOMException `name` and pick a message that tells the user what to do.
+ */
+function describeWebcamError(err: unknown): string {
+    const name = err instanceof DOMException ? err.name : '';
+    const raw = err instanceof Error ? err.message : String(err);
+    switch (name) {
+        case 'NotReadableError':
+        case 'TrackStartError':
+            return 'The webcam is in use by another application (e.g. Zoom, Teams, Skype, OBS) or blocked by your OS. Close other apps using the camera, then try again.';
+        case 'NotAllowedError':
+        case 'PermissionDeniedError':
+            return 'Camera access was denied. Click the camera icon in the address bar to allow access, then try again.';
+        case 'NotFoundError':
+        case 'DevicesNotFoundError':
+            return 'No camera was detected. Connect a camera and try again, or upload a video file instead.';
+        case 'OverconstrainedError':
+        case 'ConstraintNotSatisfiedError':
+            return 'Your camera does not support the selected resolution or frame rate. Try a lower resolution.';
+        case 'SecurityError':
+            return 'Camera access is blocked in this context. This site must be served over HTTPS to use the webcam.';
+        case 'AbortError':
+            return 'Camera start was aborted. Try again.';
+        case 'TypeError':
+            return 'Invalid camera request. Try a different resolution or frame rate.';
+        default:
+            return raw || 'Could not start the webcam.';
+    }
+}
+
 export function createVideoSource({
     videoPlayer,
     parseResolution,
@@ -68,7 +101,7 @@ export function createVideoSource({
             onSourceReady(settings.width ?? res.width, settings.height ?? res.height, 'webcam');
         }).catch((err: unknown) => {
             console.error('Webcam error:', err);
-            onError(err instanceof Error ? err.message : String(err));
+            onError(describeWebcamError(err));
         });
     }
 
