@@ -24,6 +24,9 @@ import {
     BLOOM_RENDER_PX,
 } from '../bloom-utils';
 import { estimateLedSize } from './transforms';
+import { createLogger } from '../debug-log';
+
+const log = createLogger('preview');
 
 const INV_255 = 1 / 255;
 
@@ -72,7 +75,13 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
     const scene = new Scene();
     // y-down camera (top < bottom) matching screenmap/canvas conventions;
     // bounds are refit to the rotated point bbox in fitCamera().
-    const camera = new OrthographicCamera(-1, 1, -1, 1, -1, 1);
+    //
+    // near/far bracket the z=0 mesh plane with margin (camera sits at z=1).
+    // The previous near=-1/far=1 put the points EXACTLY on the far plane —
+    // a clip-space knife edge that happened to render but is precision-
+    // dependent. Hardening only; the black-pane bug itself was the frozen
+    // color copy in render() below.
+    const camera = new OrthographicCamera(-1, 1, -1, 1, 0.1, 10);
     camera.position.z = 1;
 
     const circleTexture = createCircleTexture(64);
@@ -92,7 +101,6 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
     let meshData: PointsMeshResult | null = null;
     let cachedPts: StripPoint[] | null = null;
     let cachedRotate: number | null = null;
-    let cachedSampleRef: Uint8Array | null = null;
     let cachedLedDiameter: number | null = null;
     let ledWorldRadius = 0.5;
     let ledSpacing = 1;
@@ -178,10 +186,27 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
      *        diameter, scaled into localPts units; null falls back to the
      *        spacing heuristic.
      */
+    let dbgFrames = 0;
     function render(localPts: StripPoint[], rotate: number, lastSample: { rgbPts: Uint8Array } | null, ledDiameter: number | null = null) {
         if (localPts.length === 0 || !lastSample) {
+            if (dbgFrames < 3) { dbgFrames++; log.debug('render-skip', { pts: localPts.length, hasSample: !!lastSample }); }
             renderer.clear();
             return;
+        }
+        // Debug-gated heartbeat (~every 5s at 60fps): sample brightness +
+        // mesh state, so a future "pane is black" report can be triaged from
+        // the ?lmlog=debug event trail alone (that's how THIS bug was found).
+        dbgFrames++;
+        if (dbgFrames % 300 === 1) {
+            const s = lastSample.rgbPts;
+            let sum = 0;
+            for (const v of s) sum += v;
+            log.debug('render-frame', {
+                pts: localPts.length,
+                avg: Math.round(sum / s.length),
+                matSize: meshData?.material.size ?? null,
+                meshInScene: scene.children.length > 0,
+            });
         }
         if (localPts !== cachedPts || ledDiameter !== cachedLedDiameter) {
             cachedPts = localPts;
@@ -194,14 +219,19 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
             fitCamera(localPts, rotate);
         }
 
-        // Per-frame color update: Uint8 0-255 → Float32 0-1. Skip the
-        // copy when the same sample reference is passed twice in a row
-        // (idle scene, paused video) — the GPU buffer is already
-        // current. #181.
+        // Per-frame color update: Uint8 0-255 → Float32 0-1, every frame.
+        //
+        // Do NOT skip this based on sample-reference identity (the old #181
+        // "optimization"): moviemaker reuses ONE sampleRgbPts buffer and
+        // rewrites it in place each frame, so the reference never changes.
+        // The identity check froze the colors at the first sampled frame —
+        // video frame 0, typically black — and the pane rendered permanently
+        // black while every upstream stage was healthy (#221 item 1). The
+        // copy is ~3 floats per LED per frame; even a 64x64 quad map is a
+        // trivial 12K writes.
         const src = lastSample.rgbPts;
         if (!meshData) return;
-        if (src !== cachedSampleRef) {
-            cachedSampleRef = src;
+        {
             const arr = meshData.colorAttribute.array as Float32Array;
             const count = Math.min(localPts.length, Math.floor(src.length / 3));
             for (let i = 0; i < count; i++) {
