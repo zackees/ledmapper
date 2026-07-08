@@ -147,3 +147,14 @@ tests/
 - `moviemaker/` uses Three.js with GLSL fragment shaders for GPU-accelerated blur and readback for recording
 - UI uses dark theme (bg: `--color-lm-bg` #0a0a0a, accent: `--color-lm-accent` #3b82f6) with SweetAlert2 for dialogs
 - Single `src/index.html` loads `global.css` + `nav.css`; tool CSS loaded dynamically by router
+
+## Debugging
+
+Full guide: **`.claude/skills/debugging/SKILL.md`** (playbooks for "recording produces wrong/no output" and "canvas is black but nothing errored"). The essentials:
+
+- **Event log**: `window.__lmLog.dump()` — every pipeline event (screenmap loads, source changes, record start/stop/save, navigations, uncaught errors). Instrument new code via `createLogger(scope)` from `src/debug-log.ts`; verbose tier via `?lmlog=debug`.
+- **Per-tool state**: `window.__lmDebug.<tool>.getState()` (`src/debug-registry.ts`) — prefer this over DOM scraping in Playwright for state with no DOM representation.
+- **Copy diagnostics**: every error dialog has a button that copies version + state + event trail; read user pastes bottom-up from the error.
+- **Watchdogs** (`src/watchdogs.ts`): `context-lost`, `video-stalled`, `render-loop-stalled`, `readback-black` warnings flag silent rendering failures.
+- **`?debug` panel**: stats-gl + lil-gui + eruda, lazy-loaded (`src/debug-panel.ts`).
+- **GPU specs** (`@gpu`) skip in normal CI and run nightly under SwiftShader — run `npx playwright test moviemaker` locally before merging changes to moviemaker/preset-picker/recording. Failed Playwright tests auto-attach the event log (`lm-log`) to the report.
