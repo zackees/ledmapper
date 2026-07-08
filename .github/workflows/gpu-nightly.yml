@@ -51,7 +51,13 @@ jobs:
       - run: npm run build
 
       - name: Run @gpu suite under SwiftShader
-        run: npx playwright test --grep "@gpu" --retries=1
+        # @gpu-perf specs (drag-perf, 64x64-fps) are excluded: their FPS /
+        # per-frame-cost assertions are meaningless under CPU rendering, and
+        # the 64x64 recording workload is heavy enough to kill the shared
+        # browser context on the runner (observed in run 2 as "Target page,
+        # context or browser has been closed" cascades). They remain
+        # local-run-only.
+        run: npx playwright test --grep "@gpu" --grep-invert "@gpu-perf" --retries=1
 
       - name: Upload Playwright report
         if: failure()

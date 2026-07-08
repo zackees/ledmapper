@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures.ts';
 import path from 'path';
-import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
+import { shouldSkipGpuTest, GPU_WAIT_SCALE } from '../helpers/gpu-gate.ts';
 
 const VIDEO_PATH = path.resolve('tests/fixtures/test-video.mp4');
 
@@ -18,7 +18,7 @@ async function loadVideoAndPlay(page) {
     await page.locator('[data-trigger="btn_load_video"]').click();
     const fileChooser = await fileChooserPromise;
     await fileChooser.setFiles(VIDEO_PATH);
-    await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 });
+    await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 * GPU_WAIT_SCALE });
     await page.locator('#btn_play_pause').click();
     await page.waitForTimeout(500);
 }
@@ -27,7 +27,7 @@ async function loadVideoAndPlay(page) {
 async function recordExpectingDownload(page, durationMs = 1500) {
     const recordBtn = page.locator('#btn_toggle_record');
     await expect(recordBtn).toBeEnabled();
-    const downloadPromise = page.waitForEvent('download', { timeout: 15000 });
+    const downloadPromise = page.waitForEvent('download', { timeout: 15000 * GPU_WAIT_SCALE });
     await recordBtn.click();
     await expect(recordBtn).toHaveValue('Stop Recording');
     await page.waitForTimeout(durationMs);
