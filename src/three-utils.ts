@@ -13,6 +13,7 @@ import {
 
 import type { RendererContext, RendererContextWithOverlay, PointsMeshResult } from './types/domain';
 import { wireSliderReadout } from './ui/sliders';
+import { registerRenderer } from './debug-hooks';
 
 /** Create a canvas-based circle texture for round points.
  *
@@ -124,6 +125,10 @@ export function createRendererAndScene({ width, height, parent, clearColor = 0x0
 
     renderer.domElement.classList.add('gfx-render-canvas');
     wrapper.appendChild(renderer.domElement);
+
+    // No-op unless the debug panel (behind ?debug) has installed a handler —
+    // see src/debug-hooks.ts and src/debug-panel.ts (issue #228).
+    registerRenderer(renderer);
 
     if (enableOverlay) {
         const overlayCanvas = document.createElement('canvas');
