@@ -6,6 +6,26 @@ import { test, expect } from './fixtures.ts';
 // readback is required — these assertions only touch state visible on
 // freshly-loaded pages, before any source/video/screenmap is loaded.
 test.describe('window.__lmDebug registry (#225)', () => {
+    // The worker shares one browser context across specs. Earlier specs can
+    // leave (a) a stored screenmap in localStorage (console-errors.spec's
+    // shapeeditor visit autosaves one), which would suppress moviemaker's
+    // default 16x16 preset, and (b) a recorded video in IndexedDB, which
+    // movieplayer auto-restores on load. Both would break the exact-state
+    // assertions below, so start every test from a clean slate.
+    test.beforeEach(async ({ page }) => {
+        await page.addInitScript(() => {
+            try {
+                for (const k of Object.keys(localStorage)) {
+                    if (k.startsWith('lm:')) localStorage.removeItem(k);
+                }
+                // Keep the shapeeditor first-run help suppressed — its modal
+                // would otherwise intercept the nav clicks below.
+                localStorage.setItem('lm:shapeeditor-helpDismissed', '1');
+            } catch { /* ignore */ }
+            try { indexedDB.deleteDatabase('ledmapper'); } catch { /* ignore */ }
+        });
+    });
+
     test('moviemaker registers getState() and it disappears after navigating away', async ({ page }) => {
         await page.goto('/moviemaker/');
         await expect(page.locator('#btn_upload_screenmap')).toBeVisible();
