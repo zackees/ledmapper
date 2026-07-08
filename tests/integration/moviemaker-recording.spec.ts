@@ -247,7 +247,11 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
         });
     });
 
-    test.describe('Blur affects recorded output', () => {
+    // @gpu-heavy: two back-to-back recording sessions with a radius-50 GLSL
+    // blur — under SwiftShader that's an enormous per-frame CPU convolution
+    // and reliably kills the runner's renderer process (gpu-nightly run 3:
+    // "GPU stall due to ReadPixels" → browser death). Local-run-only.
+    test.describe('Blur affects recorded output @gpu-heavy', () => {
         // Use high-frequency stripe pattern so blur always produces visible changes
         test.beforeEach(async ({ page }) => {
             await mockWebcamStripes(page);
