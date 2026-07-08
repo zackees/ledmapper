@@ -50,14 +50,25 @@ jobs:
 
       - run: npm run build
 
-      - name: Run @gpu suite under SwiftShader
+      - name: Run @gpu suite under SwiftShader (per-file isolation)
         # @gpu-perf specs (drag-perf, 64x64-fps) are excluded: their FPS /
-        # per-frame-cost assertions are meaningless under CPU rendering, and
-        # the 64x64 recording workload is heavy enough to kill the shared
-        # browser context on the runner (observed in run 2 as "Target page,
-        # context or browser has been closed" cascades). They remain
-        # local-run-only.
-        run: npx playwright test --grep "@gpu" --grep-invert "@gpu-perf" --retries=1
+        # per-frame-cost assertions are meaningless under CPU rendering.
+        # @gpu-heavy (the radius-50 blur double-recording) is excluded: it
+        # reliably kills the runner's renderer process under SwiftShader.
+        #
+        # Each spec file runs as its own playwright invocation so a
+        # renderer-process crash (run 3: "GPU stall due to ReadPixels" →
+        # "Target page, context or browser has been closed" cascades) is
+        # contained to one file and every file starts with a fresh browser.
+        run: |
+          status=0
+          for spec in moviemaker-recording moviemaker-preset-recording moviemaker-resolution moviemaker-drag-leave; do
+            echo "=== $spec ==="
+            npx playwright test "tests/integration/$spec.spec.ts" \
+              --grep "@gpu" --grep-invert "@gpu-perf|@gpu-heavy" --retries=1 \
+              || status=1
+          done
+          exit $status
 
       - name: Upload Playwright report
         if: failure()
