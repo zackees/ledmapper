@@ -14,6 +14,7 @@ import {
 import type { RendererContext, RendererContextWithOverlay, PointsMeshResult } from './types/domain';
 import { wireSliderReadout } from './ui/sliders';
 import { registerRenderer } from './debug-hooks';
+import { attachContextLossWatchdog, createRafHeartbeat } from './watchdogs';
 
 /** Create a canvas-based circle texture for round points.
  *
@@ -86,6 +87,11 @@ export function createRendererCore({
     const camera = new OrthographicCamera(0, width, 0, height, -1, 1);
     camera.position.z = 1;
 
+    // Log-only watchdog (issue #226) — three.js re-uploads its own resources
+    // on restore, but nothing here re-initializes a caller's own pipeline;
+    // this just makes context loss visible instead of silent.
+    attachContextLossWatchdog({ canvas, tool: 'gfx-core' });
+
     return { renderer, scene, camera };
 }
 
@@ -129,6 +135,9 @@ export function createRendererAndScene({ width, height, parent, clearColor = 0x0
     // No-op unless the debug panel (behind ?debug) has installed a handler —
     // see src/debug-hooks.ts and src/debug-panel.ts (issue #228).
     registerRenderer(renderer);
+
+    // Log-only watchdog (issue #226) — see attachContextLossWatchdog doc.
+    attachContextLossWatchdog({ canvas: renderer.domElement, tool: 'three-utils' });
 
     if (enableOverlay) {
         const overlayCanvas = document.createElement('canvas');
@@ -294,12 +303,24 @@ export function wireResponsiveCanvas({
     }
 }
 
-/** Start a frame-rate-limited requestAnimationFrame loop. */
-export function createAnimationLoop({ targetFPS, onFrame }: { targetFPS: number; onFrame: (time: number) => void }): { setTargetFPS: (fps: number) => void; stop: () => void } {
+/**
+ * Start a frame-rate-limited requestAnimationFrame loop.
+ *
+ * `watchdogTool`, when given, arms a log-only RAF-loop heartbeat (issue
+ * #226): a `setInterval` — deliberately a different scheduler than the RAF
+ * loop it watches — checks every ~3s that the frame counter has advanced
+ * while the tab is visible, and logs `render-loop-stalled` via
+ * `createLogger('watchdog')` otherwise. This is a no-op wherever `document`
+ * doesn't exist (e.g. inside a Web Worker hosting an OffscreenCanvas via
+ * `createGfxCore`), so it's safe to pass unconditionally from callers that
+ * may run in either context.
+ */
+export function createAnimationLoop({ targetFPS, onFrame, watchdogTool }: { targetFPS: number; onFrame: (time: number) => void; watchdogTool?: string }): { setTargetFPS: (fps: number) => void; stop: () => void } {
     let fps = targetFPS;
     let lastFrameTime = 0;
     let rafId: number | null = null;
     let stopped = false;
+    let frameCount = 0;
 
     function animate(time: number) {
         if (stopped) return;
@@ -309,11 +330,24 @@ export function createAnimationLoop({ targetFPS, onFrame }: { targetFPS: number;
         if (delta < interval) return;
         lastFrameTime = time - (delta % interval);
         onFrame(time);
+        frameCount++;
     }
     rafId = requestAnimationFrame(animate);
 
+    let watchdogIntervalId: ReturnType<typeof setInterval> | null = null;
+    if (watchdogTool !== undefined && typeof document !== 'undefined') {
+        const heartbeat = createRafHeartbeat({ loop: watchdogTool });
+        watchdogIntervalId = setInterval(() => {
+            heartbeat.check(!stopped && document.visibilityState === 'visible', frameCount);
+        }, 3000);
+    }
+
     return {
         setTargetFPS(newFPS: number) { fps = newFPS; },
-        stop() { stopped = true; if (rafId !== null) cancelAnimationFrame(rafId); }
+        stop() {
+            stopped = true;
+            if (rafId !== null) cancelAnimationFrame(rafId);
+            if (watchdogIntervalId !== null) clearInterval(watchdogIntervalId);
+        }
     };
 }

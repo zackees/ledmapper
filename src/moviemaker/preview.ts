@@ -15,6 +15,7 @@ import { WebGLRenderer, Scene, OrthographicCamera } from 'three';
 import { createCircleTexture, rebuildPointsMesh } from '../three-utils';
 import type { PointsMeshResult, StripPoint } from '../types/domain';
 import { createAutoBloom } from '../auto-bloom';
+import { attachContextLossWatchdog } from '../watchdogs';
 import {
     PREVIEW_AUTO_FLOOR,
     PREVIEW_AUTO_MAX_DENSE,
@@ -64,6 +65,9 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
     renderer.setClearColor(0x000000, 1);
     renderer.domElement.style.display = 'block';
     parent.appendChild(renderer.domElement);
+
+    // Log-only watchdog (issue #226) — see attachContextLossWatchdog doc.
+    attachContextLossWatchdog({ canvas: renderer.domElement, tool: 'moviemaker-preview' });
 
     const scene = new Scene();
     // y-down camera (top < bottom) matching screenmap/canvas conventions;

@@ -27,6 +27,7 @@ import {
 import type { Texture } from 'three';
 import { BLUR_VERT, BLUR_FRAG, COPY_FRAG, GATHER_FRAG } from './shaders';
 import { perfCount } from './perf';
+import { attachContextLossWatchdog } from '../watchdogs';
 
 /**
  * Create a blur pipeline bound to the given canvas and video element.
@@ -42,6 +43,13 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
     const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const renderer = new WebGLRenderer({ canvas, antialias: false });
     const geometry = new PlaneGeometry(2, 2);
+
+    // Log-only watchdog (issue #226) — the repo had zero context-loss
+    // handling before this. Three.js re-uploads its own resources on
+    // restore, but this pipeline's own render targets / textures (blurTarget,
+    // outputTarget, gather targets) are NOT re-initialized here — that's
+    // out of scope for this issue. This only makes the failure visible.
+    attachContextLossWatchdog({ canvas: renderer.domElement, tool: 'moviemaker-render' });
 
     // Typed uniform interface for the blur shader
     interface BlurShaderUniforms {
