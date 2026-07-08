@@ -15,6 +15,7 @@ import { drawMoviemakerOverlay } from './overlay';
 import { createLedPreview } from './preview';
 import { wireSliderReadout } from '../ui/sliders';
 import { setupToggleButton } from '../ui/toggle-button';
+import { logEvent } from '../debug-log';
 import { withPrefix } from '../services/storage';
 import { createCanvasRecorder, dimensionsForAspect, type AspectPreset } from '../render/canvas-recorder';
 import { PREVIEW_AUTO_MAX_SPARSE, PREVIEW_AUTO_FLOOR } from '../bloom-utils';
@@ -139,19 +140,29 @@ export function init(container: HTMLElement) {
         videoPlayer,
         parseResolution,
         onSourceReady(w: number, h: number, type: string) {
+            logEvent('moviemaker', 'source-ready', { type, w, h });
             setupForNewSource(w, h);
             if (type === 'video') {
                 frame_rate = 30;
             }
         },
         onError(message: string) {
+            logEvent('moviemaker', 'source-error', { message });
             void errorDialog('Webcam Error', message);
         },
     });
 
+    // Raw JSON text of the screenmap currently driving the render, whatever
+    // its origin (preset, upload, or store restore). Recording embeds this in
+    // the .fled header — it must always match the live map, so it cannot come
+    // from the shared localStorage store: presets are deliberately never
+    // persisted there (that would clobber the user's editor map), which left
+    // getScreenmap() returning null and killed preset recordings at save time.
+    let currentScreenmapJson: string | null = null;
+
     const recording = createRecording({
         getSwal,
-        getScreenmapJson: () => getScreenmap(),
+        getScreenmapJson: () => currentScreenmapJson ?? getScreenmap(),
     });
 
     // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -277,6 +288,18 @@ export function init(container: HTMLElement) {
         updateElementStates();
     }
 
+    /** Parse + apply screenmap text, keeping currentScreenmapJson in sync. */
+    function applyScreenmapText(text: string, source: string) {
+        loadScreenmapFromParsed(parseScreenmapMultiStrip(text));
+        currentScreenmapJson = screenmapValid ? text : null;
+        logEvent('moviemaker', 'screenmap-load', {
+            source,
+            leds: rawScreenmapPts.length,
+            strips: screenmapStrips.length,
+            valid: screenmapValid,
+        });
+    }
+
     const presetPicker = dom_preset_mount
         ? mountPresetPicker(dom_preset_mount, {
             mode: 'compact',
@@ -284,9 +307,10 @@ export function init(container: HTMLElement) {
             signal,
             onChoose: async (presetFile: string) => {
                 try {
-                    loadScreenmapFromParsed(parseScreenmapMultiStrip(await loadPresetText(presetFile)));
+                    applyScreenmapText(await loadPresetText(presetFile), `preset:${presetFile}`);
                     presetPicker?.setActive(presetFile);
                 } catch (error) {
+                    logEvent('moviemaker', 'screenmap-load-error', { source: `preset:${presetFile}`, error: String(error) });
                     void errorDialog('Error loading preset', String(error));
                 }
             },
@@ -298,7 +322,7 @@ export function init(container: HTMLElement) {
     let restoredFromStore = false;
     if (storedScreenmap) {
         try {
-            loadScreenmapFromParsed(parseScreenmapMultiStrip(storedScreenmap));
+            applyScreenmapText(storedScreenmap, 'store-restore');
             restoredFromStore = true;
         } catch (error) {
             console.error('Failed to restore stored screenmap:', error);
@@ -309,7 +333,7 @@ export function init(container: HTMLElement) {
         if (firstPreset) {
             void (async () => {
                 try {
-                    loadScreenmapFromParsed(parseScreenmapMultiStrip(await loadPresetText(firstPreset.file)));
+                    applyScreenmapText(await loadPresetText(firstPreset.file), `autoload:${firstPreset.file}`);
                     presetPicker.setActive(firstPreset.file);
                 } catch (error) {
                     console.error('Failed to autoload first preset:', error);
@@ -485,9 +509,10 @@ export function init(container: HTMLElement) {
         screenmapValid = false;
         updateElementStates();
         file.text().then((text: string) => {
-            loadScreenmapFromParsed(parseScreenmapMultiStrip(text));
+            applyScreenmapText(text, `upload:${file.name}`);
             saveScreenmap(text);
         }).catch((error: unknown) => {
+            logEvent('moviemaker', 'screenmap-load-error', { source: `upload:${file.name}`, error: String(error) });
             void errorDialog('Error reading screenmap file', String(error));
         });
     }
@@ -716,9 +741,14 @@ export function init(container: HTMLElement) {
         const mp4Active = mp4Recorder?.isActive ?? false;
         const anyActive = fledActive || mp4Active;
         if (!anyActive && screenmap_pts.length < 2) {
+            logEvent('moviemaker', 'record-blocked', { reason: 'no-screenmap', pts: screenmap_pts.length });
             void errorDialog('Screenmap required', 'Please load a valid screenmap first (size >= 2).');
             return;
         }
+        logEvent('moviemaker', anyActive ? 'record-stop' : 'record-start', {
+            format: dom_sel_record_format.value,
+            leds: rawScreenmapPts.length,
+        });
         const format = dom_sel_record_format.value;
         const aspect = dom_sel_record_aspect.value as AspectPreset;
         const wantFled = !anyActive && (format === 'fled' || format === 'both');

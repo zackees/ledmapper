@@ -63,8 +63,8 @@ test.describe('Moviemaker overlay drag — off-canvas release (issue #31)', () =
         await waitForSourceActive(page);
 
         // Load a screenmap so drag gestures are active.
-        await page.locator('#btn_preset_64x64_serpentine').click();
-        await expect(page.locator('#btn_preset_64x64_serpentine')).toHaveClass(/active-preset/);
+        await page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]').click();
+        await expect(page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]')).toHaveClass(/active-preset/);
         await page.waitForTimeout(250);
 
         const box = await page.locator('#overlayCanvas').boundingBox();
@@ -119,8 +119,8 @@ test.describe('Moviemaker overlay drag — off-canvas release (issue #31)', () =
         await page.locator('[data-trigger="btn_start_webcam"]').click();
         await waitForSourceActive(page);
 
-        await page.locator('#btn_preset_64x64_serpentine').click();
-        await expect(page.locator('#btn_preset_64x64_serpentine')).toHaveClass(/active-preset/);
+        await page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]').click();
+        await expect(page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]')).toHaveClass(/active-preset/);
         await page.waitForTimeout(250);
 
         const box = await page.locator('#overlayCanvas').boundingBox();
@@ -155,8 +155,8 @@ test.describe('Moviemaker overlay drag — off-canvas release (issue #31)', () =
         await page.locator('[data-trigger="btn_start_webcam"]').click();
         await waitForSourceActive(page);
 
-        await page.locator('#btn_preset_64x64_serpentine').click();
-        await expect(page.locator('#btn_preset_64x64_serpentine')).toHaveClass(/active-preset/);
+        await page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]').click();
+        await expect(page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]')).toHaveClass(/active-preset/);
         await page.waitForTimeout(250);
 
         const box = await page.locator('#overlayCanvas').boundingBox();
