@@ -15,7 +15,9 @@ import { drawMoviemakerOverlay } from './overlay';
 import { createLedPreview } from './preview';
 import { wireSliderReadout } from '../ui/sliders';
 import { setupToggleButton } from '../ui/toggle-button';
-import { logEvent } from '../debug-log';
+import { createLogger } from '../debug-log';
+
+const log = createLogger('moviemaker');
 import { withPrefix } from '../services/storage';
 import { createCanvasRecorder, dimensionsForAspect, type AspectPreset } from '../render/canvas-recorder';
 import { PREVIEW_AUTO_MAX_SPARSE, PREVIEW_AUTO_FLOOR } from '../bloom-utils';
@@ -140,14 +142,14 @@ export function init(container: HTMLElement) {
         videoPlayer,
         parseResolution,
         onSourceReady(w: number, h: number, type: string) {
-            logEvent('moviemaker', 'source-ready', { type, w, h });
+            log.info('source-ready', { type, w, h });
             setupForNewSource(w, h);
             if (type === 'video') {
                 frame_rate = 30;
             }
         },
         onError(message: string) {
-            logEvent('moviemaker', 'source-error', { message });
+            log.info('source-error', { message });
             void errorDialog('Webcam Error', message);
         },
     });
@@ -292,7 +294,7 @@ export function init(container: HTMLElement) {
     function applyScreenmapText(text: string, source: string) {
         loadScreenmapFromParsed(parseScreenmapMultiStrip(text));
         currentScreenmapJson = screenmapValid ? text : null;
-        logEvent('moviemaker', 'screenmap-load', {
+        log.info('screenmap-load', {
             source,
             leds: rawScreenmapPts.length,
             strips: screenmapStrips.length,
@@ -310,7 +312,7 @@ export function init(container: HTMLElement) {
                     applyScreenmapText(await loadPresetText(presetFile), `preset:${presetFile}`);
                     presetPicker?.setActive(presetFile);
                 } catch (error) {
-                    logEvent('moviemaker', 'screenmap-load-error', { source: `preset:${presetFile}`, error: String(error) });
+                    log.info('screenmap-load-error', { source: `preset:${presetFile}`, error: String(error) });
                     void errorDialog('Error loading preset', String(error));
                 }
             },
@@ -325,7 +327,7 @@ export function init(container: HTMLElement) {
             applyScreenmapText(storedScreenmap, 'store-restore');
             restoredFromStore = true;
         } catch (error) {
-            console.error('Failed to restore stored screenmap:', error);
+            log.error('restore-stored-screenmap-failed', { error: String(error) });
         }
     }
     if (!restoredFromStore && presetPicker) {
@@ -336,7 +338,7 @@ export function init(container: HTMLElement) {
                     applyScreenmapText(await loadPresetText(firstPreset.file), `autoload:${firstPreset.file}`);
                     presetPicker.setActive(firstPreset.file);
                 } catch (error) {
-                    console.error('Failed to autoload first preset:', error);
+                    log.error('autoload-first-preset-failed', { error: String(error) });
                 }
             })();
         }
@@ -512,7 +514,7 @@ export function init(container: HTMLElement) {
             applyScreenmapText(text, `upload:${file.name}`);
             saveScreenmap(text);
         }).catch((error: unknown) => {
-            logEvent('moviemaker', 'screenmap-load-error', { source: `upload:${file.name}`, error: String(error) });
+            log.info('screenmap-load-error', { source: `upload:${file.name}`, error: String(error) });
             void errorDialog('Error reading screenmap file', String(error));
         });
     }
@@ -741,11 +743,11 @@ export function init(container: HTMLElement) {
         const mp4Active = mp4Recorder?.isActive ?? false;
         const anyActive = fledActive || mp4Active;
         if (!anyActive && screenmap_pts.length < 2) {
-            logEvent('moviemaker', 'record-blocked', { reason: 'no-screenmap', pts: screenmap_pts.length });
+            log.info('record-blocked', { reason: 'no-screenmap', pts: screenmap_pts.length });
             void errorDialog('Screenmap required', 'Please load a valid screenmap first (size >= 2).');
             return;
         }
-        logEvent('moviemaker', anyActive ? 'record-stop' : 'record-start', {
+        log.info(anyActive ? 'record-stop' : 'record-start', {
             format: dom_sel_record_format.value,
             leds: rawScreenmapPts.length,
         });
@@ -761,7 +763,7 @@ export function init(container: HTMLElement) {
             // Stop whichever is running.
             if (fledActive) {
                 recording.toggle().catch((error: unknown) => {
-                    console.error('Stop recording failed:', error);
+                    log.error('stop-recording-failed', { error: String(error) });
                     void errorDialog('Stop recording error', String(error));
                 });
             }
@@ -775,7 +777,7 @@ export function init(container: HTMLElement) {
         let startedAny = false;
         if (wantFled) {
             recording.toggle().catch((error: unknown) => {
-                console.error('Start recording failed:', error);
+                log.error('start-recording-failed', { error: String(error) });
                 void errorDialog('Start recording error', String(error));
             });
             startedAny = true;

@@ -6,8 +6,10 @@ import { getFrameIndex, flattenColorFrames } from './transforms';
 import { download_binary_as_file } from '../common';
 import { saveVideo } from '../video-store';
 import { prependFledHeader, PixelFormat } from '../render/rgb-video';
-import { logEvent } from '../debug-log';
+import { createLogger } from '../debug-log';
 import type Swal from 'sweetalert2';
+
+const log = createLogger('recording');
 
 type SwalInstance = typeof Swal;
 
@@ -38,7 +40,7 @@ export function createRecording({ getSwal, getScreenmapJson }: {
     async function endRecording(): Promise<void> {
         const flat = flattenColorFrames(colorFrames);
         if (flat === null) {
-            logEvent('recording', 'save-failed', { reason: 'no-frames' });
+            log.info('save-failed', { reason: 'no-frames' });
             if (getSwal) {
                 const swal = await getSwal();
                 void swal.fire('No Frames', 'No frames were captured during recording.', 'warning');
@@ -51,7 +53,7 @@ export function createRecording({ getSwal, getScreenmapJson }: {
                 // The record button is gated on screenmapValid in moviemaker.ts,
                 // so this is unreachable in normal use — guard so the cast
                 // can't silently produce a headerless file.
-                logEvent('recording', 'save-failed', { reason: 'no-screenmap-json', frames: colorFrames.length });
+                log.info('save-failed', { reason: 'no-screenmap-json', frames: colorFrames.length });
                 if (getSwal) {
                     const swal = await getSwal();
                     void swal.fire('Recording could not be saved', 'The LED layout state was lost during recording — this is a bug. Re-select your layout (or re-upload your screenmap) and record again.', 'error');
@@ -59,7 +61,7 @@ export function createRecording({ getSwal, getScreenmapJson }: {
                 return;
             }
             const fledFile = prependFledHeader(flat, screenmapJson, PixelFormat.rgb8);
-            logEvent('recording', 'save-fled', { frames: colorFrames.length, bytes: fledFile.byteLength });
+            log.info('save-fled', { frames: colorFrames.length, bytes: fledFile.byteLength });
             download_binary_as_file(fledFile, `video${String(downloadIndex)}.fled`);
             downloadIndex++;
             // Hand the freshly recorded video to the Movie Player via IndexedDB
@@ -71,7 +73,7 @@ export function createRecording({ getSwal, getScreenmapJson }: {
             // just means Movie Player won't auto-restore. Log so the
             // failure isn't completely silent. Issue #179.
             saveVideo(fledFile).catch((error: unknown) => {
-                console.error('Save recorded video to IndexedDB failed:', error);
+                log.error('save-to-indexeddb-failed', { error: String(error) });
             });
         }
         colorFrames.length = 0;

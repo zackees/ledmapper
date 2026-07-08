@@ -8,6 +8,7 @@ import {
 import {
     buildScreenmapMultiStripJson,
 } from '../../src/screenmap-store';
+import { getEventLog, _resetLogForTests } from '../../src/debug-log';
 import type { ScreenmapJson, ParsedStrip, ScreenmapStrip } from '../../src/types/domain';
 
 // ── Single-strip fixtures ────────────────────────────────────────────
@@ -57,11 +58,14 @@ describe('parse_screenmap_data_json backwards compatibility', () => {
         assert.deepStrictEqual(pts[6], [12, 1]);
     });
 
-    it('mismatched x.length !== y.length warns and truncates to shorter (#182)', () => {
-        // Spy on console.warn to capture the diagnostic.
-        const calls: string[] = [];
+    it('mismatched x.length !== y.length warns (via the logger) and truncates to shorter (#182)', () => {
+        // The warning is routed through createLogger('common').warn, which
+        // both mirrors to the real console.warn (spied on here) and lands
+        // in the debug-log ring buffer (asserted via getEventLog()).
+        const calls: unknown[][] = [];
         const origWarn = console.warn;
-        console.warn = (msg: unknown) => { calls.push(String(msg)); };
+        console.warn = (...args: unknown[]) => { calls.push(args); };
+        _resetLogForTests();
         try {
             const MISMATCHED = {
                 map: {
@@ -71,10 +75,23 @@ describe('parse_screenmap_data_json backwards compatibility', () => {
             const pts = parse_screenmap_data_json(MISMATCHED);
             assert.strictEqual(pts.length, 3, 'truncates to shorter axis');
             assert.strictEqual(calls.length, 1, 'warns exactly once');
-            assert.ok(calls[0].includes('x.length=5'), 'mentions x.length');
-            assert.ok(calls[0].includes('y.length=3'), 'mentions y.length');
+            const call = calls[0];
+            assert.ok(call, 'console.warn was called');
+            assert.ok(call.some((a) => String(a).includes('strip-length-mismatch')), 'mentions the event name');
+
+            const entries = getEventLog();
+            assert.strictEqual(entries.length, 1, 'lands in the ring buffer exactly once');
+            const entry = entries[0];
+            assert.ok(entry, 'entry recorded in the ring buffer');
+            assert.strictEqual(entry.level, 'warn');
+            assert.strictEqual(entry.scope, 'common');
+            assert.strictEqual(entry.event, 'strip-length-mismatch');
+            const data = entry.data as { key: string; xLength: number; yLength: number };
+            assert.strictEqual(data.xLength, 5);
+            assert.strictEqual(data.yLength, 3);
         } finally {
             console.warn = origWarn;
+            _resetLogForTests();
         }
     });
 

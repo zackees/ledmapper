@@ -2,6 +2,12 @@
  * Video source management: file loading and webcam capture.
  */
 
+import { createLogger } from '../debug-log';
+
+const log = createLogger('moviemaker');
+
+
+
 /**
  * Translate a getUserMedia rejection into an actionable user message.
  * The raw browser message ("Could not start video source",
@@ -100,7 +106,7 @@ export function createVideoSource({
             isPlaying = true;
             onSourceReady(settings.width ?? res.width, settings.height ?? res.height, 'webcam');
         }).catch((err: unknown) => {
-            console.error('Webcam error:', err);
+            log.error('webcam-error', { error: err instanceof Error ? err.message : String(err) });
             onError(describeWebcamError(err));
         });
     }

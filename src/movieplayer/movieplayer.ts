@@ -9,7 +9,9 @@ import { createCanvasRecorder } from '../render/canvas-recorder';
 import { parseRgbFrames, hasFledMagic } from '../render/rgb-video';
 import type { ParsedStrip } from '../types/domain';
 import type { Player } from '../gfx';
-import { logEvent } from '../debug-log';
+import { createLogger } from '../debug-log';
+
+const log = createLogger('movieplayer');
 import templateHtml from './template.html?raw';
 export { default as css } from './movieplayer.css?url';
 
@@ -160,7 +162,7 @@ export function init(container: HTMLElement) {
         try {
             parsed = parseScreenmapMultiStrip(jsonText);
         } catch (error) {
-            console.error('Error parsing embedded screenmap:', error);
+            log.error('embedded-screenmap-parse-error', { error: String(error) });
             return false;
         }
         if (parsed.allPoints.length === 0) return false;
@@ -197,7 +199,7 @@ export function init(container: HTMLElement) {
         load_movie_data(bytes.slice().buffer, { persist: false, autoplay: false, silent: true });
     }).catch((error: unknown) => {
         // IndexedDB read failed (quota, permission, corruption). #179.
-        console.error('Restore from IndexedDB failed:', error);
+        log.error('restore-from-indexeddb-failed', { error: String(error) });
         void errorDialog('Could not restore your last video', String(error));
     });
 
@@ -298,7 +300,7 @@ export function init(container: HTMLElement) {
 
         const parsed = parseRgbFrames(uint8_array, screenmap_pts.length);
         if (parsed.notMultiple) {
-            logEvent('movieplayer', 'load-failed', { reason: 'payload-mismatch', bytes: uint8_array.length });
+            log.info('load-failed', { reason: 'payload-mismatch', bytes: uint8_array.length });
             if (silent) { void clearVideo(); return; }
             void errorDialog('Corrupted video', 'Video payload does not match the embedded screenmap — file may be corrupted.');
             return;
@@ -321,13 +323,13 @@ export function init(container: HTMLElement) {
         dom_btn_play.disabled = false;
         if (persist) {
             saveVideo(uint8_array).catch((error: unknown) => {
-                console.error('Persist video to IndexedDB failed:', error);
+                log.error('persist-to-indexeddb-failed', { error: String(error) });
                 // Quota / permission errors surface to the user — the
                 // video plays this session but won't auto-restore later.
                 void errorDialog('Could not save video for next session', `Storage error: ${String(error)}\n\nThe video will play now but won't auto-restore on your next visit.`);
             });
         }
-        logEvent('movieplayer', 'movie-loaded', {
+        log.info('movie-loaded', {
             leds: screenmap_pts.length,
             frames: frameCount,
             autoplay,

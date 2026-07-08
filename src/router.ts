@@ -1,5 +1,8 @@
 import { updateActiveLink } from './nav';
 import type { SpaHistory, ToolInitFn } from './types/domain';
+import { createLogger } from './debug-log';
+
+const log = createLogger('router');
 
 const routes = [
     { path: '/',                  tool: 'app' },
@@ -114,6 +117,7 @@ export function createRouter(appEl: HTMLElement) {
 
     async function loadRoute(path: string) {
         const tool = resolveTool(path) ?? 'hub';
+        log.info('navigate', { path });
         const thisLoad = ++loadId; // capture current load id
 
         // Switching tools: drop the previous tool's in-tool pop handler so a
@@ -122,7 +126,7 @@ export function createRouter(appEl: HTMLElement) {
 
         // Tear down current tool
         if (currentDestroy) {
-            try { currentDestroy(); } catch (e) { console.error('destroy error:', e); }
+            try { currentDestroy(); } catch (e) { log.error('destroy-error', { error: e instanceof Error ? e.message : String(e) }); }
             currentDestroy = null;
         }
 
@@ -140,7 +144,7 @@ export function createRouter(appEl: HTMLElement) {
         // Load and initialize tool module
         const config = toolConfig[tool];
         if (!config) {
-            console.error(`No config for tool: ${tool}`);
+            log.error('no-config', { tool });
             return;
         }
         try {
@@ -183,7 +187,7 @@ export function createRouter(appEl: HTMLElement) {
             setRouteReady(appEl);
         } catch (e: unknown) {
             if (thisLoad !== loadId) return;
-            console.error(`Failed to load tool "${tool}":`, e);
+            log.error('load-failed', { tool, error: e instanceof Error ? e.message : String(e) });
             setRouteReady(appEl);
             renderRouteError(appEl, e instanceof Error ? e.message : String(e));
         }

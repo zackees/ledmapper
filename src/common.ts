@@ -1,5 +1,8 @@
 import type { ScreenmapJson, StripPoint, MultiStripParseResult, ParsedStrip } from './types/domain';
 import { detectScreenmapVersion, parseScreenmapV2, v2ToMultiStripResult } from './screenmap-v2';
+import { createLogger } from './debug-log';
+
+const log = createLogger('common');
 
 /** Array of [x,y] points with an optional diameter side-property. */
 export type PointArrayWithDiameter = StripPoint[] & { diameter?: number };
@@ -63,7 +66,7 @@ export function parse_screenmap_data_json(jsonBlob: string | ScreenmapJson): Poi
             // Surface mismatched x/y arrays — silently truncating to the
             // shorter axis would produce ghost LEDs at [0,0] downstream. #182.
             if (x.length !== y.length) {
-                console.warn(`Screenmap strip "${key}": x.length=${String(x.length)} != y.length=${String(y.length)}; truncating to shorter to avoid undefined coords.`);
+                log.warn('strip-length-mismatch', { key, xLength: x.length, yLength: y.length });
             }
             const len = Math.min(x.length, y.length);
             for (let i = 0; i < len; ++i) {
@@ -81,7 +84,7 @@ export function parse_screenmap_data_json(jsonBlob: string | ScreenmapJson): Poi
         // Callers handle the user-facing error path (each tool catches and
         // shows its own dialog with appropriate context). Just rethrow so
         // common.ts stays presentation-free.
-        console.error(`Error parsing JSON: ${String(e)}`);
+        log.error('json-parse-error', { error: String(e) });
         throw e;
     }
 }
