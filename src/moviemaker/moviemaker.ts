@@ -16,6 +16,7 @@ import { createLedPreview } from './preview';
 import { wireSliderReadout } from '../ui/sliders';
 import { setupToggleButton } from '../ui/toggle-button';
 import { createLogger } from '../debug-log';
+import { registerDebugState, unregisterDebugState, type MoviemakerDebugState } from '../debug-registry';
 
 const log = createLogger('moviemaker');
 import { withPrefix } from '../services/storage';
@@ -856,6 +857,23 @@ export function init(container: HTMLElement) {
     window.__mmDebug ??= {};
     window.__mmDebug.getDragState = () => drag ? { kind: drag.kind } : null;
 
+    // Live per-tool debug state on window.__lmDebug, ships always-on (prod
+    // included) — consumed by the copy-diagnostics payload and by
+    // Playwright assertions in place of brittle DOM/class probes. #225.
+    function getMoviemakerDebugState(): MoviemakerDebugState {
+        return {
+            screenmapValid,
+            ledCount: rawScreenmapPts.length,
+            stripCount: screenmapStrips.length,
+            sourceActive,
+            sourceType: videoSource.sourceType,
+            playing: videoSource.isPlaying,
+            recordingActive: recording.isActive,
+            recordFormat: dom_sel_record_format.value,
+        };
+    }
+    registerDebugState('moviemaker', { getState: getMoviemakerDebugState });
+
     if (perfEnabled) {
         // Extended debug hook for e2e correctness tests: exposes the exact transform
         // state and latest GPU-gathered sample for CPU-reference comparison.
@@ -956,6 +974,7 @@ export function init(container: HTMLElement) {
     rafId = requestAnimationFrame(animationLoop);
 
     return function destroy() {
+        unregisterDebugState('moviemaker');
         if (perfEnabled) delete window.__mmDebug;
         ac.abort();
         if (rafId) cancelAnimationFrame(rafId);
