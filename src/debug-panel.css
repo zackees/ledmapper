@@ -1,0 +1,14 @@
+/**
+ * Minimal styling for the dev-only debug panel (issue #228). stats-gl and
+ * lil-gui bring their own inline positioning/styling; these two rules just
+ * make sure both overlays sit above the app's own fixed-position chrome
+ * (nav bar, etc. top out at z-index: 10 in global.css).
+ */
+
+.debug-panel-stats {
+    z-index: 2000;
+}
+
+.debug-panel-gui {
+    z-index: 2000;
+}
