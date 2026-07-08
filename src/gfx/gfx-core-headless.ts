@@ -150,6 +150,7 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
 
     const animLoop = createAnimationLoop({
         targetFPS: opts.targetFPS ?? 60,
+        watchdogTool: 'gfx-core',
         onFrame(time: number) {
             if (!colorAttribute || screenmap.points.length === 0) return;
             if (lastFrame) {

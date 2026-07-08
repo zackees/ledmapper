@@ -1,17 +1,20 @@
 import { test as base, expect } from '@playwright/test';
 import type { BrowserContext, Page } from '@playwright/test';
+import type { LmLogEntry } from '../../src/debug-log';
 
 interface SharedContextFixtures {
     sharedContext: BrowserContext;
     page: Page;
 }
 
-// Minimal redeclare of the window.__lmLog hook installed by src/debug-log.ts.
-// Kept intentionally narrow (just the `dump` shape the fixture needs) so this
-// test-only file doesn't need to pull in src/ types via tsconfig.tests.json.
+// Redeclare of the window.__lmLog hook installed by src/debug-log.ts (which
+// isn't in tsconfig.tests.json's `include`, but type-only imports don't pull
+// in the runtime module). Must match debug-log.ts's own `Window.__lmLog`
+// augmentation exactly — TS requires merged interface members to have
+// identical types, not just compatible ones.
 declare global {
     interface Window {
-        __lmLog?: { dump: () => string };
+        __lmLog?: { entries: readonly LmLogEntry[]; dump: () => string };
     }
 }
 

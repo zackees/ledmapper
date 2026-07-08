@@ -7,6 +7,7 @@ import { download_binary_as_file } from '../common';
 import { saveVideo } from '../video-store';
 import { prependFledHeader, PixelFormat } from '../render/rgb-video';
 import { createLogger } from '../debug-log';
+import { createZeroReadbackWatchdog } from '../watchdogs';
 import type Swal from 'sweetalert2';
 
 const log = createLogger('recording');
@@ -24,6 +25,10 @@ export function createRecording({ getSwal, getScreenmapJson }: {
     let lastFrameIdx = -1;
     const colorFrames: Uint8Array[] = [];
     let downloadIndex = 0;
+    // Log-only watchdog (issue #226): flags a recording whose readback has
+    // gone all-zero for many consecutive frames — the class of bug that let
+    // #221's black moviemaker preview go unnoticed. Never auto-remediates.
+    const zeroReadbackWatchdog = createZeroReadbackWatchdog();
 
     function timeMicros(): number {
         return Math.floor(performance.now() * 1000);
@@ -81,7 +86,14 @@ export function createRecording({ getSwal, getScreenmapJson }: {
         lastFrameIdx = -1;
     }
 
-    function processFrame(sample: { rgbPts: Uint8Array }, frameRate: number): void {
+    /**
+     * @param videoHealthy Ground-truth video-heartbeat health (see
+     *   `createVideoStallWatchdog` in `../watchdogs`), used to suppress the
+     *   all-zero readback watchdog while the video itself is already known
+     *   to be stalled — that's a different bug with its own warning.
+     *   Defaults to `true` (assume healthy) for callers that don't track it.
+     */
+    function processFrame(sample: { rgbPts: Uint8Array }, frameRate: number, videoHealthy = true): void {
         if (!active) {
             if (capturing) {
                 capturing = false;
@@ -95,11 +107,13 @@ export function createRecording({ getSwal, getScreenmapJson }: {
             capturing = true;
             startTimeUs = nowUs;
             lastFrameIdx = -1;
+            zeroReadbackWatchdog.resetForNewRecording();
         }
         const frameIdx = getFrameIndex(nowUs, startTimeUs, frameRate);
         if (frameIdx > lastFrameIdx) {
             lastFrameIdx = frameIdx;
             colorFrames.push(new Uint8Array(sample.rgbPts));
+            zeroReadbackWatchdog.sample(sample.rgbPts, videoHealthy);
         }
     }
 

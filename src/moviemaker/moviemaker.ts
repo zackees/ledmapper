@@ -16,6 +16,7 @@ import { createLedPreview } from './preview';
 import { wireSliderReadout } from '../ui/sliders';
 import { setupToggleButton } from '../ui/toggle-button';
 import { createLogger } from '../debug-log';
+import { createVideoStallWatchdog, createRafHeartbeat } from '../watchdogs';
 import { registerDebugState, unregisterDebugState, type MoviemakerDebugState } from '../debug-registry';
 
 const log = createLogger('moviemaker');
@@ -852,6 +853,62 @@ export function init(container: HTMLElement) {
     let lastSample: { rgbPts: Uint8Array; avgBri: number } | null = null;
     let sampleRgbPts: Uint8Array | null = null;
     let recordRgbPts: Uint8Array | null = null;
+    let rafFrameCount = 0;
+
+    // ── Watchdogs (issue #226) ───────────────────────────────────────────────
+    // Log-only via createLogger('watchdog') inside src/watchdogs.ts; never
+    // auto-remediate. Armed only while the tab is visible and the activity
+    // being watched is actually expected; reset on pause/visibilitychange.
+    const videoStallWatchdog = createVideoStallWatchdog();
+    const rafHeartbeat = createRafHeartbeat({ loop: 'moviemaker' });
+
+    function videoHeartbeatArmed(): boolean {
+        return document.visibilityState === 'visible'
+            && sourceActive
+            && videoSource.sourceType !== null
+            && videoSource.isPlaying
+            && !isScrubbing;
+    }
+
+    // requestVideoFrameCallback marks real composited frames; feature-detect
+    // with a `timeupdate` fallback for engines that lack it. The DOM lib
+    // types the method as always present, which is optimistic about actual
+    // browser support (same situation as navigator.mediaDevices in
+    // video-source.ts) — widen to an optional-method type locally to read
+    // it honestly, then gate on a plain runtime boolean (rather than relying
+    // on TS narrowing, which collapses the optional back to required once
+    // intersected with HTMLVideoElement). Native `stalled`/`waiting` events
+    // are not used as the primary signal — unreliable per video.js history.
+    type MaybeRvfcVideo = HTMLVideoElement & { requestVideoFrameCallback?: (callback: VideoFrameRequestCallback) => number };
+    const hasRvfc = typeof (videoPlayer as MaybeRvfcVideo).requestVideoFrameCallback === 'function';
+    let watchdogsDisposed = false;
+    function scheduleVideoFrameCallback(): void {
+        if (watchdogsDisposed || !hasRvfc) return;
+        videoPlayer.requestVideoFrameCallback(() => {
+            videoStallWatchdog.noteFrame();
+            scheduleVideoFrameCallback();
+        });
+    }
+    if (hasRvfc) {
+        scheduleVideoFrameCallback();
+    } else {
+        videoPlayer.addEventListener('timeupdate', () => { videoStallWatchdog.noteFrame(); }, { signal });
+    }
+
+    const videoHeartbeatIntervalId = setInterval(() => {
+        videoStallWatchdog.check(videoHeartbeatArmed(), videoPlayer.currentTime, videoPlayer.readyState, videoPlayer.networkState);
+    }, 2000);
+
+    const rafHeartbeatIntervalId = setInterval(() => {
+        rafHeartbeat.check(document.visibilityState === 'visible' && sourceActive, rafFrameCount);
+    }, 3000);
+
+    // Reset stall tracking on transitions so a background tab or a paused
+    // video never accrues false stall time that fires the instant it resumes.
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) videoStallWatchdog.reset();
+    }, { signal });
+    videoPlayer.addEventListener('pause', () => { videoStallWatchdog.reset(); }, { signal });
 
     // Debug hook always exposed for e2e tests (drag state needed for issue #31 tests).
     window.__mmDebug ??= {};
@@ -912,6 +969,8 @@ export function init(container: HTMLElement) {
 
         if (!sourceActive) return;
 
+        rafFrameCount++;
+
         const now = performance.now();
         const fps = computeFps(now, lastTime);
         lastTime = now;
@@ -945,7 +1004,7 @@ export function init(container: HTMLElement) {
                     sampleRgbPts = new Uint8Array(gather.numPts * 3);
                 }
                 lastSample = extractGatherSample(gather.buffer, gather.numPts, sampleRgbPts);
-                recording.processFrame(toRecordingSample(lastSample, gather.numPts), frame_rate);
+                recording.processFrame(toRecordingSample(lastSample, gather.numPts), frame_rate, videoStallWatchdog.isHealthy());
             }
         } else {
             recording.resetCapture();
@@ -976,6 +1035,9 @@ export function init(container: HTMLElement) {
     return function destroy() {
         unregisterDebugState('moviemaker');
         if (perfEnabled) delete window.__mmDebug;
+        watchdogsDisposed = true;
+        clearInterval(videoHeartbeatIntervalId);
+        clearInterval(rafHeartbeatIntervalId);
         ac.abort();
         if (rafId) cancelAnimationFrame(rafId);
         videoSource.dispose();
