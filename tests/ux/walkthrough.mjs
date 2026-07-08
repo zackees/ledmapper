@@ -166,6 +166,32 @@ try {
     await page.waitForTimeout(1000);
     await shot(page, 'moviemaker-playing');
 
+    // LED preview must actually light up (#221 item 1 regression probe).
+    // Sampled inside a RAF callback: preserveDrawingBuffer is false, so the
+    // WebGL back buffer is only readable in the same task that rendered it.
+    await page.waitForTimeout(1500);
+    probe('moviemaker.previewLuma', await page.evaluate(() => new Promise((resolve) => {
+        requestAnimationFrame(() => {
+            const canvas = document.querySelector('#previewPanel canvas');
+            if (!(canvas instanceof HTMLCanvasElement)) { resolve('no-canvas'); return; }
+            const t = document.createElement('canvas');
+            t.width = 32; t.height = 32;
+            const ctx = t.getContext('2d');
+            ctx.drawImage(canvas, 0, 0, 32, 32);
+            const d = ctx.getImageData(0, 0, 32, 32).data;
+            let sum = 0;
+            let peak = 0;
+            for (let i = 0; i < d.length; i += 4) {
+                const l = (d[i] + d[i + 1] + d[i + 2]) / 3;
+                sum += l;
+                if (l > peak) peak = l;
+            }
+            // mean is scale-sensitive (8 LEDs in a 400px pane average near
+            // zero); peak is the robust "did anything light up" signal.
+            resolve({ mean: Math.round((sum / (d.length / 4)) * 100) / 100, peak: Math.round(peak) });
+        });
+    })));
+
     const recordBtn = page.locator('#btn_toggle_record');
     probe('moviemaker.recordEnabledAfterSetup', await recordBtn.isEnabled());
     const dl2 = page.waitForEvent('download', { timeout: 25000 });
