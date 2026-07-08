@@ -48,6 +48,9 @@ export function _resetPinMutationGuardForTests() {
 
 import { safeStorage } from './services/storage';
 import { gfxColors } from './ui/theme';
+import { createLogger } from './debug-log';
+
+const log = createLogger('screenmap-store');
 
 /**
  * Count LEDs and strips in a raw screenmap JSON string.
@@ -382,9 +385,7 @@ export function saveScreenmapWithMeta(jsonText: string, opts: { source?: string 
             && counts.pinCount < prevCounts.pinCount
             && (Date.now() - _lastPinMutationAt) > PIN_MUTATION_GRACE_MS) {
             if (!_pinGuardWarned) {
-                console.warn(
-                    `screenmap-store: refused write — distinct pin count dropped from ${String(prevCounts.pinCount)} to ${String(counts.pinCount)} without a recent user-initiated pin mutation`,
-                );
+                log.warn('pin-guard-refused', { from: prevCounts.pinCount, to: counts.pinCount });
                 _pinGuardWarned = true;
             }
             return false;
