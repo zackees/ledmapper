@@ -68,7 +68,7 @@ async function measureRecordingFps(page, presetSelector) {
     return fps;
 }
 
-test.describe('Moviemaker 64x64 recording framerate @gpu', () => {
+test.describe('Moviemaker 64x64 recording framerate @gpu @gpu-perf', () => {
     test.skip(shouldSkipGpuTest(), 'WebGL recording requires GPU, skipped in CI (set GPU_CI=1 to run)');
     test.skip(!fs.existsSync(VIDEO_PATH), `repro video not found: ${VIDEO_PATH}`);
 

@@ -20,7 +20,7 @@ function resetPerf(page) {
     });
 }
 
-test.describe('Moviemaker drag performance (issue #26) @gpu', () => {
+test.describe('Moviemaker drag performance (issue #26) @gpu @gpu-perf', () => {
     test.skip(shouldSkipGpuTest(), 'WebGL pipeline requires GPU, skipped in CI (set GPU_CI=1 to run)');
 
     test.beforeEach(async ({ page }) => {

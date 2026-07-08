@@ -1,7 +1,7 @@
 import { test, expect } from './fixtures.ts';
 import path from 'path';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
-import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
+import { shouldSkipGpuTest, GPU_WAIT_SCALE } from '../helpers/gpu-gate.ts';
 
 const VIDEO_PATH = path.resolve('tests/fixtures/test-video.mp4');
 
@@ -9,7 +9,7 @@ const VIDEO_PATH = path.resolve('tests/fixtures/test-video.mp4');
  * Wait for the moviemaker's Three.js renderer to be active.
  */
 async function waitForSourceActive(page) {
-    await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 });
+    await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 * GPU_WAIT_SCALE });
 }
 
 function getCanvasSize(page) {

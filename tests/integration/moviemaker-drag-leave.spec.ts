@@ -11,14 +11,14 @@
  */
 import { test, expect } from './fixtures.ts';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
-import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
+import { shouldSkipGpuTest, GPU_WAIT_SCALE } from '../helpers/gpu-gate.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 async function waitForSourceActive(page) {
-    await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15_000 });
+    await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15_000 * GPU_WAIT_SCALE });
 }
 
 function getDragState(page) {
