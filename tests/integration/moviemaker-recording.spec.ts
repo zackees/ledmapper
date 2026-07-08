@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
 import { mockWebcamStripes } from '../helpers/webcam-mock-stripes.ts';
-import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
+import { shouldSkipGpuTest, GPU_WAIT_SCALE } from '../helpers/gpu-gate.ts';
 import { countScreenmapLeds } from '../helpers/screenmap-count.ts';
 
 const VIDEO_PATH = path.resolve('tests/fixtures/test-video.mp4');
@@ -31,7 +31,7 @@ function fledPayload(data) {
  * The welcome overlay hides once a source is loaded.
  */
 async function waitForSourceActive(page) {
-    await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 });
+    await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 * GPU_WAIT_SCALE });
 }
 
 /**
@@ -41,7 +41,7 @@ async function recordAndDownload(page, durationMs = 2000) {
     const recordBtn = page.locator('#btn_toggle_record');
 
     // Start recording
-    const downloadPromise = page.waitForEvent('download', { timeout: 15000 });
+    const downloadPromise = page.waitForEvent('download', { timeout: 15000 * GPU_WAIT_SCALE });
     await recordBtn.click();
     await expect(recordBtn).toHaveValue('Stop Recording');
     await expect(recordBtn).toHaveClass(/recording/);
@@ -215,7 +215,7 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
 
             // Upload custom screenmap (4 LEDs)
             await page.locator('#btn_upload_screenmap').setInputFiles(SCREENMAP_PATH);
-            await expect(page.locator('#rng_blur')).toBeEnabled({ timeout: 10000 });
+            await expect(page.locator('#rng_blur')).toBeEnabled({ timeout: 10000 * GPU_WAIT_SCALE });
 
             const data = await recordAndDownload(page, 1500);
 
@@ -236,7 +236,7 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
             const MULTI_PATH = path.resolve('tests/fixtures/test-screenmap-multi.json');
             const MULTI_TOTAL = countScreenmapLeds(JSON.parse(fs.readFileSync(MULTI_PATH, 'utf-8')));
             await page.locator('#btn_upload_screenmap').setInputFiles(MULTI_PATH);
-            await expect(page.locator('#rng_blur')).toBeEnabled({ timeout: 10000 });
+            await expect(page.locator('#rng_blur')).toBeEnabled({ timeout: 10000 * GPU_WAIT_SCALE });
 
             const data = await recordAndDownload(page, 1500);
 

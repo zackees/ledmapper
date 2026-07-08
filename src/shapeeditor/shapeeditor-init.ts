@@ -20,6 +20,8 @@ import { PANEL_CATALOG } from './panel-catalog';
 
 import templateHtml from './template.html?raw';
 import type { InsertDialogOpts } from './shapeeditor-types';
+import type { ShapeeditorDebugHooks } from '../types/domain';
+import { registerDebugState, unregisterDebugState } from '../debug-registry';
 
 ShapeEditor.prototype._construct = function (this: ShapeEditor): void {
 this.container.innerHTML = templateHtml;
@@ -140,7 +142,7 @@ this.selection.setOnChange(() => {
 ;
         this.labelRenderer = createLabelRenderer();
 window.__labelLayoutDebug = () => this.labelRenderer.debugDump();
-window.__shapeeditorDebug = {
+const shapeeditorDebug: ShapeeditorDebugHooks = {
         getStripCount: () => (this.stripInfo ? this.stripInfo.strips.length : 0),
         getStripLabels: () => (this.stripInfo
             ? this.stripInfo.strips.map((s, i) => stripStartEndLabels(s, i))
@@ -326,8 +328,20 @@ window.__shapeeditorDebug = {
             }));
             return true;
         },
-    }
-;
+    };
+window.__shapeeditorDebug = shapeeditorDebug;
+// Live per-tool debug state on window.__lmDebug, ships always-on (prod
+// included) — the existing __shapeeditorDebug object is kept as-is (16
+// existing specs depend on it) and additionally exposed here alongside a
+// getState() summary, per #225.
+registerDebugState('shapeeditor', {
+    getState: () => ({
+        stripCount: this.stripStore.getStrips().length,
+        totalPoints: this.screenmap_pts.length,
+        dirty: !this.dom_btn_save.disabled,
+    }),
+    debug: shapeeditorDebug,
+});
         this.canvasW = 0;
         this.canvasH = 0;
         this.renderer = null;
@@ -878,6 +892,7 @@ ShapeEditor.prototype.start = function (this: ShapeEditor): void {
 
 ShapeEditor.prototype.destroy = function (this: ShapeEditor): void {
 
+        unregisterDebugState('shapeeditor');
         this.ac.abort();
         if (this.rafId) cancelAnimationFrame(this.rafId);
         if (this.screenmapOutline) {

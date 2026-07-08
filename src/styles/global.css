@@ -604,6 +604,64 @@ input[type="button"]:focus-visible {
     box-shadow: 0 0 0 3px var(--color-lm-accent-glow);
 }
 
+/* ── Diagnostics Footer (Copy-diagnostics button, issue #230) ──
+   `errorDialog()`'s SweetAlert2 `footer` — a "Copy diagnostics" button
+   plus a hidden fallback `<pre>` that's revealed only when both the
+   clipboard API and the `execCommand('copy')` fallback fail, so the
+   payload stays available for manual copy. */
+
+.diagnostics-footer { @apply flex justify-center; }
+
+.diagnostics-copy-btn {
+    font-size: 0.72rem;
+    padding: 4px 12px;
+    background: transparent;
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm-pill);
+    color: var(--color-lm-text-secondary);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.diagnostics-copy-btn:hover {
+    background: var(--color-lm-accent-subtle);
+    border-color: var(--color-lm-accent);
+    color: var(--color-lm-accent);
+}
+
+.diagnostics-copy-btn-done,
+.diagnostics-copy-btn-done:hover {
+    border-color: var(--color-mm-success);
+    color: var(--color-mm-success);
+}
+
+.diagnostics-payload-pre {
+    @apply text-left;
+    margin-top: 8px;
+    max-height: 160px;
+    overflow: auto;
+    padding: 8px;
+    background: var(--color-lm-surface-1);
+    border: 1px solid var(--color-lm-border);
+    border-radius: 4px;
+    font-size: 0.68rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--color-lm-text);
+}
+
+.diagnostics-payload-hidden { display: none; }
+
+/* Off-screen host for the `execCommand('copy')` legacy-fallback textarea —
+   never visible, but must stay in normal layout flow (not display:none)
+   for `select()` + `execCommand('copy')` to work in every browser. */
+.diagnostics-legacy-textarea {
+    position: fixed;
+    top: -9999px;
+    left: -9999px;
+    opacity: 0;
+}
+
 /* ── Scrollbar ─────────────────────────────────────────────── */
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }

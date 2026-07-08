@@ -44,6 +44,13 @@ test.describe('Video Player', () => {
         await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
         await expect(page.locator('#screenmap_status')).toContainText('4 LEDs');
         await expect(page.locator('#btn_play')).toBeEnabled();
+
+        // window.__lmDebug.movieplayer.getState() (#225) is a live,
+        // JSON-serializable alternative to scraping DOM text — assert it
+        // reports the same load. test-video.fled embeds a 4-LED screenmap
+        // and a 120-byte rgb8 payload (120 / (4 * 3) = 10 frames).
+        const debugState = await page.evaluate(() => window.__lmDebug?.movieplayer?.getState());
+        expect(debugState).toEqual({ frameCount: 10, ledCount: 4, playing: true, loaded: true });
     });
 
     test('round-trip: synthesized .fled loads, autoplays, and frames advance', async ({ page }) => {
