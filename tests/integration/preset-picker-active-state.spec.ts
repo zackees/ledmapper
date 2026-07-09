@@ -120,6 +120,10 @@ sharedTest.describe('Preset picker active-chip visibility (#247) — moviemaker'
         await expect(restingChip).not.toHaveClass(/active-preset/);
         await expect(mount.locator('.preset-btn.active-preset')).toHaveCount(1);
 
+        // Picking a preset auto-dismisses the picker popover (#273); re-open
+        // it so the chips are on-screen for the computed-style comparison.
+        await expandScreenmapBand(page);
+        await expect(activeChip).toBeVisible();
         const activeBg = await bgColor(activeChip);
         const restingBg = await bgColor(restingChip);
         expect(activeBg).not.toBe(restingBg);
