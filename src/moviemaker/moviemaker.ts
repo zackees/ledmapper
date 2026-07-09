@@ -93,6 +93,7 @@ export function init(container: HTMLElement) {
     const dom_sel_max_resolution = qe<HTMLSelectElement>('#sel_max_resolution');
     const dom_txt_curr_resolution = qe<HTMLElement>('#txt_curr_resolution');
     const dom_chk_show_leds    = qei('#chk_show_leds');
+    const dom_chk_show_labels  = qei('#chk_show_labels');
     const dom_chk_auto_bloom       = qei('#chk_auto_bloom');
     const dom_bloom_strength_slider = qe('#bloom_strength_slider');
     const dom_rng_bloom_strength   = qei('#rng_bloom_strength');
@@ -1311,7 +1312,7 @@ export function init(container: HTMLElement) {
             recording.resetCapture();
         }
 
-        drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter, recording.isActive ? recording.getStats() : null, videoSource.sourceType !== null ? frame_rate : null);
+        drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter, recording.isActive ? recording.getStats() : null, videoSource.sourceType !== null ? frame_rate : null, dom_chk_show_labels.checked);
         const previewRotate = dom_chk_preview_rotate.checked ? curr_rotate : 0;
         preview.render(screenmap_pts, previewRotate, lastSample, previewLedDiameter);
 
