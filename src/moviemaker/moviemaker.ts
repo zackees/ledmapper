@@ -57,6 +57,7 @@ export function init(container: HTMLElement) {
     // Screenmap band collapse (issue #248): compact summary row + "Change
     // layout" affordance shown once a layout is active, expandable back to
     // the full picker.
+    const dom_sidebar = container.querySelector<HTMLElement>('#sidebar');
     const dom_screenmap_collapsed_row = container.querySelector<HTMLElement>('#screenmap_collapsed_row');
     const dom_screenmap_expanded_panel = container.querySelector<HTMLElement>('#screenmap_expanded_panel');
     const dom_txt_active_layout = container.querySelector<HTMLElement>('#txt_active_layout');
@@ -289,20 +290,49 @@ export function init(container: HTMLElement) {
         updateScreenmapBandUI();
     }
 
+    /** Anchor the fixed picker popover just under the screenmap band, over
+     *  the canvas (issue #273) — set inline top/left/width so opening never
+     *  reflows the page. `.sidebar-scroll`'s own overflow clips an absolute
+     *  child, hence `position: fixed` + measured coords here. */
+    function positionLayoutPopover() {
+        const panel = dom_screenmap_expanded_panel;
+        const anchor = dom_sidebar;
+        if (!panel || !anchor) return;
+        const r = anchor.getBoundingClientRect();
+        const pad = 12;
+        const width = Math.min(r.width - pad * 2, 760);
+        panel.style.top = `${String(Math.round(r.bottom + 4))}px`;
+        panel.style.left = `${String(Math.round(r.left + pad))}px`;
+        panel.style.width = `${String(Math.round(width))}px`;
+    }
+
     /**
-     * Sync the collapsed/expanded screenmap band (issue #248). Collapsed
-     * whenever a layout is active, regardless of source/gate state, unless
-     * the user asked to change it via "Change layout". The expanded picker
-     * stays mounted in the DOM either way — collapsing moves it off-canvas
-     * (`.screenmap-offscreen`) rather than `display:none`, so
-     * `#btn_upload_screenmap` / `.preset-btn` remain addressable by
-     * Playwright's `toBeVisible()` and `setInputFiles()`.
+     * Sync the screenmap band (issues #248 / #273).
+     * - Before a source loads: only the gate hint speaks (one message, no
+     *   contradiction). The summary row + picker stay hidden.
+     * - Source active: the compact summary row shows the active layout.
+     *   "Change layout" opens the picker as a select-to-dismiss popover that
+     *   floats over the canvas — picking a preset / uploading auto-closes it,
+     *   as do Esc and click-outside. The picker stays mounted (off-screen
+     *   when closed, never `display:none`) so `#btn_upload_screenmap` /
+     *   `.preset-btn` remain addressable for `setInputFiles()` and clicks.
      */
     function updateScreenmapBandUI() {
-        const collapsed = screenmapValid && !screenmapBandExpanded;
-        dom_screenmap_expanded_panel?.classList.toggle('screenmap-offscreen', collapsed);
-        dom_screenmap_collapsed_row?.classList.toggle('hidden', !collapsed);
-        dom_btn_collapse_layout?.classList.toggle('hidden', !screenmapBandExpanded);
+        const showSummary = sourceActive && screenmapValid;
+        const open = screenmapBandExpanded && showSummary;
+        dom_screenmap_collapsed_row?.classList.toggle('hidden', !showSummary);
+        dom_screenmap_expanded_panel?.classList.toggle('screenmap-offscreen', !open);
+        if (dom_screenmap_expanded_panel) {
+            if (open) {
+                positionLayoutPopover();
+            } else {
+                // Clear the inline anchor so the .screenmap-offscreen rule wins.
+                dom_screenmap_expanded_panel.style.top = '';
+                dom_screenmap_expanded_panel.style.left = '';
+                dom_screenmap_expanded_panel.style.width = '';
+            }
+        }
+        dom_btn_change_layout?.setAttribute('aria-expanded', String(open));
         if (dom_txt_active_layout) dom_txt_active_layout.textContent = activeLayoutLabel ?? 'Custom layout';
         if (dom_txt_active_led_count) {
             const n = rawScreenmapPts.length;
@@ -310,15 +340,31 @@ export function init(container: HTMLElement) {
         }
     }
 
+    function closeLayoutPicker() {
+        screenmapBandExpanded = false;
+        updateScreenmapBandUI();
+    }
+
     dom_btn_change_layout?.addEventListener('click', () => {
-        screenmapBandExpanded = true;
+        screenmapBandExpanded = !screenmapBandExpanded;
         updateScreenmapBandUI();
     }, { signal });
 
-    dom_btn_collapse_layout?.addEventListener('click', () => {
-        screenmapBandExpanded = false;
-        updateScreenmapBandUI();
+    dom_btn_collapse_layout?.addEventListener('click', closeLayoutPicker, { signal });
+
+    // Light-dismiss (issue #273): Esc and pointer-down outside the popover
+    // (and its toggle button) close it with no change.
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && screenmapBandExpanded) closeLayoutPicker();
     }, { signal });
+    document.addEventListener('pointerdown', (e) => {
+        if (!screenmapBandExpanded) return;
+        const t = e.target as Node | null;
+        if (dom_screenmap_expanded_panel?.contains(t)) return;
+        if (dom_btn_change_layout?.contains(t)) return; // its own handler toggles
+        closeLayoutPicker();
+    }, { signal });
+    window.addEventListener('resize', () => { if (screenmapBandExpanded) positionLayoutPopover(); }, { signal });
 
     updateElementStates();
 
@@ -380,6 +426,9 @@ export function init(container: HTMLElement) {
                     presetPicker?.setActive(presetFile);
                     setUploadFilename('');
                     activeLayoutLabel = screenmapManifest.presets.find((p) => p.file === presetFile)?.name ?? presetFile;
+                    // Picking a layout IS choosing it — auto-dismiss the
+                    // popover (issue #273); no separate "Done" step.
+                    screenmapBandExpanded = false;
                     updateScreenmapBandUI();
                 } catch (error) {
                     log.info('screenmap-load-error', { source: `preset:${presetFile}`, error: String(error) });
@@ -591,6 +640,9 @@ export function init(container: HTMLElement) {
         file.text().then((text: string) => {
             applyScreenmapText(text, `upload:${file.name}`);
             activeLayoutLabel = file.name;
+            // Successful upload completes the layout choice — close the
+            // popover (issue #273).
+            screenmapBandExpanded = false;
             updateScreenmapBandUI();
             saveScreenmap(text);
         }).catch((error: unknown) => {

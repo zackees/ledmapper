@@ -37,8 +37,11 @@
                              clicks even while visually collapsed off-canvas
                              (issue #248 — same rationale as
                              .visually-hidden-input in global.css). -->
-                        <div id="screenmap_expanded_panel" class="screenmap-expanded-panel">
-                            <span class="field-label">Presets</span>
+                        <div id="screenmap_expanded_panel" class="screenmap-expanded-panel screenmap-offscreen" role="dialog" aria-label="Choose a layout">
+                            <div class="screenmap-popover-header">
+                                <span class="field-label">Choose a layout</span>
+                                <button type="button" id="btn_collapse_layout" class="screenmap-popover-close" title="Close" aria-label="Close layout picker">&#10005;</button>
+                            </div>
                             <!-- The categorized accordion picker is mounted here by
                                  src/ui/preset-picker (issue #206), populated from
                                  public/screenmaps/manifest.json baked via
@@ -55,7 +58,6 @@
                             </div>
                             <div class="button-row screenmap-edit-row">
                                 <a href="/create" class="btn-edit-screenmap" data-edit-screenmap>Edit / Create from a photo →</a>
-                                <button type="button" id="btn_collapse_layout" class="btn-collapse-layout hidden">Done</button>
                             </div>
                         </div>
                     </div>
@@ -160,11 +162,6 @@
                             <span class="text-sm text-lm-text-muted">Capture live from your camera</span>
                         </button>
                     </div>
-                    <div class="welcome-status">
-                        <span class="status-dot"></span>
-                        16x16 grid preset ready
-                    </div>
-                    <p class="welcome-hint">Change LED layout or adjust effects in the toolbar</p>
                 </div>
             </div>
             <div id="canvas-container" class="flex flex-col items-center gap-1.5">
@@ -193,7 +190,7 @@
                     <div class="toolbar-separator"></div>
                     <label class="toolbar-checkbox"><input type="checkbox" id="chk_show_leds" checked> Show LEDs</label>
                     <div class="toolbar-separator"></div>
-                    <button id="btn_unload_source" type="button" class="btn-unload" title="Unload source" aria-label="Unload source">&#10005;</button>
+                    <button id="btn_unload_source" type="button" class="btn-unload" title="Unload video source" aria-label="Unload video source">&#10005;</button>
                 </div>
                 <div id="video-progress" class="video-progress-bar">
                     <button id="btn_play_pause" type="button" class="btn-play-pause"></button>
