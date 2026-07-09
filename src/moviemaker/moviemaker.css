@@ -334,7 +334,7 @@
 }
 
 .btn-change-layout {
-    @apply shrink-0 cursor-pointer;
+    @apply inline-flex items-center gap-1.5 shrink-0 cursor-pointer;
     background: var(--color-lm-surface-2);
     color: var(--color-lm-text);
     border: 1px solid var(--color-lm-border);
@@ -347,6 +347,22 @@
 .btn-change-layout:hover {
     border-color: var(--color-lm-accent);
     background: var(--color-lm-accent-subtle);
+}
+
+/* Down-caret so the button reads as a menu expander (issue #273 follow-up).
+   `currentColor` tracks the button text; flips up while the picker is open,
+   driven by the button's own aria-expanded state. */
+.btn-change-layout::after {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid currentColor;
+    transition: transform var(--lm-dur) var(--lm-ease);
+}
+.btn-change-layout[aria-expanded="true"]::after {
+    transform: rotate(180deg);
 }
 
 .screenmap-edit-row {

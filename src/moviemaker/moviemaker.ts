@@ -290,22 +290,27 @@ export function init(container: HTMLElement) {
         updateScreenmapBandUI();
     }
 
-    /** Anchor the fixed picker popover just under the layout bar that sits
-     *  above the canvas (issue #273 follow-up) — left-aligned with the bar,
-     *  over the canvas. Inline top/left/width so opening never reflows the
-     *  page; `position: fixed` because ancestors' overflow would otherwise
-     *  clip it. Clamp the width to the viewport so it never spills off-screen
-     *  at narrow widths. */
+    /** Anchor the fixed picker popover as a dropdown directly under the
+     *  "Change layout" button (issue #273 follow-up) — so the menu reads as
+     *  belonging to the button that opened it, rather than dropping from the
+     *  far edge of the bar. Left-aligned with the button, shifted left only
+     *  if it would overflow the viewport. Inline top/left/width so opening
+     *  never reflows the page; `position: fixed` because ancestors' overflow
+     *  would otherwise clip it. */
     function positionLayoutPopover() {
         const panel = dom_screenmap_expanded_panel;
-        const anchor = dom_screenmap_collapsed_row;
+        const anchor = dom_btn_change_layout;
         if (!panel || !anchor) return;
         const r = anchor.getBoundingClientRect();
         const margin = 8;
-        const available = window.innerWidth - r.left - margin;
-        const width = Math.max(280, Math.min(560, available));
+        const width = Math.max(280, Math.min(560, window.innerWidth - margin * 2));
+        // Prefer left-aligned with the button; pull left if it would spill
+        // off the right edge, and never past the left margin.
+        let left = r.left;
+        if (left + width > window.innerWidth - margin) left = window.innerWidth - margin - width;
+        if (left < margin) left = margin;
         panel.style.top = `${String(Math.round(r.bottom + 6))}px`;
-        panel.style.left = `${String(Math.round(r.left))}px`;
+        panel.style.left = `${String(Math.round(left))}px`;
         panel.style.width = `${String(Math.round(width))}px`;
     }
 
