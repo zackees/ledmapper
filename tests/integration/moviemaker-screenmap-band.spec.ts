@@ -8,6 +8,10 @@ import { mockWebcam } from '../helpers/webcam-mock.ts';
  * popover that floats OVER the canvas (never reflowing it below the fold);
  * picking a preset auto-closes it, as do Esc and click-outside; and before
  * a source loads only the gate hint speaks (no contradictory messaging).
+ * #273 follow-up: the summary row + "Change layout" affordance live in a
+ * compact bar directly above the canvas (next to the shape they map), and
+ * the full-width top band collapses away on source load — so the control is
+ * no longer stranded in the far corners of a top band.
  *
  * Regression guards: collapsed height stays compact, and the canvas +
  * preview stay above the fold at 1366x768 in BOTH the collapsed and the
@@ -52,10 +56,18 @@ test.describe('Moviemaker screenmap band + layout picker (issues #248 / #273)', 
         expect(collapsedBox).not.toBeNull();
         expect(collapsedBox?.height ?? Infinity).toBeLessThan(80);
 
+        // #273 follow-up: once a source loads, the layout control moves out
+        // of the full-width top band (which then collapses away) and sits
+        // directly above the render canvas — next to the shape it maps.
+        await expect(page.locator('#sidebar')).toBeHidden();
+
         // Render canvas + preview panel fully above the fold.
         const canvasBox = await page.locator('#renderCanvas').boundingBox();
         expect(canvasBox).not.toBeNull();
         expect((canvasBox?.y ?? 0) + (canvasBox?.height ?? 0)).toBeLessThanOrEqual(768);
+
+        // The layout bar sits above the canvas (not stranded in a top band).
+        expect((collapsedBox?.y ?? 0) + (collapsedBox?.height ?? 0)).toBeLessThanOrEqual((canvasBox?.y ?? 0) + 1);
 
         const previewBox = await page.locator('#previewPanel').boundingBox();
         expect(previewBox).not.toBeNull();

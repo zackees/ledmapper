@@ -15,57 +15,54 @@
                 </select>
             </div>
 
+            <!-- Before a source loads, the canvas is covered by the welcome
+                 overlay, so the layout affordance can't live over it yet;
+                 this slim gate hint carries the one no-source message. Once a
+                 source loads the whole sidebar hides (JS) and the layout
+                 control appears above the canvas, next to the shape it maps
+                 (issue #273 follow-up). -->
             <details class="panel" open>
                 <summary>Screenmap</summary>
                 <div class="panel-body">
                     <div class="control-group">
                         <p id="screenmap_gate_hint" class="field-label">Load a video source to choose a layout.</p>
-                        <!-- Compact summary row shown once a layout is active
-                             (issue #248); collapses the picker below to keep
-                             the render canvas above the fold. -->
-                        <div id="screenmap_collapsed_row" class="screenmap-collapsed-row hidden">
-                            <span class="screenmap-collapsed-info">
-                                <span id="txt_active_layout" class="screenmap-active-layout">Custom layout</span>
-                                <span id="txt_active_led_count" class="screenmap-led-count">0 LEDs</span>
-                            </span>
-                            <button type="button" id="btn_change_layout" class="btn-change-layout">Change layout</button>
-                        </div>
-                        <!-- Expanded picker: presets, upload, and the edit link.
-                             Stays mounted in the DOM (never display:none) so
-                             #btn_upload_screenmap and .preset-btn remain
-                             addressable via setInputFiles()/programmatic
-                             clicks even while visually collapsed off-canvas
-                             (issue #248 — same rationale as
-                             .visually-hidden-input in global.css). -->
-                        <div id="screenmap_expanded_panel" class="screenmap-expanded-panel screenmap-offscreen" role="dialog" aria-label="Choose a layout">
-                            <div class="screenmap-popover-header">
-                                <span class="field-label">Choose a layout</span>
-                                <button type="button" id="btn_collapse_layout" class="screenmap-popover-close" title="Close" aria-label="Close layout picker">&#10005;</button>
-                            </div>
-                            <!-- The categorized accordion picker is mounted here by
-                                 src/ui/preset-picker (issue #206), populated from
-                                 public/screenmaps/manifest.json baked via
-                                 virtual:screenmap-presets. -->
-                            <div class="preset-picker-mount"></div>
-                            <div id="screenmap_drop_target" class="drop-zone">
-                                <span class="field-label">Upload custom</span>
-                                <div class="control-row">
-                                    <label for="btn_upload_screenmap" class="btn-upload-file">Choose file</label>
-                                    <span id="txt_screenmap_filename" class="upload-filename">No file chosen</span>
-                                </div>
-                                <input type="file" id="btn_upload_screenmap" accept=".csv,.json" class="visually-hidden-input">
-                                <p class="upload-drop-hint">or drag a .json/.csv here</p>
-                            </div>
-                            <div class="button-row screenmap-edit-row">
-                                <a href="/create" class="btn-edit-screenmap" data-edit-screenmap>Edit / Create from a photo →</a>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </details>
 
         </div>
     </aside>
+
+    <!-- Layout picker popover (issue #273), hoisted to the app-layout root so
+         it's an independent `position: fixed` overlay whose DOM home never
+         gets `display:none`d when the sidebar collapses on source load. Its
+         top/left/width are set in JS on open, anchored under the layout bar
+         above the canvas. Stays mounted (parked off-screen when closed, never
+         `display:none`) so #btn_upload_screenmap and .preset-btn remain
+         addressable via setInputFiles()/programmatic clicks. -->
+    <div id="screenmap_expanded_panel" class="screenmap-expanded-panel screenmap-offscreen" role="dialog" aria-label="Choose a layout">
+        <div class="screenmap-popover-header">
+            <span class="field-label">Choose a layout</span>
+            <button type="button" id="btn_collapse_layout" class="screenmap-popover-close" title="Close" aria-label="Close layout picker">&#10005;</button>
+        </div>
+        <!-- The categorized accordion picker is mounted here by
+             src/ui/preset-picker (issue #206), populated from
+             public/screenmaps/manifest.json baked via
+             virtual:screenmap-presets. -->
+        <div class="preset-picker-mount"></div>
+        <div id="screenmap_drop_target" class="drop-zone">
+            <span class="field-label">Upload custom</span>
+            <div class="control-row">
+                <label for="btn_upload_screenmap" class="btn-upload-file">Choose file</label>
+                <span id="txt_screenmap_filename" class="upload-filename">No file chosen</span>
+            </div>
+            <input type="file" id="btn_upload_screenmap" accept=".csv,.json" class="visually-hidden-input">
+            <p class="upload-drop-hint">or drag a .json/.csv here</p>
+        </div>
+        <div class="button-row screenmap-edit-row">
+            <a href="/create" class="btn-edit-screenmap" data-edit-screenmap>Edit / Create from a photo →</a>
+        </div>
+    </div>
 
     <div class="canvas-row">
         <aside id="canvas-controls">
@@ -165,6 +162,18 @@
                 </div>
             </div>
             <div id="canvas-container" class="flex flex-col items-center gap-1.5">
+                <!-- Active-layout bar, sitting directly above the canvas so
+                     the layout name + "Change layout" live next to the shape
+                     they map, not stranded in the far corners of a top band
+                     (issue #273 follow-up). Left-aligned with the canvas edge;
+                     hidden until a source loads. -->
+                <div id="screenmap_collapsed_row" class="screenmap-collapsed-row hidden">
+                    <span class="screenmap-collapsed-info">
+                        <span id="txt_active_layout" class="screenmap-active-layout">Custom layout</span>
+                        <span id="txt_active_led_count" class="screenmap-led-count">0 LEDs</span>
+                    </span>
+                    <button type="button" id="btn_change_layout" class="btn-change-layout">Change layout</button>
+                </div>
                 <div class="canvas-toolbar">
                     <input type="button" id="btn_toggle_record" value="Start Recording" disabled>
                     <select id="sel_record_format" class="toolbar-select" title="Recording output format">
