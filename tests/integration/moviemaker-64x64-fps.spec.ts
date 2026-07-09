@@ -56,6 +56,13 @@ async function loadVideoAndPreset(page, presetSelector) {
 async function measureRecordingFps(page, presetSelector) {
     await loadVideoAndPreset(page, presetSelector);
 
+    // This spec measures the REALTIME render loop under recording load.
+    // File sources with format 'fled' now take the offline every-frame
+    // path (#257), which never runs the realtime loop — select 'both'
+    // (fled + mp4) to force the realtime capture path this spec exists
+    // to measure.
+    await page.locator('#sel_record_format').selectOption('both');
+
     const recordBtn = page.locator('#btn_toggle_record');
     const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
     await recordBtn.click();

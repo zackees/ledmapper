@@ -38,6 +38,7 @@
     "@tailwindcss/vite": "^4.2.2",
     "eruda": "^3.4.3",
     "lil-gui": "^0.21.0",
+    "mediabunny": "^1.50.7",
     "stats-gl": "^4.2.2",
     "sweetalert2": "^11.26.21",
     "tailwindcss": "^4.2.2",

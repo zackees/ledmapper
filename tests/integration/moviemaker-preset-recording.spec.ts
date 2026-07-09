@@ -24,18 +24,17 @@ async function loadVideoAndPlay(page) {
     await page.waitForTimeout(500);
 }
 
-/** Record briefly and expect a .fled download (not the error dialog). */
-async function recordExpectingDownload(page, durationMs = 1500) {
+/** Record and expect a .fled download (not the error dialog). File sources
+ *  take the offline every-frame path (#257): one click renders the whole
+ *  file and the download fires on completion — no stop click. */
+async function recordExpectingDownload(page) {
     const recordBtn = page.locator('#btn_toggle_record');
     await expect(recordBtn).toBeEnabled();
-    const downloadPromise = page.waitForEvent('download', { timeout: 15000 * GPU_WAIT_SCALE });
+    const downloadPromise = page.waitForEvent('download', { timeout: 45000 * GPU_WAIT_SCALE });
     await recordBtn.click();
-    await expect(recordBtn).toHaveValue('Stop Recording');
-    await page.waitForTimeout(durationMs);
-    await recordBtn.click();
-    await expect(recordBtn).toHaveValue('Start Recording');
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/^video\d+\.fled$/);
+    await expect(recordBtn).toHaveValue('Start Recording');
     await expect(page.locator('.swal2-popup')).toHaveCount(0);
 }
 

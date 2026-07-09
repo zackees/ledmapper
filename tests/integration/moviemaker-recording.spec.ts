@@ -118,17 +118,32 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
             await expect(page.locator('#rng_blur')).toBeEnabled();
             await expect(page.locator('#btn_toggle_record')).toBeEnabled();
 
-            // Record for 2 seconds
-            const data = await recordAndDownload(page, 2000);
+            // File sources take the OFFLINE every-frame path (#257): one
+            // click renders the whole file deterministically and the
+            // download fires on completion — no stop click.
+            const downloadPromise = page.waitForEvent('download', { timeout: 45000 * GPU_WAIT_SCALE });
+            await page.locator('#btn_toggle_record').click();
+            const download = await downloadPromise;
+            expect(download.suggestedFilename()).toMatch(/^video\d+\.fled$/);
+            await expect(page.locator('#btn_toggle_record')).toHaveValue('Start Recording');
+            const savePath = path.join(
+                await download.path() ? path.dirname(await download.path()) : '.',
+                download.suggestedFilename(),
+            );
+            await download.saveAs(savePath);
+            const data = fs.readFileSync(savePath);
+            fs.unlinkSync(savePath);
 
-            // Validate .fled file: header + JSON + payload of whole frames.
+            // Validate .fled: EXACTLY every source frame was captured
+            // (test-video.mp4 = 60 frames @ 30 fps), and the detected fps
+            // rides in the metadata.
             const payload = fledPayload(data);
-            expect(payload.length).toBeGreaterThan(0);
             const bytesPerFrame = 256 * 3; // 16x16 grid = 256 LEDs, 3 bytes each
             expect(payload.length % bytesPerFrame).toBe(0);
-
-            const frameCount = payload.length / bytesPerFrame;
-            expect(frameCount).toBeGreaterThanOrEqual(1);
+            expect(payload.length / bytesPerFrame).toBe(60);
+            const jsonLength = data.readUInt32LE(8);
+            const meta = JSON.parse(data.subarray(12, 12 + jsonLength).toString('utf-8'));
+            expect(meta.video?.fps).toBe(30);
 
             // No JS errors
             expect(errors).toHaveLength(0);

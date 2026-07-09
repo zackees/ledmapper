@@ -18,6 +18,7 @@ import { setupToggleButton } from '../ui/toggle-button';
 import { createLogger } from '../debug-log';
 import { createVideoStallWatchdog, createRafHeartbeat } from '../watchdogs';
 import { createFpsEstimator } from './frame-pacing';
+import { runOfflineCapture, isOfflineCaptureSupported } from './offline-capture';
 import { registerDebugState, unregisterDebugState, type MoviemakerDebugState } from '../debug-registry';
 
 const log = createLogger('moviemaker');
@@ -804,9 +805,86 @@ export function init(container: HTMLElement) {
     syncRecordFormatUi();
     dom_sel_record_format.addEventListener('change', syncRecordFormatUi, { signal });
 
+    // Offline every-frame capture state (#257): while a render pass runs,
+    // the record button becomes its progress/cancel control and the RAF
+    // loop's realtime sampling is suspended (both paths share the gather
+    // pipeline).
+    let offlineActive = false;
+    let offlineCancelRequested = false;
+
+    async function runOfflineRecordPass(file: File): Promise<void> {
+        offlineActive = true;
+        offlineCancelRequested = false;
+        dom_btn_toggle_record.value = 'Rendering…';
+        dom_btn_toggle_record.classList.add('recording');
+        let offlineSampleBuf: Uint8Array | null = null;
+        let fallbackToRealtime = false;
+        try {
+            const result = await runOfflineCapture({
+                file,
+                captureFrame: async (frame) => {
+                    const s = await blurPipeline.captureFrameSample(frame);
+                    if (s?.numPts !== screenmap_pts.length) return null;
+                    if (offlineSampleBuf?.length !== s.numPts * 3) {
+                        offlineSampleBuf = new Uint8Array(s.numPts * 3);
+                    }
+                    const es = extractGatherSample(s.buffer, s.numPts, offlineSampleBuf);
+                    // Drive the LED preview from the offline pass so the user
+                    // watches the actual render progress.
+                    const previewRotate = dom_chk_preview_rotate.checked ? curr_rotate : 0;
+                    preview.render(screenmap_pts, previewRotate, es, previewLedDiameter);
+                    const rec = toRecordingSample(es, s.numPts);
+                    return new Uint8Array(rec.rgbPts);
+                },
+                onProgress: (done, total) => {
+                    dom_btn_toggle_record.value = `Rendering ${String(done)}/${String(total)} — click to cancel`;
+                },
+                isCancelled: () => offlineCancelRequested,
+            });
+            if (result === null) {
+                // Container/codec not decodable here — realtime fallback.
+                fallbackToRealtime = true;
+            } else if (result.cancelled) {
+                log.info('offline-capture-cancelled', { captured: result.frames.length, total: result.total });
+            } else {
+                await recording.saveFrames(result.frames, result.fps);
+                const sourceMs = (result.total / result.fps) * 1000;
+                log.info('offline-capture-saved', {
+                    frames: result.frames.length,
+                    total: result.total,
+                    fps: result.fps,
+                    elapsedMs: result.elapsedMs,
+                    xRealtime: Math.round((sourceMs / Math.max(result.elapsedMs, 1)) * 10) / 10,
+                });
+            }
+        } catch (error) {
+            log.error('offline-capture-failed', { error: String(error) });
+            void errorDialog('Offline capture failed', String(error));
+        } finally {
+            offlineActive = false;
+            offlineCancelRequested = false;
+            dom_btn_toggle_record.value = 'Start Recording';
+            dom_btn_toggle_record.classList.remove('recording');
+            dom_sel_record_format.disabled = false;
+            syncRecordFormatUi();
+        }
+        if (fallbackToRealtime && !recording.isActive) {
+            log.warn('offline-unavailable-realtime-fallback', { file: file.name });
+            void recording.toggle();
+            dom_sel_record_format.disabled = true;
+            dom_sel_record_aspect.disabled = true;
+            dom_btn_toggle_record.value = 'Stop Recording';
+            dom_btn_toggle_record.classList.add('recording');
+        }
+    }
+
     // Recording toggle — drives the .fled recorder, the .mp4 recorder, or
     // both depending on the format selector.
     dom_btn_toggle_record.addEventListener('click', () => {
+        if (offlineActive) {
+            offlineCancelRequested = true;
+            return;
+        }
         const fledActive = recording.isActive;
         const mp4Active = mp4Recorder?.isActive ?? false;
         const anyActive = fledActive || mp4Active;
@@ -839,6 +917,16 @@ export function init(container: HTMLElement) {
             mp4Recorder = null;
             dom_btn_toggle_record.value = 'Start Recording';
             dom_btn_toggle_record.classList.remove('recording');
+            return;
+        }
+
+        // Offline every-frame pass (#257): a file source with WebCodecs
+        // available takes the deterministic decode-every-frame path instead
+        // of racing playback. fled-only — MP4 capture films the live preview
+        // canvas and is inherently realtime.
+        const offlineFile = videoSource.sourceFile;
+        if (wantFled && !wantMp4 && offlineFile && isOfflineCaptureSupported()) {
+            void runOfflineRecordPass(offlineFile);
             return;
         }
 
@@ -1054,6 +1142,10 @@ export function init(container: HTMLElement) {
         rafId = requestAnimationFrame(animationLoop);
 
         if (!sourceActive) return;
+        // Offline render pass owns the pipeline + canvas while it runs
+        // (#257) — suspend realtime rendering/sampling so the two paths
+        // never interleave on the shared gather targets.
+        if (offlineActive) return;
 
         rafFrameCount++;
 
