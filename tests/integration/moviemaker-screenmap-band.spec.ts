@@ -100,22 +100,38 @@ test.describe('Moviemaker screenmap band + layout picker (issues #248 / #273)', 
         await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 });
 
         const panel = page.locator('#screenmap_expanded_panel');
+        const changeBtn = page.locator('#btn_change_layout');
         await expect(page.locator('#screenmap_collapsed_row')).toBeVisible();
         await expect(panel).toHaveClass(/screenmap-offscreen/);
+
+        // The button advertises itself as a menu expander (#273 follow-up):
+        // a popup trigger whose aria-expanded reflects the open state (and
+        // drives the caret's flip).
+        await expect(changeBtn).toHaveAttribute('aria-haspopup', 'dialog');
+        await expect(changeBtn).toHaveAttribute('aria-expanded', 'false');
 
         // Open: the popover floats over the canvas. The summary row stays as
         // its anchor, and — the whole point of #273 — the canvas is NOT
         // pushed below the fold.
-        await page.locator('#btn_change_layout').click();
+        await changeBtn.click();
         await expect(panel).not.toHaveClass(/screenmap-offscreen/);
+        await expect(changeBtn).toHaveAttribute('aria-expanded', 'true');
         await expect(page.locator('#screenmap_collapsed_row')).toBeVisible();
         const canvasBox = await page.locator('#renderCanvas').boundingBox();
         expect((canvasBox?.y ?? 0) + (canvasBox?.height ?? 0)).toBeLessThanOrEqual(768);
+
+        // The menu drops directly under the button (a dropdown belonging to
+        // it), not from the far edge of the bar: their left edges align.
+        const btnBox = await changeBtn.boundingBox();
+        const panelBox = await panel.boundingBox();
+        expect(Math.abs((panelBox?.x ?? 0) - (btnBox?.x ?? 0))).toBeLessThanOrEqual(4);
+        expect(panelBox?.y ?? 0).toBeGreaterThanOrEqual((btnBox?.y ?? 0) + (btnBox?.height ?? 0));
 
         // Select-to-dismiss: clicking a preset applies it AND closes the
         // popover — no separate "Done" step. The summary label updates.
         await page.locator('.preset-btn[data-preset-file="8x8_grid.json"]').click();
         await expect(panel).toHaveClass(/screenmap-offscreen/);
+        await expect(changeBtn).toHaveAttribute('aria-expanded', 'false');
         await expect(page.locator('#txt_active_layout')).toHaveText('8x8 Grid');
         await expect(page.locator('.preset-btn[data-preset-file="8x8_grid.json"]')).toHaveClass(/active-preset/);
     });
