@@ -3,6 +3,7 @@
  */
 
 import { getStripColors, stripStartEndLabels } from '../common';
+import { gfxColors } from '../ui/theme';
 import { createLabelRenderer } from '../label-render';
 import { overlayLedRadius } from './transforms';
 import { perfCount } from './perf';
@@ -133,7 +134,7 @@ export function drawMoviemakerOverlay(
     zoom: number,
     translateX: number,
     translateY: number,
-    lastSample: { rgbPts: Uint8Array; avgBri: number } | null,
+    lastSample: { rgbPts: Uint8Array; avgBri: number; oobCount?: number } | null,
     videoWidth: number,
     videoHeight: number,
     fps: number,
@@ -155,5 +156,13 @@ export function drawMoviemakerOverlay(
     if (lastSample) {
         const pct = Math.round(lastSample.avgBri * 100);
         ctx.fillText(`Avg Brightness: ${String(pct)}%`, 10, 28);
+        // Out-of-bounds LEDs sample nothing and record black (#250). Their
+        // overlay dots sit off-canvas (clipped invisible), so this line is
+        // the user's only signal that zoom/pan pushed LEDs off the video.
+        const oob = lastSample.oobCount ?? 0;
+        if (oob > 0) {
+            ctx.fillStyle = gfxColors.accentAmber();
+            ctx.fillText(`⚠ ${String(oob)} LEDs outside video (adjust zoom/position)`, 10, 42);
+        }
     }
 }

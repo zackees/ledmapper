@@ -29,6 +29,8 @@ export interface MoviemakerDebugState {
     playing: boolean;
     recordingActive: boolean;
     recordFormat: string;
+    /** LEDs whose sample position falls outside the video frame (#250). */
+    oobLeds: number;
 }
 
 /** Live debug state for the Movie Player (src/movieplayer). */

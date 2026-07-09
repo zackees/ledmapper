@@ -850,10 +850,13 @@ export function init(container: HTMLElement) {
     // ── Animation loop ──────────────────────────────────────────────────────────
 
     let lastTime = performance.now();
-    let lastSample: { rgbPts: Uint8Array; avgBri: number } | null = null;
+    let lastSample: { rgbPts: Uint8Array; avgBri: number; oobCount: number } | null = null;
     let sampleRgbPts: Uint8Array | null = null;
     let recordRgbPts: Uint8Array | null = null;
     let rafFrameCount = 0;
+    // Last LOGGED out-of-bounds LED count — the warn fires on transitions
+    // (0 -> N, N -> M, N -> 0 clears), never per frame (#250).
+    let loggedOobCount = 0;
 
     // ── Watchdogs (issue #226) ───────────────────────────────────────────────
     // Log-only via createLogger('watchdog') inside src/watchdogs.ts; never
@@ -927,6 +930,7 @@ export function init(container: HTMLElement) {
             playing: videoSource.isPlaying,
             recordingActive: recording.isActive,
             recordFormat: dom_sel_record_format.value,
+            oobLeds: lastSample?.oobCount ?? 0,
         };
     }
     registerDebugState('moviemaker', { getState: getMoviemakerDebugState });
@@ -1004,6 +1008,18 @@ export function init(container: HTMLElement) {
                     sampleRgbPts = new Uint8Array(gather.numPts * 3);
                 }
                 lastSample = extractGatherSample(gather.buffer, gather.numPts, sampleRgbPts);
+                if (lastSample.oobCount !== loggedOobCount) {
+                    if (lastSample.oobCount > 0) {
+                        log.warn('leds-out-of-bounds', {
+                            count: lastSample.oobCount,
+                            total: gather.numPts,
+                            zoom: curr_zoom,
+                        });
+                    } else {
+                        log.info('leds-back-in-bounds', { total: gather.numPts });
+                    }
+                    loggedOobCount = lastSample.oobCount;
+                }
                 recording.processFrame(toRecordingSample(lastSample, gather.numPts), frame_rate, videoStallWatchdog.isHealthy());
             }
         } else {
