@@ -187,19 +187,17 @@
     color: var(--color-lm-text-muted);
 }
 
-/* Cap the canvas DISPLAY size so a full-resolution ("Native") backing store
-   on a high-res source scales down to fit instead of overflowing the layout
-   and shoving the toolbar (with the resolution dropdown) off-screen — the
-   #278 wedge. The `width`/`height` attributes (backing store, driving
-   recording quality) stay at full native resolution; only the rendered box
-   is bounded. max-width keeps it within the row; max-height keeps the whole
-   column within a laptop fold (the allowance covers the top effects bar +
-   toolbar + preview chrome). Aspect ratio is preserved (replaced element
-   constrained by both maxes). */
+/* The DISPLAY size is set in JS (moviemaker.ts `fitCanvasDisplay`): the box
+   is fitted to the available area preserving the source aspect ratio, so a
+   full-resolution ("Native") backing store on a high-res source scales down
+   to fit instead of overflowing the layout and shoving the toolbar off-screen
+   (the #278 wedge). CSS max-width/max-height were removed because a block
+   replaced element clamps them per-axis and so distorts the ratio (a 16:9
+   source rendered ~2:1). The `width`/`height` attributes — the backing store
+   driving recording quality — stay at full native resolution. */
 #renderCanvas {
     display: block;
     max-width: 100%;
-    max-height: calc(100vh - 320px);
     border: 1px solid var(--color-lm-border);
     border-radius: 2px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);

@@ -110,47 +110,67 @@ test.describe('Moviemaker Resolution Control @gpu', () => {
         expect(size.h).toBe(240);
     });
 
-    test('a full-resolution (Native) backing store cannot overflow and wedge the UI (#278)', async ({ page }) => {
+    test('canvas display fits the fold and preserves the source aspect ratio (#278)', async ({ page }) => {
         test.setTimeout(60000);
         await page.setViewportSize({ width: 1366, height: 768 });
         await mockWebcam(page);
+        // A 16:9 source so a per-axis-clamped (squished) display would be
+        // visibly wrong — the exact regression #278's first fix introduced,
+        // now sized in JS (fitCanvasDisplay) to preserve the ratio. Kept light
+        // (default 480p → 480x270 backing) so the headless nightly run isn't
+        // saturated by a live 4K render; the fit math is identical at Native.
+        await page.addInitScript(() => {
+            // video-source reads the webcam's native size from the track's
+            // getSettings() (video-source.ts) — report 16:9 (1280x720).
+            MediaStreamTrack.prototype.getSettings = function getSettings(this: MediaStreamTrack): MediaTrackSettings {
+                return { width: 1280, height: 720 };
+            };
+        });
         await page.goto('/moviemaker/');
         await page.locator('[data-trigger="btn_start_webcam"]').click();
         await waitForSourceActive(page);
+        await page.waitForTimeout(300 * GPU_WAIT_SCALE);
 
-        // The render canvas carries a DISPLAY-size cap (the #278 fix): its
-        // rendered box is bounded even though the backing store may be full
-        // native resolution. (Kept as a light source so the headless
-        // SwiftShader nightly run isn't saturated by a live 4K render.)
-        const css = await page.locator('#renderCanvas').evaluate((c) => {
-            const s = getComputedStyle(c);
-            return { maxWidth: s.maxWidth, maxHeight: s.maxHeight };
+        const boxes = () => page.evaluate(() => {
+            const rc = document.querySelector<HTMLCanvasElement>('#renderCanvas');
+            const oc = document.querySelector<HTMLCanvasElement>('#overlayCanvas');
+            if (!rc || !oc) return null;
+            const r = rc.getBoundingClientRect();
+            const o = oc.getBoundingClientRect();
+            return {
+                r: { w: r.width, h: r.height, top: r.top, left: r.left, right: r.right, bottom: r.bottom },
+                o: { w: o.width, h: o.height, top: o.top, left: o.left },
+            };
         });
-        expect(css.maxWidth).not.toBe('none');
-        expect(css.maxHeight).not.toBe('none');
 
-        // Simulate a "Native" full-res backing store on a 4K source and confirm
-        // the DISPLAYED box stays clamped within the viewport — pre-#278 it
-        // rendered at full pixel size (3840x2160), overflowed `.app-layout`
-        // (overflow:hidden), and the `items-center` centering shoved the
-        // toolbar + resolution dropdown to negative offsets, unreachable.
-        const measured = await page.locator('#renderCanvas').evaluate((c) => {
-            const canvas = c as HTMLCanvasElement;
-            canvas.width = 3840;
-            canvas.height = 2160; // full native backing store (recording quality)
-            const r = canvas.getBoundingClientRect();
-            return { backW: canvas.width, backH: canvas.height, dispW: Math.round(r.width), dispH: Math.round(r.height) };
-        });
-        // Backing store is full native — recording quality is untouched.
-        expect(measured.backW).toBe(3840);
-        expect(measured.backH).toBe(2160);
-        // Display is clamped to fit: width within the viewport, height within
-        // the fold cap. A 3840-wide box would otherwise overflow 1366.
-        expect(measured.dispW).toBeLessThanOrEqual(1366);
-        expect(measured.dispH).toBeLessThanOrEqual(768);
-        // And it actually scaled down (didn't stay at native pixel size).
-        expect(measured.dispW).toBeLessThan(3840);
-        expect(measured.dispH).toBeLessThan(2160);
+        const vw = 1366, vh = 768;
+        let b = await boxes();
+        expect(b).not.toBeNull();
+        // Aspect ratio preserved (16:9 ≈ 1.778), not squished/stretched.
+        expect(Math.abs((b?.r.w ?? 0) / (b?.r.h ?? 1) - 16 / 9)).toBeLessThan(0.05);
+        // Fits within the fold — no wedge (pre-fix the box overflowed and the
+        // toolbar was shoved to a negative offset, unreachable).
+        expect(b?.r.top ?? -1).toBeGreaterThanOrEqual(0);
+        expect(b?.r.left ?? -1).toBeGreaterThanOrEqual(0);
+        expect(b?.r.right ?? Infinity).toBeLessThanOrEqual(vw);
+        expect(b?.r.bottom ?? Infinity).toBeLessThanOrEqual(vh);
+        // Overlay tracks the render canvas 1:1 (LED overlay stays aligned).
+        expect(Math.abs((b?.r.w ?? 0) - (b?.o.w ?? 0))).toBeLessThanOrEqual(2);
+        expect(Math.abs((b?.r.h ?? 0) - (b?.o.h ?? 0))).toBeLessThanOrEqual(2);
+        expect(Math.abs((b?.r.top ?? 0) - (b?.o.top ?? 0))).toBeLessThanOrEqual(2);
+        expect(Math.abs((b?.r.left ?? 0) - (b?.o.left ?? 0))).toBeLessThanOrEqual(2);
+
+        // The backing store is untouched (recording quality); only the display
+        // box is fitted.
+        const backing = await getCanvasSize(page);
+        expect(backing.w / backing.h).toBeCloseTo(16 / 9, 1);
+
+        // Changing resolution re-fits while keeping the ratio + fit.
+        await page.locator('#sel_max_resolution').selectOption('240');
+        await page.waitForTimeout(300 * GPU_WAIT_SCALE);
+        b = await boxes();
+        expect(Math.abs((b?.r.w ?? 0) / (b?.r.h ?? 1) - 16 / 9)).toBeLessThan(0.05);
+        expect(b?.r.bottom ?? Infinity).toBeLessThanOrEqual(vh);
     });
 
     test('default 480p limits large video canvas', async ({ page }) => {
