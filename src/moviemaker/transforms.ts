@@ -115,7 +115,7 @@ export function samplePixels(readbackBuffer: Uint8Array, transformedPts: StripPo
  * Texel i corresponds to LED i; alpha 0 marks an out-of-bounds LED
  * (rendered black, excluded from the brightness average).
  */
-export function extractGatherSample(gatherBuffer: Uint8Array, numPts: number, rgbPts: Uint8Array): { rgbPts: Uint8Array; avgBri: number } {
+export function extractGatherSample(gatherBuffer: Uint8Array, numPts: number, rgbPts: Uint8Array): { rgbPts: Uint8Array; avgBri: number; oobCount: number } {
     let totalBri = 0;
     let inBoundsCount = 0;
 
@@ -138,7 +138,10 @@ export function extractGatherSample(gatherBuffer: Uint8Array, numPts: number, rg
         }
     }
     const avgBri = inBoundsCount > 0 ? totalBri / (inBoundsCount * 3 * 255) : 0;
-    return { rgbPts, avgBri };
+    // Surface the out-of-bounds count: at zoom > 1 whole edge columns fall
+    // outside the video and silently go dark in the preview AND in
+    // recordings; nothing else in the UI can tell the user why (#250).
+    return { rgbPts, avgBri, oobCount: numPts - inBoundsCount };
 }
 
 /**

@@ -45,6 +45,7 @@ test.describe('window.__lmDebug registry (#225)', () => {
             playing: false,
             recordingActive: false,
             recordFormat: 'fled',
+            oobLeds: 0,
         });
 
         await page.click('.nav-links a[href="/movieplayer/"]');
