@@ -238,7 +238,62 @@ export function init(container: HTMLElement) {
         if (canvasRow) canvasRow.dataset.layout = (w > h) ? 'landscape' : 'portrait';
 
         dom_txt_curr_resolution.textContent = `${String(w)}×${String(h)}`;
+
+        // Fit now (bounds the canvas immediately so a full-res backing store
+        // never flashes at native size) and again next frame, since layout may
+        // not have settled — the toolbar/preview may have just become visible
+        // or data-layout may have just flipped.
+        fitCanvasDisplay();
+        requestAnimationFrame(fitCanvasDisplay);
     }
+
+    // Size the render canvas's DISPLAY box to fit the available area while
+    // preserving the source aspect ratio (issue #278 follow-up). The backing
+    // store stays full-res; only the on-screen box is set. Explicit px sizing
+    // — rather than CSS max-width/max-height, which a block replaced element
+    // clamps per-axis and so distorts the ratio (a 16:9 source rendered ~2:1).
+    // The overlay fills the same wrapper, so it tracks the render canvas 1:1.
+    const dom_canvas_area = container.querySelector<HTMLElement>('.canvas-area');
+    const dom_canvas_container = container.querySelector<HTMLElement>('#canvas-container');
+    const dom_canvas_with_preview = container.querySelector<HTMLElement>('.canvas-with-preview');
+    const dom_preview_column = container.querySelector<HTMLElement>('.preview-column');
+    function fitCanvasDisplay() {
+        const area = dom_canvas_area;
+        const cc = dom_canvas_container;
+        const cwp = dom_canvas_with_preview;
+        if (!area || !cc || !cwp || videoWidth === 0 || videoHeight === 0) return;
+
+        const areaCS = getComputedStyle(area);
+        let availW = area.clientWidth - parseFloat(areaCS.paddingLeft) - parseFloat(areaCS.paddingRight);
+        let availH = area.clientHeight - parseFloat(areaCS.paddingTop) - parseFloat(areaCS.paddingBottom);
+
+        // The preview column sits beside the canvas — reserve its width.
+        if (dom_preview_column && dom_preview_column.offsetParent !== null) {
+            const rowGap = parseFloat(getComputedStyle(cwp).columnGap) || 0;
+            availW -= dom_preview_column.offsetWidth + rowGap;
+        }
+        // The toolbar / progress bar / layout bar stack above the canvas.
+        const colGap = parseFloat(getComputedStyle(cc).rowGap) || 0;
+        let visibleSiblings = 0;
+        for (const child of Array.from(cc.children)) {
+            const el = child as HTMLElement;
+            if (el === cwp || el.offsetParent === null) continue;
+            availH -= el.offsetHeight;
+            visibleSiblings++;
+        }
+        availH -= colGap * visibleSiblings;
+
+        if (availW <= 0 || availH <= 0) return;
+
+        // Contain the source ratio within the available box.
+        const ratio = videoWidth / videoHeight;
+        let dispW = availW;
+        let dispH = availW / ratio;
+        if (dispH > availH) { dispH = availH; dispW = availH * ratio; }
+        renderCanvas.style.width = `${String(Math.max(1, Math.floor(dispW)))}px`;
+        renderCanvas.style.height = `${String(Math.max(1, Math.floor(dispH)))}px`;
+    }
+    window.addEventListener('resize', fitCanvasDisplay, { signal });
 
     function setupForNewSource(nativeW: number, nativeH: number) {
         nativeVideoWidth = nativeW;
