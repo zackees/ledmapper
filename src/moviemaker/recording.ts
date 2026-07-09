@@ -1,8 +1,16 @@
 /**
  * Recording state machine for capturing LED color frames.
+ *
+ * Pacing (issue #256 / #255 Phase 1): one recorded frame per PRESENTED
+ * source frame, keyed on requestVideoFrameCallback's `presentedFrames`
+ * counter when the caller provides it — with explicit skip accounting —
+ * falling back to the legacy wall-clock slot pacing otherwise. The
+ * detected source fps is embedded in the FLED metadata so playback runs
+ * at source speed.
  */
 
-import { getFrameIndex, flattenColorFrames } from './transforms';
+import { flattenColorFrames } from './transforms';
+import { createFrameSequencer } from './frame-pacing';
 import { download_binary_as_file } from '../common';
 import { saveVideo } from '../video-store';
 import { prependFledHeader, PixelFormat } from '../render/rgb-video';
@@ -14,6 +22,37 @@ const log = createLogger('recording');
 
 type SwalInstance = typeof Swal;
 
+export interface CaptureStats {
+    /** Frames appended to the recording so far. */
+    captured: number;
+    /** Source frames presented but never sampled (rVFC-keyed path only). */
+    skipped: number;
+}
+
+/**
+ * Embed the recording frame rate into the FLED metadata JSON as the
+ * spec-defined optional `video.fps` key (docs/fled-format.md "JSON
+ * payload"). The metadata is a superset of the screenmap object; screenmap
+ * parsers (v1/v2, FastLED's ScreenMap::ParseJson) ignore unknown keys.
+ * Falls back to the raw screenmap text if it doesn't parse (never blocks
+ * a save).
+ */
+export function embedFps(screenmapJson: string, fps: number): string {
+    try {
+        const obj = JSON.parse(screenmapJson) as unknown;
+        if (obj !== null && typeof obj === 'object' && !Array.isArray(obj)) {
+            const rec = obj as Record<string, unknown>;
+            const video = (rec.video !== null && typeof rec.video === 'object' && !Array.isArray(rec.video))
+                ? rec.video as Record<string, unknown>
+                : {};
+            video.fps = fps;
+            rec.video = video;
+            return JSON.stringify(rec);
+        }
+    } catch { /* malformed screenmap text — save it untouched */ }
+    return screenmapJson;
+}
+
 export function createRecording({ getSwal, getScreenmapJson }: {
     getSwal?: () => Promise<SwalInstance>;
     /** Returns the current screenmap JSON string, or null if none loaded. */
@@ -22,9 +61,14 @@ export function createRecording({ getSwal, getScreenmapJson }: {
     let active = false;
     let capturing = false;
     let startTimeUs = 0;
-    let lastFrameIdx = -1;
     const colorFrames: Uint8Array[] = [];
     let downloadIndex = 0;
+    const sequencer = createFrameSequencer();
+    let skippedFrames = 0;
+    // The fps to stamp into the file: the last frameRate seen while
+    // capturing (the caller feeds the detected source rate per frame, so a
+    // detection that stabilizes mid-recording still lands correctly).
+    let recordedFps = 30;
     // Log-only watchdog (issue #226): flags a recording whose readback has
     // gone all-zero for many consecutive frames — the class of bug that let
     // #221's black moviemaker preview go unnoticed. Never auto-remediates.
@@ -43,6 +87,9 @@ export function createRecording({ getSwal, getScreenmapJson }: {
     }
 
     async function endRecording(): Promise<void> {
+        if (skippedFrames > 0) {
+            log.warn('frames-skipped', { skipped: skippedFrames, captured: colorFrames.length });
+        }
         const flat = flattenColorFrames(colorFrames);
         if (flat === null) {
             log.info('save-failed', { reason: 'no-frames' });
@@ -65,8 +112,8 @@ export function createRecording({ getSwal, getScreenmapJson }: {
                 }
                 return;
             }
-            const fledFile = prependFledHeader(flat, screenmapJson, PixelFormat.rgb8);
-            log.info('save-fled', { frames: colorFrames.length, bytes: fledFile.byteLength });
+            const fledFile = prependFledHeader(flat, embedFps(screenmapJson, recordedFps), PixelFormat.rgb8);
+            log.info('save-fled', { frames: colorFrames.length, skipped: skippedFrames, fps: recordedFps, bytes: fledFile.byteLength });
             download_binary_as_file(fledFile, `video${String(downloadIndex)}.fled`);
             downloadIndex++;
             // Hand the freshly recorded video to the Movie Player via IndexedDB
@@ -83,21 +130,24 @@ export function createRecording({ getSwal, getScreenmapJson }: {
         }
         colorFrames.length = 0;
         capturing = false;
-        lastFrameIdx = -1;
+        skippedFrames = 0;
+        sequencer.reset();
     }
 
     /**
+     * @param frameKey Monotonic per-presented-source-frame key (rVFC
+     *   `presentedFrames`), or null to pace by wall clock at `frameRate`.
      * @param videoHealthy Ground-truth video-heartbeat health (see
      *   `createVideoStallWatchdog` in `../watchdogs`), used to suppress the
      *   all-zero readback watchdog while the video itself is already known
      *   to be stalled — that's a different bug with its own warning.
      *   Defaults to `true` (assume healthy) for callers that don't track it.
      */
-    function processFrame(sample: { rgbPts: Uint8Array }, frameRate: number, videoHealthy = true): void {
+    function processFrame(sample: { rgbPts: Uint8Array }, frameRate: number, videoHealthy = true, frameKey: number | null = null): void {
         if (!active) {
             if (capturing) {
                 capturing = false;
-                lastFrameIdx = -1;
+                sequencer.reset();
             }
             return;
         }
@@ -106,12 +156,14 @@ export function createRecording({ getSwal, getScreenmapJson }: {
         if (!capturing) {
             capturing = true;
             startTimeUs = nowUs;
-            lastFrameIdx = -1;
+            skippedFrames = 0;
+            sequencer.reset();
             zeroReadbackWatchdog.resetForNewRecording();
         }
-        const frameIdx = getFrameIndex(nowUs, startTimeUs, frameRate);
-        if (frameIdx > lastFrameIdx) {
-            lastFrameIdx = frameIdx;
+        recordedFps = frameRate;
+        const { record, skipped } = sequencer.next(frameKey, nowUs, startTimeUs, frameRate);
+        skippedFrames += skipped;
+        if (record) {
             colorFrames.push(new Uint8Array(sample.rgbPts));
             zeroReadbackWatchdog.sample(sample.rgbPts, videoHealthy);
         }
@@ -120,14 +172,19 @@ export function createRecording({ getSwal, getScreenmapJson }: {
     function resetCapture(): void {
         if (capturing) {
             capturing = false;
-            lastFrameIdx = -1;
+            sequencer.reset();
         }
+    }
+
+    function getStats(): CaptureStats {
+        return { captured: colorFrames.length, skipped: skippedFrames };
     }
 
     return {
         toggle,
         processFrame,
         resetCapture,
+        getStats,
         get isActive() { return active; },
     };
 }

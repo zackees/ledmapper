@@ -46,6 +46,8 @@ test.describe('window.__lmDebug registry (#225)', () => {
             recordingActive: false,
             recordFormat: 'fled',
             oobLeds: 0,
+            detectedFps: 30,
+            captureStats: { captured: 0, skipped: 0 },
         });
 
         await page.click('.nav-links a[href="/movieplayer/"]');

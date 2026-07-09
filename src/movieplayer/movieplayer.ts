@@ -322,9 +322,20 @@ export function init(container: HTMLElement) {
         const channelMap = buildVideoChannelMap(screenmap_strips, screenmap_pts.length);
         const frames = applyChannelMap(parsed.frames, channelMap, screenmap_pts.length);
         teardownPlayer();
+        // The spec-defined optional `video.fps` metadata key (#256,
+        // docs/fled-format.md) — recordings of non-30fps sources play at
+        // source speed. Absent/invalid → the historical 30 fps default.
+        let metaFps = 30;
+        try {
+            const meta = JSON.parse(peek.embeddedJson) as { video?: { fps?: unknown } };
+            const f = meta.video?.fps;
+            if (typeof f === 'number' && isFinite(f) && f >= 1 && f <= 240) {
+                metaFps = f;
+            }
+        } catch { /* screenmap already validated above; fps stays default */ }
         player = createPlayer({
             frames,
-            fps: 30,
+            fps: metaFps,
             autoplay,
             pushFrame: (rgb) => { gfx.pushFrame(rgb); },
         });
@@ -346,10 +357,11 @@ export function init(container: HTMLElement) {
         log.info('movie-loaded', {
             leds: screenmap_pts.length,
             frames: frameCount,
+            fps: metaFps,
             autoplay,
             source: persist ? 'file' : 'indexeddb-restore',
         });
-        setStatus(`${String(screenmap_pts.length)} LEDs · ${String(frameCount)} frames`, true);
+        setStatus(`${String(screenmap_pts.length)} LEDs · ${String(frameCount)} frames · ${String(metaFps)} fps`, true);
         set_dom_btn_play(player.playing);
     }
 

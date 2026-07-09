@@ -31,6 +31,10 @@ export interface MoviemakerDebugState {
     recordFormat: string;
     /** LEDs whose sample position falls outside the video frame (#250). */
     oobLeds: number;
+    /** Recording frame rate: 30 until the rVFC estimator locks on (#256). */
+    detectedFps: number;
+    /** Live recording pacing counters (#256); zeros when not recording. */
+    captureStats: { captured: number; skipped: number };
 }
 
 /** Live debug state for the Movie Player (src/movieplayer). */
