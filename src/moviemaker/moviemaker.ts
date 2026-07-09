@@ -1200,7 +1200,7 @@ export function init(container: HTMLElement) {
             recording.resetCapture();
         }
 
-        drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter, recording.isActive ? recording.getStats() : null);
+        drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter, recording.isActive ? recording.getStats() : null, videoSource.sourceType !== null ? frame_rate : null);
         const previewRotate = dom_chk_preview_rotate.checked ? curr_rotate : 0;
         preview.render(screenmap_pts, previewRotate, lastSample, previewLedDiameter);
 

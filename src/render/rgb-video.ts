@@ -156,6 +156,23 @@ export function parseRgbFrames(buffer: ArrayBuffer | Uint8Array, ledCount: numbe
     return { frames, notMultiple: false, embeddedJson, pixelFormat, isFled: true, fledError: null };
 }
 
+/**
+ * Read the optional `video.fps` playback rate from FLED metadata JSON
+ * (docs/fled-format.md; written by the Mapped Video Maker, #256). Returns
+ * `null` when absent, malformed, or out of the sane 1..240 range so callers
+ * apply their own default (historically 30). Single reader for all consumers
+ * (Movie Player, demo) so the metadata contract lives in one place.
+ */
+export function readVideoFps(embeddedJson: string | null): number | null {
+    if (!embeddedJson) return null;
+    try {
+        const meta = JSON.parse(embeddedJson) as { video?: { fps?: unknown } };
+        const f = meta.video?.fps;
+        if (typeof f === 'number' && isFinite(f) && f >= 1 && f <= 240) return f;
+    } catch { /* not JSON / no video.fps — caller defaults */ }
+    return null;
+}
+
 /** Quick magic check that doesn't require parsing the rest of the header. */
 export function hasFledMagic(bytes: Uint8Array): boolean {
     return bytes.length >= 4
