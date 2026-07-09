@@ -108,6 +108,9 @@ browser extension** — deliberately not bundled.
   never run in CI — CPU rendering makes their numbers meaningless.
 - Full-pipeline evidence run with screenshots: `node tests/ux/walkthrough.mjs`
   (see tests/ux/README.md).
+- Frame-capture guarantee: `node tests/perf/capture-ratio.mjs` (dev server +
+  ffmpeg required) reproduces the #255 measurement table and exits non-zero
+  if the offline path is no longer bit-exact or realtime drops below 95%.
 
 ## Playbook: recording/save produces wrong or no output
 

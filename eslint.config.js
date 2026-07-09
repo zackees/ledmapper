@@ -106,9 +106,9 @@ export default tseslint.config(
     },
   },
   {
-    // Config files, scripts, and the UX walkthrough harness stay as JS —
+    // Config files, scripts, and the UX/perf harnesses stay as JS —
     // no type-aware rules, no project service
-    files: ['*.config.{js,mjs}', 'scripts/**/*.{js,mjs}', 'tests/ux/**/*.mjs'],
+    files: ['*.config.{js,mjs}', 'scripts/**/*.{js,mjs}', 'tests/ux/**/*.mjs', 'tests/perf/**/*.mjs'],
     extends: [tseslint.configs.disableTypeChecked],
     languageOptions: {
       parserOptions: {
