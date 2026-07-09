@@ -2,6 +2,7 @@ import { test as sharedTest, expect } from './fixtures.ts';
 import { test as base } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
+import { expandScreenmapBand } from '../helpers/screenmap-band.ts';
 
 /**
  * Regression guard for issue #247: `.preset-btn.active-preset` used to reuse
@@ -103,6 +104,7 @@ sharedTest.describe('Preset picker active-chip visibility (#247) — moviemaker'
         await page.locator('[data-trigger="btn_start_webcam"]').click();
         await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 });
 
+        await expandScreenmapBand(page);
         const mount = page.locator('.preset-picker-mount');
         // Default autoload picks the first ("grids") preset; switch to
         // "strips" and pick a chip there instead.

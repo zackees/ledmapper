@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures.ts';
 import path from 'path';
 import { shouldSkipGpuTest, GPU_WAIT_SCALE } from '../helpers/gpu-gate.ts';
+import { expandScreenmapBand } from '../helpers/screenmap-band.ts';
 
 const VIDEO_PATH = path.resolve('tests/fixtures/test-video.mp4');
 
@@ -65,6 +66,7 @@ test.describe('Moviemaker preset recording (No Screenmap regression) @gpu', () =
         test.setTimeout(60000);
         await page.goto('/moviemaker/');
         await loadVideoAndPlay(page);
+        await expandScreenmapBand(page);
         await page.locator('.preset-btn[data-preset-file="8x8_grid.json"]').click();
         await expect(page.locator('.preset-btn[data-preset-file="8x8_grid.json"]'))
             .toHaveClass(/active-preset/);

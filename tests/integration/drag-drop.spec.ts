@@ -2,6 +2,7 @@
 import { mockWebcam } from '../helpers/webcam-mock.ts';
 import path from 'path';
 import { dropFile, dropFixture } from '../helpers/drag-drop.ts';
+import { expandScreenmapBand } from '../helpers/screenmap-band.ts';
 
 const SCREENMAP_FIXTURE = path.resolve('tests/fixtures/test-screenmap.json');
 const VIDEO_RGB_FIXTURE = path.resolve('tests/fixtures/test-video.rgb');
@@ -64,6 +65,7 @@ test.describe('Moviemaker drag-and-drop', () => {
         // 8x8 Grid lives in the "Grids" category which is open by default
         // because the autoload picks 16x16_grid as the initial selection.
         const presetBtn = page.locator('button[data-preset-file="8x8_grid.json"]');
+        await expandScreenmapBand(page);
         await presetBtn.click();
         await expect(presetBtn).toHaveClass(/active-preset/);
 

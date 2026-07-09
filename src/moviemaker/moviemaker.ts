@@ -52,6 +52,15 @@ export function init(container: HTMLElement) {
     const dom_preset_mount = container.querySelector<HTMLElement>('.preset-picker-mount');
     const dom_screenmap_group = dom_preset_mount?.closest('.control-group');
     const dom_source_hint = container.querySelector('#screenmap_gate_hint');
+    // Screenmap band collapse (issue #248): compact summary row + "Change
+    // layout" affordance shown once a layout is active, expandable back to
+    // the full picker.
+    const dom_screenmap_collapsed_row = container.querySelector<HTMLElement>('#screenmap_collapsed_row');
+    const dom_screenmap_expanded_panel = container.querySelector<HTMLElement>('#screenmap_expanded_panel');
+    const dom_txt_active_layout = container.querySelector<HTMLElement>('#txt_active_layout');
+    const dom_txt_active_led_count = container.querySelector<HTMLElement>('#txt_active_led_count');
+    const dom_btn_change_layout = container.querySelector<HTMLButtonElement>('#btn_change_layout');
+    const dom_btn_collapse_layout = container.querySelector<HTMLButtonElement>('#btn_collapse_layout');
     const dom_btn_unload_source = qe<HTMLButtonElement>('#btn_unload_source');
     const dom_btn_play_pause    = qe<HTMLButtonElement>('#btn_play_pause');
     const dom_video_progress    = qe<HTMLElement>('#video-progress');
@@ -118,6 +127,14 @@ export function init(container: HTMLElement) {
     let previewLedDiameter: number | null = null; // screenmap-declared diameter in screenmap_pts units (null = heuristic)
     let screenmapValid = false;
     let sourceActive = false;
+    // Screenmap band collapse (issue #248). The band is collapsed by default
+    // whenever a layout is active; `screenmapBandExpanded` is a transient
+    // manual override set by "Change layout" and cleared by "Done".
+    let screenmapBandExpanded = false;
+    // Display label for the compact row: active preset name, uploaded
+    // filename, or a generic fallback when the origin is unknown (e.g. a
+    // screenmap restored from storage across a reload).
+    let activeLayoutLabel: string | null = null;
 
     let target_zoom = 1, curr_zoom = 1;
     let target_rotate = 0, curr_rotate = 0;
@@ -254,7 +271,39 @@ export function init(container: HTMLElement) {
         // pointer-events does not block programmatic clicks.
         dom_screenmap_group?.classList.toggle('disabled', !sourceActive);
         dom_source_hint?.classList.toggle('hidden', sourceActive);
+        updateScreenmapBandUI();
     }
+
+    /**
+     * Sync the collapsed/expanded screenmap band (issue #248). Collapsed
+     * whenever a layout is active, regardless of source/gate state, unless
+     * the user asked to change it via "Change layout". The expanded picker
+     * stays mounted in the DOM either way — collapsing moves it off-canvas
+     * (`.screenmap-offscreen`) rather than `display:none`, so
+     * `#btn_upload_screenmap` / `.preset-btn` remain addressable by
+     * Playwright's `toBeVisible()` and `setInputFiles()`.
+     */
+    function updateScreenmapBandUI() {
+        const collapsed = screenmapValid && !screenmapBandExpanded;
+        dom_screenmap_expanded_panel?.classList.toggle('screenmap-offscreen', collapsed);
+        dom_screenmap_collapsed_row?.classList.toggle('hidden', !collapsed);
+        dom_btn_collapse_layout?.classList.toggle('hidden', !screenmapBandExpanded);
+        if (dom_txt_active_layout) dom_txt_active_layout.textContent = activeLayoutLabel ?? 'Custom layout';
+        if (dom_txt_active_led_count) {
+            const n = rawScreenmapPts.length;
+            dom_txt_active_led_count.textContent = `${String(n)} LED${n === 1 ? '' : 's'}`;
+        }
+    }
+
+    dom_btn_change_layout?.addEventListener('click', () => {
+        screenmapBandExpanded = true;
+        updateScreenmapBandUI();
+    }, { signal });
+
+    dom_btn_collapse_layout?.addEventListener('click', () => {
+        screenmapBandExpanded = false;
+        updateScreenmapBandUI();
+    }, { signal });
 
     updateElementStates();
 
@@ -315,6 +364,8 @@ export function init(container: HTMLElement) {
                     applyScreenmapText(await loadPresetText(presetFile), `preset:${presetFile}`);
                     presetPicker?.setActive(presetFile);
                     setUploadFilename('');
+                    activeLayoutLabel = screenmapManifest.presets.find((p) => p.file === presetFile)?.name ?? presetFile;
+                    updateScreenmapBandUI();
                 } catch (error) {
                     log.info('screenmap-load-error', { source: `preset:${presetFile}`, error: String(error) });
                     void errorDialog('Error loading preset', String(error));
@@ -341,6 +392,8 @@ export function init(container: HTMLElement) {
                 try {
                     applyScreenmapText(await loadPresetText(firstPreset.file), `autoload:${firstPreset.file}`);
                     presetPicker.setActive(firstPreset.file);
+                    activeLayoutLabel = firstPreset.name;
+                    updateScreenmapBandUI();
                 } catch (error) {
                     log.error('autoload-first-preset-failed', { error: String(error) });
                 }
@@ -522,6 +575,8 @@ export function init(container: HTMLElement) {
         updateElementStates();
         file.text().then((text: string) => {
             applyScreenmapText(text, `upload:${file.name}`);
+            activeLayoutLabel = file.name;
+            updateScreenmapBandUI();
             saveScreenmap(text);
         }).catch((error: unknown) => {
             log.info('screenmap-load-error', { source: `upload:${file.name}`, error: String(error) });

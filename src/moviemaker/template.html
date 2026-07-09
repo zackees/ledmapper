@@ -20,23 +20,43 @@
                 <div class="panel-body">
                     <div class="control-group">
                         <p id="screenmap_gate_hint" class="field-label">Load a video source to choose a layout.</p>
-                        <span class="field-label">Presets</span>
-                        <!-- The categorized accordion picker is mounted here by
-                             src/ui/preset-picker (issue #206), populated from
-                             public/screenmaps/manifest.json baked via
-                             virtual:screenmap-presets. -->
-                        <div class="preset-picker-mount"></div>
-                        <div id="screenmap_drop_target" class="drop-zone">
-                            <span class="field-label">Upload custom</span>
-                            <div class="control-row">
-                                <label for="btn_upload_screenmap" class="btn-upload-file">Choose file</label>
-                                <span id="txt_screenmap_filename" class="upload-filename">No file chosen</span>
-                            </div>
-                            <input type="file" id="btn_upload_screenmap" accept=".csv,.json" class="visually-hidden-input">
-                            <p class="upload-drop-hint">or drag a .json/.csv here</p>
+                        <!-- Compact summary row shown once a layout is active
+                             (issue #248); collapses the picker below to keep
+                             the render canvas above the fold. -->
+                        <div id="screenmap_collapsed_row" class="screenmap-collapsed-row hidden">
+                            <span class="screenmap-collapsed-info">
+                                <span id="txt_active_layout" class="screenmap-active-layout">Custom layout</span>
+                                <span id="txt_active_led_count" class="screenmap-led-count">0 LEDs</span>
+                            </span>
+                            <button type="button" id="btn_change_layout" class="btn-change-layout">Change layout</button>
                         </div>
-                        <div class="button-row" style="margin-top:8px;">
-                            <a href="/create" class="btn-edit-screenmap" data-edit-screenmap>Edit / Create from a photo →</a>
+                        <!-- Expanded picker: presets, upload, and the edit link.
+                             Stays mounted in the DOM (never display:none) so
+                             #btn_upload_screenmap and .preset-btn remain
+                             addressable via setInputFiles()/programmatic
+                             clicks even while visually collapsed off-canvas
+                             (issue #248 — same rationale as
+                             .visually-hidden-input in global.css). -->
+                        <div id="screenmap_expanded_panel" class="screenmap-expanded-panel">
+                            <span class="field-label">Presets</span>
+                            <!-- The categorized accordion picker is mounted here by
+                                 src/ui/preset-picker (issue #206), populated from
+                                 public/screenmaps/manifest.json baked via
+                                 virtual:screenmap-presets. -->
+                            <div class="preset-picker-mount"></div>
+                            <div id="screenmap_drop_target" class="drop-zone">
+                                <span class="field-label">Upload custom</span>
+                                <div class="control-row">
+                                    <label for="btn_upload_screenmap" class="btn-upload-file">Choose file</label>
+                                    <span id="txt_screenmap_filename" class="upload-filename">No file chosen</span>
+                                </div>
+                                <input type="file" id="btn_upload_screenmap" accept=".csv,.json" class="visually-hidden-input">
+                                <p class="upload-drop-hint">or drag a .json/.csv here</p>
+                            </div>
+                            <div class="button-row screenmap-edit-row">
+                                <a href="/create" class="btn-edit-screenmap" data-edit-screenmap>Edit / Create from a photo →</a>
+                                <button type="button" id="btn_collapse_layout" class="btn-collapse-layout hidden">Done</button>
+                            </div>
                         </div>
                     </div>
                 </div>

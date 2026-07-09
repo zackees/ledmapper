@@ -5,6 +5,7 @@ import { mockWebcam } from '../helpers/webcam-mock.ts';
 import { mockWebcamStripes } from '../helpers/webcam-mock-stripes.ts';
 import { shouldSkipGpuTest, GPU_WAIT_SCALE } from '../helpers/gpu-gate.ts';
 import { countScreenmapLeds } from '../helpers/screenmap-count.ts';
+import { expandScreenmapBand } from '../helpers/screenmap-band.ts';
 
 const VIDEO_PATH = path.resolve('tests/fixtures/test-video.mp4');
 const SCREENMAP_PATH = path.resolve('tests/fixtures/test-screenmap.json');
@@ -195,6 +196,7 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
             await waitForSourceActive(page);
 
             // Switch to 8x8 preset
+            await expandScreenmapBand(page);
             await page.locator('.preset-btn[data-preset-file="8x8_grid.json"]').click();
             await expect(page.locator('.preset-btn[data-preset-file="8x8_grid.json"]')).toHaveClass(/active-preset/);
 
@@ -266,6 +268,7 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
                 await pg.locator('[data-trigger="btn_start_webcam"]').click();
                 await waitForSourceActive(pg);
 
+                await expandScreenmapBand(pg);
                 await pg.locator('.preset-btn[data-preset-file="8x8_grid.json"]').click();
                 await expect(pg.locator('.preset-btn[data-preset-file="8x8_grid.json"]')).toHaveClass(/active-preset/);
 

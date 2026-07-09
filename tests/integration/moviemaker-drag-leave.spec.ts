@@ -12,6 +12,7 @@
 import { test, expect } from './fixtures.ts';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
 import { shouldSkipGpuTest, GPU_WAIT_SCALE } from '../helpers/gpu-gate.ts';
+import { expandScreenmapBand } from '../helpers/screenmap-band.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,6 +65,7 @@ test.describe('Moviemaker overlay drag — off-canvas release (issue #31) @gpu',
         await waitForSourceActive(page);
 
         // Load a screenmap so drag gestures are active.
+        await expandScreenmapBand(page);
         await page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]').click();
         await expect(page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]')).toHaveClass(/active-preset/);
         await page.waitForTimeout(250);
@@ -120,6 +122,7 @@ test.describe('Moviemaker overlay drag — off-canvas release (issue #31) @gpu',
         await page.locator('[data-trigger="btn_start_webcam"]').click();
         await waitForSourceActive(page);
 
+        await expandScreenmapBand(page);
         await page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]').click();
         await expect(page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]')).toHaveClass(/active-preset/);
         await page.waitForTimeout(250);
@@ -156,6 +159,7 @@ test.describe('Moviemaker overlay drag — off-canvas release (issue #31) @gpu',
         await page.locator('[data-trigger="btn_start_webcam"]').click();
         await waitForSourceActive(page);
 
+        await expandScreenmapBand(page);
         await page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]').click();
         await expect(page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]')).toHaveClass(/active-preset/);
         await page.waitForTimeout(250);

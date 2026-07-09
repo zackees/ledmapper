@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures.ts';
 import fs from 'fs';
 import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
+import { expandScreenmapBand } from '../helpers/screenmap-band.ts';
 
 // Regression guard for issue #8: recording through a 64x64 screenmap used to
 // drop the render loop to ~43fps (synchronous full-res gl.readPixels each
@@ -44,6 +45,7 @@ async function loadVideoAndPreset(page, presetSelector) {
     await fileChooser.setFiles(VIDEO_PATH);
     await waitForSourceActive(page);
 
+    await expandScreenmapBand(page);
     await page.locator(presetSelector).click();
     await expect(page.locator(presetSelector)).toHaveClass(/active-preset/);
 
