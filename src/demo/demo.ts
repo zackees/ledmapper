@@ -3,7 +3,7 @@ import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, wireFilePicker, fileHasExtension } from '../drag-drop';
 import { errorDialog } from '../ui/dialogs';
 import { gfxColors, withAlpha } from '../ui/theme';
-import { createGfx, wireBloomUi } from '../gfx';
+import { createGfx, wireBloomUi, createFramePacer } from '../gfx';
 import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
 import { parseRgbFrames, prependFledHeader } from '../render/rgb-video';
 import type { MultiStripParseResult, StripPoint } from '../types/domain';
@@ -316,21 +316,22 @@ export function init(container: HTMLElement) {
     dom_btn_play.addEventListener('click', () => { set_dom_btn_play(!playing); }, { signal });
 
     // --- Frame pump --- drives gfx.pushFrame from movie_frames at the
-    // user-selected playback FPS. The gfx package runs its own internal
-    // render loop at a higher rate; we just hand it the latest frame.
+    // selected playback FPS. The gfx package runs its own internal render
+    // loop (usually at display rate); we hand it a new frame only when one
+    // is due. Paced by createFramePacer (#263) — the old hand-rolled gate
+    // discarded its schedule remainder and lost ~⅓ of the frames to an
+    // RAF-vs-interval beat (60 fps target reached only ~39 fps).
     let frameRafId: number | null = null;
-    let lastPump = 0;
+    const framePacer = createFramePacer();
     function pump(t: number) {
         frameRafId = requestAnimationFrame(pump);
-        const interval = 1000 / Math.max(parseInt(dom_sel_framerate.value), 1);
-        if (t - lastPump < interval) return;
-        lastPump = t;
         if (screenmap_pts.length === 0) return;
-        if (movie_frames.length && playing) {
-            if (curr_frame_idx >= movie_frames.length) curr_frame_idx = 0;
-            const frame = movie_frames[curr_frame_idx++];
-            if (frame) gfx.pushFrame(frame);
-        }
+        if (!(movie_frames.length && playing)) return;
+        const interval = 1000 / Math.max(parseInt(dom_sel_framerate.value), 1);
+        if (!framePacer.due(t, interval)) return;
+        if (curr_frame_idx >= movie_frames.length) curr_frame_idx = 0;
+        const frame = movie_frames[curr_frame_idx++];
+        if (frame) gfx.pushFrame(frame);
     }
     frameRafId = requestAnimationFrame(pump);
 
