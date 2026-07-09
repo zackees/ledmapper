@@ -141,6 +141,7 @@ export function drawMoviemakerOverlay(
     showLeds = true,
     strips: ParsedStrip[] | null = null,
     ledDiameter: number | null = null,
+    captureStats: { captured: number; skipped: number } | null = null,
 ): void {
     ctx.clearRect(0, 0, videoWidth, videoHeight);
     if (localPts.length === 0) return;
@@ -163,6 +164,16 @@ export function drawMoviemakerOverlay(
         if (oob > 0) {
             ctx.fillStyle = gfxColors.accentAmber();
             ctx.fillText(`⚠ ${String(oob)} LEDs outside video (adjust zoom/position)`, 10, 42);
+        }
+        // Live capture pacing during a recording (#256): frames appended and
+        // source frames that were presented but never sampled. Amber the
+        // moment anything is skipped — silent frame loss is the bug class
+        // this line exists to prevent.
+        if (captureStats) {
+            const { captured, skipped } = captureStats;
+            ctx.fillStyle = skipped > 0 ? gfxColors.accentAmber() : gfxColors.textStrong();
+            const skipText = skipped > 0 ? ` (${String(skipped)} skipped!)` : '';
+            ctx.fillText(`REC ${String(captured)} frames${skipText}`, 10, oob > 0 ? 56 : 42);
         }
     }
 }

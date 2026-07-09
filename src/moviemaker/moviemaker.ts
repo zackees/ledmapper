@@ -17,6 +17,7 @@ import { wireSliderReadout } from '../ui/sliders';
 import { setupToggleButton } from '../ui/toggle-button';
 import { createLogger } from '../debug-log';
 import { createVideoStallWatchdog, createRafHeartbeat } from '../watchdogs';
+import { createFpsEstimator } from './frame-pacing';
 import { registerDebugState, unregisterDebugState, type MoviemakerDebugState } from '../debug-registry';
 
 const log = createLogger('moviemaker');
@@ -164,9 +165,11 @@ export function init(container: HTMLElement) {
         onSourceReady(w: number, h: number, type: string) {
             log.info('source-ready', { type, w, h });
             setupForNewSource(w, h);
-            if (type === 'video') {
-                frame_rate = 30;
-            }
+            // Baseline 30 fps until the rVFC estimator locks onto the real
+            // source rate (issue #256) — applies to files and webcams alike.
+            frame_rate = 30;
+            fpsEstimator.reset();
+            lastPresentedFrames = null;
         },
         onError(message: string) {
             log.info('source-error', { message });
@@ -948,10 +951,24 @@ export function init(container: HTMLElement) {
     type MaybeRvfcVideo = HTMLVideoElement & { requestVideoFrameCallback?: (callback: VideoFrameRequestCallback) => number };
     const hasRvfc = typeof (videoPlayer as MaybeRvfcVideo).requestVideoFrameCallback === 'function';
     let watchdogsDisposed = false;
+    // Frame pacing (issue #256 / #255 Phase 1): the rVFC loop doubles as the
+    // recording pacemaker. `lastPresentedFrames` keys recorded samples (one
+    // per PRESENTED source frame — gaps become explicit skips), and the fps
+    // estimator replaces the old hardcoded 30 fps assumption that dropped
+    // half of every 60 fps video.
+    let lastPresentedFrames: number | null = null;
+    const fpsEstimator = createFpsEstimator();
     function scheduleVideoFrameCallback(): void {
         if (watchdogsDisposed || !hasRvfc) return;
-        videoPlayer.requestVideoFrameCallback(() => {
+        videoPlayer.requestVideoFrameCallback((_now, meta) => {
             videoStallWatchdog.noteFrame();
+            lastPresentedFrames = meta.presentedFrames;
+            fpsEstimator.sample(meta.presentedFrames, meta.mediaTime);
+            const detected = fpsEstimator.estimate();
+            if (detected !== null && detected !== frame_rate) {
+                log.info('fps-detected', { fps: detected, was: frame_rate });
+                frame_rate = detected;
+            }
             scheduleVideoFrameCallback();
         });
     }
@@ -994,6 +1011,8 @@ export function init(container: HTMLElement) {
             recordingActive: recording.isActive,
             recordFormat: dom_sel_record_format.value,
             oobLeds: lastSample?.oobCount ?? 0,
+            detectedFps: frame_rate,
+            captureStats: recording.getStats(),
         };
     }
     registerDebugState('moviemaker', { getState: getMoviemakerDebugState });
@@ -1083,13 +1102,13 @@ export function init(container: HTMLElement) {
                     }
                     loggedOobCount = lastSample.oobCount;
                 }
-                recording.processFrame(toRecordingSample(lastSample, gather.numPts), frame_rate, videoStallWatchdog.isHealthy());
+                recording.processFrame(toRecordingSample(lastSample, gather.numPts), frame_rate, videoStallWatchdog.isHealthy(), lastPresentedFrames);
             }
         } else {
             recording.resetCapture();
         }
 
-        drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter);
+        drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter, recording.isActive ? recording.getStats() : null);
         const previewRotate = dom_chk_preview_rotate.checked ? curr_rotate : 0;
         preview.render(screenmap_pts, previewRotate, lastSample, previewLedDiameter);
 

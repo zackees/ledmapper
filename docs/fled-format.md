@@ -68,7 +68,7 @@ consumers can slice frames without parsing JSON at all.
 | field         | required | notes                                                           |
 |---------------|----------|-----------------------------------------------------------------|
 | `map`         | yes      | Standard `ScreenMap` schema. LED count derives from the total point count across all strips. |
-| `video.fps`   | no       | Playback frame rate. Consumers default to 60 if absent.         |
+| `video.fps`   | no       | Playback frame rate. Consumers default to 30 if absent (the rate every ledmapper recording used before the key was written; issue #256). The Mapped Video Maker writes the detected source rate. |
 
 Authors **must not** write `video.format` — it would be a redundant second
 source of truth. Consumers **must** ignore any `video.format` key if
