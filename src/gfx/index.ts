@@ -22,6 +22,8 @@ export { createGfxCore } from './gfx-core-headless';
 export type { GfxCore, CreateGfxCoreOptions } from './gfx-core-headless';
 export { createGfxFromFled } from './gfx-fled';
 export { createPlayer } from './player';
+export { createFramePacer } from './frame-pacer';
+export type { FramePacer } from './frame-pacer';
 export { normalizeScreenmap } from './screenmap';
 export { wireBloomUi } from './bloom-ui';
 export { createGfxInWorker } from './worker/create-gfx-in-worker';
