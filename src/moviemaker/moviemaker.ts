@@ -290,19 +290,22 @@ export function init(container: HTMLElement) {
         updateScreenmapBandUI();
     }
 
-    /** Anchor the fixed picker popover just under the screenmap band, over
-     *  the canvas (issue #273) — set inline top/left/width so opening never
-     *  reflows the page. `.sidebar-scroll`'s own overflow clips an absolute
-     *  child, hence `position: fixed` + measured coords here. */
+    /** Anchor the fixed picker popover just under the layout bar that sits
+     *  above the canvas (issue #273 follow-up) — left-aligned with the bar,
+     *  over the canvas. Inline top/left/width so opening never reflows the
+     *  page; `position: fixed` because ancestors' overflow would otherwise
+     *  clip it. Clamp the width to the viewport so it never spills off-screen
+     *  at narrow widths. */
     function positionLayoutPopover() {
         const panel = dom_screenmap_expanded_panel;
-        const anchor = dom_sidebar;
+        const anchor = dom_screenmap_collapsed_row;
         if (!panel || !anchor) return;
         const r = anchor.getBoundingClientRect();
-        const pad = 12;
-        const width = Math.min(r.width - pad * 2, 760);
-        panel.style.top = `${String(Math.round(r.bottom + 4))}px`;
-        panel.style.left = `${String(Math.round(r.left + pad))}px`;
+        const margin = 8;
+        const available = window.innerWidth - r.left - margin;
+        const width = Math.max(280, Math.min(560, available));
+        panel.style.top = `${String(Math.round(r.bottom + 6))}px`;
+        panel.style.left = `${String(Math.round(r.left))}px`;
         panel.style.width = `${String(Math.round(width))}px`;
     }
 
@@ -320,6 +323,10 @@ export function init(container: HTMLElement) {
     function updateScreenmapBandUI() {
         const showSummary = sourceActive && screenmapValid;
         const open = screenmapBandExpanded && showSummary;
+        // Once a source loads the layout control moves above the canvas, so
+        // the top band (now only the no-source gate hint) collapses away —
+        // reclaiming the vertical space and un-stranding the affordance.
+        dom_sidebar?.classList.toggle('hidden', sourceActive);
         dom_screenmap_collapsed_row?.classList.toggle('hidden', !showSummary);
         dom_screenmap_expanded_panel?.classList.toggle('screenmap-offscreen', !open);
         if (dom_screenmap_expanded_panel) {

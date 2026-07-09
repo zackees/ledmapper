@@ -233,6 +233,13 @@
     border-bottom: 1px solid var(--color-lm-border);
 }
 
+/* Collapse the top band once a source loads — the layout control has moved
+   above the canvas by then (issue #273 follow-up). Explicit override so the
+   `.hidden` utility beats this rule's `@apply flex` (equal specificity). */
+#sidebar.hidden {
+    @apply hidden;
+}
+
 /* "Edit / Create from a photo" link that opens the ScreenMap Editor. */
 .btn-edit-screenmap {
     @apply inline-flex items-center justify-center;
@@ -285,14 +292,23 @@
     margin: 4px 0 0;
 }
 
-/* ── Screenmap band collapse (issue #248) ────────────────────
-   Once a layout is active the permanently-expanded picker (tabs +
-   chips + upload row + edit link, ~250px) collapses to a single
-   summary row so the render canvas + preview stay above the fold at
-   common laptop heights (observed clipped at 1360x850). */
+/* ── Active-layout bar (issues #248 / #273) ──────────────────
+   Once a layout is active the picker collapses to a single summary
+   row. That row now lives directly above the render canvas (a left-
+   aligned pill next to the shape it maps) rather than stranded across
+   a full-width top band — the layout control belongs next to what it
+   affects. The top band collapses away on source load, keeping the
+   canvas + preview above the fold at common laptop heights. */
 
 .screenmap-collapsed-row {
-    @apply flex items-center justify-between gap-2 flex-wrap;
+    @apply flex items-center gap-3 self-start shrink-0;
+    max-width: 100%;
+    padding: 5px 6px 5px 12px;
+    background: rgba(10, 10, 10, 0.75);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm-pill);
 }
 
 /* Explicit override (same rationale as #screenmap_gate_hint.hidden above):
