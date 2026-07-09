@@ -93,12 +93,21 @@ export interface SequencerDecision {
     /** Source frames that were presented but never sampled (gap since the
      *  previously recorded frame). Zero on the wall-clock fallback path. */
     skipped: number;
+    /** True when this call repeats an already-recorded source frame — the
+     *  same source-frame key seen again (a stalled/paused source, or RAF
+     *  ticking faster than the source). Withheld to keep the recording
+     *  duplicate-free (#266). NEVER decided by comparing sampled data:
+     *  genuinely-identical source frames carry distinct keys and all record. */
+    duplicate: boolean;
 }
 
 export interface FrameSequencer {
     /**
-     * @param frameKey Monotonic per-source-frame key (rVFC presentedFrames),
-     *   or null to use the wall-clock fallback.
+     * @param frameKey Monotonic per-source-frame key — rVFC `presentedFrames`
+     *   when available, else the media-clock source-frame index
+     *   `floor(currentTime * fps)` (both are SOURCE signals; #266). `null`
+     *   only when no source signal exists at all, which falls back to
+     *   wall-clock slot pacing.
      * @param nowUs / startUs / frameRate Wall-clock fallback inputs (same
      *   semantics as the legacy `getFrameIndex` pacing).
      */
@@ -106,8 +115,8 @@ export interface FrameSequencer {
     reset(): void;
 }
 
-/** One recorded frame per unique key (or wall-clock slot), with explicit
- *  skip accounting on the keyed path. */
+/** One recorded frame per unique source-frame key (or wall-clock slot), with
+ *  explicit skip AND duplicate accounting on the keyed path. */
 export function createFrameSequencer(): FrameSequencer {
     let lastKey = -1;
     let haveKey = false;
@@ -122,23 +131,25 @@ export function createFrameSequencer(): FrameSequencer {
             if (!haveKey) {
                 haveKey = true;
                 lastKey = frameKey;
-                return { record: true, skipped: 0 };
+                return { record: true, skipped: 0, duplicate: false };
             }
-            if (frameKey <= lastKey) return { record: false, skipped: 0 };
+            // Key hasn't advanced → same source frame → duplicate, withhold.
+            if (frameKey <= lastKey) return { record: false, skipped: 0, duplicate: true };
             const skipped = frameKey - lastKey - 1;
             lastKey = frameKey;
-            return { record: true, skipped };
+            return { record: true, skipped, duplicate: false };
         }
-        // Wall-clock fallback: identical pacing to the legacy path.
+        // Wall-clock fallback (no source signal at all): identical pacing to
+        // the legacy path — no per-frame novelty, so no duplicate accounting.
         const idx = getFrameIndex(nowUs, startUs, frameRate);
         if (!haveKey) {
             haveKey = true;
             lastKey = idx;
-            return { record: true, skipped: 0 };
+            return { record: true, skipped: 0, duplicate: false };
         }
-        if (idx <= lastKey) return { record: false, skipped: 0 };
+        if (idx <= lastKey) return { record: false, skipped: 0, duplicate: false };
         lastKey = idx;
-        return { record: true, skipped: 0 };
+        return { record: true, skipped: 0, duplicate: false };
     }
 
     return { next, reset };

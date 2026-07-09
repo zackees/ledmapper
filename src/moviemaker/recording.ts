@@ -27,6 +27,9 @@ export interface CaptureStats {
     captured: number;
     /** Source frames presented but never sampled (rVFC-keyed path only). */
     skipped: number;
+    /** Repeated source frames withheld to keep the file duplicate-free
+     *  (#266) — a stalled/paused source, or RAF outrunning the source. */
+    duplicatesDropped: number;
 }
 
 /**
@@ -65,6 +68,7 @@ export function createRecording({ getSwal, getScreenmapJson }: {
     let downloadIndex = 0;
     const sequencer = createFrameSequencer();
     let skippedFrames = 0;
+    let duplicatesDropped = 0;
     // The fps to stamp into the file: the last frameRate seen while
     // capturing (the caller feeds the detected source rate per frame, so a
     // detection that stabilizes mid-recording still lands correctly).
@@ -89,6 +93,9 @@ export function createRecording({ getSwal, getScreenmapJson }: {
     async function endRecording(): Promise<void> {
         if (skippedFrames > 0) {
             log.warn('frames-skipped', { skipped: skippedFrames, captured: colorFrames.length });
+        }
+        if (duplicatesDropped > 0) {
+            log.info('duplicates-dropped', { duplicatesDropped, captured: colorFrames.length });
         }
         const flat = flattenColorFrames(colorFrames);
         if (flat === null) {
@@ -131,12 +138,17 @@ export function createRecording({ getSwal, getScreenmapJson }: {
         colorFrames.length = 0;
         capturing = false;
         skippedFrames = 0;
+        duplicatesDropped = 0;
         sequencer.reset();
     }
 
     /**
-     * @param frameKey Monotonic per-presented-source-frame key (rVFC
-     *   `presentedFrames`), or null to pace by wall clock at `frameRate`.
+     * @param frameKey Monotonic per-SOURCE-frame key: rVFC `presentedFrames`
+     *   when available, else the media-clock source-frame index
+     *   `floor(currentTime * fps)` (#266). `null` only when no source signal
+     *   exists at all → wall-clock slot pacing. Novelty is decided from this
+     *   key alone — sampled frame DATA is never compared, so a genuinely
+     *   static source (all frames identical bytes) still records every frame.
      * @param videoHealthy Ground-truth video-heartbeat health (see
      *   `createVideoStallWatchdog` in `../watchdogs`), used to suppress the
      *   all-zero readback watchdog while the video itself is already known
@@ -157,12 +169,14 @@ export function createRecording({ getSwal, getScreenmapJson }: {
             capturing = true;
             startTimeUs = nowUs;
             skippedFrames = 0;
+            duplicatesDropped = 0;
             sequencer.reset();
             zeroReadbackWatchdog.resetForNewRecording();
         }
         recordedFps = frameRate;
-        const { record, skipped } = sequencer.next(frameKey, nowUs, startTimeUs, frameRate);
+        const { record, skipped, duplicate } = sequencer.next(frameKey, nowUs, startTimeUs, frameRate);
         skippedFrames += skipped;
+        if (duplicate) duplicatesDropped += 1;
         if (record) {
             colorFrames.push(new Uint8Array(sample.rgbPts));
             zeroReadbackWatchdog.sample(sample.rgbPts, videoHealthy);
@@ -177,7 +191,7 @@ export function createRecording({ getSwal, getScreenmapJson }: {
     }
 
     function getStats(): CaptureStats {
-        return { captured: colorFrames.length, skipped: skippedFrames };
+        return { captured: colorFrames.length, skipped: skippedFrames, duplicatesDropped };
     }
 
     /**

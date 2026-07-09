@@ -372,6 +372,16 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         return latestSample;
     }
 
+    /**
+     * True when both async-readback slots are in flight, i.e. the gather
+     * pipeline is saturated and `requestSample()` would no-op. Realtime
+     * recording of a pausable source uses this to apply backpressure —
+     * slow the source instead of racing past it and losing frames (#266).
+     */
+    function isSampleBusy(): boolean {
+        return slotBusy[0] === true && slotBusy[1] === true;
+    }
+
     // Offline every-frame capture (issue #257 / #255 Phase 2) ---------------
 
     // Texture wrapper for WebCodecs frames; created lazily on the first
@@ -451,6 +461,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         setSampleTransform,
         requestSample,
         getLatestSample,
+        isSampleBusy,
         captureFrameSample,
         dispose,
     };

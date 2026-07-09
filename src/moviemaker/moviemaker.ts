@@ -121,6 +121,17 @@ export function init(container: HTMLElement) {
         on:  { state: 'playing', label: 'Pause' },
     }, 'off', () => { videoSource.playPause(); }, { signal });
 
+    // Debug/test seams for the realtime capture fallback (#266). The offline
+    // WebCodecs pass handles file sources by default; these force the
+    // realtime path so it can be exercised: `forceRealtimeCapture` skips the
+    // offline route, `noRvfc` ignores rVFC so pacing falls to the media-clock
+    // source-frame index (the true no-rVFC-engine path).
+    const _urlParams = (() => {
+        try { return new URLSearchParams(location.search); } catch { return new URLSearchParams(); }
+    })();
+    const forceRealtimeCapture = _urlParams.has('forceRealtimeCapture');
+    const ignoreRvfc = _urlParams.has('noRvfc');
+
     // ── State ───────────────────────────────────────────────────────────────────
     let screenmap_pts: [number, number][] = [];
     let rawScreenmapPts: [number, number][] = [];
@@ -925,7 +936,7 @@ export function init(container: HTMLElement) {
         // of racing playback. fled-only — MP4 capture films the live preview
         // canvas and is inherently realtime.
         const offlineFile = videoSource.sourceFile;
-        if (wantFled && !wantMp4 && offlineFile && isOfflineCaptureSupported()) {
+        if (wantFled && !wantMp4 && offlineFile && isOfflineCaptureSupported() && !forceRealtimeCapture) {
             void runOfflineRecordPass(offlineFile);
             return;
         }
@@ -1037,7 +1048,7 @@ export function init(container: HTMLElement) {
     // intersected with HTMLVideoElement). Native `stalled`/`waiting` events
     // are not used as the primary signal — unreliable per video.js history.
     type MaybeRvfcVideo = HTMLVideoElement & { requestVideoFrameCallback?: (callback: VideoFrameRequestCallback) => number };
-    const hasRvfc = typeof (videoPlayer as MaybeRvfcVideo).requestVideoFrameCallback === 'function';
+    const hasRvfc = typeof (videoPlayer as MaybeRvfcVideo).requestVideoFrameCallback === 'function' && !ignoreRvfc;
     let watchdogsDisposed = false;
     // Frame pacing (issue #256 / #255 Phase 1): the rVFC loop doubles as the
     // recording pacemaker. `lastPresentedFrames` keys recorded samples (one
@@ -1138,6 +1149,29 @@ export function init(container: HTMLElement) {
         return { rgbPts: recordRgbPts, avgBri: sample.avgBri };
     }
 
+    // Backpressure for the realtime capture fallback (#266). The offline
+    // WebCodecs pass is inherently one-in/one-out; the realtime path (webcam,
+    // or a file when WebCodecs is unavailable) instead has the source running
+    // on its own clock. For a PAUSABLE source (a file, not a webcam), when the
+    // gather-readback pipeline saturates we pause the element so the source
+    // can't race past capture and lose frames — the source slows to the
+    // pipeline's drain rate. Webcam streams can't be paused; their skips are
+    // surfaced (skip counter / HUD / frames-skipped warn) instead.
+    let backpressurePaused = false;
+    function applyCaptureBackpressure(): void {
+        const pausable = recording.isActive && videoSource.sourceType === 'video';
+        if (!pausable) {
+            if (backpressurePaused) { backpressurePaused = false; void videoPlayer.play(); }
+            return;
+        }
+        if (blurPipeline.isSampleBusy()) {
+            if (!videoPlayer.paused) { videoPlayer.pause(); backpressurePaused = true; }
+        } else if (backpressurePaused) {
+            backpressurePaused = false;
+            void videoPlayer.play();
+        }
+    }
+
     function animationLoop() {
         rafId = requestAnimationFrame(animationLoop);
 
@@ -1174,6 +1208,7 @@ export function init(container: HTMLElement) {
             // is a per-frame uniform update, so dragging stays cheap.
             blurPipeline.setSamplePoints(screenmap_pts, videoWidth, videoHeight);
             blurPipeline.setSampleTransform(curr_rotate, curr_zoom, curr_translate[0], curr_translate[1]);
+            applyCaptureBackpressure();
             blurPipeline.requestSample();
             // Consume the latest resolved async readback (1-2 frames behind)
             const gather = blurPipeline.getLatestSample();
@@ -1194,7 +1229,14 @@ export function init(container: HTMLElement) {
                     }
                     loggedOobCount = lastSample.oobCount;
                 }
-                recording.processFrame(toRecordingSample(lastSample, gather.numPts), frame_rate, videoStallWatchdog.isHealthy(), lastPresentedFrames);
+                // Source-frame key (#266): rVFC presentedFrames when live,
+                // else the media-clock source-frame index. Both are SOURCE
+                // signals, so a paused/frozen source yields an unchanged key
+                // and its repeat is dropped as a duplicate (never a
+                // data comparison).
+                const mediaKey = frame_rate > 0 ? Math.floor(videoPlayer.currentTime * frame_rate) : null;
+                const frameKey = lastPresentedFrames ?? mediaKey;
+                recording.processFrame(toRecordingSample(lastSample, gather.numPts), frame_rate, videoStallWatchdog.isHealthy(), frameKey);
             }
         } else {
             recording.resetCapture();

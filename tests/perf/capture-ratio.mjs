@@ -56,8 +56,8 @@ const page = await context.newPage();
 const cdp = await context.newCDPSession(page);
 page.on('pageerror', (e) => console.log('PAGEERROR:', e.message.slice(0, 200)));
 
-async function loadVideo(file) {
-    await page.goto(BASE + '/moviemaker', { waitUntil: 'networkidle' });
+async function loadVideo(file, query = '') {
+    await page.goto(BASE + '/moviemaker' + query, { waitUntil: 'networkidle' });
     await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('lm:')) localStorage.removeItem(k); });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(800);
@@ -116,6 +116,36 @@ await offlineScenario(fixtures.f60, 4, 'offline-60fps-throttle4x');
 console.log('--- realtime path (format both) ---');
 await realtimeScenario(fixtures.f30, 0.95, 'realtime-30fps-1x');
 await realtimeScenario(fixtures.f60, 0.95, 'realtime-60fps-1x');
+
+// --- duplicate-free capture (#266): the media-clock-key realtime fallback
+// must record one frame per SOURCE frame and drop repeats of a frozen
+// source WITHOUT ever comparing pixel data. Forces the realtime + no-rVFC
+// path so the media-clock source-frame index drives pacing.
+async function dedupScenario() {
+    const liveStats = () => page.evaluate(() => window.__lmDebug?.moviemaker?.getState()?.captureStats ?? null);
+    await loadVideo(fixtures.f30.file, '?forceRealtimeCapture=1&noRvfc=1');
+    await page.locator('#btn_play_pause').click();
+    await page.waitForTimeout(300);
+    await page.locator('#btn_toggle_record').click();
+    await page.waitForTimeout(3000);
+    const playingStats = await liveStats();
+    // ~90 frames for 3s @ 30fps, with duplicates dropped (60Hz loop samples
+    // each source index ~twice).
+    const perSec = playingStats.captured / 3;
+    check('dedup-playing-rate',
+        perSec >= 27 && perSec <= 33 && playingStats.duplicatesDropped > 0,
+        `captured=${playingStats.captured} (~${perSec.toFixed(0)}/s) dup=${playingStats.duplicatesDropped}`);
+    // Freeze the source: captured must NOT grow — every repeat is a duplicate.
+    await page.evaluate(() => document.querySelector('#videoPlayer').pause());
+    await page.waitForTimeout(1500);
+    const frozenStats = await liveStats();
+    check('dedup-frozen-appends-nothing',
+        frozenStats.captured === playingStats.captured && frozenStats.duplicatesDropped > playingStats.duplicatesDropped,
+        `captured ${playingStats.captured}→${frozenStats.captured} (must not grow) dup ${playingStats.duplicatesDropped}→${frozenStats.duplicatesDropped}`);
+    await page.locator('#btn_toggle_record').click();
+}
+console.log('--- duplicate-free capture (#266) ---');
+await dedupScenario();
 
 await browser.close();
 

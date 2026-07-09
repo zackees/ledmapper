@@ -66,20 +66,52 @@ describe('createFrameSequencer', () => {
 
     it('keyed path: records once per unique key and counts gaps as skips', () => {
         const seq = createFrameSequencer();
-        assert.deepEqual(seq.next(10, 0, 0, 30), { record: true, skipped: 0 });
-        // Same key again (RAF ticking faster than the video) — no new frame.
-        assert.deepEqual(seq.next(10, 0, 0, 30), { record: false, skipped: 0 });
-        assert.deepEqual(seq.next(11, 0, 0, 30), { record: true, skipped: 0 });
+        assert.deepEqual(seq.next(10, 0, 0, 30), { record: true, skipped: 0, duplicate: false });
+        // Same key again (RAF ticking faster than the source) — a duplicate.
+        assert.deepEqual(seq.next(10, 0, 0, 30), { record: false, skipped: 0, duplicate: true });
+        assert.deepEqual(seq.next(11, 0, 0, 30), { record: true, skipped: 0, duplicate: false });
         // Jump of 3 → 2 presented frames were never sampled.
-        assert.deepEqual(seq.next(14, 0, 0, 30), { record: true, skipped: 2 });
-        // Stale/duplicate key after the jump — ignored.
-        assert.deepEqual(seq.next(13, 0, 0, 30), { record: false, skipped: 0 });
+        assert.deepEqual(seq.next(14, 0, 0, 30), { record: true, skipped: 2, duplicate: false });
+        // Stale/duplicate key after the jump — ignored, flagged duplicate.
+        assert.deepEqual(seq.next(13, 0, 0, 30), { record: false, skipped: 0, duplicate: true });
     });
 
-    it('wall-clock fallback: one frame per 1/fps slot, no skip accounting', () => {
+    it('duplicate detection is key-based, never data-based (frozen source dedups; static-but-advancing does not)', () => {
+        const seq = createFrameSequencer();
+        // A paused source: the media-clock index floor(currentTime*fps) is
+        // frozen at the same value → every repeat is a duplicate, withheld.
+        assert.equal(seq.next(50, 0, 0, 30).record, true);
+        for (let i = 0; i < 5; i++) {
+            const d = seq.next(50, 0, 0, 30);
+            assert.equal(d.record, false);
+            assert.equal(d.duplicate, true);
+        }
+        // A playing-but-visually-static source advances its index every frame
+        // even though the pixels never change — every frame records, none
+        // dropped (the sequencer never sees pixels).
+        for (let k = 51; k < 56; k++) {
+            const d = seq.next(k, 0, 0, 30);
+            assert.equal(d.record, true);
+            assert.equal(d.duplicate, false);
+        }
+    });
+
+    it('media-clock index keys behave identically (floor(currentTime*fps))', () => {
+        const seq = createFrameSequencer();
+        const idx = (tSec: number) => Math.floor(tSec * 30);
+        // 30fps source sampled by a 60Hz loop: two ticks share each index.
+        assert.equal(seq.next(idx(0.000), 0, 0, 30).record, true);    // idx 0
+        assert.equal(seq.next(idx(0.016), 0, 0, 30).duplicate, true); // idx 0 again
+        assert.equal(seq.next(idx(0.040), 0, 0, 30).record, true);    // idx 1
+        assert.equal(seq.next(idx(0.055), 0, 0, 30).duplicate, true); // idx 1 again
+    });
+
+    it('wall-clock fallback (null key): one frame per 1/fps slot, no dup accounting', () => {
         const seq = createFrameSequencer();
         assert.equal(seq.next(null, 0, 0, 30).record, true);
-        assert.equal(seq.next(null, 0.5 / 30 * US, 0, 30).record, false);
+        const dup = seq.next(null, 0.5 / 30 * US, 0, 30);
+        assert.equal(dup.record, false);
+        assert.equal(dup.duplicate, false); // fallback has no per-frame novelty
         assert.equal(seq.next(null, 1.02 / 30 * US, 0, 30).record, true);
         const jump = seq.next(null, 5 / 30 * US, 0, 30);
         assert.equal(jump.record, true);
@@ -90,7 +122,7 @@ describe('createFrameSequencer', () => {
         const seq = createFrameSequencer();
         seq.next(100, 0, 0, 30);
         seq.reset();
-        assert.deepEqual(seq.next(5, 0, 0, 30), { record: true, skipped: 0 });
+        assert.deepEqual(seq.next(5, 0, 0, 30), { record: true, skipped: 0, duplicate: false });
     });
 });
 
