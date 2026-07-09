@@ -194,17 +194,24 @@ try {
 
     const recordBtn = page.locator('#btn_toggle_record');
     probe('moviemaker.recordEnabledAfterSetup', await recordBtn.isEnabled());
-    const dl2 = page.waitForEvent('download', { timeout: 25000 });
+    // File sources take the offline every-frame path (#257): one click
+    // renders the entire file (decode-paced, faster than realtime) and the
+    // download fires on completion.
+    const dl2 = page.waitForEvent('download', { timeout: 120000 });
     await recordBtn.click();
     await page.waitForTimeout(600);
     await shot(page, 'moviemaker-recording');
-    await page.waitForTimeout(2500);
-    await recordBtn.click();
     const download2 = await dl2;
     const fledPath = path.join(OUT, 'recorded.fled');
     await download2.saveAs(fledPath);
     note(`fled recorded: ${download2.suggestedFilename()} (${fs.statSync(fledPath).size} bytes)`);
     probe('moviemaker.fledBytes', fs.statSync(fledPath).size);
+    // Every-frame check: frames in the file vs LED count (8 LEDs × 3 bytes).
+    {
+        const buf = fs.readFileSync(fledPath);
+        const jsonLen = buf.readUInt32LE(8);
+        probe('moviemaker.recordedFrames', (buf.length - 12 - jsonLen) / (8 * 3));
+    }
     await page.waitForTimeout(500);
     await shot(page, 'moviemaker-after-record');
     await captureEventLog(page, 'moviemaker');

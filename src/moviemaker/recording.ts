@@ -180,11 +180,25 @@ export function createRecording({ getSwal, getScreenmapJson }: {
         return { captured: colorFrames.length, skipped: skippedFrames };
     }
 
+    /**
+     * Save a batch of already-captured frames (the offline every-frame pass,
+     * #257) through the exact same FLED assembly / download / IndexedDB
+     * hand-off as a realtime recording.
+     */
+    async function saveFrames(frames: Uint8Array[], fps: number): Promise<void> {
+        colorFrames.length = 0;
+        for (const f of frames) colorFrames.push(f);
+        skippedFrames = 0;
+        recordedFps = fps;
+        await endRecording();
+    }
+
     return {
         toggle,
         processFrame,
         resetCapture,
         getStats,
+        saveFrames,
         get isActive() { return active; },
     };
 }

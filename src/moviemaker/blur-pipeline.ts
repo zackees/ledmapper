@@ -20,6 +20,7 @@ import {
     LinearFilter,
     NearestFilter,
     VideoTexture,
+    VideoFrameTexture,
     DataTexture,
     RGBAFormat,
     FloatType,
@@ -202,13 +203,13 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         u.gamma.value = values.gamma;
     }
 
-    function renderBlurred(destTarget: WebGLRenderTarget) {
+    function renderBlurred(destTarget: WebGLRenderTarget, source: Texture | null = videoTexture) {
         const u = blurUniforms;
         const savedBri = u.brightness.value;
         const savedMaxBri = u.maxBrightness.value;
         const savedGamma = u.gamma.value;
 
-        u.tDiffuse.value = videoTexture;
+        u.tDiffuse.value = source;
         u.direction.value.set(1, 0);
         u.brightness.value = 1.0;
         u.maxBrightness.value = 1.0;
@@ -224,6 +225,8 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         renderer.setRenderTarget(destTarget);
         renderer.render(scene, camera);
 
+        // Always restore the live-video binding so the realtime path is
+        // unaffected by an offline frame having been rendered in between.
         u.tDiffuse.value = videoTexture;
     }
 
@@ -369,8 +372,66 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         return latestSample;
     }
 
+    // Offline every-frame capture (issue #257 / #255 Phase 2) ---------------
+
+    // Texture wrapper for WebCodecs frames; created lazily on the first
+    // offline capture and reused for every subsequent frame.
+    let frameTexture: VideoFrameTexture | null = null;
+
+    /**
+     * Render one decoded WebCodecs VideoFrame through the same blur+gather
+     * pipeline as the realtime path and AWAIT its readback — deterministic
+     * one-in/one-out, no slots racing the compositor. Also blits the blurred
+     * frame to the visible canvas so the user sees render progress.
+     *
+     * Caller contract: the realtime `requestSample()` loop must be paused
+     * while offline capture runs (both paths share the gather slot-0
+     * target/buffer). Returns null when the pipeline isn't ready or slot 0
+     * is unexpectedly still in flight.
+     */
+    async function captureFrameSample(frame: VideoFrame): Promise<{ buffer: Uint8Array; numPts: number } | null> {
+        if (!positionTexture || !outputTarget) return null;
+        const slot = 0;
+        if (slotBusy[slot]) return null;
+        const slotTarget = gatherTargets[slot];
+        const buffer = gatherBuffers[slot];
+        if (!slotTarget || !buffer) return null;
+
+        frameTexture ??= (() => {
+            const t = new VideoFrameTexture();
+            t.minFilter = LinearFilter;
+            t.magFilter = LinearFilter;
+            return t;
+        })();
+        frameTexture.setFrame(frame);
+
+        renderBlurred(outputTarget, frameTexture);
+        copyUniforms.tDiffuse.value = outputTarget.texture;
+        quadMesh.material = copyMaterial;
+        renderer.setRenderTarget(null);
+        renderer.render(quadScene, quadCamera);
+
+        gatherUniforms.tPositions.value = positionTexture;
+        gatherUniforms.tSource.value = outputTarget.texture;
+        quadMesh.material = gatherMaterial;
+        renderer.setRenderTarget(slotTarget);
+        renderer.render(quadScene, quadCamera);
+        renderer.setRenderTarget(null);
+
+        slotBusy[slot] = true;
+        try {
+            await renderer.readRenderTargetPixelsAsync(slotTarget, 0, 0, gatherW, gatherH, buffer);
+            return { buffer, numPts: gatherNumPts };
+        } catch {
+            return null; // context loss / disposal mid-read
+        } finally {
+            slotBusy[slot] = false;
+        }
+    }
+
     function dispose() {
         disposeGatherResources();
+        if (frameTexture) { frameTexture.dispose(); frameTexture = null; }
         if (blurTarget) blurTarget.dispose();
         if (outputTarget) outputTarget.dispose();
         if (videoTexture) videoTexture.dispose();
@@ -390,6 +451,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         setSampleTransform,
         requestSample,
         getLatestSample,
+        captureFrameSample,
         dispose,
     };
 }

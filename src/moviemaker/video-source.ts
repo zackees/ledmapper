@@ -55,6 +55,10 @@ export function createVideoSource({
     let webcamStream: MediaStream | null = null;
     let sourceType: string | null = null;
     let isPlaying = false;
+    // The original File backing a 'video' source. The offline every-frame
+    // capture pass (#257) demuxes this directly with WebCodecs instead of
+    // racing the playing <video> element.
+    let sourceFile: File | null = null;
 
     function stopWebcam() {
         if (webcamStream) {
@@ -75,6 +79,7 @@ export function createVideoSource({
         videoPlayer.onloadedmetadata = () => {
             sourceType = 'video';
             isPlaying = false;
+            sourceFile = file;
             onSourceReady(videoPlayer.videoWidth, videoPlayer.videoHeight, 'video');
         };
     }
@@ -141,5 +146,7 @@ export function createVideoSource({
         dispose,
         get sourceType() { return sourceType; },
         get isPlaying() { return isPlaying; },
+        /** Original File for 'video' sources (null for webcam) — #257. */
+        get sourceFile() { return sourceType === 'video' ? sourceFile : null; },
     };
 }
