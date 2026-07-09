@@ -477,15 +477,27 @@ canvas {
     color: var(--color-lm-accent);
 }
 
-.preset-btn.active-preset,
-.preset-btn.active-preset:hover {
-    background: var(--color-lm-accent-subtle);
+/* Active chip: solid accent fill + glow ring + leading check glyph, so it
+   reads as unmistakably "selected" rather than just "hovered" (issue #247 —
+   the previous active style reused the same subtle-tint hover treatment and
+   was visually indistinguishable from resting/hover chips). */
+.preset-btn.active-preset {
+    background: var(--color-lm-accent);
     border-color: var(--color-lm-accent);
-    color: var(--color-lm-accent);
+    color: var(--color-lm-text);
+    font-weight: 600;
+    box-shadow: 0 0 0 2px var(--color-lm-accent-glow);
+}
+
+.preset-btn.active-preset::before {
+    content: '\2713';
+    margin-right: 4px;
+    font-weight: 700;
 }
 
 .preset-btn.active-preset:hover {
-    background: rgba(59, 130, 246, 0.18);
+    background: var(--color-lm-accent-hover);
+    border-color: var(--color-lm-accent-hover);
 }
 
 .preset-picker { @apply flex flex-col gap-1.5 w-full; }
@@ -520,6 +532,25 @@ canvas {
 }
 
 .preset-picker-tab-label { @apply font-medium; }
+
+/* Tab-header hint: a small accent dot before the label of whichever tab
+   holds the currently-active preset chip, so the loaded preset stays
+   identifiable even after switching to a different tab and hiding its
+   panel (issue #247). Toggled in setActive() via .has-active-preset. */
+.preset-picker-tab.has-active-preset .preset-picker-tab-label::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 5px;
+    border-radius: var(--radius-lm-pill);
+    background: var(--color-lm-accent);
+    vertical-align: middle;
+}
+
+.preset-picker-tab[aria-selected="true"].has-active-preset .preset-picker-tab-label::before {
+    background: var(--color-lm-text);
+}
 
 .preset-picker-tab-count {
     font-size: 0.65rem;

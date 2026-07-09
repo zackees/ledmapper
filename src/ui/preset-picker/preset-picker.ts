@@ -259,15 +259,31 @@ export function mountPresetPicker(
     // Highlight the initial selection if provided.
     if (opts.initialSelection) {
         const btn = buttonsByFile.get(opts.initialSelection);
-        if (btn) btn.classList.add('active-preset');
+        if (btn) {
+            btn.classList.add('active-preset');
+            updateActiveTabIndicator(categoryOf(opts.initialSelection, groups));
+        }
+    }
+
+    /** Tab-header hint: mark the (sole) tab holding the active preset, so it
+     * stays identifiable even if the user switches to a different tab and
+     * hides its panel. Cleared entirely when no preset is active. */
+    function updateActiveTabIndicator(activeCategoryId: string | null): void {
+        for (const [tabId, tab] of tabsById) {
+            tab.classList.toggle('has-active-preset', tabId === activeCategoryId);
+        }
     }
 
     function setActive(file: string): void {
         for (const btn of buttonsByFile.values()) btn.classList.remove('active-preset');
-        const btn = buttonsByFile.get(file);
-        if (!btn) return;
+        const btn = file ? buttonsByFile.get(file) : undefined;
+        if (!btn) {
+            updateActiveTabIndicator(null);
+            return;
+        }
         btn.classList.add('active-preset');
         const cat = categoryOf(file, groups);
+        updateActiveTabIndicator(cat);
         if (cat) setActiveTab(cat);
     }
 
