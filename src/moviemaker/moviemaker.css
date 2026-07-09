@@ -252,6 +252,39 @@
     color: var(--color-lm-text);
 }
 
+/* Styled trigger for the visually-hidden `#btn_upload_screenmap` file input
+   (issue #249). A `<label for=...>` so clicking it opens the native file
+   picker without any JS click-forwarding. Same look as `.btn-edit-screenmap`
+   plus an explicit pointer cursor since labels don't always get one. */
+.btn-upload-file {
+    @apply inline-flex items-center justify-center cursor-pointer;
+    background: var(--color-lm-surface-2);
+    color: var(--color-lm-text);
+    border: 1px solid var(--color-lm-border);
+    padding: 6px 12px;
+    border-radius: var(--radius-lm);
+    font-size: 0.78rem;
+    transition: border-color var(--lm-dur) var(--lm-ease),
+                background var(--lm-dur) var(--lm-ease);
+}
+.btn-upload-file:hover {
+    border-color: var(--color-lm-accent);
+    background: var(--color-lm-accent-subtle);
+}
+
+/* Filename readout next to the upload button; shows the last uploaded
+   custom screenmap's name (issue #249). */
+.upload-filename {
+    @apply text-xs text-lm-text-muted truncate;
+    max-width: 160px;
+}
+
+/* Muted drag-and-drop hint surfaced on the drop target (issue #249). */
+.upload-drop-hint {
+    @apply text-xs text-lm-text-muted;
+    margin: 4px 0 0;
+}
+
 #sidebar::before {
     content: '';
     display: block;

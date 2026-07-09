@@ -662,6 +662,20 @@ input[type="button"]:focus-visible {
     opacity: 0;
 }
 
+/* Off-screen host for a real `<input type="file">` kept in the DOM for
+   `setInputFiles()` / native-picker compatibility (issue #249). A styled
+   `<label for=...>` triggers the picker, so the input itself never needs
+   to be interacted with directly. Same off-screen approach as
+   `.diagnostics-legacy-textarea` above: NEVER `display:none` or
+   `visibility:hidden` — both make Playwright's `toBeVisible()` fail,
+   which several integration specs assert on this element. */
+.visually-hidden-input {
+    position: fixed;
+    top: -9999px;
+    left: -9999px;
+    opacity: 0;
+}
+
 /* ── Scrollbar ─────────────────────────────────────────────── */
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }

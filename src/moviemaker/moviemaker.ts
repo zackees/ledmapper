@@ -48,6 +48,7 @@ export function init(container: HTMLElement) {
     const dom_btn_load_video    = qe<HTMLButtonElement>('#btn_load_video');
     const dom_btn_start_webcam  = qe<HTMLButtonElement>('#btn_start_webcam');
     const dom_btn_upload_screenmap  = qei('#btn_upload_screenmap');
+    const dom_txt_screenmap_filename = qe<HTMLElement>('#txt_screenmap_filename');
     const dom_preset_mount = container.querySelector<HTMLElement>('.preset-picker-mount');
     const dom_screenmap_group = dom_preset_mount?.closest('.control-group');
     const dom_source_hint = container.querySelector('#screenmap_gate_hint');
@@ -313,6 +314,7 @@ export function init(container: HTMLElement) {
                 try {
                     applyScreenmapText(await loadPresetText(presetFile), `preset:${presetFile}`);
                     presetPicker?.setActive(presetFile);
+                    setUploadFilename('');
                 } catch (error) {
                     log.info('screenmap-load-error', { source: `preset:${presetFile}`, error: String(error) });
                     void errorDialog('Error loading preset', String(error));
@@ -503,12 +505,18 @@ export function init(container: HTMLElement) {
     }, { signal });
 
     // Screenmap upload
+    /** Update the filename readout next to the styled upload button (issue #249). */
+    function setUploadFilename(name: string) {
+        dom_txt_screenmap_filename.textContent = name || 'No file chosen';
+    }
+
     function loadScreenmapFile(file: File | null | undefined) {
         if (!file) return;
         if (!fileHasExtension(file, ['.csv', '.json'])) {
             void errorDialog('Wrong file type', 'Please choose a .csv or .json screenmap file.');
             return;
         }
+        setUploadFilename(file.name);
         presetPicker?.setActive('');
         screenmapValid = false;
         updateElementStates();
