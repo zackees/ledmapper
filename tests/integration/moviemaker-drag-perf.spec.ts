@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures.ts';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
 import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
+import { expandScreenmapBand } from '../helpers/screenmap-band.ts';
 
 // Regression guard for issue #26: dragging the shape used to rebuild the
 // transformed points array every frame, defeating the position-texture and
@@ -34,6 +35,7 @@ test.describe('Moviemaker drag performance (issue #26) @gpu @gpu-perf', () => {
         await page.locator('[data-trigger="btn_start_webcam"]').click();
         await waitForSourceActive(page);
 
+        await expandScreenmapBand(page);
         await page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]').click();
         await expect(page.locator('.preset-btn[data-preset-file="64x64_serpentine.json"]')).toHaveClass(/active-preset/);
 
@@ -75,6 +77,7 @@ test.describe('Moviemaker drag performance (issue #26) @gpu @gpu-perf', () => {
         // Select the 16x16 preset explicitly (the worker-shared context may
         // hold a restored screenmap from an earlier spec) and disable blur so
         // the sampled colors come straight from the mock-webcam test pattern.
+        await expandScreenmapBand(page);
         await page.locator('.preset-btn[data-preset-file="16x16_grid.json"]').click();
         await expect(page.locator('.preset-btn[data-preset-file="16x16_grid.json"]')).toHaveClass(/active-preset/);
         const blur = page.locator('#rng_blur');

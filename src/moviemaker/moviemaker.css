@@ -285,6 +285,79 @@
     margin: 4px 0 0;
 }
 
+/* ── Screenmap band collapse (issue #248) ────────────────────
+   Once a layout is active the permanently-expanded picker (tabs +
+   chips + upload row + edit link, ~250px) collapses to a single
+   summary row so the render canvas + preview stay above the fold at
+   common laptop heights (observed clipped at 1360x850). */
+
+.screenmap-collapsed-row {
+    @apply flex items-center justify-between gap-2 flex-wrap;
+}
+
+/* Explicit override (same rationale as #screenmap_gate_hint.hidden above):
+   the plain Tailwind `.hidden` utility can lose the cascade to this rule's
+   own `display: flex` since they carry equal specificity. */
+#screenmap_collapsed_row.hidden {
+    @apply hidden;
+}
+
+.screenmap-collapsed-info {
+    @apply flex items-center gap-2 min-w-0;
+}
+
+.screenmap-active-layout {
+    @apply font-medium truncate;
+    color: var(--color-lm-text);
+    font-size: 0.85rem;
+}
+
+.screenmap-led-count {
+    @apply text-xs shrink-0;
+    color: var(--color-lm-text-muted);
+}
+
+.btn-change-layout,
+.btn-collapse-layout {
+    @apply shrink-0 cursor-pointer;
+    background: var(--color-lm-surface-2);
+    color: var(--color-lm-text);
+    border: 1px solid var(--color-lm-border);
+    padding: 5px 10px;
+    border-radius: var(--radius-lm);
+    font-size: 0.75rem;
+    transition: border-color var(--lm-dur) var(--lm-ease),
+                background var(--lm-dur) var(--lm-ease);
+}
+.btn-change-layout:hover,
+.btn-collapse-layout:hover {
+    border-color: var(--color-lm-accent);
+    background: var(--color-lm-accent-subtle);
+}
+
+.screenmap-edit-row {
+    margin-top: 8px;
+}
+
+/* The expanded picker (presets/upload/edit) stays mounted in the DOM
+   at all times — never `display:none` — so `#btn_upload_screenmap`
+   and `.preset-btn` keep a non-empty bounding box and stay outside
+   the display/visibility-hidden cascade. That keeps Playwright's
+   `toBeVisible()` and `setInputFiles()` working on the collapsed
+   band, same rationale as `.visually-hidden-input` above. Collapsing
+   moves the whole panel off-canvas via fixed positioning instead. */
+.screenmap-expanded-panel {
+    @apply flex flex-col gap-2;
+}
+
+.screenmap-expanded-panel.screenmap-offscreen {
+    position: fixed;
+    top: -9999px;
+    left: -9999px;
+    opacity: 0;
+    pointer-events: none;
+}
+
 #sidebar::before {
     content: '';
     display: block;
