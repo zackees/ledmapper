@@ -1159,7 +1159,12 @@ export function init(container: HTMLElement) {
     // surfaced (skip counter / HUD / frames-skipped warn) instead.
     let backpressurePaused = false;
     function applyCaptureBackpressure(): void {
-        const pausable = recording.isActive && videoSource.sourceType === 'video';
+        // Only the no-rVFC fallback needs this. When rVFC is available its
+        // presentedFrames key already paces capture correctly, and churning
+        // pause()/play() there just makes the decoder resume-jump — observed
+        // as ADDED skips on the 60fps realtime path. Scope to the fallback,
+        // which is exactly what #266 specified ("on this fallback path").
+        const pausable = recording.isActive && videoSource.sourceType === 'video' && !hasRvfc;
         if (!pausable) {
             if (backpressurePaused) { backpressurePaused = false; void videoPlayer.play(); }
             return;
