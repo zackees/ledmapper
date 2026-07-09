@@ -70,6 +70,66 @@ export interface FpsStats {
     framesRendered: number;
 }
 
+/** Common display refresh rates. A measured value within tolerance snaps to
+ *  one of these so 59.6 reads as clean 60. */
+const COMMON_REFRESH_HZ = [50, 60, 75, 90, 100, 120, 144, 165, 240, 360];
+
+/** Snap a measured refresh rate to the nearest common value within
+ *  `tolerance` (relative), else the raw value rounded to an integer. */
+export function snapDisplayHz(rawHz: number, tolerance = 0.05): number {
+    if (!isFinite(rawHz) || rawHz <= 0) return 0;
+    let best = COMMON_REFRESH_HZ[0] ?? 60;
+    let bestErr = Infinity;
+    for (const hz of COMMON_REFRESH_HZ) {
+        const err = Math.abs(rawHz - hz) / hz;
+        if (err < bestErr) { bestErr = err; best = hz; }
+    }
+    return bestErr <= tolerance ? best : Math.round(rawHz);
+}
+
+/**
+ * One-shot host display refresh-rate measurement (issue #267). Samples a
+ * short burst of requestAnimationFrame deltas — which track the compositor's
+ * vsync when the tab is visible — takes the median, and snaps to a common
+ * refresh rate. Runs ONCE (no persistent loop, per the #264 main-thread
+ * economy rule); callers cache the result.
+ *
+ * `raf` is injectable for tests. Resolves 0 if RAF is unavailable (e.g. a
+ * worker context) — display Hz is a main-thread concept.
+ */
+export function measureDisplayHz({
+    sampleCount = 20,
+    raf,
+}: {
+    sampleCount?: number;
+    raf?: (cb: (t: number) => void) => void;
+} = {}): Promise<number> {
+    const rafFn = raf ?? (typeof requestAnimationFrame === 'function'
+        ? (cb: (t: number) => void) => { requestAnimationFrame(cb); }
+        : null);
+    if (!rafFn) return Promise.resolve(0);
+    const schedule = rafFn;
+    return new Promise<number>((resolve) => {
+        const deltas: number[] = [];
+        let prev: number | null = null;
+        function step(t: number): void {
+            if (prev !== null) {
+                const dt = t - prev;
+                if (dt > 0) deltas.push(dt);
+            }
+            prev = t;
+            if (deltas.length < sampleCount) {
+                schedule(step);
+            } else {
+                deltas.sort((a, b) => a - b);
+                const medianMs = deltas[Math.floor(deltas.length / 2)] ?? 0;
+                resolve(medianMs > 0 ? snapDisplayHz(1000 / medianMs) : 0);
+            }
+        }
+        schedule(step);
+    });
+}
+
 /**
  * Read the persisted visibility flag. Returns the explicit option when
  * provided, else the localStorage value, else `false`.
@@ -115,9 +175,17 @@ export function mountFpsWidget({
     el.title = 'Click or press F to hide';
     wrapper.appendChild(el);
 
+    // Host display Hz: measured once at mount (no persistent loop, #267),
+    // cached, and shown decoupled from the source/push rate — `display`
+    // (monitor capability), `render` (achieved render loop), and `push`
+    // (source frame delivery) are three distinct clocks (#264).
+    let displayHz = 0;
+    void measureDisplayHz().then((hz) => { displayHz = hz; });
+
     function refresh() {
         const s = getStats();
-        el.textContent = `render: ${String(Math.round(s.renderFps))} · push: ${String(Math.round(s.pushFps))} · ${s.frameTimeMs.toFixed(1)}ms`;
+        const hz = displayHz > 0 ? `display: ${String(displayHz)}Hz · ` : '';
+        el.textContent = `${hz}render: ${String(Math.round(s.renderFps))} · push: ${String(Math.round(s.pushFps))} · ${s.frameTimeMs.toFixed(1)}ms`;
     }
     refresh();
     const interval = setInterval(refresh, 250);

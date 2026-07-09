@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { FpsMeter, resolveInitialVisibility, persistVisibility, isTypingTarget } from '../../src/gfx/fps';
+import { FpsMeter, resolveInitialVisibility, persistVisibility, isTypingTarget, snapDisplayHz, measureDisplayHz } from '../../src/gfx/fps';
 
 test('FpsMeter: starts at zero before any ticks', () => {
     const m = new FpsMeter();
@@ -118,4 +118,41 @@ test('persistVisibility: swallows localStorage errors', () => {
 
 test('isTypingTarget: null returns false', () => {
     assert.equal(isTypingTarget(null), false);
+});
+
+// --- display Hz (issue #267) ---
+
+test('snapDisplayHz: snaps near-miss measurements onto common refresh rates', () => {
+    assert.equal(snapDisplayHz(59.6), 60);
+    assert.equal(snapDisplayHz(60.4), 60);
+    assert.equal(snapDisplayHz(119), 120);
+    assert.equal(snapDisplayHz(143.5), 144);
+    assert.equal(snapDisplayHz(74), 75);
+});
+
+test('snapDisplayHz: keeps unusual rates (rounded) rather than forcing a snap', () => {
+    assert.equal(snapDisplayHz(85), 85); // 5% from both 75 and 90 → no snap
+    assert.equal(snapDisplayHz(0), 0);
+    assert.equal(snapDisplayHz(-10), 0);
+    assert.equal(snapDisplayHz(Infinity), 0);
+});
+
+test('measureDisplayHz: derives 60Hz from injected 16.667ms RAF cadence', async () => {
+    let t = 0;
+    const raf = (cb: (t: number) => void) => { t += 1000 / 60; const nt = t; queueMicrotask(() => { cb(nt); }); };
+    const hz = await measureDisplayHz({ sampleCount: 20, raf });
+    assert.equal(hz, 60);
+});
+
+test('measureDisplayHz: derives 120Hz from 8.333ms cadence', async () => {
+    let t = 0;
+    const raf = (cb: (t: number) => void) => { t += 1000 / 120; const nt = t; queueMicrotask(() => { cb(nt); }); };
+    const hz = await measureDisplayHz({ sampleCount: 20, raf });
+    assert.equal(hz, 120);
+});
+
+test('measureDisplayHz: resolves 0 when RAF is unavailable', async () => {
+    // No injected raf and no global requestAnimationFrame in Node.
+    const hz = await measureDisplayHz({ sampleCount: 5 });
+    assert.equal(hz, 0);
 });
