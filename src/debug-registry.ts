@@ -33,8 +33,8 @@ export interface MoviemakerDebugState {
     oobLeds: number;
     /** Recording frame rate: 30 until the rVFC estimator locks on (#256). */
     detectedFps: number;
-    /** Live recording pacing counters (#256); zeros when not recording. */
-    captureStats: { captured: number; skipped: number };
+    /** Live recording pacing counters (#256/#266); zeros when not recording. */
+    captureStats: { captured: number; skipped: number; duplicatesDropped: number };
 }
 
 /** Live debug state for the Movie Player (src/movieplayer). */
