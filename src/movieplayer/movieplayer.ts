@@ -6,7 +6,7 @@ import { saveVideo, getVideo, clearVideo } from '../video-store';
 import { buildVideoChannelMap } from '../moviemaker/transforms';
 import { createGfx, wireBloomUi, createPlayer } from '../gfx';
 import { createCanvasRecorder } from '../render/canvas-recorder';
-import { parseRgbFrames, hasFledMagic } from '../render/rgb-video';
+import { parseRgbFrames, hasFledMagic, readVideoFps } from '../render/rgb-video';
 import type { ParsedStrip } from '../types/domain';
 import type { Player } from '../gfx';
 import { createLogger } from '../debug-log';
@@ -325,14 +325,7 @@ export function init(container: HTMLElement) {
         // The spec-defined optional `video.fps` metadata key (#256,
         // docs/fled-format.md) — recordings of non-30fps sources play at
         // source speed. Absent/invalid → the historical 30 fps default.
-        let metaFps = 30;
-        try {
-            const meta = JSON.parse(peek.embeddedJson) as { video?: { fps?: unknown } };
-            const f = meta.video?.fps;
-            if (typeof f === 'number' && isFinite(f) && f >= 1 && f <= 240) {
-                metaFps = f;
-            }
-        } catch { /* screenmap already validated above; fps stays default */ }
+        const metaFps = readVideoFps(peek.embeddedJson) ?? 30;
         player = createPlayer({
             frames,
             fps: metaFps,

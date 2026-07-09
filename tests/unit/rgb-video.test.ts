@@ -8,6 +8,7 @@ import {
     prependFledHeader,
     parseRgbFrames,
     hasFledMagic,
+    readVideoFps,
 } from '../../src/render/rgb-video';
 
 // Reference JSON used by the round-trip + reference-vector tests.
@@ -180,4 +181,20 @@ test('FLED frames at non-multiple length report notMultiple but keep JSON', () =
     assert.equal(result.notMultiple, true);
     assert.equal(result.frames.length, 0);
     assert.equal(result.embeddedJson, REF_JSON, 'JSON should still be surfaced even when frames mismatch');
+});
+
+// --- readVideoFps (issue #265) ---
+
+test('readVideoFps: reads a valid video.fps including fractional rates', () => {
+    assert.equal(readVideoFps(JSON.stringify({ map: {}, video: { fps: 29.97 } })), 29.97);
+    assert.equal(readVideoFps(JSON.stringify({ version: 2, segments: [], video: { fps: 60 } })), 60);
+});
+
+test('readVideoFps: returns null when absent, malformed, or out of range', () => {
+    assert.equal(readVideoFps(JSON.stringify({ map: {} })), null);
+    assert.equal(readVideoFps(JSON.stringify({ video: { fps: 0 } })), null);
+    assert.equal(readVideoFps(JSON.stringify({ video: { fps: 500 } })), null);
+    assert.equal(readVideoFps(JSON.stringify({ video: { fps: 'x' } })), null);
+    assert.equal(readVideoFps('not json'), null);
+    assert.equal(readVideoFps(null), null);
 });

@@ -142,6 +142,7 @@ export function drawMoviemakerOverlay(
     strips: ParsedStrip[] | null = null,
     ledDiameter: number | null = null,
     captureStats: { captured: number; skipped: number } | null = null,
+    sourceFps: number | null = null,
 ): void {
     ctx.clearRect(0, 0, videoWidth, videoHeight);
     if (localPts.length === 0) return;
@@ -153,7 +154,12 @@ export function drawMoviemakerOverlay(
 
     ctx.fillStyle = 'white';
     ctx.font = '12px monospace';
-    ctx.fillText(`FPS: ${String(fps)}`, 10, 14);
+    // Two distinct clocks (#264/#265): `render` is this preview loop's rate;
+    // `source` is the detected native frame rate of the video/webcam that
+    // drives capture. They differ on purpose — a 29.97 source rendered on a
+    // 60 fps loop is healthy, not a discrepancy.
+    const srcText = sourceFps !== null ? ` · source: ${String(sourceFps)}` : '';
+    ctx.fillText(`render: ${String(fps)}${srcText}`, 10, 14);
     if (lastSample) {
         const pct = Math.round(lastSample.avgBri * 100);
         ctx.fillText(`Avg Brightness: ${String(pct)}%`, 10, 28);

@@ -5,7 +5,7 @@ import { errorDialog } from '../ui/dialogs';
 import { gfxColors, withAlpha } from '../ui/theme';
 import { createGfx, wireBloomUi, createFramePacer } from '../gfx';
 import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
-import { parseRgbFrames, prependFledHeader } from '../render/rgb-video';
+import { parseRgbFrames, prependFledHeader, readVideoFps } from '../render/rgb-video';
 import type { MultiStripParseResult, StripPoint } from '../types/domain';
 import templateHtml from './template.html?raw';
 export { default as css } from './demo.css?url';
@@ -49,6 +49,9 @@ export function init(container: HTMLElement) {
     const movie_frames: Uint8Array[] = [];
     let playing = false;
     let curr_frame_idx = 0;
+    // Detected native source rate (FLED video.fps); drives the pump on
+    // "Native" and labels that option (#265).
+    let nativeFps = 30;
 
     // Overlay state
     let showLines = false;
@@ -238,11 +241,17 @@ export function init(container: HTMLElement) {
             return;
         }
         const uint8_array = new Uint8Array(arrayBuffer);
-        const { frames, notMultiple } = parseRgbFrames(uint8_array, screenmap_pts.length);
+        const parsed = parseRgbFrames(uint8_array, screenmap_pts.length);
+        const { frames, notMultiple } = parsed;
         if (notMultiple) {
             void errorDialog('Frame size mismatch', 'Frame size should be a multiple of the number of screenmap points.');
             return;
         }
+        // Native source rate rides in the FLED metadata as video.fps (#256);
+        // it drives the pump when the selector is on "Native" (#265). Default
+        // 30 when absent/invalid — every pre-#256 recording played at 30.
+        nativeFps = readVideoFps(parsed.embeddedJson) ?? 30;
+        refreshNativeFpsLabel();
         movie_frames.length = 0;
         curr_frame_idx = 0;
         for (const frame of frames) movie_frames.push(frame);
@@ -327,7 +336,11 @@ export function init(container: HTMLElement) {
         frameRafId = requestAnimationFrame(pump);
         if (screenmap_pts.length === 0) return;
         if (!(movie_frames.length && playing)) return;
-        const interval = 1000 / Math.max(parseInt(dom_sel_framerate.value), 1);
+        // "Native" (default) paces at the source's own rate; a numeric
+        // selection overrides it (#265).
+        const sel = dom_sel_framerate.value;
+        const targetFps = sel === 'native' ? nativeFps : Math.max(parseInt(sel), 1);
+        const interval = 1000 / Math.max(targetFps, 1);
         if (!framePacer.due(t, interval)) return;
         if (curr_frame_idx >= movie_frames.length) curr_frame_idx = 0;
         const frame = movie_frames[curr_frame_idx++];
@@ -342,9 +355,15 @@ export function init(container: HTMLElement) {
         dom_txt_curr_diameter.textContent = String(px);
     }, { signal });
 
-    // --- Frame rate selector --- frame pump reads the dropdown directly,
-    // so we just need to refresh on change for any UI that depends on it.
-    dom_sel_framerate.addEventListener('change', () => { /* read by pump() */ }, { signal });
+    // --- Frame rate selector --- the pump reads the dropdown directly; on
+    // change we re-anchor the pacer so the new rate takes effect cleanly and
+    // refresh the "Native (29.97)" label (#265).
+    function refreshNativeFpsLabel(): void {
+        const opt = dom_sel_framerate.querySelector<HTMLOptionElement>('option[value="native"]');
+        if (opt) opt.textContent = `Native (${String(nativeFps)})`;
+    }
+    dom_sel_framerate.addEventListener('change', () => { framePacer.reset(); }, { signal });
+    refreshNativeFpsLabel();
 
     // --- Download handlers ---
     dom_btn_download_screenmap.addEventListener('click', () => {
