@@ -187,15 +187,32 @@
     color: var(--color-lm-text-muted);
 }
 
+/* Cap the canvas DISPLAY size so a full-resolution ("Native") backing store
+   on a high-res source scales down to fit instead of overflowing the layout
+   and shoving the toolbar (with the resolution dropdown) off-screen — the
+   #278 wedge. The `width`/`height` attributes (backing store, driving
+   recording quality) stay at full native resolution; only the rendered box
+   is bounded. max-width keeps it within the row; max-height keeps the whole
+   column within a laptop fold (the allowance covers the top effects bar +
+   toolbar + preview chrome). Aspect ratio is preserved (replaced element
+   constrained by both maxes). */
 #renderCanvas {
+    display: block;
+    max-width: 100%;
+    max-height: calc(100vh - 320px);
     border: 1px solid var(--color-lm-border);
     border-radius: 2px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
     transition: border-color 400ms ease, box-shadow 400ms ease;
 }
 
+/* Track the render canvas's DISPLAYED box (it fills the wrapper, which
+   shrink-wraps to the scaled canvas) so the LED overlay stays aligned even
+   when the render canvas is scaled down from a large backing store. */
 #overlayCanvas {
     @apply absolute top-0 left-0 pointer-events-auto;
+    width: 100%;
+    height: 100%;
     transition: opacity 300ms ease;
 }
 

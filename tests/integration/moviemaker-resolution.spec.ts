@@ -110,6 +110,49 @@ test.describe('Moviemaker Resolution Control @gpu', () => {
         expect(size.h).toBe(240);
     });
 
+    test('a full-resolution (Native) backing store cannot overflow and wedge the UI (#278)', async ({ page }) => {
+        test.setTimeout(60000);
+        await page.setViewportSize({ width: 1366, height: 768 });
+        await mockWebcam(page);
+        await page.goto('/moviemaker/');
+        await page.locator('[data-trigger="btn_start_webcam"]').click();
+        await waitForSourceActive(page);
+
+        // The render canvas carries a DISPLAY-size cap (the #278 fix): its
+        // rendered box is bounded even though the backing store may be full
+        // native resolution. (Kept as a light source so the headless
+        // SwiftShader nightly run isn't saturated by a live 4K render.)
+        const css = await page.locator('#renderCanvas').evaluate((c) => {
+            const s = getComputedStyle(c);
+            return { maxWidth: s.maxWidth, maxHeight: s.maxHeight };
+        });
+        expect(css.maxWidth).not.toBe('none');
+        expect(css.maxHeight).not.toBe('none');
+
+        // Simulate a "Native" full-res backing store on a 4K source and confirm
+        // the DISPLAYED box stays clamped within the viewport — pre-#278 it
+        // rendered at full pixel size (3840x2160), overflowed `.app-layout`
+        // (overflow:hidden), and the `items-center` centering shoved the
+        // toolbar + resolution dropdown to negative offsets, unreachable.
+        const measured = await page.locator('#renderCanvas').evaluate((c) => {
+            const canvas = c as HTMLCanvasElement;
+            canvas.width = 3840;
+            canvas.height = 2160; // full native backing store (recording quality)
+            const r = canvas.getBoundingClientRect();
+            return { backW: canvas.width, backH: canvas.height, dispW: Math.round(r.width), dispH: Math.round(r.height) };
+        });
+        // Backing store is full native — recording quality is untouched.
+        expect(measured.backW).toBe(3840);
+        expect(measured.backH).toBe(2160);
+        // Display is clamped to fit: width within the viewport, height within
+        // the fold cap. A 3840-wide box would otherwise overflow 1366.
+        expect(measured.dispW).toBeLessThanOrEqual(1366);
+        expect(measured.dispH).toBeLessThanOrEqual(768);
+        // And it actually scaled down (didn't stay at native pixel size).
+        expect(measured.dispW).toBeLessThan(3840);
+        expect(measured.dispH).toBeLessThan(2160);
+    });
+
     test('default 480p limits large video canvas', async ({ page }) => {
         test.setTimeout(60000);
         await page.goto('/moviemaker/');
