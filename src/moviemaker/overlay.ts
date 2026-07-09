@@ -20,6 +20,7 @@ interface RingLayerEntry {
     zoom: number;
     strips: ParsedStrip[] | null;
     ledDiameter: number | null;
+    showStripLabels: boolean;
     layer: HTMLCanvasElement;
     ox: number;
     oy: number;
@@ -67,11 +68,12 @@ function drawStripLabels(lctx: CanvasRenderingContext2D, transformedPts: StripPo
     });
 }
 
-function getRingLayer(ctx: CanvasRenderingContext2D, localPts: StripPoint[], rotate: number, zoom: number, strips: ParsedStrip[] | null, ledDiameter: number | null): RingLayerEntry {
+function getRingLayer(ctx: CanvasRenderingContext2D, localPts: StripPoint[], rotate: number, zoom: number, strips: ParsedStrip[] | null, ledDiameter: number | null, showStripLabels: boolean): RingLayerEntry {
     const cached = ringLayerCache.get(ctx);
     if (cached?.pts === localPts && cached.rotate === rotate &&
         cached.zoom === zoom && cached.strips === strips &&
-        cached.ledDiameter === ledDiameter) {
+        cached.ledDiameter === ledDiameter &&
+        cached.showStripLabels === showStripLabels) {
         return cached;
     }
     perfCount('ringLayerRebuilds');
@@ -114,15 +116,15 @@ function getRingLayer(ctx: CanvasRenderingContext2D, localPts: StripPoint[], rot
             const end = Math.min(strip.offset + strip.count, pts.length);
             strokeRings(lctx, pts, strip.offset, end, r, colors[si] ?? 'white');
         }
-        drawStripLabels(lctx, pts, strips, r, colors);
+        if (showStripLabels) drawStripLabels(lctx, pts, strips, r, colors);
     } else {
         strokeRings(lctx, pts, 0, pts.length, r, 'white');
-        if (Array.isArray(strips) && strips.length === 1 && strips[0] !== undefined) {
+        if (showStripLabels && Array.isArray(strips) && strips.length === 1 && strips[0] !== undefined) {
             drawStripLabels(lctx, pts, strips, r, ['white']);
         }
     }
 
-    const entry: RingLayerEntry = { pts: localPts, rotate, zoom, strips, ledDiameter, layer, ox, oy };
+    const entry: RingLayerEntry = { pts: localPts, rotate, zoom, strips, ledDiameter, showStripLabels, layer, ox, oy };
     ringLayerCache.set(ctx, entry);
     return entry;
 }
@@ -143,12 +145,17 @@ export function drawMoviemakerOverlay(
     ledDiameter: number | null = null,
     captureStats: { captured: number; skipped: number } | null = null,
     sourceFps: number | null = null,
+    // Per-strip Start/End labels clutter the record preview on dense
+    // multi-strip maps (issue #280), so the moviemaker overlay defaults them
+    // off; the editor tools draw their own labels and are unaffected. Toggled
+    // via the toolbar "Labels" checkbox.
+    showStripLabels = false,
 ): void {
     ctx.clearRect(0, 0, videoWidth, videoHeight);
     if (localPts.length === 0) return;
 
     if (showLeds) {
-        const { layer, ox, oy } = getRingLayer(ctx, localPts, rotate, zoom, strips, ledDiameter);
+        const { layer, ox, oy } = getRingLayer(ctx, localPts, rotate, zoom, strips, ledDiameter, showStripLabels);
         ctx.drawImage(layer, translateX + ox, translateY + oy);
     }
 
