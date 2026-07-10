@@ -338,7 +338,9 @@ registerDebugState('shapeeditor', {
     getState: () => ({
         stripCount: this.stripStore.getStrips().length,
         totalPoints: this.screenmap_pts.length,
-        dirty: !this.dom_btn_save.disabled,
+        // Reset stays dirty-gated, so its enabled state is the dirty flag now
+        // that Save As… is existence-gated instead (#292).
+        dirty: !this.dom_btn_reset.disabled,
     }),
     debug: shapeeditorDebug,
 });

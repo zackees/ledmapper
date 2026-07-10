@@ -135,11 +135,14 @@ ShapeEditor.prototype._maybeAutoOpenHelpOnLaunch = function (this: ShapeEditor) 
         if (self._autoOpenHelpScheduled) return;
         self._autoOpenHelpScheduled = true;
         if (safeStorage.get('lm:shapeeditor-helpDismissed') === '1') return;
-        // Defer to next tick so any preset autoload finishes first
+        // First run gets a one-line nudge toast, not the full ~30-shortcut
+        // reference dumped over the canvas before the tool is even seen (#290).
+        // The complete keyboard help stays one keypress away — ?, F1, or the
+        // "? Help" button in the hint strip.
         setTimeout(() => {
             if (self.signal.aborted) return;
-            void self._openHelpOverlay();
-        }, 250);
+            void self._toastInfo('Click an LED to select · drag to move · press ? for all shortcuts');
+        }, 400);
     };
 
 ShapeEditor.prototype.buildGrid = function (this: ShapeEditor, width: number, height: number) {
@@ -224,6 +227,8 @@ ShapeEditor.prototype.load_screenmap_data = function (this: ShapeEditor, text: s
         );
         self.screenmap_pts = self.center_and_fit(self.screenmap_pts, fitW, fitH);
         self.positionRulerAboveBBox();
+        // A loaded map is a document you can export straight away (#292).
+        self._refreshSaveEnabled();
     };
 
 ShapeEditor.prototype.loadScreenmapFile = function (this: ShapeEditor, file: File | null | undefined) {

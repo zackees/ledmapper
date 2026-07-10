@@ -34,15 +34,26 @@ ShapeEditor.prototype.nn = function <T>(this: ShapeEditor, v: T | null | undefin
 ShapeEditor.prototype.markDirty = function (this: ShapeEditor) {
     const self = this;
 
-        self.dom_btn_save.disabled = false;
         self.dom_btn_reset.disabled = false;
+        self._refreshSaveEnabled();
     };
 
 ShapeEditor.prototype.clearDirty = function (this: ShapeEditor) {
     const self = this;
 
-        self.dom_btn_save.disabled = true;
         self.dom_btn_reset.disabled = true;
+        self._refreshSaveEnabled();
+    };
+
+// "Save As…" exports a copy — it should be available whenever there is a
+// document to export, independent of the dirty flag. A freshly loaded or
+// otherwise unmodified map is still perfectly exportable, so gating it on
+// "dirty" left loaded maps un-saveable (issue #292). Reset stays dirty-gated;
+// it's the control that needs a pending change to act on.
+ShapeEditor.prototype._refreshSaveEnabled = function (this: ShapeEditor) {
+    const self = this;
+
+        self.dom_btn_save.disabled = self.screenmap_pts.length === 0;
     };
 
 ShapeEditor.prototype.markDirtyAndGeometry = function (this: ShapeEditor) {

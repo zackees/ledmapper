@@ -21,6 +21,7 @@ export class ShapeEditor {
     declare nn: <T>(v: T | null | undefined, msg?: string) => T;
     declare markDirty: () => any;
     declare clearDirty: () => any;
+    declare _refreshSaveEnabled: () => void;
     declare markDirtyAndGeometry: () => any;
     declare resetTransforms: () => any;
     declare saveAs: () => any;

@@ -533,7 +533,9 @@
 }
 
 .shapeeditor-info-div {
-    bottom: 10px;
+    /* Clear the 22px hint strip that spans the canvas bottom — at bottom:10px
+       this readout's last line collided with the strip, clipping both (#291). */
+    bottom: 32px;
     left: 10px;
     font-size: 14px;
     line-height: 1.6;
