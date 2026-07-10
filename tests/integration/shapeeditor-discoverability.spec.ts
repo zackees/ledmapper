@@ -23,15 +23,6 @@ async function gotoEditor(page) {
     await page.waitForFunction(() => !!window.__shapeeditorDebug, null, { timeout: 10000 });
 }
 
-async function dismissFirstRunModalIfOpen(page) {
-    // SweetAlert2 close button (×) is reliable across versions
-    const closeBtn = page.locator('.swal2-close');
-    if (await closeBtn.isVisible().catch(() => false)) {
-        await closeBtn.click();
-        await expect(closeBtn).toBeHidden({ timeout: 5000 });
-    }
-}
-
 test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
 
     test.afterEach(async ({ page }) => { await cleanup(page); });
@@ -116,16 +107,17 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         await expect(page.locator('.swal2-popup:not(.swal2-toast)')).toBeVisible({ timeout: 5000 });
     });
 
-    test('first-run auto-opens the help overlay when no dismissal key', async ({ page }) => {
+    test('first-run shows a one-line hint toast, NOT the full help modal', async ({ page }) => {
         // Explicitly clear any prior dismissal seed
         await page.addInitScript(() => {
             try { localStorage.removeItem('lm:shapeeditor-helpDismissed'); } catch { /* ignore */ }
         });
         await gotoEditor(page);
-        // Modal should auto-open within ~1s of presets loading
-        await expect(page.locator('.swal2-popup:not(.swal2-toast)')).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('#help_dont_show')).toBeVisible();
-        await dismissFirstRunModalIfOpen(page);
+        // A lightweight toast nudges the first-time user (#290)...
+        await expect(page.locator('.swal2-toast')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.swal2-toast')).toContainText(/press \? for all shortcuts/i);
+        // ...but the full ~30-shortcut reference must NOT auto-open over the canvas.
+        await expect(page.locator('.swal2-popup:not(.swal2-toast)')).toBeHidden();
     });
 
     test('hint strip reflects Chain and Reorder modes', async ({ page }) => {
