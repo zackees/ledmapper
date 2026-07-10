@@ -167,7 +167,7 @@ test.describe('Video Player', () => {
     test('record button exists', async ({ page }) => {
         await page.goto('/movieplayer/');
         await expect(page.locator('#btn_record')).toBeVisible();
-        await expect(page.locator('#btn_record')).toHaveValue('Record');
+        await expect(page.locator('#btn_record')).toHaveValue('Export video');
     });
 
     test('record button toggles and downloads a video', async ({ page }) => {
@@ -185,7 +185,7 @@ test.describe('Video Player', () => {
         await page.waitForTimeout(400);
         const downloadPromise = page.waitForEvent('download', { timeout: 10000 });
         await record.click();
-        await expect(record).toHaveValue('Record');
+        await expect(record).toHaveValue('Export video');
         await expect(record).not.toHaveClass(/recording/);
         const download = await downloadPromise;
         expect(download.suggestedFilename()).toMatch(/ledmapper-recording\d+\.(webm|mp4)/);

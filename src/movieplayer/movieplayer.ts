@@ -28,6 +28,21 @@ const PLACEHOLDER_SCREENMAP = {
     map: { strip1: { x: [0], y: [0], diameter: 0.25 } },
 };
 
+/** Index of the brightest frame — a visibly-lit poster for a paused (restored)
+ *  load, since frame 0 is often a black fade-in. Cheap one-time scan at load. */
+function brightestFrameIndex(frames: Uint8Array[]): number {
+    let best = 0;
+    let bestSum = -1;
+    for (let i = 0; i < frames.length; i++) {
+        const f = frames[i];
+        if (!f) continue;
+        let s = 0;
+        for (const b of f) s += b;
+        if (s > bestSum) { bestSum = s; best = i; }
+    }
+    return best;
+}
+
 export function init(container: HTMLElement) {
     container.innerHTML = templateHtml;
 
@@ -250,7 +265,10 @@ export function init(container: HTMLElement) {
     if (!recorder.isSupported) dom_btn_record.disabled = true;
 
     function set_dom_btn_record(on: boolean) {
-        dom_btn_record.value = on ? 'Stop' : 'Record';
+        // "Export video" (not "Record") — in a player, "Record" reads as
+        // "go make a .fled", but this button screen-captures the current LED
+        // playback to a video file (issue #294).
+        dom_btn_record.value = on ? 'Stop' : 'Export video';
         dom_btn_record.classList.toggle('recording', on);
     }
 
@@ -347,6 +365,17 @@ export function init(container: HTMLElement) {
                 void errorDialog('Could not save video for next session', `Storage error: ${String(error)}\n\nThe video will play now but won't auto-restore on your next visit.`);
             });
         }
+        // Restored sessions load paused (autoplay:false). The very first frame
+        // is often a black fade-in (offline capture demuxes from the video's
+        // start), so render the brightest frame as a static poster — the canvas
+        // shows the LEDs instead of sitting black next to a filled-in status,
+        // which read as broken (issue #293). This only sets what's displayed;
+        // the player's clock stays at 0, so pressing Play still starts from the
+        // beginning. Playing sources render on their own.
+        if (!player.playing && frames.length > 0) {
+            const poster = frames[brightestFrameIndex(frames)];
+            if (poster) gfx.pushFrame(poster);
+        }
         log.info('movie-loaded', {
             leds: screenmap_pts.length,
             frames: frameCount,
@@ -354,7 +383,11 @@ export function init(container: HTMLElement) {
             autoplay,
             source: persist ? 'file' : 'indexeddb-restore',
         });
-        setStatus(`${String(screenmap_pts.length)} LEDs · ${String(frameCount)} frames · ${String(metaFps)} fps`, true);
+        // A file the user just picked shows the plain stats; a video restored
+        // from the last session says so, so the filled-in status alongside the
+        // browser's "No file chosen" (which we cannot set) reads coherently.
+        const stats = `${String(screenmap_pts.length)} LEDs · ${String(frameCount)} frames · ${String(metaFps)} fps`;
+        setStatus(persist ? stats : `${stats} · restored from last session`, true);
         set_dom_btn_play(player.playing);
     }
 
