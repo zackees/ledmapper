@@ -5,10 +5,11 @@
         <input type="file" id="btn_load_movie" accept=".fled">
     </div>
 
-    <!-- One compact toolbar row. The verbose Demo title + description +
-         the three Download buttons live inside a kebab "More…" details
-         pop-over so the resting height stays small. -->
-    <div class="controls-container control-bar">
+    <!-- Compact controls, inlaid over the canvas as two stacked rows. The
+         verbose Demo title + description + the three Download buttons live
+         inside a kebab "More…" details pop-over so the resting height stays
+         small. -->
+    <div class="controls-container control-bar demo-controls-row">
         <input type="button" id="btn_play" value="Play">
 
         <div class="control-row">
@@ -30,7 +31,9 @@
             <input type="range" min="1" max="64" value="6" step="1" class="slider" id="rng_diameter">
             <span class="slider-readout" id="txt_curr_diameter">6</span>
         </div>
+    </div>
 
+    <div class="controls-container control-bar demo-controls-row">
         <label class="checkbox-row">
             <input type="checkbox" id="chk_auto_bloom" checked> Auto bloom
         </label>
