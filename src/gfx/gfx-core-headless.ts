@@ -79,6 +79,9 @@ export interface GfxCore {
     setDiameter(px: number): void;
     getDiameter(): number;
     setTargetFPS(fps: number): void;
+    /** Enable render-rate frame interpolation (blend between the two most
+     *  recent source keyframes). Opt-in; default off. */
+    setInterpolation(enabled: boolean): void;
     getStats(): { renderFps: number; pushFps: number; frameTimeMs: number; framesRendered: number };
     dispose(): void;
 }
@@ -125,6 +128,21 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
     let pointsMesh: Points | undefined;
     let colorAttribute: Float32BufferAttribute | undefined;
 
+    // --- Frame interpolation (opt-in; default off) ------------------------
+    // When enabled, the render loop blends between the two most-recent source
+    // keyframes so a 30fps source looks smooth on a 60/120/144Hz display.
+    // Blending is CPU-side into a reused buffer — the loop already does a
+    // per-LED color copy, so the added lerp is marginal (measured; see the
+    // PR). Kept off for the other tools, whose render rate matches their
+    // source, so their path is byte-for-byte unchanged.
+    let interpolate = false;
+    let frameA: Uint8Array | null = null; // older keyframe
+    let frameB: Uint8Array | null = null; // newer keyframe
+    let frameBTime = 0;                    // wall-clock ms when frameB arrived
+    let srcIntervalMs = 0;                 // smoothed source inter-frame interval
+    let blendScratch: Uint8Array | null = null; // reused blended-frame buffer
+    const nowMs = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
     function rebuildPoints() {
         const previous = (pointsMesh && pointsGeometry && pointsMaterial && colorAttribute)
             ? { mesh: pointsMesh, geometry: pointsGeometry, material: pointsMaterial, colorAttribute }
@@ -139,6 +157,7 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
         pointsMaterial = result.material;
         pointsMesh = result.mesh;
         colorAttribute = result.colorAttribute;
+        blendScratch = new Uint8Array(screenmap.points.length * 3);
         applyBloomGeometry(bloom, screenmap.points.map(([x, y]) => [x, y]), { ledPx: diameter, panePx: paneSize });
     }
     rebuildPoints();
@@ -153,9 +172,31 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
         watchdogTool: 'gfx-core',
         onFrame(time: number) {
             if (!colorAttribute || screenmap.points.length === 0) return;
-            if (lastFrame) {
-                const arr = colorAttribute.array as Float32Array;
-                const n = screenmap.points.length;
+            const arr = colorAttribute.array as Float32Array;
+            const n = screenmap.points.length;
+            if (interpolate && frameA && frameB && blendScratch) {
+                // Fraction through the current source interval [frameBTime,
+                // frameBTime+srcIntervalMs]. Clamped to [0,1] so a late next
+                // frame holds on frameB instead of extrapolating past it.
+                const t = srcIntervalMs > 0
+                    ? Math.min(Math.max((nowMs() - frameBTime) / srcIntervalMs, 0), 1)
+                    : 1;
+                const a = frameA, b = frameB, scratch = blendScratch;
+                for (let i = 0; i < n; i++) {
+                    const i3 = i * 3;
+                    const r = (a[i3    ] ?? 0) + ((b[i3    ] ?? 0) - (a[i3    ] ?? 0)) * t;
+                    const g = (a[i3 + 1] ?? 0) + ((b[i3 + 1] ?? 0) - (a[i3 + 1] ?? 0)) * t;
+                    const bl = (a[i3 + 2] ?? 0) + ((b[i3 + 2] ?? 0) - (a[i3 + 2] ?? 0)) * t;
+                    scratch[i3    ] = r;   // ToUint8 truncates the fraction — fine for bloom
+                    scratch[i3 + 1] = g;
+                    scratch[i3 + 2] = bl;
+                    arr[i3    ] = r  * INV_255;
+                    arr[i3 + 1] = g  * INV_255;
+                    arr[i3 + 2] = bl * INV_255;
+                }
+                colorAttribute.needsUpdate = true;
+                bloom.frame(scratch);
+            } else if (lastFrame) {
                 for (let i = 0; i < n; i++) {
                     const i3 = i * 3;
                     arr[i3    ] = (lastFrame[i3    ] ?? 0) * INV_255;
@@ -176,8 +217,40 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
         canvas: opts.canvas,
         get screenmap(): Screenmap { return screenmap; },
         pushFrame(rgb: Uint8Array): void {
+            const now = nowMs();
+            pushMeter.tick(now);
             lastFrame = rgb;
-            pushMeter.tick(typeof performance !== 'undefined' ? performance.now() : Date.now());
+            if (!interpolate) return;
+            if (frameB === null) {
+                // First frame: seed both keyframes so the loop shows it verbatim
+                // until a second frame gives us something to blend toward.
+                frameA = rgb;
+                frameB = rgb;
+                frameBTime = now;
+                return;
+            }
+            const gap = now - frameBTime;
+            if (srcIntervalMs > 0 && gap > srcIntervalMs * 3) {
+                // Discontinuity (pause/resume/seek/loop stall): snap to the new
+                // frame rather than blending slowly across the gap.
+                frameA = rgb;
+                frameB = rgb;
+            } else {
+                // EWMA-smooth the interval so RAF jitter doesn't wobble the blend.
+                srcIntervalMs = srcIntervalMs === 0 ? gap : srcIntervalMs * 0.8 + gap * 0.2;
+                frameA = frameB;
+                frameB = rgb;
+            }
+            frameBTime = now;
+        },
+        setInterpolation(enabled: boolean): void {
+            if (interpolate === enabled) return;
+            interpolate = enabled;
+            // Drop the keyframe pair so we never blend across the mode switch;
+            // lastFrame still drives the non-interpolated path until re-seeded.
+            frameA = null;
+            frameB = null;
+            srcIntervalMs = 0;
         },
         setBloom(cfg: BloomConfig): void {
             applyBloomConfig(bloom, cfg);

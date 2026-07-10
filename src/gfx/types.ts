@@ -109,6 +109,10 @@ export interface Gfx {
     getDiameter(): number;
     /** Change the animation-loop target FPS on the fly. */
     setTargetFPS(fps: number): void;
+    /** Enable render-rate frame interpolation — blend between the two most
+     *  recent source keyframes so a low-fps source is smooth on a
+     *  higher-refresh display. Opt-in; default off. */
+    setInterpolation(enabled: boolean): void;
     /** Snapshot of runtime stats. Three signals:
      *  - `renderFps`: rate of internal animation-loop completed frames
      *  - `pushFps`:   rate at which `pushFrame()` was called
