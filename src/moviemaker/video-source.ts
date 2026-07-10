@@ -126,6 +126,13 @@ export function createVideoSource({
         return isPlaying;
     }
 
+    /** Start playback idempotently (used to autoplay a freshly loaded file). */
+    function play() {
+        if (isPlaying) return;
+        void videoPlayer.play();
+        isPlaying = true;
+    }
+
     function dispose() {
         stopWebcam();
         if (videoPlayer.src.startsWith('blob:')) {
@@ -143,6 +150,7 @@ export function createVideoSource({
         startWebcam,
         stopWebcam,
         playPause,
+        play,
         dispose,
         get sourceType() { return sourceType; },
         get isPlaying() { return isPlaying; },

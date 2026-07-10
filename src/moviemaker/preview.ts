@@ -163,7 +163,19 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         // PointsMaterial.size is in CSS pixels: the renderer multiplies the
         // size uniform by its pixelRatio internally, so the world→pixel
         // mapping must use the CSS pane size, not the drawing-buffer size.
-        baseLedPx = Math.max((ledWorldRadius * 2 / (half * 2)) * side, 0.75);
+        const worldToPx = side / (half * 2);
+        const physicalPx = ledWorldRadius * 2 * worldToPx;
+        // A physically-accurate dot goes sub-pixel — so the whole pane reads as
+        // black — when few LEDs span a large canvas (8 LEDs across 240cm gave a
+        // 0.6px dot; issue #287). Floor the on-screen size to a legible slice of
+        // the neighbour spacing: sparse maps get big friendly dots, the floor is
+        // capped at the spacing itself so dense grids never merge, and a dot
+        // that's physically larger always wins (we only ever enlarge). This is
+        // the same "stay visible regardless of physical size" stance the
+        // demo/player renderers already take.
+        const spacingPx = ledSpacing * worldToPx;
+        const visibleFloorPx = Math.min(Math.max(spacingPx * 0.35, 2.5), spacingPx, 16);
+        baseLedPx = Math.max(physicalPx, visibleFloorPx);
         meshData.material.size = baseLedPx;
 
         // Reproportion the bloom kernel + density envelope to the rendered dots.
