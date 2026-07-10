@@ -148,11 +148,24 @@ export function init(container: HTMLElement) {
         dom_controls.classList.remove('is-visible');
     }
 
-    container.addEventListener('pointermove', revealControls, { signal });
-    container.addEventListener('pointerdown', revealControls, { signal });
-    container.addEventListener('pointerleave', () => { if (!pointerOverControls) hideControlsNow(); }, { signal });
+    // The bar reveals only over the canvas itself (gfx.wrapper) — not the
+    // letterbox margins around it. The floating bar overlaps the canvas, so
+    // treat the bar as part of the same "active zone": a pointer moving between
+    // the canvas and the bar hasn't really left, and shouldn't hide it.
+    function pointerStaysInZone(e: PointerEvent): boolean {
+        const to = e.relatedTarget;
+        return to instanceof Node && (wrapper.contains(to) || dom_controls.contains(to));
+    }
+    function onZoneLeave(e: PointerEvent) {
+        pointerOverControls = false;
+        if (pointerStaysInZone(e)) return; // moved between canvas and bar — stay
+        hideControlsNow();
+    }
+    wrapper.addEventListener('pointermove', revealControls, { signal });
+    wrapper.addEventListener('pointerdown', revealControls, { signal });
+    wrapper.addEventListener('pointerleave', onZoneLeave, { signal });
     dom_controls.addEventListener('pointerenter', () => { pointerOverControls = true; clearControlsHideTimer(); }, { signal });
-    dom_controls.addEventListener('pointerleave', () => { pointerOverControls = false; scheduleControlsHide(); }, { signal });
+    dom_controls.addEventListener('pointerleave', onZoneLeave, { signal });
 
     // Show once on entry so the controls are discoverable, then let them fade.
     revealControls();
