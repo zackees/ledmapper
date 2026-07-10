@@ -4,11 +4,41 @@
    Demo Tool — Layout Overrides
    ═══════════════════════════════════════════════════════════════ */
 
+/* The demo root is the positioning context for the floating control bar. */
+[data-tool="demo"] {
+    position: relative;
+}
+
+/* Auto-hiding floating control bar. Instead of a persistent header that eats
+   vertical space above the canvas, the toolbar floats over the top of the
+   canvas and reveals on pointer activity, then fades out 4s after the pointer
+   goes idle or leaves the canvas area (video-player style). The `.is-visible`
+   class is toggled from demo.ts. */
 .controls {
-    @apply shrink-0;
-    background: linear-gradient(to bottom, var(--color-lm-surface-1), var(--color-lm-bg));
-    border-bottom: 1px solid var(--color-lm-border);
-    padding: 6px 12px;
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    /* Size to the one-row content (so the toolbar stays a single compact row),
+       but never wider than the canvas — it wraps gracefully on narrow screens. */
+    width: max-content;
+    max-width: calc(100% - 20px);
+    background: rgba(17, 17, 17, 0.82);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm-pill);
+    padding: 6px 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 250ms var(--lm-ease);
+}
+
+.controls.is-visible {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 #btn_play {

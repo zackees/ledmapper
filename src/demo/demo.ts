@@ -39,6 +39,7 @@ export function init(container: HTMLElement) {
     const dom_bloom_strength_slider = qe<HTMLElement>(container, '#bloom_strength_slider');
     const dom_rng_bloom_strength    = qe<HTMLInputElement>(container, '#rng_bloom_strength');
     const dom_txt_bloom_strength    = qe<HTMLElement>(container, '#txt_curr_bloom_strength');
+    const dom_controls              = qe<HTMLElement>(container, '.controls');
 
     dom_btn_play.disabled = true;
 
@@ -114,6 +115,47 @@ export function init(container: HTMLElement) {
     overlayCanvas.addEventListener('touchstart', showOverlay, { passive: true, signal });
     overlayCanvas.addEventListener('touchend', hideOverlay, { passive: true, signal });
     overlayCanvas.addEventListener('touchcancel', hideOverlay, { passive: true, signal });
+
+    // Auto-hiding floating control bar (video-player style). The toolbar floats
+    // over the canvas and is revealed by pointer activity, then fades out 4s
+    // after the pointer goes idle or leaves the canvas area. While the pointer
+    // is over the bar itself, the hide timer is held off so a slow slider drag
+    // can't time out mid-adjustment.
+    const CONTROLS_HIDE_MS = 4000;
+    let controlsHideTimer: number | null = null;
+    let pointerOverControls = false;
+
+    function clearControlsHideTimer() {
+        if (controlsHideTimer !== null) {
+            clearTimeout(controlsHideTimer);
+            controlsHideTimer = null;
+        }
+    }
+    function scheduleControlsHide() {
+        clearControlsHideTimer();
+        if (pointerOverControls) return;
+        controlsHideTimer = window.setTimeout(() => {
+            controlsHideTimer = null;
+            dom_controls.classList.remove('is-visible');
+        }, CONTROLS_HIDE_MS);
+    }
+    function revealControls() {
+        dom_controls.classList.add('is-visible');
+        scheduleControlsHide();
+    }
+    function hideControlsNow() {
+        clearControlsHideTimer();
+        dom_controls.classList.remove('is-visible');
+    }
+
+    container.addEventListener('pointermove', revealControls, { signal });
+    container.addEventListener('pointerdown', revealControls, { signal });
+    container.addEventListener('pointerleave', () => { if (!pointerOverControls) hideControlsNow(); }, { signal });
+    dom_controls.addEventListener('pointerenter', () => { pointerOverControls = true; clearControlsHideTimer(); }, { signal });
+    dom_controls.addEventListener('pointerleave', () => { pointerOverControls = false; scheduleControlsHide(); }, { signal });
+
+    // Show once on entry so the controls are discoverable, then let them fade.
+    revealControls();
 
     // LED index tooltip. Styling lives in src/styles/global.css under
     // `.gfx-tooltip` (issue #170) so the widget stays themeable.
@@ -577,6 +619,7 @@ export function init(container: HTMLElement) {
 
     return function destroy() {
         if (frameRafId !== null) cancelAnimationFrame(frameRafId);
+        clearControlsHideTimer();
         ac.abort();
         gfx.dispose();
     };
