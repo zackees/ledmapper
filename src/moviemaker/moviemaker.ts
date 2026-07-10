@@ -320,7 +320,12 @@ export function init(container: HTMLElement) {
             dom_time_duration.textContent = formatTime(videoPlayer.duration);
             dom_time_current.textContent = '0:00';
             setVideoProgress(0);
-            playPauseCtl.setState('off');
+            // Autoplay the (muted, looping) source so the workspace comes alive
+            // the instant a video is chosen, instead of parking on a black,
+            // paused frame 0 that reads as a broken pipeline (issue #288).
+            // Recording stays a separate, explicit action.
+            videoSource.play();
+            playPauseCtl.setState('on');
         }
     }
 
