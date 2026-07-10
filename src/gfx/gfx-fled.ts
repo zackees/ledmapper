@@ -72,6 +72,7 @@ export async function createGfxFromFled(opts: CreateGfxFromFledOptions): Promise
         setDiameter: (px: number) => { gfx.setDiameter(px); },
         getDiameter: () => gfx.getDiameter(),
         setTargetFPS: (fps: number) => { gfx.setTargetFPS(fps); },
+        setInterpolation: (enabled: boolean) => { gfx.setInterpolation(enabled); },
         getStats: () => gfx.getStats(),
         mountFpsCounter: (el: HTMLElement) => { gfx.mountFpsCounter(el); },
         unmountFpsCounter: () => { gfx.unmountFpsCounter(); },

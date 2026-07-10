@@ -127,6 +127,7 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
         setDiameter: (px) => { core.setDiameter(px); },
         getDiameter: () => core.getDiameter(),
         setTargetFPS: (fps) => { core.setTargetFPS(fps); },
+        setInterpolation: (enabled) => { core.setInterpolation(enabled); },
         getStats: () => core.getStats(),
         mountFpsCounter,
         unmountFpsCounter,

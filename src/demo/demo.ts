@@ -45,6 +45,10 @@ export function init(container: HTMLElement) {
     dom_btn_play.disabled = true;
 
     const CANVAS_SIZE = 800;
+    // Render every animation frame up to this cap so the loop matches the
+    // display's refresh rate (the default is 60). Combined with frame
+    // interpolation below, a 30fps source stays smooth on 120/144Hz monitors.
+    const DEMO_RENDER_FPS_CAP = 240;
     let screenmap_pts: StripPoint[] = [];
     let screenmap_pts_original: StripPoint[] = [];
     let stripInfo: MultiStripParseResult | null = null;
@@ -97,6 +101,14 @@ export function init(container: HTMLElement) {
     const overlayCanvas = gfx.overlayCanvas;
     const overlayCtx = gfx.overlayCtx;
     const wrapper = gfx.wrapper;
+
+    // /play only: smooth playback on displays faster than the source by
+    // blending between source frames at the render rate, and let the render
+    // loop run at the display's refresh rate instead of the default 60. The
+    // record (moviemaker) and player (movieplayer) tools do NOT enable this —
+    // interpolation is opt-in and off by default there.
+    gfx.setInterpolation(true);
+    gfx.setTargetFPS(DEMO_RENDER_FPS_CAP);
 
     // Debug hook for the perf snapshot test (issue #160). Only attaches
     // under `?debug=stats` so production builds don't expose internals

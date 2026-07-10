@@ -82,7 +82,10 @@
 }
 
 select {
-    max-width: 74px;
+    /* Size to the content so "Native (30)" / "Native (29.97)" isn't clipped —
+       a fixed max-width chopped the label. */
+    width: auto;
+    min-width: max-content;
     font-size: 0.7rem;
     padding: 2px 4px;
 }
