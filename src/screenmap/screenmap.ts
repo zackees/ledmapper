@@ -3,6 +3,7 @@ import { saveScreenmap } from '../screenmap-store';
 import { wireFileSource } from '../drag-drop';
 import { fireDialog, errorDialog } from '../ui/dialogs';
 import { gfxColors } from '../ui/theme';
+import type { SpaHistory } from '../types/domain';
 import templateHtml from './template.html?raw';
 export { default as css } from './screenmap.css?url';
 
@@ -12,7 +13,7 @@ function qe<T extends HTMLElement>(parent: ParentNode, sel: string, _cast?: (e: 
     return el as T;
 }
 
-export function init(container: HTMLElement) {
+export function init(container: HTMLElement, nav?: SpaHistory) {
     container.innerHTML = templateHtml;
 
     const ac = new AbortController();
@@ -248,6 +249,34 @@ export function init(container: HTMLElement) {
         saveScreenmap(jsonStr);
         const options = { type: 'application/json' };
         download_text_as_file(jsonStr, 'screenmap.json', options);
+        // Export used to be a dead end — the file downloaded and nothing else
+        // happened. Confirm the save and hand off to the natural next steps;
+        // both tools restore the layout from the shared store we just wrote to
+        // (issue #289).
+        void showExportSuccess();
+    }
+
+    /** Navigate onward, using the SPA router when available (keeps the shared
+     *  screenmap store in memory) and a hard load as a standalone fallback. */
+    function goTo(path: string) {
+        if (nav) nav.navigate(path);
+        else window.location.href = path;
+    }
+
+    async function showExportSuccess() {
+        const res = await fireDialog({
+            title: 'Screenmap saved',
+            html: 'Downloaded <code>screenmap.json</code> — and it\'s already loaded into the other tools. Where next?',
+            icon: 'success',
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: 'Open in Record',
+            denyButtonText: 'Open in Create',
+            cancelButtonText: 'Done',
+        });
+        if (signal.aborted) return;
+        if (res.isConfirmed) goTo('/record');
+        else if (res.isDenied) goTo('/create');
     }
 
     function indexOfIntersectMostRecent(x: number, y: number, radius: number): number {

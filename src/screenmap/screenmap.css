@@ -47,6 +47,23 @@
     color: #63636e;
 }
 
+/* The primary how-to line was 0.72rem in muted grey — easy to miss entirely
+   (issue #289). Lift it to secondary-text contrast, a touch larger, with an
+   accent rule to draw the eye. */
+#controls p.controls-hint {
+    color: var(--color-lm-text-secondary);
+    font-size: 0.8rem;
+    line-height: 1.45;
+    margin-bottom: 8px;
+    padding-left: 8px;
+    border-left: 2px solid var(--color-lm-accent);
+}
+
+#controls p.controls-hint strong {
+    color: var(--color-lm-text);
+    font-weight: 600;
+}
+
 #controls > div {
     @apply flex items-center gap-1.5;
     margin: 4px 0;
