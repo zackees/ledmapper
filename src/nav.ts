@@ -1,8 +1,14 @@
+// Labels mirror the app-shell's Play / Create / Record vocabulary (#133) so
+// the product speaks one language everywhere: the shell's bottom mode bar, the
+// hub cards, and this legacy top nav all name the same tools identically
+// (issue #286). The hrefs stay on the standalone tool routes — many deep links
+// and integration tests target them directly — but the words a user reads no
+// longer flip between "Demo/Video Maker" here and "Play/Record" in the shell.
 const tools = [
-    { name: 'Demo', href: '/demo/' },
-    { name: 'ScreenMap Design', href: '/shapeeditor/' },
-    { name: 'Video Maker', href: '/moviemaker/' },
-    { name: 'Video Player', href: '/movieplayer/' },
+    { name: 'Play', href: '/demo/' },
+    { name: 'Create', href: '/shapeeditor/' },
+    { name: 'Record', href: '/moviemaker/' },
+    { name: 'Player', href: '/movieplayer/' },
 ];
 
 let navEl: HTMLElement | null = null;
