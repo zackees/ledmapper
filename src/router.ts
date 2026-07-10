@@ -1,4 +1,4 @@
-import { updateActiveLink } from './nav';
+import { updateActiveLink, setNavVisible } from './nav';
 import type { SpaHistory, ToolInitFn } from './types/domain';
 import { createLogger } from './debug-log';
 
@@ -135,8 +135,15 @@ export function createRouter(appEl: HTMLElement) {
         appEl.dataset.tool = tool;
         setRouteLoading(appEl);
 
-        // Update nav active state
+        // Update nav active state. Also drive the legacy top nav's visibility
+        // here, synchronously, before the first paint of the new route: the
+        // app shell (#133) replaces the top nav with its own bottom mode bar,
+        // so on a shell route the nav must never paint. Doing this in the
+        // router (rather than only inside the async app module's init) closes
+        // the ~400ms window where the top nav flashed on a cold load of "/"
+        // before app/app.ts finished importing (issue #284).
         updateActiveLink(path);
+        setNavVisible(tool !== 'app');
 
         // Update page title
         document.title = titles[tool] ?? 'FastLED Video Mapper';
