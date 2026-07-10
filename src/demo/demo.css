@@ -64,6 +64,17 @@
     width: 84px;
 }
 
+/* Move the render-status readout to the bottom-right corner in the demo so it
+   never collides with the control bar overlay that owns the top of the canvas.
+   (UI review: keep both visible — you watch fps while dragging the LED-size /
+   bloom sliders — rather than fading one out for the other.) Demo-scoped; the
+   other gfx tools keep the shared default top-right position. */
+[data-tool="demo"] .gfx-fps-counter {
+    top: auto;
+    bottom: 6px;
+    right: 6px;
+}
+
 #btn_play {
     min-width: 50px;
     padding: 3px 10px;
