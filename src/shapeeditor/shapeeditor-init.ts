@@ -10,7 +10,7 @@ import { stripStartEndLabels } from '../common';
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, wireFileSource } from '../drag-drop';
 import { safeStorage } from '../services/storage';
-import { errorDialog } from '../ui/dialogs';
+import { errorDialog, getSwal } from '../ui/dialogs';
 import { getBackup, promoteToBackup } from '../screenmap-store';
 
 import { createCircleTexture } from '../three-utils';
@@ -896,6 +896,12 @@ ShapeEditor.prototype.destroy = function (this: ShapeEditor): void {
 
         unregisterDebugState('shapeeditor');
         this.ac.abort();
+        // Toasts/dialogs this editor spawned (e.g. the first-run hint toast)
+        // live on document.body, outside our container, so they outlive the
+        // view — leaving the "Click an LED · drag to move" toast stuck over
+        // Play after a Create → Play switch. Dismiss any open popup on teardown
+        // (a no-op when nothing is showing).
+        void getSwal().then((s) => { s.close(); }).catch(() => { /* swal unavailable */ });
         if (this.rafId) cancelAnimationFrame(this.rafId);
         if (this.screenmapOutline) {
             this._scene().remove(this.screenmapOutline);
