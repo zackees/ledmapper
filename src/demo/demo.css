@@ -4,33 +4,28 @@
    Demo Tool — Layout Overrides
    ═══════════════════════════════════════════════════════════════ */
 
-/* The demo root is the positioning context for the floating control bar. */
-[data-tool="demo"] {
-    position: relative;
-}
-
-/* Auto-hiding floating control bar. Instead of a persistent header that eats
-   vertical space above the canvas, the toolbar floats over the top of the
-   canvas and reveals on pointer activity, then fades out 4s after the pointer
-   goes idle or leaves the canvas area (video-player style). The `.is-visible`
-   class is toggled from demo.ts. */
+/* Floating control overlay, inlaid *inside* the canvas: demo.ts moves this
+   element into the canvas wrapper so it's bounded by the canvas, not the
+   letterbox margins. Two compact rows float directly over the LEDs — no panel
+   background, just a soft drop shadow so the controls read against bright
+   frames and blend into the dark surround. Reveal (`.is-visible`) + auto-hide
+   are driven from demo.ts (video-player style). */
 .controls {
     position: absolute;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
+    top: 8px;
+    left: 8px;
+    right: 8px;
     z-index: 50;
-    /* Size to the one-row content (so the toolbar stays a single compact row),
-       but never wider than the canvas — it wraps gracefully on narrow screens. */
-    width: max-content;
-    max-width: calc(100% - 20px);
-    background: rgba(17, 17, 17, 0.82);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--color-lm-border);
-    border-radius: var(--radius-lm-pill);
-    padding: 6px 14px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    /* Soft outline that blends into the background so the bare controls float. */
+    filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.95));
     opacity: 0;
     pointer-events: none;
     transition: opacity 250ms var(--lm-ease);
@@ -41,15 +36,44 @@
     pointer-events: auto;
 }
 
+/* Each stacked row: compact, tight gaps, content-width and centered. */
+.controls .demo-controls-row {
+    gap: 10px;
+    padding: 0;
+    font-size: 0.7rem;
+}
+
+.controls .control-row {
+    gap: 5px;
+}
+
+/* Legibility without a panel: shadow the bare text so it holds over bright
+   LED frames. */
+.controls label,
+.controls .slider-readout,
+.controls .slider-readout-wide,
+.controls .checkbox-row,
+.controls .demo-more > summary {
+    color: var(--color-lm-text);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.85);
+    font-size: 0.7rem;
+}
+
+/* Shrink the sliders so a row fits comfortably inside the canvas width. */
+.controls input[type="range"].slider {
+    width: 84px;
+}
+
 #btn_play {
-    min-width: 64px;
-    padding: 4px 12px;
-    font-size: 0.78rem;
+    min-width: 50px;
+    padding: 3px 10px;
+    font-size: 0.7rem;
 }
 
 select {
-    max-width: 80px;
-    font-size: 0.78rem;
+    max-width: 74px;
+    font-size: 0.7rem;
+    padding: 2px 4px;
 }
 
 /* Kebab "More…" pop-over so the resting toolbar stays one row. */

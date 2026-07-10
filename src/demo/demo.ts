@@ -116,6 +116,10 @@ export function init(container: HTMLElement) {
     overlayCanvas.addEventListener('touchend', hideOverlay, { passive: true, signal });
     overlayCanvas.addEventListener('touchcancel', hideOverlay, { passive: true, signal });
 
+    // Inlay the control bar inside the canvas so it's bounded by the canvas
+    // (the wrapper is sized to the canvas), not the letterbox margins around it.
+    wrapper.appendChild(dom_controls);
+
     // Auto-hiding floating control bar (video-player style). The toolbar floats
     // over the canvas and is revealed by pointer activity, then fades out 4s
     // after the pointer goes idle or leaves the canvas area. While the pointer
