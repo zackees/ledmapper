@@ -2,6 +2,7 @@ import { parse_screenmap_data_json, parseScreenmapMultiStrip, getStripColors, st
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, wireFilePicker, fileHasExtension } from '../drag-drop';
 import { errorDialog } from '../ui/dialogs';
+import { safeStorage } from '../services/storage';
 import { gfxColors, withAlpha } from '../ui/theme';
 import { createGfx, wireBloomUi, createFramePacer } from '../gfx';
 import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
@@ -59,6 +60,22 @@ export function init(container: HTMLElement) {
 
     const ac = new AbortController();
     const { signal } = ac;
+
+    // Persisted demo preferences (issue #308), kept in the ledmapper.demo.*
+    // namespace alongside the existing bloom flag. A saved LED size is a
+    // deliberate user choice, so it takes precedence over the screenmap's
+    // auto-fit diameter (see applyScreenmapDiameter); null means "no
+    // preference — use the fit". Only genuine user input is persisted (the
+    // input handler checks event.isTrusted), so the auto-fit and restore's own
+    // programmatic dispatches never masquerade as a saved preference.
+    const LS_LED_SIZE = 'ledmapper.demo.ledSize';
+    const LS_FPS = 'ledmapper.demo.fps';
+    const savedLedRaw = parseInt(safeStorage.get(LS_LED_SIZE) ?? '', 10);
+    const ledSizeMin = parseInt(dom_rng_diameter.min) || 1;
+    const ledSizeMax = parseInt(dom_rng_diameter.max) || 64;
+    const userLedSizePref: number | null = Number.isFinite(savedLedRaw)
+        ? Math.min(Math.max(savedLedRaw, ledSizeMin), ledSizeMax)
+        : null;
 
     const main = qe<HTMLElement>(container, 'main');
 
@@ -256,6 +273,9 @@ export function init(container: HTMLElement) {
     // slider with it. The user can still override via the slider. Maps that
     // declare no diameter keep the slider's current value.
     function applyScreenmapDiameter() {
+        // A saved user LED-size preference wins over the screenmap's auto-fit
+        // — don't stomp the size the user deliberately chose (issue #308).
+        if (userLedSizePref !== null) return;
         const declared = resolveLedDiameter(stripInfo ? (stripInfo.strips as unknown as Record<string, unknown>[]) : null);
         if (declared === null) return;
         const scale = computeFitScale(screenmap_pts_original, screenmap_pts);
@@ -407,11 +427,16 @@ export function init(container: HTMLElement) {
     }
     frameRafId = requestAnimationFrame(pump);
 
-    // --- Diameter slider --- bind directly to gfx.setDiameter.
-    dom_rng_diameter.addEventListener('input', () => {
+    // --- Diameter slider --- bind directly to gfx.setDiameter, and remember
+    // a size the user actually chose across visits. Only genuine user input
+    // (event.isTrusted) is persisted; the restore/auto-fit dispatch synthetic
+    // 'input' events that update gfx + the readout without becoming a "saved
+    // preference" (issue #308).
+    dom_rng_diameter.addEventListener('input', (e) => {
         const px = parseInt(dom_rng_diameter.value) || 1;
         gfx.setDiameter(px);
         dom_txt_curr_diameter.textContent = String(px);
+        if (e.isTrusted) safeStorage.set(LS_LED_SIZE, String(px));
     }, { signal });
 
     // --- Frame rate selector --- the pump reads the dropdown directly; on
@@ -421,7 +446,17 @@ export function init(container: HTMLElement) {
         const opt = dom_sel_framerate.querySelector<HTMLOptionElement>('option[value="native"]');
         if (opt) opt.textContent = `Native (${String(nativeFps)})`;
     }
-    dom_sel_framerate.addEventListener('change', () => { framePacer.reset(); }, { signal });
+    dom_sel_framerate.addEventListener('change', () => {
+        framePacer.reset();
+        safeStorage.set(LS_FPS, dom_sel_framerate.value);
+    }, { signal });
+    // Restore a previously-chosen FPS, but only when it matches a real option
+    // so a stale/garbage key can't leave the <select> in an invalid state. The
+    // pump reads the value directly each frame, so no change event is needed.
+    const savedFps = safeStorage.get(LS_FPS);
+    if (savedFps !== null && Array.from(dom_sel_framerate.options).some((o) => o.value === savedFps)) {
+        dom_sel_framerate.value = savedFps;
+    }
     refreshNativeFpsLabel();
 
     // --- Download handlers ---
@@ -485,8 +520,11 @@ export function init(container: HTMLElement) {
             .catch((error: unknown) => { console.error('Error loading 16x16 serpentine JSON:', error); });
     }, { signal });
 
-    // Initialize diameter to 16 on load
-    dom_rng_diameter.value = '16';
+    // Apply a saved LED size (issue #308); with none, fall back to 16 as the
+    // transient pre-load default — the screenmap fit then adjusts it as before
+    // (applyScreenmapDiameter early-returns only when a preference exists). The
+    // synthetic 'input' updates gfx + the readout but does not persist.
+    dom_rng_diameter.value = String(userLedSizePref ?? 16);
     dom_rng_diameter.dispatchEvent(new Event('input', { bubbles: true }));
 
     // --- Overlay drawing for LED connection visualization ---
