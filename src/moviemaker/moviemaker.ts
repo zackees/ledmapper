@@ -1181,6 +1181,12 @@ export function init(container: HTMLElement) {
     // estimator replaces the old hardcoded 30 fps assumption that dropped
     // half of every 60 fps video.
     let lastPresentedFrames: number | null = null;
+    // fps at which we last emitted an info-tier log. The estimator refines
+    // toward the true rate in tiny sub-fps steps, so logging every change at
+    // info drowned the event trail with ~140 near-duplicate lines per session
+    // (issue #296). Only meaningful jumps (>= 1 fps from the last logged value)
+    // go to info; the incremental creep is demoted to the debug tier.
+    let lastLoggedFps: number | null = null;
     const fpsEstimator = createFpsEstimator();
     function scheduleVideoFrameCallback(): void {
         if (watchdogsDisposed || !hasRvfc) return;
@@ -1190,8 +1196,14 @@ export function init(container: HTMLElement) {
             fpsEstimator.sample(meta.presentedFrames, meta.mediaTime);
             const detected = fpsEstimator.estimate();
             if (detected !== null && detected !== frame_rate) {
-                log.info('fps-detected', { fps: detected, was: frame_rate });
+                const prev = frame_rate;
                 frame_rate = detected;
+                if (lastLoggedFps === null || Math.abs(detected - lastLoggedFps) >= 1) {
+                    log.info('fps-detected', { fps: detected, was: prev });
+                    lastLoggedFps = detected;
+                } else {
+                    log.debug('fps-detected', { fps: detected, was: prev });
+                }
             }
             scheduleVideoFrameCallback();
         });
