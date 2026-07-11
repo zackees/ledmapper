@@ -69,7 +69,11 @@ export default defineConfig({
   }],
   server: {
     port: 8080,
-    open: '/',
+    // No auto-open: agents start this server far more often than humans
+    // do (scripts/dev-server.mjs, the blessed test runner), and a popped
+    // browser tab on every invocation is disruptive noise for both. Opt in
+    // with `LM_OPEN=1 npm run dev` when you actually want it.
+    open: process.env.LM_OPEN ? '/' : false,
     https: httpsConfig,
   },
   build: {
