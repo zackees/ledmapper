@@ -1,0 +1,80 @@
+import { test, expect } from './fixtures.ts';
+
+test.describe('app shell mode navigation', () => {
+    test('uses persistent top links with route-aware active state', async ({ page }) => {
+        await page.goto('/play');
+
+        const nav = page.locator('#app-mode-bar');
+        const links = nav.locator('a.app-mode-link');
+        await expect(nav).toBeVisible();
+        await expect(links).toHaveCount(3);
+        await expect(links.nth(0)).toHaveAttribute('href', '/play');
+        await expect(links.nth(1)).toHaveAttribute('href', '/create');
+        await expect(links.nth(2)).toHaveAttribute('href', '/record');
+        await expect(links.nth(0)).toHaveAttribute('aria-current', 'page');
+        await expect(nav.locator('button, .app-mode-icon')).toHaveCount(0);
+
+        const initial = await nav.evaluate((el) => {
+            el.setAttribute('data-instance', 'preserved');
+            const content = document.querySelector('#app-content');
+            return {
+                beforeContent: content ? Boolean(el.compareDocumentPosition(content) & Node.DOCUMENT_POSITION_FOLLOWING) : false,
+                position: getComputedStyle(el).position,
+                top: el.getBoundingClientRect().top,
+            };
+        });
+        expect(initial.beforeContent).toBe(true);
+        expect(initial.position).toBe('sticky');
+        await expect.poll(() => nav.evaluate((el) => el.getBoundingClientRect().top)).toBeLessThanOrEqual(1);
+
+        const popupPromise = page.context().waitForEvent('page');
+        await links.nth(1).click({ modifiers: ['ControlOrMeta'] });
+        const popup = await popupPromise;
+        await expect(page).toHaveURL(/\/play$/);
+        await popup.close();
+
+        await links.nth(1).click();
+        await expect(page).toHaveURL(/\/create$/);
+        await expect(page.locator('#app-content')).toHaveAttribute('data-tool', 'shapeeditor');
+        await expect(page.locator('#app-mode-bar')).toHaveAttribute('data-instance', 'preserved');
+        await expect(page.locator('a.app-mode-link[href="/create"]')).toHaveAttribute('aria-current', 'page');
+        await expect(page.locator('a.app-mode-link[href="/play"]')).not.toHaveAttribute('aria-current', 'page');
+
+        const nestedHeights = await page.evaluate(() => {
+            const content = document.querySelector<HTMLElement>('#app-content');
+            return {
+                content: content?.getBoundingClientRect().height ?? 0,
+                editor: content?.classList.contains('shapeeditor-root') ? content.getBoundingClientRect().height : 0,
+            };
+        });
+        expect(nestedHeights.editor).toBeLessThanOrEqual(nestedHeights.content + 1);
+
+        await page.goBack();
+        await expect(page).toHaveURL(/\/play$/);
+        await expect(page.locator('#app-mode-bar')).toHaveAttribute('data-instance', 'preserved');
+        await expect(page.locator('a.app-mode-link[href="/play"]')).toHaveAttribute('aria-current', 'page');
+    });
+
+    test('fits three equal touch targets at 320px', async ({ page }) => {
+        await page.setViewportSize({ width: 320, height: 568 });
+        await page.goto('/record');
+        await expect(page.locator('a.app-mode-link[href="/record"]')).toHaveAttribute('aria-current', 'page');
+
+        const metrics = await page.locator('#app-mode-bar').evaluate((nav) => {
+            const boxes = Array.from(nav.querySelectorAll<HTMLElement>('a.app-mode-link'))
+                .map((el) => el.getBoundingClientRect());
+            return {
+                clientWidth: nav.clientWidth,
+                scrollWidth: nav.scrollWidth,
+                widths: boxes.map((box) => box.width),
+                heights: boxes.map((box) => box.height),
+                top: nav.getBoundingClientRect().top,
+            };
+        });
+
+        expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth);
+        expect(Math.max(...metrics.widths) - Math.min(...metrics.widths)).toBeLessThanOrEqual(1);
+        expect(Math.min(...metrics.heights)).toBeGreaterThanOrEqual(44);
+        await expect.poll(() => page.locator('#app-mode-bar').evaluate((nav) => nav.getBoundingClientRect().top)).toBeLessThanOrEqual(1);
+    });
+});

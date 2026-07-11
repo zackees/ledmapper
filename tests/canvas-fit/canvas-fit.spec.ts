@@ -5,8 +5,8 @@
  *   - Loads the page from the production preview server.
  *   - Snapshots the viewport to tests/canvas-fit/output/.
  *   - Measures: viewport, mode bar, canvas wrapper, controls panel.
- *   - Asserts: canvas fits entirely inside the viewport AND above
- *     the mode bar. No clipping on any side. Aspect ratio = 1.
+ *   - Asserts: canvas fits entirely inside the viewport AND below
+ *     the top mode bar. No clipping on any side. Aspect ratio = 1.
  *   - On failure: reports the exact overlap/clip in CSS px AND
  *     computes `maxSideThatWouldFit` so the developer (or an
  *     automated loop) knows exactly what to change.
@@ -43,6 +43,9 @@ const VIEWPORTS: Viewport[] = [
     { width: 1366, height: 768,  label: '1366x768'   },
     { width: 1920, height: 720,  label: '1920x720_short' },
     { width: 1920, height: 600,  label: '1920x600_xshort' },
+    // Phone widths exercise equal-width top tabs and touch targets.
+    { width: 390, height: 844, label: '390x844_mobile' },
+    { width: 320, height: 568, label: '320x568_mobile' },
 ];
 
 const ROUTES = ['/play', '/create', '/record'];
@@ -94,20 +97,20 @@ async function rectOf(page: Page, selector: string): Promise<Rect | null> {
     };
 }
 
-function diagnose(vp: Viewport, canvas: Rect | null, modeBar: Rect | null, controls: Rect | null): FitDiagnosis | null {
+function diagnose(vp: Viewport, canvas: Rect | null, modeBar: Rect | null): FitDiagnosis | null {
     if (!canvas) return null;
     const clipTop    = Math.max(0, 0 - canvas.top);
     const clipBottom = Math.max(0, canvas.bottom - vp.height);
     const clipLeft   = Math.max(0, 0 - canvas.left);
     const clipRight  = Math.max(0, canvas.right - vp.width);
-    const overlapsModeBar = modeBar ? Math.max(0, canvas.bottom - modeBar.top) : 0;
+    const overlapsModeBar = modeBar ? Math.max(0, modeBar.bottom - canvas.top) : 0;
     const fits = clipTop + clipBottom + clipLeft + clipRight + overlapsModeBar < 2;
 
     // Compute the largest square that would fit cleanly:
-    //   - vertical:   modeBar.top - (controls.bottom or 0) - small safety margin
+    //   - vertical:   viewport below the top mode bar, minus a safety margin
     //   - horizontal: viewport.width - 2 * sideMargin
     const SAFETY = 8;
-    const availV = (modeBar?.top ?? vp.height) - (controls?.bottom ?? 0) - SAFETY;
+    const availV = vp.height - (modeBar?.bottom ?? 0) - SAFETY;
     const availH = vp.width - 2 * SAFETY;
     const maxSideThatWouldFit = Math.max(0, Math.floor(Math.min(availV, availH)));
 
@@ -139,7 +142,7 @@ async function capture(page: Page, route: string, vp: Viewport): Promise<BoxRepo
     const canvas  = await rectOf(page, '.lm-canvas-wrapper');
     const controls = await rectOf(page, '.controls');
     const modeBarVisible = modeBar !== null && modeBar.bottom <= vp.height + 2;
-    const fit = diagnose(vp, canvas, modeBar, controls);
+    const fit = diagnose(vp, canvas, modeBar);
 
     const report: BoxReport = {
         route,
@@ -188,7 +191,7 @@ test.afterAll(() => {
         '# Canvas-fit snapshot report',
         '',
         'Each test (route, viewport) writes a row. `fit.fits=true` means the',
-        'canvas is fully inside the viewport AND above the mode bar.',
+        'canvas is fully inside the viewport AND below the mode bar.',
         'On failure, `suggestion` reports the next step.',
         '',
     ];
@@ -216,7 +219,7 @@ test.afterAll(() => {
             lines.push(`- suggest: ${r.fit.suggestion}`);
             lines.push(`- maxFit:  ${String(r.fit.maxSideThatWouldFit)}px (target size for the helper)`);
         } else if (r.fit) {
-            lines.push(`- ✓ fit:    canvas fully inside viewport, no overlap with mode bar`);
+            lines.push(`- ✓ fit:    canvas fully inside viewport below the mode bar`);
         }
         lines.push('');
     }

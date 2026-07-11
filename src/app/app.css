@@ -8,54 +8,64 @@
     @apply flex-1 min-h-0 flex flex-col overflow-hidden;
 }
 
-/* The mode bar is the product's primary switcher — it must read as one, not
-   as a faint footer. It gets padding, a lift shadow, and pill-shaped buttons
-   whose active state is a solid accent fill (not a 2px underline that hid at
-   the very bottom edge of the viewport). See issue #285. */
+/* Product-level navigation between the three peer modes. It stays outside
+   each tool's scrolling content and remains available at every viewport. */
 .app-mode-bar {
-    @apply flex items-stretch justify-center gap-1 shrink-0;
-    background: var(--color-lm-surface-1);
-    border-top: 1px solid var(--color-lm-border);
-    padding: 6px;
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+    @apply flex items-stretch justify-center shrink-0 sticky top-0;
+    z-index: 100;
+    min-height: 44px;
+    padding-top: env(safe-area-inset-top);
+    background: rgba(15, 15, 15, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.app-mode-btn {
-    @apply flex items-center justify-center gap-2 cursor-pointer select-none rounded-lm;
+.app-mode-link {
+    @apply flex items-center justify-center cursor-pointer select-none relative no-underline;
+    min-height: 44px;
     background: transparent;
-    color: var(--color-lm-text-secondary);
-    border: none;
-    padding: 12px 34px;
+    color: var(--color-lm-text-muted);
+    padding: 0 22px;
     font-family: var(--font-family-body);
-    font-size: 0.9rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    box-shadow: none;
+    font-size: 0.84rem;
+    font-weight: 500;
     transition: color var(--lm-dur) var(--lm-ease),
                 background var(--lm-dur) var(--lm-ease);
 }
 
-.app-mode-btn:hover {
+.app-mode-link:hover {
     color: var(--color-lm-text);
-    background: var(--color-lm-surface-2);
-    box-shadow: none;
+    background: rgba(255, 255, 255, 0.035);
 }
 
-.app-mode-btn.is-active {
-    color: #fff;
+.app-mode-link.is-active,
+.app-mode-link[aria-current="page"] {
+    color: var(--color-lm-text);
+    font-weight: 600;
+}
+
+.app-mode-link.is-active::after,
+.app-mode-link[aria-current="page"]::after {
+    content: '';
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 0;
+    height: 2px;
     background: var(--color-lm-accent);
+    box-shadow: 0 -2px 8px var(--color-lm-accent-glow);
 }
 
-.app-mode-btn.is-active:hover {
-    color: #fff;
-    background: var(--color-lm-accent-hover);
+.app-mode-link:focus-visible {
+    outline-offset: -3px;
 }
 
-.app-mode-icon {
-    @apply text-lg leading-none;
-}
-
-.app-mode-label {
-    @apply leading-none;
+@media (max-width: 600px) {
+    .app-mode-link {
+        flex: 1 1 0;
+        min-width: 0;
+        min-height: 48px;
+        padding: 0 8px;
+    }
 }

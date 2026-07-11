@@ -109,6 +109,7 @@ export function createRouter(appEl: HTMLElement) {
     let loadId = 0; // guard against concurrent loads
     let currentPath = window.location.pathname;
     let popViewHandler: ((view: string | null, data: unknown) => void) | null = null;
+    let routePathHandler: ((path: string) => void) | null = null;
     const toolCssLink = document.getElementById('tool-css') as HTMLLinkElement | null;
 
     // We restore scroll explicitly (top on tool change) rather than letting the
@@ -123,6 +124,7 @@ export function createRouter(appEl: HTMLElement) {
         // Switching tools: drop the previous tool's in-tool pop handler so a
         // later Back doesn't fire a stale callback.
         popViewHandler = null;
+        routePathHandler = null;
 
         // Tear down current tool
         if (currentDestroy) {
@@ -207,7 +209,16 @@ export function createRouter(appEl: HTMLElement) {
         const target = url.pathname;
         if (target === currentPath) return;
         history.pushState({ p: target } satisfies HistoryState, '', target + url.search + url.hash);
+        const staysInCurrentTool = routePathHandler !== null
+            && resolveTool(target) !== null
+            && resolveTool(target) === resolveTool(currentPath);
         currentPath = target;
+        if (staysInCurrentTool && routePathHandler) {
+            log.info('navigate', { path: target, shellPreserved: true });
+            updateActiveLink(target);
+            routePathHandler(target);
+            return;
+        }
         void loadRoute(target);
     }
 
@@ -225,12 +236,18 @@ export function createRouter(appEl: HTMLElement) {
         return () => { if (popViewHandler === handler) popViewHandler = null; };
     }
 
+    function onRoutePath(handler: (path: string) => void): () => void {
+        routePathHandler = handler;
+        return () => { if (routePathHandler === handler) routePathHandler = null; };
+    }
+
     const spaHistory: SpaHistory = {
         navigate,
         pushView,
         replaceView,
         back: () => { history.back(); },
         onPopView,
+        onRoutePath,
     };
 
     // Handle back/forward buttons.
@@ -238,9 +255,18 @@ export function createRouter(appEl: HTMLElement) {
         const path = window.location.pathname;
         const state = e.state as HistoryState | null;
         if (path !== currentPath) {
-            // Crossed a tool boundary — load the tool for the new path.
+            const staysInCurrentTool = routePathHandler !== null
+                && resolveTool(path) !== null
+                && resolveTool(path) === resolveTool(currentPath);
             currentPath = path;
-            void loadRoute(path);
+            if (staysInCurrentTool && routePathHandler) {
+                log.info('navigate', { path, shellPreserved: true, history: 'pop' });
+                updateActiveLink(path);
+                routePathHandler(path);
+            } else {
+                // Crossed a tool boundary — load the tool for the new path.
+                void loadRoute(path);
+            }
         } else if (popViewHandler) {
             // Same route — an in-tool view boundary was crossed. Let the tool
             // react (e.g. close a panel) without reloading.

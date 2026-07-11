@@ -1,8 +1,8 @@
 /**
  * Layered single-page app shell — Phase 6 (issue #133).
  *
- * Three modes — Play, Create, Record — switched via a DaVinci-style
- * bottom bar. Reading left-to-right is the natural pipeline:
+ * Three modes — Play, Create, Record — switched via persistent top links.
+ * Reading left-to-right is the natural pipeline:
  *   Play   — watch a recorded .fled LED video (or the demo sample)
  *   Create — build / edit the screenmap (the LED layout)
  *   Record — capture a video onto the screenmap (the moviemaker pipeline)
@@ -44,26 +44,27 @@ const modeToolNames: Record<AppMode, string> = {
     record: 'moviemaker',
 };
 
-const modeRoutes: Record<AppMode, string> = {
-    play:   '/play',
-    create: '/create',
-    record: '/record',
-};
-
 const modeTitles: Record<AppMode, string> = {
     play:   'Play — LED Mapper',
     create: 'Create — LED Mapper',
     record: 'Record — LED Mapper',
 };
 
+function modeFromPath(path: string): AppMode {
+    return path.startsWith('/record')
+        ? 'record'
+        : path.startsWith('/create')
+            ? 'create'
+            : 'play';
+}
+
 /**
  * Tool entry point. Renders the shell, mounts the requested mode (or
- * `play` by default if the URL is `/`), and wires the bottom-bar
- * buttons + history events.
+ * `play` by default if the URL is `/`), and wires route history.
  */
 export function init(container: HTMLElement, nav?: SpaHistory): () => void {
     container.innerHTML = templateHtml;
-    // The shell's bottom mode bar replaces the legacy top nav — hide it
+    // The shell's mode navigation replaces the legacy top nav — hide it
     // while the shell is mounted. Legacy per-tool routes keep their nav.
     setNavVisible(false);
     const contentElRaw = container.querySelector<HTMLElement>('#app-content');
@@ -76,10 +77,13 @@ export function init(container: HTMLElement, nav?: SpaHistory): () => void {
     let currentDestroy: (() => void) | null = null;
     let activationId = 0; // guards against concurrent mode switches
 
-    /** Set the visual active state on the mode bar buttons. */
+    /** Set the visual and semantic active state on the mode links. */
     function updateModeBar(mode: AppMode) {
-        for (const btn of modeBarEl.querySelectorAll<HTMLButtonElement>('.app-mode-btn')) {
-            btn.classList.toggle('is-active', btn.dataset.mode === mode);
+        for (const link of modeBarEl.querySelectorAll<HTMLAnchorElement>('.app-mode-link')) {
+            const active = link.dataset.mode === mode;
+            link.classList.toggle('is-active', active);
+            if (active) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
         }
     }
 
@@ -91,6 +95,9 @@ export function init(container: HTMLElement, nav?: SpaHistory): () => void {
             try { currentDestroy(); } catch (e) { console.warn('layer destroy threw', e); }
             currentDestroy = null;
         }
+        currentMode = mode;
+        updateModeBar(mode);
+        document.title = modeTitles[mode];
         contentEl.innerHTML = '';
         // Stamp the content slot with the hosted tool's data-tool name so
         // the tool's CSS (gated on `[data-tool="<name>"]`) applies. The
@@ -114,38 +121,23 @@ export function init(container: HTMLElement, nav?: SpaHistory): () => void {
                 if (id !== activationId) return;
             }
         }
-        currentMode = mode;
-        updateModeBar(mode);
-        document.title = modeTitles[mode];
         if (module.init) {
             const destroyer = module.init(contentEl, nav);
             currentDestroy = destroyer ?? null;
         }
     }
 
-    // Bottom-bar click → activate that mode and update the URL via the
-    // SPA history so deep links + back/forward keep working.
-    modeBarEl.addEventListener('click', (e) => {
-        const target = e.target as Element | null;
-        const btn = target?.closest<HTMLButtonElement>('.app-mode-btn');
-        if (!btn) return;
-        const mode = btn.dataset.mode as AppMode | undefined;
-        if (!mode || !(mode in layerLoaders)) return;
-        const path = modeRoutes[mode];
-        if (nav) nav.navigate(path);
-        else void activate(mode); // standalone mount (no router)
-    });
+    // Same-shell path changes are delegated without tearing down this nav.
+    // Real anchors retain native modifier-click and long-press behavior.
+    const offRoutePath = nav?.onRoutePath((routePath) => { void activate(modeFromPath(routePath)); });
 
     // Initial activation derived from the current URL.
     const path = window.location.pathname;
-    const initialMode: AppMode = path.startsWith('/record')
-        ? 'record'
-        : path.startsWith('/create')
-            ? 'create'
-            : 'play';
+    const initialMode = modeFromPath(path);
     void activate(initialMode);
 
     return function destroy() {
+        offRoutePath?.();
         if (currentDestroy) {
             try { currentDestroy(); } catch (e) { console.warn('layer destroy threw', e); }
             currentDestroy = null;
