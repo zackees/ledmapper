@@ -33,3 +33,6 @@ tests/ux/out/
 .agent-browser/
 .auth/
 *.browser-state.json
+
+# Scratch verification-run logs (this session's manual test output).
+.temp/logs/*.log
