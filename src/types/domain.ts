@@ -337,6 +337,8 @@ export interface SpaHistory {
      * automatically when the tool is torn down.
      */
     onPopView: (handler: (view: string | null, data: unknown) => void) => () => void;
+    /** Preserve the mounted tool shell for route changes within that shell. */
+    onRoutePath: (handler: (path: string) => void) => () => void;
 }
 
 // ---------------------------------------------------------------------------

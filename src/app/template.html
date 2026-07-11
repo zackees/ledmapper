@@ -1,17 +1,8 @@
 <div class="app-shell">
-    <div id="app-content" class="app-content"></div>
-    <nav id="app-mode-bar" class="app-mode-bar" aria-label="Mode">
-        <button type="button" class="app-mode-btn" data-mode="play">
-            <span class="app-mode-icon" aria-hidden="true">&#9654;</span>
-            <span class="app-mode-label">Play</span>
-        </button>
-        <button type="button" class="app-mode-btn" data-mode="create">
-            <span class="app-mode-icon" aria-hidden="true">&#9998;</span>
-            <span class="app-mode-label">Create</span>
-        </button>
-        <button type="button" class="app-mode-btn" data-mode="record">
-            <span class="app-mode-icon" aria-hidden="true">&#9210;</span>
-            <span class="app-mode-label">Record</span>
-        </button>
+    <nav id="app-mode-bar" class="app-mode-bar" aria-label="LED Mapper modes">
+        <a class="app-mode-link" data-mode="play" href="/play">Play</a>
+        <a class="app-mode-link" data-mode="create" href="/create">Create</a>
+        <a class="app-mode-link" data-mode="record" href="/record">Record</a>
     </nav>
+    <div id="app-content" class="app-content"></div>
 </div>

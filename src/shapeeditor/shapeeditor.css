@@ -7,6 +7,11 @@
     overflow: hidden;
 }
 
+/* The shell owns the viewport; nested Create fills only its content slot. */
+.app-content.shapeeditor-root {
+    height: 100%;
+}
+
 .shapeeditor-main {
     flex: 1;
     min-height: 0;
