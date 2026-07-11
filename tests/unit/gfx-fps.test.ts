@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { FpsMeter, resolveInitialVisibility, persistVisibility, isTypingTarget, snapDisplayHz, measureDisplayHz } from '../../src/gfx/fps';
+import { FpsMeter, resolveInitialVisibility, persistVisibility, isTypingTarget, snapDisplayHz, measureDisplayHz, formatFpsStats } from '../../src/gfx/fps';
 
 test('FpsMeter: starts at zero before any ticks', () => {
     const m = new FpsMeter();
@@ -155,4 +155,13 @@ test('measureDisplayHz: resolves 0 when RAF is unavailable', async () => {
     // No injected raf and no global requestAnimationFrame in Node.
     const hz = await measureDisplayHz({ sampleCount: 5 });
     assert.equal(hz, 0);
+});
+
+test('formatFpsStats uses monitor/render/source terminology', () => {
+    assert.equal(formatFpsStats({
+        renderFps: 59.7,
+        pushFps: 29.8,
+        frameTimeMs: 16.67,
+        framesRendered: 100,
+    }, 60), 'monitor: 60hz · render: 60 · source: 30 · 16.7ms');
 });
