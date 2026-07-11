@@ -3,7 +3,7 @@ import { test, expect } from './fixtures.ts';
 test.describe('Demo Page', () => {
     test('loads and shows title', async ({ page }) => {
         await page.goto('/demo/');
-        await expect(page.locator('h1')).toContainText('Demo');
+        await expect(page.locator('h1')).toContainText('See your LEDs in motion');
     });
 
     test('has play button', async ({ page }) => {
@@ -34,6 +34,7 @@ test.describe('Demo Page', () => {
 
     test('has download buttons', async ({ page }) => {
         await page.goto('/demo/');
+        await page.locator('.demo-more > summary').click({ force: true });
         await expect(page.locator('#btn_download_screenmap')).toBeVisible();
         await expect(page.locator('#btn_download_video')).toBeVisible();
     });
