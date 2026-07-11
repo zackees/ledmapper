@@ -28,6 +28,7 @@ import json
 import os
 import queue
 import re
+import shlex
 import sys
 import threading
 import time
@@ -37,32 +38,45 @@ STDIN_READ_CHUNK_BYTES = 64 * 1024
 STDIN_READ_MAX_BYTES = 1024 * 1024
 STDIN_READ_IDLE_TIMEOUT_SEC = 0.25
 STDIN_READ_DEADLINE_SEC = 2.0
+ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+SHELL_OPERATORS = ("&&", "||", ";", "|", "&")
 
 
-def strip_leading_env_assignments(cmd: str) -> str:
-    """Strip leading `FOO=bar BAR=baz` env-var prefixes so the head token is the real command."""
-    cmd = cmd.lstrip()
-    while True:
-        m = re.match(r"\s*[A-Za-z_][A-Za-z0-9_]*=\S*\s+", cmd)
-        if not m:
-            break
-        cmd = cmd[m.end():]
-    return cmd
+def strip_leading_env_assignments(tokens: list[str]) -> list[str]:
+    """Drop leading `FOO=bar BAR=baz` env-var tokens so the head is the real command."""
+    i = 0
+    while i < len(tokens) and ENV_ASSIGNMENT_RE.match(tokens[i]):
+        i += 1
+    return tokens[i:]
 
 
-def split_segments(cmd: str) -> list[str]:
-    """Split on shell chaining/pipe operators -- `a && b`, `a; b`, `a | b`
-    each start a new command, and any of them could be the offender."""
-    return re.split(r"(?:&&|\|\||;|\|)", cmd)
+def split_segments(cmd: str) -> list[list[str]]:
+    """Tokenize `cmd` and split into segments on shell chaining/pipe
+    operators (`&&`, `||`, `;`, `|`, and a lone `&` -- which also absorbs a
+    leading PowerShell call operator, `& "foo" playwright test`).
 
+    Quote-aware: an operator character *inside* a quoted string (e.g. a
+    grep pattern like `"npx playwright\\|playwright test"`, or a commit
+    message containing `;`) is part of that string's token, not a real
+    separator -- a naive regex split on the raw text would wrongly treat
+    it as one and could deny an unrelated command that merely mentions
+    "playwright test" in a quoted argument.
+    """
+    lexer = shlex.shlex(cmd, posix=True, punctuation_chars="|;&")
+    lexer.whitespace_split = True
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        # Unbalanced quotes etc. -- fail open, nothing we can safely parse.
+        return []
 
-def tokenize_segment(segment: str) -> list[str]:
-    """Best-effort whitespace tokenization of a single (already-split) segment."""
-    segment = strip_leading_env_assignments(segment)
-    # Strip a leading PowerShell call operator (`& "..."` / `& foo`).
-    segment = re.sub(r"^\s*&\s*", "", segment)
-    # Strip matching quotes token-by-token; good enough for our narrow use.
-    return [tok.strip("\"'") for tok in segment.split()]
+    segments: list[list[str]] = [[]]
+    for tok in tokens:
+        if tok in SHELL_OPERATORS:
+            segments.append([])
+        else:
+            segments[-1].append(tok)
+    return [seg for seg in segments if seg]
 
 
 def normalize(token: str) -> str:
@@ -72,6 +86,7 @@ def normalize(token: str) -> str:
 
 
 def _segment_is_blocked(tokens: list[str]) -> bool:
+    tokens = strip_leading_env_assignments(tokens)
     if not tokens:
         return False
 
@@ -99,8 +114,11 @@ def _segment_is_blocked(tokens: list[str]) -> bool:
 def is_blocked_playwright_test(command: str) -> bool:
     """True iff any segment of `command` directly invokes `playwright test`
     (any launcher) -- checks every `&&`/`;`/`|`-chained segment, not just
-    the first, so `cd x && npx playwright test` is still caught."""
-    return any(_segment_is_blocked(tokenize_segment(seg)) for seg in split_segments(command))
+    the first, so `cd x && npx playwright test` is still caught. Quote-aware
+    (see `split_segments`), so a quoted string that merely *mentions*
+    "playwright test" alongside an operator character is not mistaken for
+    a real chained command."""
+    return any(_segment_is_blocked(seg) for seg in split_segments(command))
 
 
 def deny(reason: str) -> None:

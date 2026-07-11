@@ -42,6 +42,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, createWriteStream, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { finished } from 'node:stream/promises';
 import http from 'node:http';
 import https from 'node:https';
 import { createServer } from 'vite';
@@ -106,14 +107,37 @@ async function main() {
     if (!alreadyUp) {
         console.log(`[run-playwright] starting dev server (nothing on :${String(PORT)})...`);
         logStream.write(`[run-playwright] starting dev server on demand\n`);
-        viteServer = await createServer({ configFile: join(repoRoot, 'vite.config.js') });
-        await viteServer.listen();
-        const up = await waitForServer(20000);
-        if (!up) {
-            console.error('[run-playwright] dev server did not come up in time; aborting.');
-            logStream.end();
-            await viteServer.close();
-            process.exit(1);
+        // `open: false` overrides vite.config.js's `server.open: '/'` --
+        // that's meant for a human running `npm run dev` once, not for a
+        // test runner that may start a server many times in a session.
+        viteServer = await createServer({
+            configFile: join(repoRoot, 'vite.config.js'),
+            server: { open: false },
+        });
+        try {
+            await viteServer.listen();
+        } catch (err) {
+            // Another process (e.g. a concurrent runner invocation) may have
+            // grabbed the port between our check and listen() -- fall back
+            // to reuse mode instead of crashing.
+            console.error(`[run-playwright] failed to start dev server (${String(err)}); checking if something else claimed the port...`);
+            await viteServer.close().catch(() => { /* best-effort cleanup of the half-started server */ });
+            viteServer = null;
+            if (!(await checkServerUp())) {
+                logStream.end();
+                await finished(logStream);
+                process.exit(1);
+            }
+        }
+        if (viteServer) {
+            const up = await waitForServer(20000);
+            if (!up) {
+                console.error('[run-playwright] dev server did not come up in time; aborting.');
+                logStream.end();
+                await finished(logStream);
+                await viteServer.close();
+                process.exit(1);
+            }
         }
     } else {
         console.log(`[run-playwright] reusing existing dev server on :${String(PORT)}`);
@@ -138,11 +162,16 @@ async function main() {
             logStream.write(chunk);
             if (verbose) process.stderr.write(chunk);
         });
-        child.on('exit', (code) => resolve(code ?? 1));
+        // 'close' (not 'exit') -- fires after stdio is fully drained, so
+        // every chunk has already reached the logStream.write() calls above
+        // by the time this resolves. 'exit' can fire while data is still
+        // in flight, which was truncating the tail summary below.
+        child.on('close', (code) => resolve(code ?? 1));
         child.on('error', () => resolve(1));
     });
 
     logStream.end();
+    await finished(logStream);
 
     if (viteServer) {
         await viteServer.close();
