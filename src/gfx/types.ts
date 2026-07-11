@@ -72,6 +72,9 @@ export interface GfxBaseOptions {
 
 export interface CreateGfxOptions extends GfxBaseOptions {
     screenmap: unknown;
+    /** Stable source/native FPS shown by the user-facing stats widget.
+     *  When omitted, the widget falls back to measured push delivery. */
+    sourceFps?: number;
 }
 
 export interface CreateGfxFromFledOptions extends GfxBaseOptions {
@@ -109,6 +112,9 @@ export interface Gfx {
     getDiameter(): number;
     /** Change the animation-loop target FPS on the fly. */
     setTargetFPS(fps: number): void;
+    /** Update the stable source/native rate shown by the FPS widget. This
+     *  does not change the measured `getStats().pushFps` diagnostic. */
+    setSourceFPS(fps: number): void;
     /** Enable render-rate frame interpolation — blend between the two most
      *  recent source keyframes so a low-fps source is smooth on a
      *  higher-refresh display. Opt-in; default off. */

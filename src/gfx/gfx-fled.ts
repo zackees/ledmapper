@@ -48,6 +48,7 @@ export async function createGfxFromFled(opts: CreateGfxFromFledOptions): Promise
         ...(opts.targetFPS !== undefined ? { targetFPS: opts.targetFPS } : {}),
         ...(opts.enableOverlay !== undefined ? { enableOverlay: opts.enableOverlay } : {}),
         ...(opts.showFps !== undefined ? { showFps: opts.showFps } : {}),
+        sourceFps: opts.fps ?? 30,
         ...(opts.preserveDrawingBuffer !== undefined ? { preserveDrawingBuffer: opts.preserveDrawingBuffer } : {}),
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
     });
@@ -72,6 +73,7 @@ export async function createGfxFromFled(opts: CreateGfxFromFledOptions): Promise
         setDiameter: (px: number) => { gfx.setDiameter(px); },
         getDiameter: () => gfx.getDiameter(),
         setTargetFPS: (fps: number) => { gfx.setTargetFPS(fps); },
+        setSourceFPS: (fps: number) => { gfx.setSourceFPS(fps); },
         setInterpolation: (enabled: boolean) => { gfx.setInterpolation(enabled); },
         getStats: () => gfx.getStats(),
         mountFpsCounter: (el: HTMLElement) => { gfx.mountFpsCounter(el); },

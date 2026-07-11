@@ -76,9 +76,9 @@ function formatRate(fps: number): string {
 }
 
 /** Format the three playback clocks as fixed-prefix, left-aligned rows. */
-export function formatFpsStats(stats: FpsStats, monitorHz: number): string {
+export function formatFpsStats(stats: FpsStats, monitorHz: number, sourceFps = stats.pushFps): string {
     const monitor = monitorHz > 0 ? String(monitorHz) : '--';
-    return `Monitor: ${monitor}\nRender:  ${formatRate(stats.renderFps)}\nSource:  ${formatRate(stats.pushFps)}`;
+    return `Monitor: ${monitor}\nRender:  ${formatRate(stats.renderFps)}\nSource:  ${formatRate(sourceFps)}`;
 }
 
 /** Common display refresh rates. A measured value within tolerance snaps to
@@ -171,10 +171,11 @@ export function persistVisibility(visible: boolean): void {
  * the persisted state in one place.
  */
 export function mountFpsWidget({
-    wrapper, getStats, onClickHide,
+    wrapper, getStats, getSourceFps, onClickHide,
 }: {
     wrapper: HTMLElement;
     getStats: () => FpsStats;
+    getSourceFps?: () => number | undefined;
     onClickHide: () => void;
 }): { el: HTMLElement; dispose: () => void } {
     const el = document.createElement('div');
@@ -192,7 +193,8 @@ export function mountFpsWidget({
     void measureDisplayHz().then((hz) => { displayHz = hz; });
 
     function refresh() {
-        el.textContent = formatFpsStats(getStats(), displayHz);
+        const stats = getStats();
+        el.textContent = formatFpsStats(stats, displayHz, getSourceFps?.() ?? stats.pushFps);
     }
     refresh();
     const interval = setInterval(refresh, 250);

@@ -176,6 +176,17 @@ test('formatFpsStats uses stable three-line monitor/render/source rows', () => {
     assert.equal(integerRates.split('\n')[2]?.indexOf('30'), fractionalRates.split('\n')[2]?.indexOf('29.97'));
 });
 
+test('formatFpsStats prefers the declared source rate over jittering push delivery', () => {
+    const text = formatFpsStats({
+        renderFps: 60,
+        pushFps: 30.03,
+        frameTimeMs: 16.67,
+        framesRendered: 100,
+    }, 60, 29.97);
+
+    assert.equal(text, 'Monitor: 60\nRender:  60\nSource:  29.97');
+});
+
 test('FPS counter CSS fixes its width and left-aligns tabular values', async () => {
     const css = await import('node:fs').then((fs) =>
         fs.promises.readFile(new URL('../../src/styles/global.css', import.meta.url), 'utf-8'));
