@@ -17,11 +17,18 @@ server, one browser session, for the whole task.
 
 ## Persistence rules
 
-- Before running `npm run dev`, check whether something is already
-  serving port 8080 (`curl -sk -o /dev/null -w '%{http_code}' https://localhost:8080/`
-  — the server is HTTPS if `.certs/` exists, HTTP otherwise). Start it once
-  via your harness's background-task support; never restart it between
-  edits.
+- Start the dev server with **one command**: `npm run dev:agent`
+  (`scripts/dev-server.mjs`), backgrounded via your harness's
+  background-task support. It handles the whole lifecycle itself — checks
+  whether something's already serving port 8080 and reuses it if so
+  (printing `DEV-SERVER-READY <url>` and exiting immediately without
+  touching the existing server), or starts one in-process and blocks until
+  killed. Wait on the `DEV-SERVER-READY <url>` line instead of polling with
+  `curl`. Opens no browser tab (`vite.config.js`'s `server.open` is off by
+  default). Never restart it between edits — stopping it is just killing
+  that one backgrounded task; there's no separate server to clean up
+  afterward (in-process, so even an ungraceful kill frees the port
+  immediately).
 - Use **one named agent-browser session per task**: `--session <task-name>`
   on every command. Reuse it — do not `close` and reopen between edits.
 - Navigate only if the target route isn't already open:
