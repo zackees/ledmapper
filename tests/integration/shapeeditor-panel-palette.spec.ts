@@ -29,6 +29,26 @@ test.describe('Shapeeditor panel palette', () => {
         ).toBe(0);
     }
 
+    function dragSegmentMidpoint(page, firstIdx, secondIdx, dx = 40, dy = 25) {
+        return page.evaluate(([aIdx, bIdx, moveX, moveY]) => {
+            const a = window.__shapeeditorDebug.getLedCanvasPos(aIdx);
+            const b = window.__shapeeditorDebug.getLedCanvasPos(bIdx);
+            const canvases = document.querySelectorAll('canvas');
+            const overlay = canvases.item(canvases.length - 1);
+            if (!a || !b || !(overlay instanceof HTMLCanvasElement)) return null;
+            const x = (a.clientX + b.clientX) / 2;
+            const y = (a.clientY + b.clientY) / 2;
+            const endpointDistance = Math.hypot(a.clientX - x, a.clientY - y);
+            const event = (type, clientX, clientY) => new MouseEvent(type, {
+                clientX, clientY, button: 0, bubbles: true,
+            });
+            overlay.dispatchEvent(event('mousedown', x, y));
+            overlay.dispatchEvent(event('mousemove', x + moveX, y + moveY));
+            overlay.dispatchEvent(event('mouseup', x + moveX, y + moveY));
+            return { endpointDistance };
+        }, [firstIdx, secondIdx, dx, dy]);
+    }
+
     test('panel palette is visible with catalog buttons', async ({ page }) => {
         await gotoEditor(page);
         const palette = page.locator('#panel_palette');
@@ -108,5 +128,95 @@ test.describe('Shapeeditor panel palette', () => {
             window.__shapeeditorDebug.getStripNames()
         );
         expect(names).toEqual([name]);
+    });
+
+    test('placing a ring exits Chain mode so the new strip can be dragged', async ({ page }) => {
+        await freshEditor(page);
+        await page.evaluate(() => window.__shapeeditorDebug.placePanel('matrix-8x8', -20, 0, {}));
+        await page.evaluate(() => window.__shapeeditorDebug.setMode('chain'));
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getMode())).toBe('chain');
+
+        await page.locator('#panel_palette').evaluate((el) => { el.open = true; });
+        await page.locator('#panel_catalog_buttons [data-catalog-id="ring-24"]').click();
+
+        // Panel placement and chain rewiring are mutually exclusive canvas modes.
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getMode())).toBe(null);
+
+        const overlay = page.locator('canvas').last();
+        const box = await overlay.boundingBox();
+        if (!box) throw new Error('expected visible shapeeditor overlay canvas');
+        await page.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.5);
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripCount())).toBe(2);
+
+        const before = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+        const moved = await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(64, 30, 20, {}));
+        expect(moved).toBe(true);
+        const after = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+        expect(after[0][0]).not.toBeCloseTo(before[0][0], 6);
+        expect(after[0][1]).not.toBeCloseTo(before[0][1], 6);
+    });
+
+    test('dragging a visible ring arc moves only that strip, not the global bounding box', async ({ page }) => {
+        await freshEditor(page);
+        await page.evaluate(() => window.__shapeeditorDebug.placePanel('matrix-8x8', -150, 0, {}));
+        await page.evaluate(() => window.__shapeeditorDebug.placePanel('ring-24', 150, 0, { spacing: 4 }));
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getLedCanvasPos(65) !== null)).toBe(true);
+
+        const beforeMatrix = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
+        const beforeRing = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+        const drag = await dragSegmentMidpoint(page, 64, 65);
+        if (!drag) throw new Error('expected a visible ring segment');
+        expect(drag.endpointDistance).toBeGreaterThan(10);
+
+        const afterMatrix = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
+        const afterRing = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+        expect(afterMatrix).toEqual(beforeMatrix);
+        const dx = afterRing[0][0] - beforeRing[0][0];
+        const dy = afterRing[0][1] - beforeRing[0][1];
+        expect(Math.abs(dx) + Math.abs(dy)).toBeGreaterThan(0);
+        for (let i = 1; i < beforeRing.length; i++) {
+            expect(afterRing[i][0] - beforeRing[i][0]).toBeCloseTo(dx, 6);
+            expect(afterRing[i][1] - beforeRing[i][1]).toBeCloseTo(dy, 6);
+        }
+
+        await page.keyboard.press('Control+z');
+        const restoredRing = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+        for (let i = 0; i < beforeRing.length; i++) {
+            expect(restoredRing[i][0]).toBeCloseTo(beforeRing[i][0], 6);
+            expect(restoredRing[i][1]).toBeCloseTo(beforeRing[i][1], 6);
+        }
+    });
+
+    test('overlapping geometry prefers the topmost strip, then the selected underlying strip', async ({ page }) => {
+        await freshEditor(page);
+        await page.evaluate(() => window.__shapeeditorDebug.placePanel('ring-24', 0, 0, {}));
+        await page.evaluate(() => window.__shapeeditorDebug.placePanel('ring-24', 0, 0, {}));
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getLedCanvasPos(25) !== null)).toBe(true);
+
+        const originalLower = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
+        const originalUpper = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+        // Panel placement selects the newest strip; clear that preference so
+        // this first phase specifically proves the topmost fallback.
+        await page.evaluate(() => window.__shapeeditorDebug.selectStrip(-1));
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrip())).toBe(null);
+        const topmostDrag = await dragSegmentMidpoint(page, 0, 1);
+        if (!topmostDrag) throw new Error('expected an overlapping ring segment');
+        // This midpoint is inside both coincident LED hit areas, exercising
+        // deterministic LED tie-breaking rather than the stroke resolver.
+        expect(topmostDrag.endpointDistance).toBeLessThan(10);
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(originalLower);
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1))).not.toEqual(originalUpper);
+
+        await page.keyboard.press('Control+z');
+        await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
+        const selectedDrag = await dragSegmentMidpoint(page, 0, 1, -40, -25);
+        if (!selectedDrag) throw new Error('expected a selected underlying ring segment');
+        expect(selectedDrag.endpointDistance).toBeLessThan(10);
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).not.toEqual(originalLower);
+        const untouchedUpper = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+        for (let i = 0; i < originalUpper.length; i++) {
+            expect(untouchedUpper[i][0]).toBeCloseTo(originalUpper[i][0], 6);
+            expect(untouchedUpper[i][1]).toBeCloseTo(originalUpper[i][1], 6);
+        }
     });
 });
