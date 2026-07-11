@@ -65,12 +65,14 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
     // --- FPS widget + `f`-key toggle + localStorage persistence ---
     let fpsVisible = resolveInitialVisibility(opts.showFps);
     let fpsWidget: { el: HTMLElement; dispose: () => void } | null = null;
+    let sourceFps = opts.sourceFps;
 
     function refreshWidgetState() {
         if (fpsVisible && !fpsWidget) {
             fpsWidget = mountFpsWidget({
                 wrapper,
                 getStats: () => core.getStats(),
+                getSourceFps: () => sourceFps,
                 onClickHide: () => { setFpsVisible(false); },
             });
         } else if (!fpsVisible && fpsWidget) {
@@ -83,6 +85,7 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
         fpsWidget = mountFpsWidget({
             wrapper: el,
             getStats: () => core.getStats(),
+            getSourceFps: () => sourceFps,
             onClickHide: () => { setFpsVisible(false); },
         });
         fpsVisible = true;
@@ -127,6 +130,7 @@ export function createGfx(opts: CreateGfxOptions): Gfx {
         setDiameter: (px) => { core.setDiameter(px); },
         getDiameter: () => core.getDiameter(),
         setTargetFPS: (fps) => { core.setTargetFPS(fps); },
+        setSourceFPS: (fps) => { sourceFps = fps; },
         setInterpolation: (enabled) => { core.setInterpolation(enabled); },
         getStats: () => core.getStats(),
         mountFpsCounter,

@@ -95,6 +95,7 @@ export function init(container: HTMLElement) {
         paneSize: CANVAS_SIZE,
         enableOverlay: true,
         showFps: true,
+        sourceFps: nativeFps,
         signal,
     });
     if (!gfx.overlayCanvas || !gfx.overlayCtx) {
@@ -351,6 +352,7 @@ export function init(container: HTMLElement) {
         // it drives the pump when the selector is on "Native" (#265). Default
         // 30 when absent/invalid — every pre-#256 recording played at 30.
         nativeFps = readVideoFps(parsed.embeddedJson) ?? 30;
+        gfx.setSourceFPS(activeSourceFps());
         refreshNativeFpsLabel();
         movie_frames.length = 0;
         curr_frame_idx = 0;
@@ -467,8 +469,13 @@ export function init(container: HTMLElement) {
         const opt = dom_sel_framerate.querySelector<HTMLOptionElement>('option[value="native"]');
         if (opt) opt.textContent = `Native (${String(nativeFps)})`;
     }
+    function activeSourceFps(): number {
+        const selected = dom_sel_framerate.value;
+        return selected === 'native' ? nativeFps : Math.max(parseInt(selected), 1);
+    }
     dom_sel_framerate.addEventListener('change', () => {
         framePacer.reset();
+        gfx.setSourceFPS(activeSourceFps());
         safeStorage.set(LS_FPS, dom_sel_framerate.value);
     }, { signal });
     // Restore a previously-chosen FPS, but only when it matches a real option
@@ -478,6 +485,7 @@ export function init(container: HTMLElement) {
     if (savedFps !== null && Array.from(dom_sel_framerate.options).some((o) => o.value === savedFps)) {
         dom_sel_framerate.value = savedFps;
     }
+    gfx.setSourceFPS(activeSourceFps());
     refreshNativeFpsLabel();
 
     // --- Download handlers ---
