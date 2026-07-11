@@ -70,10 +70,15 @@ export interface FpsStats {
     framesRendered: number;
 }
 
-/** Format the three playback clocks in user-facing terms. */
+function formatRate(fps: number): string {
+    if (!isFinite(fps) || fps < 0) return '0';
+    return String(Math.round(fps * 100) / 100);
+}
+
+/** Format the three playback clocks as fixed-prefix, left-aligned rows. */
 export function formatFpsStats(stats: FpsStats, monitorHz: number): string {
-    const monitor = monitorHz > 0 ? `monitor: ${String(monitorHz)}hz · ` : '';
-    return `${monitor}render: ${String(Math.round(stats.renderFps))} · source: ${String(Math.round(stats.pushFps))} · ${stats.frameTimeMs.toFixed(1)}ms`;
+    const monitor = monitorHz > 0 ? String(monitorHz) : '--';
+    return `Monitor: ${monitor}\nRender:  ${formatRate(stats.renderFps)}\nSource:  ${formatRate(stats.pushFps)}`;
 }
 
 /** Common display refresh rates. A measured value within tolerance snaps to

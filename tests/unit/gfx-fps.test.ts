@@ -157,11 +157,30 @@ test('measureDisplayHz: resolves 0 when RAF is unavailable', async () => {
     assert.equal(hz, 0);
 });
 
-test('formatFpsStats uses monitor/render/source terminology', () => {
-    assert.equal(formatFpsStats({
-        renderFps: 59.7,
-        pushFps: 29.8,
+test('formatFpsStats uses stable three-line monitor/render/source rows', () => {
+    const integerRates = formatFpsStats({
+        renderFps: 60,
+        pushFps: 30,
         frameTimeMs: 16.67,
         framesRendered: 100,
-    }, 60), 'monitor: 60hz · render: 60 · source: 30 · 16.7ms');
+    }, 60);
+    const fractionalRates = formatFpsStats({
+        renderFps: 60,
+        pushFps: 29.97,
+        frameTimeMs: 16.67,
+        framesRendered: 100,
+    }, 60);
+
+    assert.equal(integerRates, 'Monitor: 60\nRender:  60\nSource:  30');
+    assert.equal(fractionalRates, 'Monitor: 60\nRender:  60\nSource:  29.97');
+    assert.equal(integerRates.split('\n')[2]?.indexOf('30'), fractionalRates.split('\n')[2]?.indexOf('29.97'));
+});
+
+test('FPS counter CSS fixes its width and left-aligns tabular values', async () => {
+    const css = await import('node:fs').then((fs) =>
+        fs.promises.readFile(new URL('../../src/styles/global.css', import.meta.url), 'utf-8'));
+    assert.match(css, /\.gfx-fps-counter\s*\{[^}]*inline-size:\s*15ch;/s);
+    assert.match(css, /\.gfx-fps-counter\s*\{[^}]*text-align:\s*left;/s);
+    assert.match(css, /\.gfx-fps-counter\s*\{[^}]*font-variant-numeric:\s*tabular-nums;/s);
+    assert.match(css, /\.gfx-fps-counter\s*\{[^}]*white-space:\s*pre;/s);
 });
