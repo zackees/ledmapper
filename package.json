@@ -17,7 +17,7 @@
     "check:presets": "node scripts/check-moviemaker-presets.mjs",
     "test": "node --import tsx --test tests/unit/*.test.ts",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
-    "test:integration": "playwright test",
+    "test:integration": "node scripts/run-playwright.mjs",
     "test:smoke": "vite build && playwright test --config playwright.smoke.config.js",
     "test:canvas-fit": "vite build && playwright test --config playwright.canvas-fit.config.js",
     "test:perf": "vite build && playwright test --config playwright.perf.config.js",
