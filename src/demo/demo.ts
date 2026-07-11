@@ -6,7 +6,8 @@ import { safeStorage } from '../services/storage';
 import { gfxColors, withAlpha } from '../ui/theme';
 import { createGfx, wireBloomUi, createFramePacer } from '../gfx';
 import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
-import { parseRgbFrames, prependFledHeader, readVideoFps } from '../render/rgb-video';
+import { parseRgbFrames, prependFledHeader, readVideoFps, PixelFormat } from '../render/rgb-video';
+import { registerDebugState, unregisterDebugState, type DemoDebugState } from '../debug-registry';
 import type { MultiStripParseResult, StripPoint } from '../types/domain';
 import templateHtml from './template.html?raw';
 export { default as css } from './demo.css?url';
@@ -49,6 +50,9 @@ export function init(container: HTMLElement) {
     const dom_download_fled         = qe<HTMLButtonElement>(container, '#demo_download_fled');
     const dom_download_screenmap    = qe<HTMLButtonElement>(container, '#demo_download_screenmap');
     const dom_download_rgb          = qe<HTMLButtonElement>(container, '#demo_download_rgb');
+    const dom_btn_choose_fled       = qe<HTMLButtonElement>(container, '#btn_choose_fled');
+    const dom_media_status          = qe<HTMLElement>(container, '#demo_media_status');
+    const dom_stage                 = qe<HTMLElement>(container, '#demo_stage');
 
     dom_btn_play.disabled = true;
 
@@ -69,6 +73,18 @@ export function init(container: HTMLElement) {
     // Detected native source rate (FLED video.fps); drives the pump on
     // "Native" and labels that option (#265).
     let nativeFps = 30;
+    let movieLoadGeneration = 0;
+
+    function getDemoDebugState(): DemoDebugState {
+        return {
+            frameCount: movie_frames.length,
+            ledCount: screenmap_pts.length,
+            playing,
+            filename: activeMovieFilename,
+            sourceFps: nativeFps,
+        };
+    }
+    registerDebugState('demo', { getState: getDemoDebugState });
 
     // Overlay state
     let showLines = false;
@@ -101,7 +117,7 @@ export function init(container: HTMLElement) {
     // screenmap fetch lands.
     const gfx = createGfx({
         screenmap: PLACEHOLDER_SCREENMAP,
-        parent: main,
+        parent: dom_stage,
         paneSize: CANVAS_SIZE,
         enableOverlay: true,
         showFps: true,
@@ -501,27 +517,63 @@ export function init(container: HTMLElement) {
             void errorDialog('Wrong file type', 'Please choose a .fled video file.');
             return;
         }
-        void file.arrayBuffer().then((buffer) => { load_movie_data(buffer, file.name); }).catch((error: unknown) => {
+        const generation = ++movieLoadGeneration;
+        void file.arrayBuffer().then((buffer) => {
+            if (generation === movieLoadGeneration) load_movie_data(buffer, file.name);
+        }).catch((error: unknown) => {
+            if (generation !== movieLoadGeneration) return;
             void errorDialog('Error reading video file', String(error));
         });
     }
 
+    function formatFps(fps: number): string {
+        return Number.isInteger(fps) ? String(fps) : fps.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+    }
+
+    function setMediaStatus(filename: string, ledCount: number, frameCount: number, fps: number): void {
+        dom_media_status.textContent = `${filename} - ${String(ledCount)} LEDs - ${String(frameCount)} frames - ${formatFps(fps)} fps`;
+    }
+
     function load_movie_data(arrayBuffer: ArrayBuffer, filename = 'video.fled') {
-        if (screenmap_pts.length === 0) {
-            void errorDialog('No screenmap loaded', 'Load a screenmap before loading a video.');
-            return;
-        }
         const uint8_array = new Uint8Array(arrayBuffer);
-        const parsed = parseRgbFrames(uint8_array, screenmap_pts.length);
-        const { frames, notMultiple } = parsed;
-        if (notMultiple) {
-            void errorDialog('Frame size mismatch', 'Frame size should be a multiple of the number of screenmap points.');
-            return;
-        }
-        if (!parsed.isFled || parsed.fledError !== null || parsed.embeddedJson === null) {
+        const header = parseRgbFrames(uint8_array, 0);
+        if (!header.isFled || header.fledError !== null || header.embeddedJson === null) {
             void errorDialog('Invalid FLED file', 'The selected video does not contain a valid FLED header and embedded screenmap.');
             return;
         }
+        if (header.pixelFormat !== PixelFormat.rgb8) {
+            void errorDialog('Unsupported FLED format', 'This player currently supports RGB8 FLED files.');
+            return;
+        }
+
+        let embeddedMap: Record<string, unknown>;
+        let embeddedPoints: StripPoint[];
+        try {
+            embeddedMap = JSON.parse(header.embeddedJson) as Record<string, unknown>;
+            embeddedPoints = parse_screenmap_data_json(embeddedMap);
+        } catch {
+            void errorDialog('Invalid embedded screenmap', 'The FLED metadata does not contain valid screenmap JSON.');
+            return;
+        }
+        if (embeddedPoints.length === 0) {
+            void errorDialog('Invalid embedded screenmap', 'The FLED screenmap does not contain any LEDs.');
+            return;
+        }
+
+        const parsed = parseRgbFrames(uint8_array, embeddedPoints.length);
+        const { frames } = parsed;
+        if (parsed.notMultiple) {
+            void errorDialog('Frame size mismatch', 'The RGB payload is not a whole number of frames for the embedded screenmap.');
+            return;
+        }
+        if (frames.length === 0) {
+            void errorDialog('Empty FLED file', 'The selected FLED does not contain any video frames.');
+            return;
+        }
+
+        // Commit only after the container, screenmap, and frames validate so
+        // a failed replacement leaves the currently playing content intact.
+        load_screenmap_data(embeddedMap);
         // Native source rate rides in the FLED metadata as video.fps (#256);
         // it drives the pump when the selector is on "Native" (#265). Default
         // 30 when absent/invalid — every pre-#256 recording played at 30.
@@ -534,6 +586,7 @@ export function init(container: HTMLElement) {
         activeFledBytes = uint8_array.slice();
         activeEmbeddedJson = parsed.embeddedJson;
         activeMovieFilename = filename;
+        setMediaStatus(filename, embeddedPoints.length, frames.length, nativeFps);
         refreshDownloadMenuState();
         dom_btn_play.disabled = false;
         set_dom_btn_play(true);
@@ -541,6 +594,7 @@ export function init(container: HTMLElement) {
 
     wireFilePicker({ input: dom_btn_upload_screenmap, onFile: loadScreenmapFile, signal });
     wireFilePicker({ input: dom_btn_load_movie, onFile: loadMovieFile, signal });
+    dom_btn_choose_fled.addEventListener('click', () => { dom_btn_load_movie.click(); }, { signal });
 
     wireFileDropTarget({
         target: main,
@@ -557,42 +611,23 @@ export function init(container: HTMLElement) {
         signal,
     });
 
-    function fetchAndLoadJSON() {
-        fetch('/screenmaps/32x32_quad_serpentine.json')
-            .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
-                return response.json();
-            })
-            .then((jsonBlob: Record<string, unknown>) => {
-                console.warn('Screenmap data loaded successfully');
-                load_screenmap_data(jsonBlob);
-                void fetchAndLoadVideo();
-            })
-            .catch((error: unknown) => {
-                console.error('Error loading demo screenmap:', error);
-                // Demo failed to bootstrap — surface to the user instead
-                // of leaving a blank canvas with only a console log. #179.
-                void errorDialog(
-                    'Could not load demo data',
-                    `Network or file error loading the sample screenmap.\n\n${String(error)}\n\nCheck your connection and refresh.`,
-                );
-            });
-    }
-
     // --- Video load ---
     // The .fled file is self-describing (header + embedded screenmap +
     // payload), so we fetch it once and let parseRgbFrames slice frames
     // against the screenmap's LED count.
     async function fetchAndLoadVideo() {
+        const generation = ++movieLoadGeneration;
         try {
             const response = await fetch('/demo/video.fled');
             if (!response.ok) throw new Error('Network response was not ok');
             const buffer = await response.arrayBuffer();
-            load_movie_data(buffer, 'video.fled');
-            set_dom_btn_play(false);
-            dom_btn_play.click();
+            if (generation !== movieLoadGeneration) return;
+            load_movie_data(buffer, 'Sample FLED');
         } catch (error) {
+            if (generation !== movieLoadGeneration) return;
             console.error('Error loading video:', error);
+            dom_media_status.textContent = 'The sample could not be loaded. Choose a FLED file to continue.';
+            void errorDialog('Could not load demo data', `Network or file error loading the sample.\n\n${String(error)}`);
         }
     }
 
@@ -877,12 +912,13 @@ export function init(container: HTMLElement) {
     }
 
     // --- Initialize ---
-    fetchAndLoadJSON();
+    void fetchAndLoadVideo();
 
     return function destroy() {
         if (frameRafId !== null) cancelAnimationFrame(frameRafId);
         clearControlsHideTimer();
         ac.abort();
+        unregisterDebugState('demo');
         gfx.dispose();
     };
 }

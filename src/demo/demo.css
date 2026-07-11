@@ -10,6 +10,84 @@
    background, just a soft drop shadow so the controls read against bright
    frames and blend into the dark surround. Reveal (`.is-visible`) + auto-hide
    are driven from demo.ts (video-player style). */
+.demo-play-layout {
+    display: grid;
+    grid-template-columns: minmax(220px, 320px) minmax(0, 800px);
+    align-items: center;
+    justify-content: center;
+    gap: clamp(20px, 4vw, 56px);
+    width: 100%;
+    min-height: calc(100vh - 74px);
+    padding: clamp(18px, 4vw, 48px);
+}
+
+.demo-intro {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    max-width: 320px;
+}
+
+.demo-intro-eyebrow {
+    margin: 0;
+    color: var(--color-lm-accent);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.demo-intro h1 {
+    margin: 0;
+    color: var(--color-lm-text);
+    font-size: clamp(2rem, 4vw, 3.4rem);
+    line-height: 0.98;
+}
+
+.demo-intro-copy,
+.demo-drop-hint,
+.demo-media-status {
+    margin: 0;
+    color: var(--color-lm-text-muted);
+    line-height: 1.5;
+}
+
+.demo-intro-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+}
+
+.demo-intro-actions a {
+    color: var(--color-lm-text);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.demo-drop-hint {
+    font-size: 0.82rem;
+}
+
+.demo-media-status {
+    min-height: 2.8em;
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+}
+
+.demo-stage {
+    min-width: 0;
+    width: min(100%, calc(100vh - 150px));
+    max-width: 800px;
+    aspect-ratio: 1;
+}
+
+.demo-play-layout.drag-over .demo-stage {
+    outline: 2px dashed var(--color-lm-accent);
+    outline-offset: 6px;
+}
+
 .controls {
     position: absolute;
     top: 8px;
@@ -214,6 +292,23 @@ select {
 }
 
 @media (max-width: 800px) {
+    .demo-play-layout {
+        grid-template-columns: minmax(0, 1fr);
+        align-content: start;
+        gap: 18px;
+        min-height: 0;
+        padding: 20px 14px 28px;
+    }
+    .demo-intro {
+        max-width: 640px;
+        gap: 9px;
+    }
+    .demo-intro h1 {
+        font-size: clamp(1.8rem, 9vw, 2.5rem);
+    }
+    .demo-stage {
+        width: 100%;
+    }
     .controls-container {
         flex-direction: column;
         gap: 6px;

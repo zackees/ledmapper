@@ -45,6 +45,15 @@ export interface MovieplayerDebugState {
     loaded: boolean;
 }
 
+/** Live debug state for the Play demo (src/demo). */
+export interface DemoDebugState {
+    frameCount: number;
+    ledCount: number;
+    playing: boolean;
+    filename: string;
+    sourceFps: number;
+}
+
 /** Live debug state for the Screenmap Editor (src/shapeeditor). */
 export interface ShapeeditorDebugState {
     stripCount: number;
@@ -69,6 +78,7 @@ export interface ShapeeditorDebugEntry {
  * tools/typos are caught at compile time, and no entry ever carries `any`.
  */
 export interface LmDebugRegistry {
+    demo?: { getState: () => DemoDebugState };
     moviemaker?: { getState: () => MoviemakerDebugState };
     movieplayer?: { getState: () => MovieplayerDebugState };
     shapeeditor?: ShapeeditorDebugEntry;
@@ -90,12 +100,16 @@ export type LmDebugToolName = keyof LmDebugRegistry;
 export function registerDebugState(tool: 'moviemaker', hooks: NonNullable<LmDebugRegistry['moviemaker']>): void;
 export function registerDebugState(tool: 'movieplayer', hooks: NonNullable<LmDebugRegistry['movieplayer']>): void;
 export function registerDebugState(tool: 'shapeeditor', hooks: NonNullable<LmDebugRegistry['shapeeditor']>): void;
+export function registerDebugState(tool: 'demo', hooks: NonNullable<LmDebugRegistry['demo']>): void;
 export function registerDebugState(
     tool: LmDebugToolName,
-    hooks: NonNullable<LmDebugRegistry['moviemaker']> | NonNullable<LmDebugRegistry['movieplayer']> | NonNullable<LmDebugRegistry['shapeeditor']>,
+    hooks: NonNullable<LmDebugRegistry['moviemaker']> | NonNullable<LmDebugRegistry['movieplayer']> | NonNullable<LmDebugRegistry['shapeeditor']> | NonNullable<LmDebugRegistry['demo']>,
 ): void {
     const registry = (window.__lmDebug ??= {});
     switch (tool) {
+        case 'demo':
+            registry.demo = hooks as NonNullable<LmDebugRegistry['demo']>;
+            return;
         case 'moviemaker':
             registry.moviemaker = hooks as NonNullable<LmDebugRegistry['moviemaker']>;
             return;
@@ -117,6 +131,9 @@ export function unregisterDebugState(tool: LmDebugToolName): void {
     const registry = window.__lmDebug;
     if (!registry) return;
     switch (tool) {
+        case 'demo':
+            delete registry.demo;
+            return;
         case 'moviemaker':
             delete registry.moviemaker;
             return;

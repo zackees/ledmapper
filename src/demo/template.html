@@ -63,8 +63,19 @@
         </details>
     </div>
 </div>
-<main class="drop-zone">
-    <!-- Three.js canvas injected here by sketch.js -->
+<main class="drop-zone demo-play-layout">
+    <section class="demo-intro" aria-labelledby="demo_intro_title">
+        <p class="demo-intro-eyebrow">FastLED Video Player</p>
+        <h1 id="demo_intro_title">See your LEDs in motion</h1>
+        <p class="demo-intro-copy">The sample animation is already playing. Load a self-contained FLED file to preview your own screenmap and recorded RGB frames instantly.</p>
+        <div class="demo-intro-actions">
+            <button id="btn_choose_fled" type="button">Play your FLED</button>
+            <a href="/record">Create a FLED</a>
+        </div>
+        <p class="demo-drop-hint">or drop a .fled file anywhere on this player</p>
+        <p id="demo_media_status" class="demo-media-status" role="status" aria-live="polite">Loading sample...</p>
+    </section>
+    <div id="demo_stage" class="demo-stage" aria-label="LED video preview"></div>
     <div id="demo_context_menu" class="demo-context-menu" role="menu" aria-label="Player actions">
         <div id="demo_download_group" class="demo-context-submenu-group">
             <button id="demo_download_trigger" class="demo-context-menu-item demo-context-submenu-trigger" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false">
