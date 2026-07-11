@@ -124,6 +124,95 @@ select {
     margin: 0 0 4px 0;
 }
 
+/* Player-surface context menu. Kept inside the gfx wrapper so coordinates
+   remain local to the rendered video rather than the surrounding letterbox. */
+.demo-context-menu {
+    position: absolute;
+    z-index: 80;
+    display: none;
+    flex-direction: column;
+    min-width: 180px;
+    padding: 5px;
+    background: var(--color-lm-surface-2);
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+
+.demo-context-menu.is-visible,
+.demo-context-submenu-group.is-open > .demo-context-submenu {
+    display: flex;
+}
+
+.demo-context-menu-item {
+    width: 100%;
+    padding: 8px 10px;
+    color: var(--color-lm-text);
+    background: transparent;
+    border: 0;
+    border-radius: calc(var(--radius-lm) - 2px);
+    text-align: left;
+    cursor: pointer;
+}
+
+.demo-context-menu-item:hover,
+.demo-context-menu-item:focus-visible {
+    background: var(--color-lm-surface-3);
+    outline: none;
+}
+
+.demo-context-menu-item:disabled {
+    color: var(--color-lm-text-muted);
+    cursor: default;
+    opacity: 0.5;
+}
+
+.demo-context-menu-item:disabled:hover {
+    background: transparent;
+}
+
+.demo-context-submenu-group {
+    position: relative;
+}
+
+.demo-context-submenu-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+}
+
+.demo-context-submenu-arrow {
+    color: var(--color-lm-text-muted);
+    font-size: 18px;
+    line-height: 1;
+}
+
+.demo-context-submenu {
+    top: -6px;
+    left: calc(100% - 1px);
+    min-width: 210px;
+}
+
+.demo-context-menu.opens-left .demo-context-submenu {
+    right: calc(100% - 1px);
+    left: auto;
+}
+
+.demo-context-menu.submenu-opens-up .demo-context-submenu {
+    top: auto;
+    bottom: -6px;
+}
+
+/* A side-by-side submenu cannot fit on narrow player surfaces. Nest it under
+   the root item instead so every action remains inside the canvas. */
+.demo-context-menu.stacks-submenu .demo-context-submenu {
+    position: static;
+    min-width: 0;
+    margin-top: 4px;
+    box-shadow: none;
+}
+
 @media (max-width: 800px) {
     .controls-container {
         flex-direction: column;

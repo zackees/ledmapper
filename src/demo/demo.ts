@@ -42,6 +42,13 @@ export function init(container: HTMLElement) {
     const dom_rng_bloom_strength    = qe<HTMLInputElement>(container, '#rng_bloom_strength');
     const dom_txt_bloom_strength    = qe<HTMLElement>(container, '#txt_curr_bloom_strength');
     const dom_controls              = qe<HTMLElement>(container, '.controls');
+    const dom_context_menu          = qe<HTMLElement>(container, '#demo_context_menu');
+    const dom_download_group        = qe<HTMLElement>(container, '#demo_download_group');
+    const dom_download_trigger      = qe<HTMLButtonElement>(container, '#demo_download_trigger');
+    const dom_download_submenu      = qe<HTMLElement>(container, '#demo_download_submenu');
+    const dom_download_fled         = qe<HTMLButtonElement>(container, '#demo_download_fled');
+    const dom_download_screenmap    = qe<HTMLButtonElement>(container, '#demo_download_screenmap');
+    const dom_download_rgb          = qe<HTMLButtonElement>(container, '#demo_download_rgb');
 
     dom_btn_play.disabled = true;
 
@@ -54,6 +61,9 @@ export function init(container: HTMLElement) {
     let screenmap_pts_original: StripPoint[] = [];
     let stripInfo: MultiStripParseResult | null = null;
     const movie_frames: Uint8Array[] = [];
+    let activeFledBytes: Uint8Array | null = null;
+    let activeEmbeddedJson: string | null = null;
+    let activeMovieFilename = 'video.fled';
     let playing = false;
     let curr_frame_idx = 0;
     // Detected native source rate (FLED video.fps); drives the pump on
@@ -158,6 +168,163 @@ export function init(container: HTMLElement) {
     // Inlay the control bar inside the canvas so it's bounded by the canvas
     // (the wrapper is sized to the canvas), not the letterbox margins around it.
     wrapper.appendChild(dom_controls);
+    wrapper.appendChild(dom_context_menu);
+    const downloadMenuItems = [dom_download_fled, dom_download_screenmap, dom_download_rgb];
+
+    function focusDownloadItem(index: number): void {
+        const enabledItems = downloadMenuItems.filter((item) => !item.disabled);
+        if (enabledItems.length === 0) return;
+        const wrapped = ((index % enabledItems.length) + enabledItems.length) % enabledItems.length;
+        for (const item of downloadMenuItems) item.tabIndex = -1;
+        const target = enabledItems[wrapped];
+        if (target) {
+            target.tabIndex = 0;
+            target.focus();
+        }
+    }
+
+    function setDownloadSubmenuOpen(open: boolean, focusFirst = false): void {
+        dom_download_group.classList.toggle('is-open', open);
+        dom_download_trigger.setAttribute('aria-expanded', String(open));
+        dom_context_menu.classList.remove('opens-left', 'submenu-opens-up', 'stacks-submenu');
+        if (!open) {
+            for (const item of downloadMenuItems) item.tabIndex = -1;
+            return;
+        }
+
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const rootRect = dom_context_menu.getBoundingClientRect();
+        let submenuRect = dom_download_submenu.getBoundingClientRect();
+        const fitsRight = rootRect.right + submenuRect.width <= wrapperRect.right;
+        const fitsLeft = rootRect.left - submenuRect.width >= wrapperRect.left;
+        if (!fitsRight && !fitsLeft) {
+            dom_context_menu.classList.add('stacks-submenu');
+            submenuRect = dom_download_submenu.getBoundingClientRect();
+        } else if (!fitsRight) {
+            dom_context_menu.classList.add('opens-left');
+            submenuRect = dom_download_submenu.getBoundingClientRect();
+        }
+        if (submenuRect.bottom > wrapperRect.bottom) dom_context_menu.classList.add('submenu-opens-up');
+        const openMenuRect = dom_context_menu.getBoundingClientRect();
+        if (openMenuRect.bottom > wrapperRect.bottom) {
+            const currentTop = parseFloat(dom_context_menu.style.top) || 0;
+            dom_context_menu.style.top = `${String(Math.max(8, currentTop - (openMenuRect.bottom - wrapperRect.bottom)))}px`;
+        }
+        if (focusFirst) focusDownloadItem(0);
+    }
+
+    function hideContextMenu(): void {
+        setDownloadSubmenuOpen(false);
+        dom_context_menu.classList.remove('is-visible');
+    }
+
+    function movieStem(): string {
+        return activeMovieFilename.replace(/\.fled$/i, '') || 'video';
+    }
+
+    function rawMoviePayload(): Uint8Array {
+        const totalLength = movie_frames.reduce((sum, frame) => sum + frame.length, 0);
+        const payload = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const frame of movie_frames) {
+            payload.set(frame, offset);
+            offset += frame.length;
+        }
+        return payload;
+    }
+
+    function downloadBytes(bytes: Uint8Array, filename: string, type = 'application/octet-stream'): void {
+        const ownedBytes = bytes.slice();
+        download_blob_as_file(new Blob([ownedBytes.buffer], { type }), filename);
+    }
+
+    function refreshDownloadMenuState(): void {
+        dom_download_fled.disabled = activeFledBytes === null;
+        dom_download_screenmap.disabled = activeEmbeddedJson === null;
+        dom_download_rgb.disabled = movie_frames.length === 0;
+    }
+
+    function showContextMenu(e: MouseEvent): void {
+        e.preventDefault();
+        refreshDownloadMenuState();
+        setDownloadSubmenuOpen(false);
+        dom_context_menu.classList.add('is-visible');
+
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const menuRect = dom_context_menu.getBoundingClientRect();
+        const gap = 8;
+        const requestedX = e.clientX - wrapperRect.left;
+        const requestedY = e.clientY - wrapperRect.top;
+        const left = Math.min(Math.max(gap, requestedX), Math.max(gap, wrapperRect.width - menuRect.width - gap));
+        const top = Math.min(Math.max(gap, requestedY), Math.max(gap, wrapperRect.height - menuRect.height - gap));
+        dom_context_menu.style.left = `${String(left)}px`;
+        dom_context_menu.style.top = `${String(top)}px`;
+        dom_download_trigger.focus();
+    }
+
+    wrapper.addEventListener('contextmenu', showContextMenu, { signal });
+    document.addEventListener('pointerdown', (e) => {
+        if (!(e.target instanceof Node) || !dom_context_menu.contains(e.target)) hideContextMenu();
+    }, { signal });
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (dom_download_group.classList.contains('is-open')) {
+            setDownloadSubmenuOpen(false);
+            dom_download_trigger.focus();
+        } else {
+            hideContextMenu();
+        }
+    }, { signal });
+
+    dom_download_group.addEventListener('pointerenter', () => { setDownloadSubmenuOpen(true); }, { signal });
+    dom_download_trigger.addEventListener('click', () => { setDownloadSubmenuOpen(true, true); }, { signal });
+    dom_download_trigger.addEventListener('keydown', (e) => {
+        if (!['ArrowRight', 'ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) return;
+        e.preventDefault();
+        setDownloadSubmenuOpen(true);
+        focusDownloadItem(e.key === 'ArrowUp' ? -1 : 0);
+    }, { signal });
+    dom_download_submenu.addEventListener('keydown', (e) => {
+        const enabledItems = downloadMenuItems.filter((item) => !item.disabled);
+        const current = enabledItems.indexOf(document.activeElement as HTMLButtonElement);
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            dom_download_trigger.focus();
+            setDownloadSubmenuOpen(false);
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            focusDownloadItem(current + 1);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            focusDownloadItem(current - 1);
+        } else if (e.key === 'Home') {
+            e.preventDefault();
+            focusDownloadItem(0);
+        } else if (e.key === 'End') {
+            e.preventDefault();
+            focusDownloadItem(-1);
+        } else if (e.key === 'Tab') {
+            hideContextMenu();
+        }
+    }, { signal });
+
+    dom_download_fled.addEventListener('click', () => {
+        if (activeFledBytes) downloadBytes(activeFledBytes, activeMovieFilename, 'application/vnd.fastled.video');
+        hideContextMenu();
+    }, { signal });
+    dom_download_screenmap.addEventListener('click', () => {
+        if (activeEmbeddedJson) {
+            let screenmapText = activeEmbeddedJson;
+            try { screenmapText = JSON.stringify(JSON.parse(activeEmbeddedJson), null, 2); } catch { /* preserve valid decoded text */ }
+            download_blob_as_file(new Blob([screenmapText], { type: 'application/json' }), 'screenmap.json');
+        }
+        hideContextMenu();
+    }, { signal });
+    dom_download_rgb.addEventListener('click', () => {
+        if (movie_frames.length > 0) downloadBytes(rawMoviePayload(), `${movieStem()}.rgb`);
+        hideContextMenu();
+    }, { signal });
+    refreshDownloadMenuState();
 
     // Auto-hiding floating control bar (video-player style). The toolbar floats
     // over the canvas and is revealed by pointer activity, then fades out 4s
@@ -317,6 +484,9 @@ export function init(container: HTMLElement) {
         void file.text().then((text: string) => {
             // A new screenmap invalidates frames sized for the old LED count.
             movie_frames.length = 0;
+            activeFledBytes = null;
+            activeEmbeddedJson = null;
+            refreshDownloadMenuState();
             curr_frame_idx = 0;
             set_dom_btn_play(false);
             load_screenmap_data(JSON.parse(text) as Record<string, unknown>);
@@ -331,12 +501,12 @@ export function init(container: HTMLElement) {
             void errorDialog('Wrong file type', 'Please choose a .fled video file.');
             return;
         }
-        void file.arrayBuffer().then(load_movie_data).catch((error: unknown) => {
+        void file.arrayBuffer().then((buffer) => { load_movie_data(buffer, file.name); }).catch((error: unknown) => {
             void errorDialog('Error reading video file', String(error));
         });
     }
 
-    function load_movie_data(arrayBuffer: ArrayBuffer) {
+    function load_movie_data(arrayBuffer: ArrayBuffer, filename = 'video.fled') {
         if (screenmap_pts.length === 0) {
             void errorDialog('No screenmap loaded', 'Load a screenmap before loading a video.');
             return;
@@ -348,6 +518,10 @@ export function init(container: HTMLElement) {
             void errorDialog('Frame size mismatch', 'Frame size should be a multiple of the number of screenmap points.');
             return;
         }
+        if (!parsed.isFled || parsed.fledError !== null || parsed.embeddedJson === null) {
+            void errorDialog('Invalid FLED file', 'The selected video does not contain a valid FLED header and embedded screenmap.');
+            return;
+        }
         // Native source rate rides in the FLED metadata as video.fps (#256);
         // it drives the pump when the selector is on "Native" (#265). Default
         // 30 when absent/invalid — every pre-#256 recording played at 30.
@@ -357,6 +531,10 @@ export function init(container: HTMLElement) {
         movie_frames.length = 0;
         curr_frame_idx = 0;
         for (const frame of frames) movie_frames.push(frame);
+        activeFledBytes = uint8_array.slice();
+        activeEmbeddedJson = parsed.embeddedJson;
+        activeMovieFilename = filename;
+        refreshDownloadMenuState();
         dom_btn_play.disabled = false;
         set_dom_btn_play(true);
     }
@@ -410,7 +588,7 @@ export function init(container: HTMLElement) {
             const response = await fetch('/demo/video.fled');
             if (!response.ok) throw new Error('Network response was not ok');
             const buffer = await response.arrayBuffer();
-            load_movie_data(buffer);
+            load_movie_data(buffer, 'video.fled');
             set_dom_btn_play(false);
             dom_btn_play.click();
         } catch (error) {

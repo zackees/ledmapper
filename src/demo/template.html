@@ -65,4 +65,17 @@
 </div>
 <main class="drop-zone">
     <!-- Three.js canvas injected here by sketch.js -->
+    <div id="demo_context_menu" class="demo-context-menu" role="menu" aria-label="Player actions">
+        <div id="demo_download_group" class="demo-context-submenu-group">
+            <button id="demo_download_trigger" class="demo-context-menu-item demo-context-submenu-trigger" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false">
+                <span>Download</span>
+                <span class="demo-context-submenu-arrow" aria-hidden="true">›</span>
+            </button>
+            <div id="demo_download_submenu" class="demo-context-menu demo-context-submenu" role="menu" aria-label="Download">
+                <button id="demo_download_fled" class="demo-context-menu-item" type="button" role="menuitem" tabindex="-1">FLED</button>
+                <button id="demo_download_screenmap" class="demo-context-menu-item" type="button" role="menuitem" tabindex="-1">screenmap.json</button>
+                <button id="demo_download_rgb" class="demo-context-menu-item" type="button" role="menuitem" tabindex="-1">RGB</button>
+            </div>
+        </div>
+    </div>
 </main>
