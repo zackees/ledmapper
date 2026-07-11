@@ -12,11 +12,17 @@ FastLED Video Mapper (www.ledmapper.com) — a web-based tool suite for mapping 
 # One-time setup
 npm install
 
-# Start dev server (port 8080; add LM_OPEN=1 to also open a browser tab)
+# Start dev server (port 8080)
 npm run dev
-# Agents: use `npm run dev:agent` instead -- one command that starts (or
-# reuses) the server, waits for it, and prints DEV-SERVER-READY <url>. See
-# the ui-dev-loop skill.
+
+# Open a visible browser window too. Use this exact command when the user
+# says "open/start/turn on the agent browser" or expects a window to pop up.
+npm run dev -- --open
+
+# Headless/persistent agent automation only: starts or reuses the server,
+# waits for it, and prints DEV-SERVER-READY <url>. This does NOT open a window.
+npm run dev:agent
+# See the ui-dev-loop skill for automated interaction after startup.
 
 # Production build
 npm run build

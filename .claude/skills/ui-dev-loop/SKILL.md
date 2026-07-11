@@ -15,6 +15,26 @@ The loop this skill teaches: edit → Vite HMR (or reload) applies it → wait
 on an explicit ready signal → query only what changed → next edit. One
 server, one browser session, for the whole task.
 
+## Visible-browser requests (do this first)
+
+When the user says **"open/start/turn on the agent browser"**, says they
+should see a browser window, or otherwise asks only for the local UI to pop
+up, run this exact command:
+
+```
+npm run dev -- --open
+```
+
+That is the simple visible-window path. Do not substitute `npm run
+dev:agent`, `agent-browser --headed`, daemon restarts, port inspection, or
+session recovery unless the user separately asks for automated browser
+control. `npm run dev:agent` intentionally opens no window.
+
+If the user asks for both a visible window and automated interaction, start
+with `npm run dev -- --open`; only then attach automation if the task needs
+it. Do not restart a working visible server merely to change automation
+launch flags.
+
 ## Persistence rules
 
 - Start the dev server with **one command**: `npm run dev:agent`
