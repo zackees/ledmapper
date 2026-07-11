@@ -326,6 +326,9 @@ ShapeEditor.prototype._toast = async function (this: ShapeEditor, opts: Record<s
 
         try {
             if (self.signal.aborted) return null;
+            const callerDidOpen = typeof opts.didOpen === 'function'
+                ? opts.didOpen as (popup: HTMLElement) => void
+                : null;
             return await fireDialog({
                 toast: true,
                 position: 'top',
@@ -333,6 +336,18 @@ ShapeEditor.prototype._toast = async function (this: ShapeEditor, opts: Record<s
                 timer: 6000,
                 timerProgressBar: true,
                 ...opts,
+                // SweetAlert's `top` position otherwise starts at the viewport
+                // edge, on top of the app-shell mode bar. Measure the actual
+                // canvas boundary so wrapped/responsive editor controls remain
+                // usable too, without relying on a hard-coded header height.
+                didOpen: (popup) => {
+                    const popupContainer = popup.closest<HTMLElement>('.swal2-container');
+                    if (popupContainer) {
+                        const canvasTop = Math.ceil(self.mainEl.getBoundingClientRect().top);
+                        popupContainer.style.setProperty('padding-top', `${String(canvasTop + 8)}px`, 'important');
+                    }
+                    callerDidOpen?.(popup);
+                },
             });
         } catch { return null; }
     };

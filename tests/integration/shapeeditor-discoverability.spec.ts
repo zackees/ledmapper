@@ -120,6 +120,31 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         await expect(page.locator('.swal2-popup:not(.swal2-toast)')).toBeHidden();
     });
 
+    test('first-run toast does not occlude app-shell navigation or editor controls', async ({ page }) => {
+        await page.addInitScript(() => {
+            try { localStorage.removeItem('lm:shapeeditor-helpDismissed'); } catch { /* ignore */ }
+        });
+        await page.goto('/create');
+        await expect(page.locator('#app-mode-bar')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('#main')).toBeVisible({ timeout: 10000 });
+
+        const toast = page.locator('.swal2-toast');
+        await expect(toast).toBeVisible({ timeout: 5000 });
+
+        const [toastBox, modeBarBox, mainBox] = await Promise.all([
+            toast.boundingBox(),
+            page.locator('#app-mode-bar').boundingBox(),
+            page.locator('#main').boundingBox(),
+        ]);
+        if (!toastBox || !modeBarBox || !mainBox) throw new Error('expected visible toast and app-shell chrome');
+
+        // The canvas starts below both the product mode bar and the editor's
+        // own toolbar. Keeping the toast at or below this boundary guarantees
+        // that Play/Create/Record and Undo/Redo/Reset/Save remain clickable.
+        expect(toastBox.y).toBeGreaterThanOrEqual(mainBox.y);
+        expect(toastBox.y).toBeGreaterThanOrEqual(modeBarBox.y + modeBarBox.height);
+    });
+
     test('hint strip reflects Chain and Reorder modes', async ({ page }) => {
         await page.addInitScript(() => {
             try { localStorage.setItem('lm:shapeeditor-helpDismissed', '1'); } catch { /* ignore */ }
