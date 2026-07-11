@@ -1,5 +1,6 @@
 import { initNav } from './nav';
 import { createRouter } from './router';
+import './agent-ui-sentinel';
 
 // Handle GitHub Pages 404 redirect
 const redirect = sessionStorage.getItem('spa-redirect');
