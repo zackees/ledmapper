@@ -124,6 +124,22 @@ re-checking rather than round-tripping per line.
   for the `@gpu` rules. HMR-applied (or reload-applied) ≠ correct: an
   explicit ready signal only means the new code is live, not that it's
   right.
+- **Do not run the full ~180-test non-GPU suite as your default check** —
+  it takes minutes. Pick the 1-3 spec files that actually cover the
+  changed surface (e.g. `console-errors.spec.ts` for "does any tool page
+  still load cleanly", the relevant tool's own spec for behavior changes).
+  Save the full suite / CI for final confirmation.
+- **Never set `CI=1` locally to "be safe."** `playwright.config.js` reads
+  it: with `CI` set, `reuseExistingServer` becomes `false` and the
+  webServer step runs `npm run build && vite preview` from scratch before
+  every single test invocation (a full production build each time), and
+  `workers` drops to `1`. Without it, Playwright reuses whatever dev
+  server is already running on port 8080 and runs multiple workers in
+  parallel. Bring the app up as its own persistent step first (`npm run
+  dev`, kept alive per the Persistence rules above), then run `npx
+  playwright test <spec>` against it with a plain environment — this cut a
+  7-test subset from 48s to 23s in practice, on top of not repeating the
+  browser/session-recreation cost the rest of this skill already avoids.
 - Before declaring a UI task done, validate from a clean state at least
   once: a fresh `agent-browser --session <name> reload` (or a brand-new
   session) plus the relevant formal test. Persistent sessions optimize
