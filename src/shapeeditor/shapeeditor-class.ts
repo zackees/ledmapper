@@ -169,6 +169,7 @@ export class ShapeEditor {
     declare getCursorForGizmo: (handleId: string | null) => any;
     declare drawGizmoHandles: () => any;
     declare hitTestLED: (canvasX: number, canvasY: number) => any;
+    declare _startStripDrag: (stripIdx: number, canvasX: number, canvasY: number) => boolean;
     declare hitTestBgGizmo: (canvasX: number, canvasY: number) => any;
     declare drawBgGizmoHandles: () => any;
     declare handleBgGizmoDrag: (cx: number, cy: number) => any;

@@ -428,12 +428,6 @@ ShapeEditor.prototype.hitTestGizmo = function (this: ShapeEditor, canvasX: numbe
             if (Math.abs(canvasX - h.x) < threshold && Math.abs(canvasY - h.y) < threshold) return 'edge-' + key;
         }
 
-        // Inside oriented bounding box → translate (only if not on an LED)
-        const [lx, ly] = self.canvasToObbLocal(self.ptsBBox, canvasX, canvasY);
-        if (Math.abs(lx) <= handles.hw && Math.abs(ly) <= handles.hh) {
-            if (self.hitTestLED(canvasX, canvasY) < 0) return 'translate';
-        }
-
         return null;
     };
 
@@ -552,12 +546,28 @@ ShapeEditor.prototype.hitTestLED = function (this: ShapeEditor, canvasX: number,
         const threshold = 10;
         const threshSq = threshold * threshold;
         let bestIdx = -1, bestDist = threshSq;
-        for (let i = 0; i < self.lastTransformedPts.length; i++) {
-            const [cx, cy] = self.toCanvasCoords(self.nn(self.lastTransformedPts[i])[0], self.nn(self.lastTransformedPts[i])[1]);
-            const dx = canvasX - cx;
-            const dy = canvasY - cy;
-            const d = dx * dx + dy * dy;
-            if (d < bestDist) { bestDist = d; bestIdx = i; }
+        let bestStripIdx = -1;
+        const selectedStripIdx = self.selection.getStripIdx();
+        const strips = self.stripInfo?.strips ?? [{ offset: 0, count: self.lastTransformedPts.length }];
+        for (let stripIdx = 0; stripIdx < strips.length; stripIdx++) {
+            const strip = strips[stripIdx];
+            if (!strip) continue;
+            const start = Math.max(0, strip.offset);
+            const end = Math.min(self.lastTransformedPts.length, strip.offset + strip.count);
+            for (let i = start; i < end; i++) {
+                const [cx, cy] = self.toCanvasCoords(self.nn(self.lastTransformedPts[i])[0], self.nn(self.lastTransformedPts[i])[1]);
+                const dx = canvasX - cx;
+                const dy = canvasY - cy;
+                const d = dx * dx + dy * dy;
+                const tied = Math.abs(d - bestDist) < 0.01;
+                const selectedWinsTie = tied && stripIdx === selectedStripIdx && bestStripIdx !== selectedStripIdx;
+                const topmostWinsTie = tied && stripIdx > bestStripIdx && bestStripIdx !== selectedStripIdx;
+                if (d < bestDist - 0.01 || selectedWinsTie || topmostWinsTie) {
+                    bestDist = d;
+                    bestIdx = i;
+                    bestStripIdx = stripIdx;
+                }
+            }
         }
         return bestIdx;
     };

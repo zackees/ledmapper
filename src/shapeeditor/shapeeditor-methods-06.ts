@@ -5,6 +5,8 @@ import { ShapeEditor } from './shapeeditor-class';
 import { computeStripSnapTargets } from './strip-snap-targets';
 import { rotatePointsAround } from './strip-rotate';
 
+const STRIP_STROKE_HIT_PX = 10;
+
 ShapeEditor.prototype.onContextMenu = function (this: ShapeEditor, e: MouseEvent) {
     const self = this;
 
@@ -52,7 +54,7 @@ ShapeEditor.prototype.onContextMenu = function (this: ShapeEditor, e: MouseEvent
         }
         // No point hit — check for edge hit
         const edge = self.findNearestEdge(cx, cy);
-        if (edge && edge.distSq < 20 * 20) {
+        if (edge && edge.distSq <= STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) {
             self.highlightedEdgeIdx = edge.idx;
             self.setNeedsRender();
             self.showContextMenu(e.clientX, e.clientY, -1, edge.idx);
@@ -66,6 +68,48 @@ ShapeEditor.prototype.onContextMenu = function (this: ShapeEditor, e: MouseEvent
         }
         self.showContextMenu(e.clientX, e.clientY, -1, -1, insideBBox);
     };
+
+ShapeEditor.prototype._startStripDrag = function (this: ShapeEditor, stripIdx: number, canvasX: number, canvasY: number) {
+    const self = this;
+    if (!self.stripInfo || stripIdx < 0 || stripIdx >= self.stripInfo.strips.length) return false;
+
+    const strip = self.stripInfo.strips[stripIdx];
+    if (!strip) return false;
+    self.dragStartCanvasX = canvasX;
+    self.dragStartCanvasY = canvasY;
+    self.stripDragActive = true;
+    self.stripDragIdx = stripIdx;
+    self.stripDragStartScreenmap = [];
+    self.stripDragStartRaw = [];
+    for (let k = strip.offset; k < strip.offset + strip.count; k++) {
+        self.stripDragStartScreenmap.push([self.nn(self.screenmap_pts[k])[0], self.nn(self.screenmap_pts[k])[1]]);
+        self.stripDragStartRaw.push([self.nn(self.rawPts[k])[0], self.nn(self.rawPts[k])[1]]);
+    }
+    self.stripDragLastSdx = 0;
+    self.stripDragLastSdy = 0;
+
+    let cx0 = 0, cy0 = 0, count = 0;
+    for (let k = strip.offset; k < strip.offset + strip.count; k++) {
+        const point = self.screenmap_pts[k];
+        if (!point) continue;
+        cx0 += point[0];
+        cy0 += point[1];
+        count++;
+    }
+    self.stripSnapStartCenter = count > 0 ? { x: cx0 / count, y: cy0 / count } : null;
+    const { xTargets, yTargets } = computeStripSnapTargets(
+        self.stripInfo.strips,
+        stripIdx,
+        self.screenmap_pts,
+        self.stripSnapStartCenter ?? undefined,
+    );
+    self.stripSnapXTargets = xTargets;
+    self.stripSnapYTargets = yTargets;
+    self.stripSnapEngagedX = null;
+    self.stripSnapEngagedY = null;
+    self._oc().style.cursor = 'grabbing';
+    return true;
+};
 
 ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) {
     const self = this;
@@ -159,7 +203,7 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
         // Shift+Left-click on empty area: insert a new point between two existing points
         if (e.shiftKey && self.screenmap_pts.length >= 2 && hitLedForModCheck < 0) {
             const edge = self.findNearestEdge(cx, cy);
-            if (edge) {
+            if (edge && edge.distSq <= STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) {
                 const { idx, t }: { idx: number; t: number } = edge;
                 const si: [number, number] = self.nn(self.screenmap_pts[idx]);
                 const si1: [number, number] = self.nn(self.screenmap_pts[idx + 1]);
@@ -317,58 +361,21 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
                 self.isDragging = true;
                 self._oc().style.cursor = 'grabbing';
             } else {
-                // Group drag for the whole strip
-                self.stripDragActive = true;
-                self.stripDragIdx = hitStripIdx;
-                const strip = self.nn(self._si().strips[hitStripIdx]);
-                self.stripDragStartScreenmap = [];
-                self.stripDragStartRaw = [];
-                for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-                    self.stripDragStartScreenmap.push([self.nn(self.screenmap_pts[k])[0], self.nn(self.screenmap_pts[k])[1]]);
-                    self.stripDragStartRaw.push([self.nn(self.rawPts[k])[0], self.nn(self.rawPts[k])[1]]);
-                }
-                self.stripDragLastSdx = 0;
-                self.stripDragLastSdy = 0;
-                // Dragged strip's starting center (rotation-aware: mean of
-                // its already-transformed `screenmap_pts`). Computed first
-                // so the snap-target precompute can use it as the band-filter
-                // anchor for issue #115's inter-strip grid pitch inference.
-                let cx0 = 0, cy0 = 0, cn0 = 0;
-                for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-                    const p = self.screenmap_pts[k];
-                    if (!p) continue;
-                    cx0 += p[0]; cy0 += p[1]; cn0++;
-                }
-                self.stripSnapStartCenter = cn0 > 0
-                    ? { x: cx0 / cn0, y: cy0 / cn0 }
-                    : null;
-                // ── Strip-drag snap precompute (issues #105, #110, #115) ──
-                // Targets per other strip: center (#105), ±k·LED_pitch (#110,
-                // k ∈ {1..3}), and ±k·grid_pitch (#115, k ∈ {1..5}). The
-                // inter-strip grid pitch is inferred from neighbor centers
-                // along each axis, band-filtered by the dragged strip's
-                // start center so far-row outliers don't contaminate it.
-                const { xTargets, yTargets } = computeStripSnapTargets(
-                    self._si().strips, hitStripIdx, self.screenmap_pts,
-                    self.stripSnapStartCenter ?? undefined,
-                );
-                self.stripSnapXTargets = xTargets;
-                self.stripSnapYTargets = yTargets;
-                self.stripSnapEngagedX = null;
-                self.stripSnapEngagedY = null;
-                self._oc().style.cursor = 'grabbing';
+                self._startStripDrag(hitStripIdx, cx, cy);
             }
             return;
         }
 
-        // Priority 3: Edge selection (click near a line segment)
+        // Priority 3: visible strip stroke. The line is part of the strip's
+        // direct-manipulation target, ahead of broad background affordances.
         if (self.screenmap_pts.length >= 2) {
             const edge = self.findNearestEdge(cx, cy);
-            if (edge && edge.distSq < 20 * 20) {
+            if (edge && edge.distSq <= STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) {
                 self.highlightedEdgeIdx = edge.idx;
                 self.selectedIdx = -1;
-                self.selection.clear();
+                self.selection.selectStrip(edge.stripIdx);
                 self.setNeedsRender();
+                self._startStripDrag(edge.stripIdx, cx, cy);
                 return;
             }
         }
@@ -376,24 +383,7 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
 
         // Marquee select is gated behind Ctrl+drag (handled by the
         // _pendingMarquee branch above). Plain left-drag keeps its
-        // original behavior: translate gizmo inside the bbox, pan outside.
-
-        // Priority 4: Translate (inside bbox, no LED hit)
-        if (gizmoHit === 'translate') {
-            self.gizmoActive = 'translate';
-            self.gizmoDragStart = {
-                canvasX: cx, canvasY: cy,
-                scale: parseFloat(self.dom_txt_scale.value) || 1,
-                scaleX: parseFloat(self.dom_txt_scale_x.value) || 1,
-                scaleY: parseFloat(self.dom_txt_scale_y.value) || 1,
-                rotate: parseInt(self.dom_txt_rotate.value) || 0,
-                translateX: parseInt(self.dom_txt_translate_x.value) || 0,
-                translateY: parseInt(self.dom_txt_translate_y.value) || 0,
-                bboxCenter: null,
-            };
-            self._oc().style.cursor = 'move';
-            return;
-        }
+        // original behavior: pan on empty canvas.
 
         // Priority 4: Background image gizmo (mouse is outside screenmap bbox)
         if (self.bgImageMesh) {
@@ -792,8 +782,8 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
             self._tooltip().style.left = `${String(tx)}px`;
             self._tooltip().style.top = `${String(ty)}px`;
             self._tooltip().style.opacity = '1';
-        } else if (self.gizmoHover === 'translate') {
-            self._oc().style.cursor = 'move';
+        } else if (self.findNearestEdge(cx, cy)?.distSq <= STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) {
+            self._oc().style.cursor = 'grab';
             self.tooltipLedIdx = -1;
             self._tooltip().style.opacity = '0';
         } else if (self.bgGizmoHover && self.bgGizmoHover !== 'translate') {

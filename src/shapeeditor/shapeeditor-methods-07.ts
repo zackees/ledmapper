@@ -554,6 +554,11 @@ ShapeEditor.prototype._enterPlacing = function (this: ShapeEditor, catalogId: st
 
         const entry = getCatalogEntry(catalogId);
         if (!entry) return;
+        // Placement owns the canvas until the new panel is committed. Exit
+        // chain/reorder mode up front so the placed strip is immediately
+        // selectable and draggable instead of inheriting a stale mode that
+        // deliberately suppresses LED hit-testing.
+        if (self.editorMode) self.setEditorMode(null);
         const opts = self._readPanelOpts();
         const localPts = generatePanelPoints(entry, opts);
         self.placingState = { entry, opts, localPts, ghostWorld: null };

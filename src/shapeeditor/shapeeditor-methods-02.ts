@@ -382,29 +382,44 @@ ShapeEditor.prototype.findNearestEdge = function (this: ShapeEditor, canvasX: nu
         let bestDist = Infinity;
         let bestIdx = -1;
         let bestT = 0;
+        let bestStripIdx = -1;
+        const selectedStripIdx = self.selection.getStripIdx();
+        const strips = self.stripInfo?.strips ?? [{ offset: 0, count: self.lastTransformedPts.length }];
 
-        for (let i = 0; i < self.lastTransformedPts.length - 1; i++) {
-            const ltp_i = self.lastTransformedPts[i] ?? [0, 0];
-            const ltp_i1 = self.lastTransformedPts[i + 1] ?? [0, 0];
-            const [ax, ay] = self.toCanvasCoords(ltp_i[0], ltp_i[1]);
-            const [bx, by] = self.toCanvasCoords(ltp_i1[0], ltp_i1[1]);
+        for (let stripIdx = 0; stripIdx < strips.length; stripIdx++) {
+            const strip = strips[stripIdx];
+            if (!strip) continue;
+            const start = Math.max(0, strip.offset);
+            const end = Math.min(self.lastTransformedPts.length, strip.offset + strip.count);
+            // A flattened last-of-A -> first-of-B segment is not rendered,
+            // so it must never become an invisible click target.
+            for (let i = start; i < end - 1; i++) {
+                const ltp_i = self.lastTransformedPts[i] ?? [0, 0];
+                const ltp_i1 = self.lastTransformedPts[i + 1] ?? [0, 0];
+                const [ax, ay] = self.toCanvasCoords(ltp_i[0], ltp_i[1]);
+                const [bx, by] = self.toCanvasCoords(ltp_i1[0], ltp_i1[1]);
 
-            const dx = bx - ax, dy = by - ay;
-            const lenSq = dx * dx + dy * dy;
-            let t = lenSq > 0 ? ((canvasX - ax) * dx + (canvasY - ay) * dy) / lenSq : 0;
-            t = Math.max(0, Math.min(1, t));
+                const dx = bx - ax, dy = by - ay;
+                const lenSq = dx * dx + dy * dy;
+                let t = lenSq > 0 ? ((canvasX - ax) * dx + (canvasY - ay) * dy) / lenSq : 0;
+                t = Math.max(0, Math.min(1, t));
 
-            const px = ax + t * dx, py = ay + t * dy;
-            const distSq = (canvasX - px) * (canvasX - px) + (canvasY - py) * (canvasY - py);
+                const px = ax + t * dx, py = ay + t * dy;
+                const distSq = (canvasX - px) * (canvasX - px) + (canvasY - py) * (canvasY - py);
+                const tied = Math.abs(distSq - bestDist) < 0.01;
+                const selectedWinsTie = tied && stripIdx === selectedStripIdx && bestStripIdx !== selectedStripIdx;
+                const topmostWinsTie = tied && stripIdx > bestStripIdx && bestStripIdx !== selectedStripIdx;
 
-            if (distSq < bestDist) {
-                bestDist = distSq;
-                bestIdx = i;
-                bestT = t;
+                if (distSq < bestDist - 0.01 || selectedWinsTie || topmostWinsTie) {
+                    bestDist = distSq;
+                    bestIdx = i;
+                    bestT = t;
+                    bestStripIdx = stripIdx;
+                }
             }
         }
 
-        return { idx: bestIdx, t: bestT, distSq: bestDist };
+        return bestIdx >= 0 ? { idx: bestIdx, stripIdx: bestStripIdx, t: bestT, distSq: bestDist } : null;
     };
 
 ShapeEditor.prototype.clearEditingState = function (this: ShapeEditor) {
