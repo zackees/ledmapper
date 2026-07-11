@@ -108,8 +108,8 @@ from production builds.
 
 Practical effect: this stack still removes the sleep-and-guess pattern and
 the repeated server/browser relaunch overhead for **every** edit, but the
-state-preservation benefit described in `TASK.md` currently applies fully
-only to CSS changes. If a task does many iterations on one loaded-state
+state-preservation benefit this stack was designed for currently applies
+fully only to CSS changes. If a task does many iterations on one loaded-state
 scenario (e.g. a specific loaded video + screenmap in moviemaker), expect
 to re-establish that state after each JS/TS edit — plan the edit-observe
 loop accordingly, and prefer batching several related JS/TS changes before
