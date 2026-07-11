@@ -70,6 +70,12 @@ export interface FpsStats {
     framesRendered: number;
 }
 
+/** Format the three playback clocks in user-facing terms. */
+export function formatFpsStats(stats: FpsStats, monitorHz: number): string {
+    const monitor = monitorHz > 0 ? `monitor: ${String(monitorHz)}hz · ` : '';
+    return `${monitor}render: ${String(Math.round(stats.renderFps))} · source: ${String(Math.round(stats.pushFps))} · ${stats.frameTimeMs.toFixed(1)}ms`;
+}
+
 /** Common display refresh rates. A measured value within tolerance snaps to
  *  one of these so 59.6 reads as clean 60. */
 const COMMON_REFRESH_HZ = [50, 60, 75, 90, 100, 120, 144, 165, 240, 360];
@@ -175,17 +181,13 @@ export function mountFpsWidget({
     el.title = 'Click or press F to hide';
     wrapper.appendChild(el);
 
-    // Host display Hz: measured once at mount (no persistent loop, #267),
-    // cached, and shown decoupled from the source/push rate — `display`
-    // (monitor capability), `render` (achieved render loop), and `push`
-    // (source frame delivery) are three distinct clocks (#264).
+    // Monitor Hz is measured once at mount (no persistent loop, #267) and
+    // shown separately from the achieved render and source-delivery rates.
     let displayHz = 0;
     void measureDisplayHz().then((hz) => { displayHz = hz; });
 
     function refresh() {
-        const s = getStats();
-        const hz = displayHz > 0 ? `display: ${String(displayHz)}Hz · ` : '';
-        el.textContent = `${hz}render: ${String(Math.round(s.renderFps))} · push: ${String(Math.round(s.pushFps))} · ${s.frameTimeMs.toFixed(1)}ms`;
+        el.textContent = formatFpsStats(getStats(), displayHz);
     }
     refresh();
     const interval = setInterval(refresh, 250);

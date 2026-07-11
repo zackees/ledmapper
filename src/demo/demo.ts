@@ -35,6 +35,7 @@ export function init(container: HTMLElement) {
     const dom_btn_download_screenmap = qe<HTMLButtonElement>(container, '#btn_download_screenmap');
     const dom_btn_download_video = qe<HTMLButtonElement>(container, '#btn_download_video');
     const dom_sel_framerate = qe<HTMLSelectElement>(container, '#sel_framerate');
+    const dom_chk_interpolation = qe<HTMLInputElement>(container, '#chk_interpolation');
     const dom_btn_download_screenmap_16x16_serpentine = qe<HTMLButtonElement>(container, '#btn_download_screenmap_16x16_serpentine');
     const dom_chk_auto_bloom        = qe<HTMLInputElement>(container, '#chk_auto_bloom');
     const dom_bloom_strength_slider = qe<HTMLElement>(container, '#bloom_strength_slider');
@@ -74,6 +75,7 @@ export function init(container: HTMLElement) {
     // programmatic dispatches never masquerade as a saved preference.
     const LS_LED_SIZE = 'ledmapper.demo.ledSize';
     const LS_FPS = 'ledmapper.demo.fps';
+    const LS_INTERPOLATION = 'ledmapper.demo.interpolation';
     const savedLedRaw = parseInt(safeStorage.get(LS_LED_SIZE) ?? '', 10);
     const ledSizeMin = parseInt(dom_rng_diameter.min) || 1;
     const ledSizeMax = parseInt(dom_rng_diameter.max) || 64;
@@ -107,8 +109,15 @@ export function init(container: HTMLElement) {
     // loop run at the display's refresh rate instead of the default 60. The
     // record (moviemaker) and player (movieplayer) tools do NOT enable this —
     // interpolation is opt-in and off by default there.
-    gfx.setInterpolation(true);
+    dom_chk_interpolation.checked = safeStorage.getBool(LS_INTERPOLATION, true);
+    gfx.setInterpolation(dom_chk_interpolation.checked);
     gfx.setTargetFPS(DEMO_RENDER_FPS_CAP);
+
+    dom_chk_interpolation.addEventListener('change', () => {
+        const interpolation = dom_chk_interpolation.checked;
+        gfx.setInterpolation(interpolation);
+        safeStorage.setBool(LS_INTERPOLATION, interpolation);
+    }, { signal });
 
     // Debug hook for the perf snapshot test (issue #160). Only attaches
     // under `?debug=stats` so production builds don't expose internals
