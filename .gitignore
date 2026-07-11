@@ -26,3 +26,10 @@ tests/ux/out/
 # Sibling extern checkouts (e.g. fastled) — convention from
 # the clud-extern-repos workflow; never part of this repo's history.
 /.extern-repos/
+
+# agent-browser persistent session/profile state — can contain auth
+# tokens and cookies; never part of this repo's history (issue #320).
+.agent-ui/
+.agent-browser/
+.auth/
+*.browser-state.json
