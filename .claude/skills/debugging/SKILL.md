@@ -94,16 +94,18 @@ browser extension** — deliberately not bundled.
 
 ## Test-side debugging
 
-- `npm test` — unit. `npx playwright test <spec>` — one integration spec
-  (auto-starts the dev server).
+- `npm test` — unit. `npm run test:integration -- <spec>` — one integration
+  spec (blessed runner; auto-starts the dev server if needed). **Never run
+  `playwright`/`npx playwright test` directly** — see CLAUDE.md's "Running
+  Playwright tests" section; a PreToolUse hook blocks it.
 - Failed Playwright tests auto-attach the page's event log as `lm-log`
   (fixture in tests/integration/fixtures.ts) — check the HTML report or
   trace viewer Attachments tab before re-running anything.
 - `@gpu` specs skip in normal CI; they run locally (real GPU) and nightly
   under SwiftShader (`.github/workflows/gpu-nightly.yml`, dispatchable).
   When touching moviemaker/preset-picker/recording, run
-  `npx playwright test moviemaker` locally before merging — CI will not
-  catch a same-day regression there. Spec-internal waits must scale by
+  `npm run test:integration -- moviemaker` locally before merging — CI will
+  not catch a same-day regression there. Spec-internal waits must scale by
   `GPU_WAIT_SCALE` (tests/helpers/gpu-gate.ts). Perf specs (`@gpu-perf`)
   never run in CI — CPU rendering makes their numbers meaningless.
 - Full-pipeline evidence run with screenshots: `node tests/ux/walkthrough.mjs`

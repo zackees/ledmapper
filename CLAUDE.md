@@ -157,8 +157,12 @@ Full guide: **`.claude/skills/debugging/SKILL.md`** (playbooks for "recording pr
 - **Copy diagnostics**: every error dialog has a button that copies version + state + event trail; read user pastes bottom-up from the error.
 - **Watchdogs** (`src/watchdogs.ts`): `context-lost`, `video-stalled`, `render-loop-stalled`, `readback-black` warnings flag silent rendering failures.
 - **`?debug` panel**: stats-gl + lil-gui + eruda, lazy-loaded (`src/debug-panel.ts`).
-- **GPU specs** (`@gpu`) skip in normal CI and run nightly under SwiftShader — run `npx playwright test moviemaker` locally before merging changes to moviemaker/preset-picker/recording. Failed Playwright tests auto-attach the event log (`lm-log`) to the report.
+- **GPU specs** (`@gpu`) skip in normal CI and run nightly under SwiftShader — run `npm run test:integration -- moviemaker` locally before merging changes to moviemaker/preset-picker/recording. Failed Playwright tests auto-attach the event log (`lm-log`) to the report.
 
 ## Agent UI dev loop
 
 For iterating on UI/behavior changes: **`.claude/skills/ui-dev-loop/SKILL.md`**. Keep one dev server + one `agent-browser` session alive for the whole task; wait on `window.__agentUi.phase === 'ready'` (the HMR sentinel, `src/agent-ui-sentinel.ts`, dev-only) instead of sleeping. Note: CSS edits hot-patch in place; JS/TS edits currently full-reload (no module calls `import.meta.hot.accept()` yet), so in-tool state doesn't survive a JS/TS edit — see the skill for the full caveat.
+
+## Running Playwright tests (blessed command — required)
+
+**Never run `playwright` / `npx playwright test` directly.** Always use `npm run test:integration [-- <spec-or-pattern>]` (`scripts/run-playwright.mjs`) — a `PreToolUse` hook (`.claude/hooks/check-playwright.py`) blocks direct invocations and errors with this same instruction. The blessed runner: reuses an already-running dev server (starts one only if needed, and only tears down the one it started itself), caps `--workers` to a safe default (an unconstrained local run was observed to silently die mid-run — see `.claude/skills/ui-dev-loop/SKILL.md`), and tees full output to a gitignored `.temp/logs/playwright-*.log` while printing a compact tail instead of the full firehose. Runs everything by default; pass a spec name/pattern to scope it, e.g. `npm run test:integration -- moviemaker`. Add `-- --verbose` to stream full output live instead of the tail summary.

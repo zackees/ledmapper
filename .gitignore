@@ -36,3 +36,7 @@ tests/ux/out/
 
 # Scratch verification-run logs (this session's manual test output).
 .temp/logs/*.log
+
+# Python bytecode cache from .claude/hooks/*.py running locally.
+__pycache__/
+*.pyc
