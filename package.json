@@ -21,7 +21,11 @@
     "test:smoke": "vite build && playwright test --config playwright.smoke.config.js",
     "test:canvas-fit": "vite build && playwright test --config playwright.canvas-fit.config.js",
     "test:perf": "vite build && playwright test --config playwright.perf.config.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ui:inspect": "agent-browser snapshot -i -c",
+    "ui:errors": "agent-browser errors",
+    "ui:console": "agent-browser console",
+    "ui:network": "agent-browser network requests --type xhr,fetch"
   },
   "repository": {
     "type": "git",
