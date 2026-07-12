@@ -509,6 +509,15 @@ ShapeEditor.prototype.setNeedsRender = function (this: ShapeEditor) {
     const self = this;
  self.frameDirty = true; };
 
+ShapeEditor.prototype.applyInteractiveZoom = function (this: ShapeEditor, zoom: number): boolean {
+    const nextZoom = Math.max(0.1, Math.min(10, zoom));
+    if (Math.abs(nextZoom - this.camZoom) <= Number.EPSILON) return false;
+    this.camZoom = nextZoom;
+    this.directionArrowTransition.noteZoom(performance.now());
+    this.setNeedsRender();
+    return true;
+};
+
 ShapeEditor.prototype._oc = function (this: ShapeEditor): HTMLCanvasElement {
     const self = this;
 

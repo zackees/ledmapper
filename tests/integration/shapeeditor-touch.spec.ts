@@ -152,6 +152,9 @@ test.describe('Shapeeditor touch gestures', () => {
     test('pinch gesture changes camera zoom', async ({ touchPage: page }) => {
         await seedAndOpen(page);
         const z0 = await page.evaluate(() => window.__shapeeditorDebug.getCamZoom());
+        const arrowCount0 = await page.evaluate(
+            () => window.__lmDebug?.shapeeditor?.getState().directionArrowCount ?? 0,
+        );
         // Dispatch two-finger pinch via raw TouchEvents (most reliable cross-platform)
         await page.evaluate(() => {
             const canvases = document.querySelectorAll('canvas');
@@ -173,6 +176,12 @@ test.describe('Shapeeditor touch gestures', () => {
         });
         const z1 = await page.evaluate(() => window.__shapeeditorDebug.getCamZoom());
         expect(z1).toBeGreaterThan(z0 * 1.5);
+        await expect.poll(
+            () => page.evaluate(() => window.__lmDebug?.shapeeditor?.getState().directionArrowTransitionPhase),
+        ).toBe('settling');
+        expect(
+            await page.evaluate(() => window.__lmDebug?.shapeeditor?.getState().directionArrowCount ?? 0),
+        ).toBe(arrowCount0);
     });
 
     test('two-finger drag pans the camera', async ({ touchPage: page }) => {

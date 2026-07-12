@@ -5,7 +5,11 @@ import { ShapeEditor } from './shapeeditor-class';
 
 import { getStripColors, stripStartEndLabels } from '../common';
 import { gfxColors, withAlpha } from '../ui/theme';
-import { computeDirectionArrowPlacements } from './direction-arrows';
+import {
+    computeDirectionArrowPlacements,
+    directionArrowAnchorsFromPlacements,
+    projectDirectionArrowAnchors,
+} from './direction-arrows';
 
 import type { GizmoHandle } from './shapeeditor-types';
 
@@ -38,7 +42,18 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
             self.bgImageBBox = null;
         }
 
-        if (self.lastTransformedPts.length === 0) { self.ptsBBox = null; self.directionArrowCount = 0; self.drawBgGizmoHandles(); self.drawRuler(); self._drawPlacingGhost(); self._drawPasteGhost(); return; }
+        if (self.lastTransformedPts.length === 0) {
+            self.ptsBBox = null;
+            self.directionArrowCount = 0;
+            self.directionArrowLayers = [];
+            self.directionArrowTransition.reset();
+            self.directionArrowTransitionPhase = 'idle';
+            self.drawBgGizmoHandles();
+            self.drawRuler();
+            self._drawPlacingGhost();
+            self._drawPasteGhost();
+            return;
+        }
 
         const pts = self.lastTransformedPts.map(([x, y]: [number, number]) => self.toCanvasCoords(x, y));
 
@@ -171,22 +186,38 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
             const arrowStrips = hasMultiStrip
                 ? self._si().strips.map((strip) => ({ offset: strip.offset, count: strip.count }))
                 : [{ offset: 0, count: pts.length }];
-            const arrowPlacements = computeDirectionArrowPlacements(pts, arrowStrips);
-            self.directionArrowCount = arrowPlacements.length;
+            const adaptivePlacements = computeDirectionArrowPlacements(pts, arrowStrips);
+            const adaptiveAnchors = directionArrowAnchorsFromPlacements(adaptivePlacements);
+            const arrowLayers = self.directionArrowTransition.update(
+                adaptiveAnchors,
+                performance.now(),
+                self.geometryDirty,
+            );
+            self.directionArrowLayers = arrowLayers.map((layer) => ({
+                count: layer.anchors.length,
+                opacity: layer.opacity,
+            }));
+            self.directionArrowTransitionPhase = self.directionArrowTransition.getPhase();
+            const primaryLayer = arrowLayers.reduce((best, layer) => (
+                !best || layer.opacity > best.opacity ? layer : best
+            ), arrowLayers[0]);
+            self.directionArrowCount = primaryLayer?.anchors.length ?? 0;
             if (self.overlayAlpha > 0) {
-                self.overlayCtx.globalAlpha = self.overlayAlpha;
                 const arrowLen = 12;
                 const arrowHalf = 0.45;
-                for (const arrow of arrowPlacements) {
-                    self.overlayCtx.fillStyle = hasMultiStrip
-                        ? stripColors?.[arrow.stripIndex] ?? gfxColors.textStrong()
-                        : `hsl(${String((120 + arrow.segmentIndex * 2) % 360)}, 100%, 50%)`;
-                    self.overlayCtx.beginPath();
-                    self.overlayCtx.moveTo(arrow.x, arrow.y);
-                    self.overlayCtx.lineTo(arrow.x - arrowLen * Math.cos(arrow.angle - arrowHalf), arrow.y - arrowLen * Math.sin(arrow.angle - arrowHalf));
-                    self.overlayCtx.lineTo(arrow.x - arrowLen * Math.cos(arrow.angle + arrowHalf), arrow.y - arrowLen * Math.sin(arrow.angle + arrowHalf));
-                    self.overlayCtx.closePath();
-                    self.overlayCtx.fill();
+                for (const layer of arrowLayers) {
+                    self.overlayCtx.globalAlpha = self.overlayAlpha * layer.opacity;
+                    for (const arrow of projectDirectionArrowAnchors(pts, layer.anchors)) {
+                        self.overlayCtx.fillStyle = hasMultiStrip
+                            ? stripColors?.[arrow.stripIndex] ?? gfxColors.textStrong()
+                            : `hsl(${String((120 + arrow.segmentIndex * 2) % 360)}, 100%, 50%)`;
+                        self.overlayCtx.beginPath();
+                        self.overlayCtx.moveTo(arrow.x, arrow.y);
+                        self.overlayCtx.lineTo(arrow.x - arrowLen * Math.cos(arrow.angle - arrowHalf), arrow.y - arrowLen * Math.sin(arrow.angle - arrowHalf));
+                        self.overlayCtx.lineTo(arrow.x - arrowLen * Math.cos(arrow.angle + arrowHalf), arrow.y - arrowLen * Math.sin(arrow.angle + arrowHalf));
+                        self.overlayCtx.closePath();
+                        self.overlayCtx.fill();
+                    }
                 }
             }
         }

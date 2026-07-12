@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { computeDirectionArrowPlacements } from '../../src/shapeeditor/direction-arrows';
+import {
+    computeDirectionArrowPlacements,
+    directionArrowAnchorsFromPlacements,
+    projectDirectionArrowAnchors,
+} from '../../src/shapeeditor/direction-arrows';
 
 test('places arrows at even screen-space intervals near the target density', () => {
     const arrows = computeDirectionArrowPlacements([[0, 0], [450, 0]], [{ offset: 0, count: 2 }]);
@@ -51,4 +55,17 @@ test('ignores empty, singleton, and fully degenerate strips', () => {
         [{ offset: 0, count: 0 }, { offset: 0, count: 1 }, { offset: 0, count: 2 }],
     );
     assert.deepEqual(arrows, []);
+});
+
+test('reprojects frozen anchors onto the current zoomed path', () => {
+    const initial = computeDirectionArrowPlacements(
+        [[0, 0], [450, 0]],
+        [{ offset: 0, count: 2 }],
+    );
+    const anchors = directionArrowAnchorsFromPlacements(initial);
+    const zoomed = projectDirectionArrowAnchors([[0, 0], [900, 0]], anchors);
+
+    assert.equal(zoomed.length, initial.length);
+    assert.deepEqual(zoomed.map((arrow) => arrow.x), [225, 675]);
+    assert.deepEqual(zoomed.map((arrow) => arrow.segmentIndex), [0, 0]);
 });

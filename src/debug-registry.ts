@@ -61,6 +61,8 @@ export interface ShapeeditorDebugState {
     dirty: boolean;
     directionArrowCount: number;
     directionArrowAlpha: number;
+    directionArrowLayers: { count: number; opacity: number }[];
+    directionArrowTransitionPhase: 'idle' | 'settling' | 'crossfading';
 }
 
 /**
