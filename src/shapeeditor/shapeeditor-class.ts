@@ -143,7 +143,7 @@ export class ShapeEditor {
     declare _maybeAutoOpenHelpOnLaunch: () => any;
     declare buildGrid: (width: number, height: number) => any;
     declare center_and_fit: (pts: [number, number][], canvasW: number, canvasH: number) => any;
-    declare load_screenmap_data: (text: string) => any;
+    declare load_screenmap_data: (text: string, persist?: boolean) => any;
     declare loadScreenmapFile: (file: File | null | undefined) => any;
     declare loadPresetsFromManifest: () => Promise<any>;
     declare setBgControlsEnabled: (enabled: boolean) => any;
@@ -411,6 +411,7 @@ export class ShapeEditor {
     declare _autoOpenHelpScheduled: boolean;
     declare highlightedEdgeIdx: number;
     declare loadedPresets: PresetEntry[];
+    declare layoutLoadGeneration: number;
     declare ctxBtnClass: string;
     declare camPanX: number;
     declare camPanY: number;

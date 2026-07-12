@@ -8,7 +8,8 @@ import type { StripEntry, StripInfo } from './strips-model';
 import { parse_screenmap_data, centerAndFitPoints, computeCenterFitScale, parseScreenmapMultiStrip, getPinColors } from '../common';
 
 import { fileHasExtension } from '../drag-drop';
-import { saveScreenmap, notePinMutation } from '../screenmap-store';
+import { saveScreenmap, savePresetScreenmap, getPresetSelection, getScreenmap, notePinMutation } from '../screenmap-store';
+import { analyzeCanonical64x64Divergence, CANONICAL_64X64_PRESET, getDefaultPresetFile, isCanonical64x64Geometry } from '../canonical-screenmap';
 import { safeStorage } from '../services/storage';
 import { fireDialog, errorDialog } from '../ui/dialogs';
 import { gfxColors, withAlpha } from '../ui/theme';
@@ -180,7 +181,7 @@ ShapeEditor.prototype.center_and_fit = function (this: ShapeEditor, pts: [number
         });
     };
 
-ShapeEditor.prototype.load_screenmap_data = function (this: ShapeEditor, text: string) {
+ShapeEditor.prototype.load_screenmap_data = function (this: ShapeEditor, text: string, persist = true) {
     const self = this;
 
         self.clearEditingState();
@@ -189,9 +190,11 @@ ShapeEditor.prototype.load_screenmap_data = function (this: ShapeEditor, text: s
         if (self.screenmap_pts.length === 0) return;
         // Loading a new file is a user-initiated pin change — even if it has
         // fewer pins than the previous working copy (guard grace window).
-        notePinMutation();
-        saveScreenmap(text);
-        try { self.renderBackupRow(); } catch { /* render is best-effort */ }
+        if (persist) {
+            notePinMutation();
+            saveScreenmap(text);
+            try { self.renderBackupRow(); } catch { /* render is best-effort */ }
+        }
 
         // Parse multi-strip metadata for color-coded visualization
         try {
@@ -242,18 +245,27 @@ ShapeEditor.prototype.loadScreenmapFile = function (this: ShapeEditor, file: Fil
             void errorDialog('Wrong file type', 'Please choose a .json screenmap file.');
             return;
         }
+        const generation = ++self.layoutLoadGeneration;
         self.presetPicker?.setActive('');
-        file.text().then((arg: any) => self.load_screenmap_data(arg)).catch((error: unknown) => {
+        file.text().then((text) => {
+            if (!self.signal.aborted && generation === self.layoutLoadGeneration) self.load_screenmap_data(text);
+        }).catch((error: unknown) => {
             void errorDialog('Error reading screenmap file', String(error));
         });
     };
 
 ShapeEditor.prototype.loadPresetsFromManifest = async function (this: ShapeEditor) {
     const self = this;
+        const startupGeneration = ++self.layoutLoadGeneration;
+        const isStaleLayoutLoad = (generation: number) => (
+            self.signal.aborted || generation !== self.layoutLoadGeneration
+        );
 
         try {
-            const resp = await fetch('/screenmaps/manifest.json');
+            const resp = await fetch('/screenmaps/manifest.json', { signal: self.signal });
+            if (isStaleLayoutLoad(startupGeneration)) return;
             const manifest: unknown = await resp.json();
+            if (isStaleLayoutLoad(startupGeneration)) return;
             const rawPresets: unknown = typeof manifest === 'object' && manifest !== null
                 ? (manifest as Record<string, unknown>).presets
                 : undefined;
@@ -275,10 +287,13 @@ ShapeEditor.prototype.loadPresetsFromManifest = async function (this: ShapeEdito
             // Mount the shared accordion picker. The on-click load path goes
             // through the picker's `onChoose` callback instead of a
             // <select>-change event.
-            const loadPresetFile = async (file: string) => {
+            const loadPresetFile = async (file: string, generation: number) => {
                 try {
-                    const r = await fetch(`/screenmaps/${file}`);
-                    self.load_screenmap_data(await r.text());
+                    const r = await fetch(`/screenmaps/${file}`, { signal: self.signal });
+                    const text = await r.text();
+                    if (isStaleLayoutLoad(generation)) return;
+                    if (!savePresetScreenmap(text, file)) throw new Error(`Could not persist preset ${file}`);
+                    self.load_screenmap_data(text, false);
                     self.presetPicker?.setActive(file);
                 } catch (e: unknown) {
                     console.warn('Failed to load preset:', e);
@@ -294,7 +309,7 @@ ShapeEditor.prototype.loadPresetsFromManifest = async function (this: ShapeEdito
                 signal: self.signal,
                 presets: self.loadedPresets,
                 categories,
-                onChoose: loadPresetFile,
+                onChoose: (file) => loadPresetFile(file, ++self.layoutLoadGeneration),
             });
             // Keep populating the right-click context-menu submenu — it
             // works off the same loadedPresets list.
@@ -303,17 +318,58 @@ ShapeEditor.prototype.loadPresetsFromManifest = async function (this: ShapeEdito
             }
             // Restore stored screenmap (autosave/backup-aware), then fall
             // back to the first preset if nothing was auto-loaded.
-            const autoLoaded = self._autoloadOnLaunch();
-            self.renderBackupRow();
-            if (autoLoaded) {
-                // already loaded
-            } else if (self.loadedPresets.length > 0) {
-                const first = self.nn(self.loadedPresets[0]);
-                void loadPresetFile(first.file);
+            const defaultPresetFile = getDefaultPresetFile(manifest) ?? self.loadedPresets[0]?.file ?? null;
+            const storedPreset = getPresetSelection();
+            const storedPresetIsValid = typeof storedPreset === 'string'
+                && self.loadedPresets.some((preset) => preset.file === storedPreset);
+            let autoLoaded = false;
+            if (storedPresetIsValid) {
+                await loadPresetFile(storedPreset, startupGeneration);
+                if (isStaleLayoutLoad(startupGeneration)) return;
+                autoLoaded = true;
+            } else {
+                autoLoaded = self._autoloadOnLaunch();
             }
+            self.renderBackupRow();
+            if (autoLoaded && !storedPresetIsValid) {
+                const stored = getScreenmap();
+                if (stored && defaultPresetFile === CANONICAL_64X64_PRESET) {
+                    const canonicalResponse = await fetch(`/screenmaps/${CANONICAL_64X64_PRESET}`, { signal: self.signal });
+                    const canonicalText = await canonicalResponse.text();
+                    if (isStaleLayoutLoad(startupGeneration)) return;
+                    if (isCanonical64x64Geometry(stored, canonicalText)) {
+                        await loadPresetFile(CANONICAL_64X64_PRESET, startupGeneration);
+                        self.renderBackupRow();
+                        self._updateHintStrip();
+                        self._maybeAutoOpenHelpOnLaunch();
+                        return;
+                    }
+                    const divergence = analyzeCanonical64x64Divergence(stored, canonicalText);
+                    if (divergence && !isStaleLayoutLoad(startupGeneration)) {
+                        const result = await fireDialog({
+                            icon: 'warning',
+                            title: 'Stored 64x64 layout differs from the built-in preset',
+                            html: `This copy has <b>${String(divergence.actualLedCount)} LEDs</b>; `
+                                + `the canonical layout has <b>${String(divergence.expectedLedCount)}</b>. `
+                                + 'Resetting keeps this copy as a recoverable backup.',
+                            confirmButtonText: 'Reset to built-in',
+                            showCancelButton: true,
+                            cancelButtonText: 'Keep custom layout',
+                        });
+                        if (result.isConfirmed && !isStaleLayoutLoad(startupGeneration)) {
+                            await loadPresetFile(CANONICAL_64X64_PRESET, startupGeneration);
+                            self.renderBackupRow();
+                        }
+                    }
+                }
+            } else if (!autoLoaded && defaultPresetFile) {
+                await loadPresetFile(defaultPresetFile, startupGeneration);
+            }
+            if (isStaleLayoutLoad(startupGeneration)) return;
             self._updateHintStrip();
             self._maybeAutoOpenHelpOnLaunch();
         } catch (e: unknown) {
+            if (self.signal.aborted) return;
             console.warn("Failed to load preset manifest:", e);
             self.dom_sel_preset_mount.textContent = 'No presets available';
             self._maybeAutoOpenHelpOnLaunch();

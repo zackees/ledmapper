@@ -4,7 +4,7 @@
 import { ShapeEditor } from './shapeeditor-class';
 import { WebGLRenderer, Scene, OrthographicCamera } from 'three';
 
-import { notePinMutation } from '../screenmap-store';
+import { notePinMutation, savePresetScreenmap } from '../screenmap-store';
 import { safeStorage } from '../services/storage';
 import { fireDialog } from '../ui/dialogs';
 import { gfxColors } from '../ui/theme';
@@ -659,7 +659,13 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
                 ctxUploadInput.click();
             } else if (action?.startsWith('load-preset:')) {
                 const file = action.slice('load-preset:'.length);
-                fetch(`/screenmaps/${file}`).then(r => r.text()).then((arg: any) => self.load_screenmap_data(arg))
+                const generation = ++self.layoutLoadGeneration;
+                fetch(`/screenmaps/${file}`, { signal: self.signal }).then(r => r.text()).then((text) => {
+                    if (self.signal.aborted || generation !== self.layoutLoadGeneration) return;
+                    if (!savePresetScreenmap(text, file)) throw new Error(`Could not persist preset ${file}`);
+                    self.load_screenmap_data(text, false);
+                    self.presetPicker?.setActive(file);
+                })
                     .catch((err: unknown) => { console.warn('Failed to load preset:', err); });
             } else if (action === 'load-image') {
                 self.ctxLoadImageInput?.click();

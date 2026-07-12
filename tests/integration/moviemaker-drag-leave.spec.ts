@@ -47,7 +47,7 @@ test.describe('Moviemaker overlay drag — off-canvas release (issue #31) @gpu',
 
     test.beforeEach(async ({ page }) => {
         await mockWebcam(page);
-        // Clear any stored screenmap so the default 16x16 preset is active.
+        // Clear any stored screenmap so the canonical 64x64 preset is active.
         await page.addInitScript(() => {
             try {
                 localStorage.removeItem('lm:screenmap');

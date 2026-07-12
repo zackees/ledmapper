@@ -56,7 +56,7 @@ test.describe('Moviemaker preset recording (No Screenmap regression) @gpu', () =
         test.setTimeout(60000);
         await page.goto('/moviemaker/');
         await loadVideoAndPlay(page);
-        await expect(page.locator('.preset-btn[data-preset-file="16x16_grid.json"]'))
+        await expect(page.locator('.preset-btn[data-preset-file="64x64_quad_serpentine.json"]'))
             .toHaveClass(/active-preset/);
         await recordExpectingDownload(page);
     });

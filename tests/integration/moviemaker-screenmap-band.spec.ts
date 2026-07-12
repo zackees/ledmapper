@@ -88,9 +88,8 @@ test.describe('Moviemaker screenmap band + layout picker (issues #248 / #273)', 
         await page.goto('/moviemaker/');
         await page.locator('[data-trigger="btn_start_webcam"]').click();
         await expect(page.locator('#welcome-overlay')).toHaveClass(/hidden/, { timeout: 15000 });
-        // 16x16 Grid is the manifest's first preset (public/screenmaps/manifest.json).
-        await expect(page.locator('#txt_active_layout')).toHaveText('16x16 Grid');
-        await expect(page.locator('#txt_active_led_count')).toHaveText('256 LEDs');
+        await expect(page.locator('#txt_active_layout')).toHaveText('64x64 Quad Serpentine');
+        await expect(page.locator('#txt_active_led_count')).toHaveText('4096 LEDs');
     });
 
     test('"Change layout" opens a popover over the canvas; picking a preset auto-dismisses it (#273)', async ({ page }) => {

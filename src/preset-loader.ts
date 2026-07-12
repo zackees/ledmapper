@@ -5,8 +5,8 @@ import type { StripPoint } from './types/domain';
  * Fetch the raw JSON text of a screenmap preset file by name.
  * @param file - Filename in /screenmaps/ (e.g. "16x16_grid.json")
  */
-export async function loadPresetText(file: string): Promise<string> {
-    const resp = await fetch(`/screenmaps/${file}`);
+export async function loadPresetText(file: string, signal?: AbortSignal): Promise<string> {
+    const resp = await fetch(`/screenmaps/${file}`, { signal });
     return resp.text();
 }
 

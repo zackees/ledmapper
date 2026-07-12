@@ -9,7 +9,7 @@ test.describe('window.__lmDebug registry (#225)', () => {
     // The worker shares one browser context across specs. Earlier specs can
     // leave (a) a stored screenmap in localStorage (console-errors.spec's
     // shapeeditor visit autosaves one), which would suppress moviemaker's
-    // default 16x16 preset, and (b) a recorded video in IndexedDB, which
+    // default 64x64 preset, and (b) a recorded video in IndexedDB, which
     // movieplayer auto-restores on load. Both would break the exact-state
     // assertions below, so start every test from a clean slate.
     test.beforeEach(async ({ page }) => {
@@ -29,7 +29,7 @@ test.describe('window.__lmDebug registry (#225)', () => {
     test('moviemaker registers getState() and it disappears after navigating away', async ({ page }) => {
         await page.goto('/moviemaker/');
         await expect(page.locator('#btn_upload_screenmap')).toBeVisible();
-        // moviemaker autoloads the "16x16 grid" default preset on launch
+        // moviemaker autoloads the canonical 64x64 quad preset on launch
         // (see the welcome-overlay copy), so screenmap-derived fields are
         // already populated even though no video/webcam source is active.
         await expect.poll(() => page.evaluate(() => window.__lmDebug?.moviemaker?.getState()?.screenmapValid))
@@ -38,8 +38,8 @@ test.describe('window.__lmDebug registry (#225)', () => {
         const state = await page.evaluate(() => window.__lmDebug?.moviemaker?.getState());
         expect(state).toEqual({
             screenmapValid: true,
-            ledCount: 256,
-            stripCount: 1,
+            ledCount: 4096,
+            stripCount: 16,
             sourceActive: false,
             sourceType: null,
             playing: false,

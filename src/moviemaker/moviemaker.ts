@@ -2,7 +2,8 @@ import { errorDialog, fireDialog, getSwal } from '../ui/dialogs';
 import type { ParsedStrip, MultiStripParseResult } from '../types/domain';
 import { parseScreenmapMultiStrip } from '../common';
 import { wireFileDropTarget, wireFileSource, fileHasExtension } from '../drag-drop';
-import { saveScreenmap, getScreenmap } from '../screenmap-store';
+import { saveScreenmap, savePresetScreenmap, getPresetSelection, getScreenmap } from '../screenmap-store';
+import { analyzeCanonical64x64Divergence, CANONICAL_64X64_PRESET, getDefaultPresetFile, isCanonical64x64Geometry } from '../canonical-screenmap';
 import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension, buildVideoChannelMap } from './transforms';
 import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
 import { loadPresetText } from '../preset-loader';
@@ -488,6 +489,8 @@ export function init(container: HTMLElement) {
         });
     }
 
+    let layoutLoadGeneration = 0;
+    const isStaleLayoutLoad = (generation: number) => signal.aborted || generation !== layoutLoadGeneration;
     const presetPicker = dom_preset_mount
         ? mountPresetPicker(dom_preset_mount, {
             mode: 'compact',
@@ -495,15 +498,15 @@ export function init(container: HTMLElement) {
             signal,
             onChoose: async (presetFile: string) => {
                 try {
-                    applyScreenmapText(await loadPresetText(presetFile), `preset:${presetFile}`);
-                    presetPicker?.setActive(presetFile);
-                    setUploadFilename('');
-                    activeLayoutLabel = screenmapManifest.presets.find((p) => p.file === presetFile)?.name ?? presetFile;
+                    const generation = ++layoutLoadGeneration;
+                    const applied = await applyPreset(presetFile, `preset:${presetFile}`, generation);
+                    if (!applied) return;
                     // Picking a layout IS choosing it — auto-dismiss the
                     // popover (issue #273); no separate "Done" step.
                     screenmapBandExpanded = false;
                     updateScreenmapBandUI();
                 } catch (error) {
+                    if (signal.aborted) return;
                     log.info('screenmap-load-error', { source: `preset:${presetFile}`, error: String(error) });
                     void errorDialog('Error loading preset', String(error));
                 }
@@ -511,32 +514,69 @@ export function init(container: HTMLElement) {
         })
         : null;
 
-    // Restore stored screenmap, or fall back to the first preset in the manifest.
+    async function applyPreset(presetFile: string, source: string, generation: number) {
+        const text = await loadPresetText(presetFile, signal);
+        if (isStaleLayoutLoad(generation)) return false;
+        if (!savePresetScreenmap(text, presetFile)) throw new Error(`Could not persist preset ${presetFile}`);
+        applyScreenmapText(text, source);
+        presetPicker?.setActive(presetFile);
+        setUploadFilename('');
+        activeLayoutLabel = screenmapManifest.presets.find((p) => p.file === presetFile)?.name ?? presetFile;
+        updateScreenmapBandUI();
+        return true;
+    }
+
+    // Restore a canonical preset by provenance, otherwise inspect a custom
+    // working copy before falling back to the manifest-declared default.
     const storedScreenmap = getScreenmap();
-    let restoredFromStore = false;
-    if (storedScreenmap) {
+    const storedPreset = getPresetSelection();
+    const defaultPresetFile = getDefaultPresetFile(screenmapManifest);
+    const startupGeneration = layoutLoadGeneration;
+    void (async () => {
         try {
-            applyScreenmapText(storedScreenmap, 'store-restore');
-            restoredFromStore = true;
-        } catch (error) {
-            log.error('restore-stored-screenmap-failed', { error: String(error) });
-        }
-    }
-    if (!restoredFromStore && presetPicker) {
-        const firstPreset = screenmapManifest.presets[0];
-        if (firstPreset) {
-            void (async () => {
-                try {
-                    applyScreenmapText(await loadPresetText(firstPreset.file), `autoload:${firstPreset.file}`);
-                    presetPicker.setActive(firstPreset.file);
-                    activeLayoutLabel = firstPreset.name;
-                    updateScreenmapBandUI();
-                } catch (error) {
-                    log.error('autoload-first-preset-failed', { error: String(error) });
+            if (storedPreset && screenmapManifest.presets.some((preset) => preset.file === storedPreset)) {
+                await applyPreset(storedPreset, `store-preset:${storedPreset}`, startupGeneration);
+                return;
+            }
+            if (isStaleLayoutLoad(startupGeneration)) return;
+            if (storedScreenmap) {
+                applyScreenmapText(storedScreenmap, 'store-restore');
+                activeLayoutLabel = null;
+                updateScreenmapBandUI();
+                if (defaultPresetFile === CANONICAL_64X64_PRESET) {
+                    const canonicalText = await loadPresetText(CANONICAL_64X64_PRESET, signal);
+                    if (isStaleLayoutLoad(startupGeneration)) return;
+                    if (isCanonical64x64Geometry(storedScreenmap, canonicalText)) {
+                        await applyPreset(CANONICAL_64X64_PRESET, 'canonical-fold', startupGeneration);
+                        return;
+                    }
+                    const divergence = analyzeCanonical64x64Divergence(storedScreenmap, canonicalText);
+                    if (divergence) {
+                        const result = await fireDialog({
+                            icon: 'warning',
+                            title: 'Stored 64x64 layout differs from the built-in preset',
+                            html: `This copy has <b>${String(divergence.actualLedCount)} LEDs</b>; `
+                                + `the canonical layout has <b>${String(divergence.expectedLedCount)}</b>. `
+                                + 'Resetting keeps this copy as a recoverable backup.',
+                            confirmButtonText: 'Reset to built-in',
+                            showCancelButton: true,
+                            cancelButtonText: 'Keep custom layout',
+                        });
+                        if (result.isConfirmed && !isStaleLayoutLoad(startupGeneration)) {
+                            await applyPreset(CANONICAL_64X64_PRESET, 'canonical-reset', startupGeneration);
+                        }
+                    }
                 }
-            })();
+                return;
+            }
+            if (presetPicker && defaultPresetFile) {
+                await applyPreset(defaultPresetFile, `autoload:${defaultPresetFile}`, startupGeneration);
+            }
+        } catch (error) {
+            if (signal.aborted) return;
+            log.error('initialize-screenmap-failed', { error: String(error) });
         }
-    }
+    })();
 
     // Wire welcome overlay buttons to sidebar buttons
     container.querySelectorAll('[data-trigger]').forEach((btn) => {
@@ -706,11 +746,13 @@ export function init(container: HTMLElement) {
             void errorDialog('Wrong file type', 'Please choose a .csv or .json screenmap file.');
             return;
         }
+        const generation = ++layoutLoadGeneration;
         setUploadFilename(file.name);
         presetPicker?.setActive('');
         screenmapValid = false;
         updateElementStates();
         file.text().then((text: string) => {
+            if (isStaleLayoutLoad(generation)) return;
             applyScreenmapText(text, `upload:${file.name}`);
             activeLayoutLabel = file.name;
             // Successful upload completes the layout choice — close the
