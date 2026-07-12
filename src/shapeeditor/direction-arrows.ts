@@ -9,6 +9,13 @@ export interface DirectionArrowPlacement {
     angle: number;
     segmentIndex: number;
     stripIndex: number;
+    fraction: number;
+}
+
+export interface DirectionArrowAnchor {
+    segmentIndex: number;
+    stripIndex: number;
+    fraction: number;
 }
 
 export const DIRECTION_ARROW_SPACING_PX = 225;
@@ -77,9 +84,46 @@ export function computeDirectionArrowPlacements(
                 angle: Math.atan2(dy, dx),
                 segmentIndex: segment.segmentIndex,
                 stripIndex,
+                fraction,
             });
         }
     }
 
+    return placements;
+}
+
+export function directionArrowAnchorsFromPlacements(
+    placements: DirectionArrowPlacement[],
+): DirectionArrowAnchor[] {
+    return placements.map(({ segmentIndex, stripIndex, fraction }) => ({
+        segmentIndex,
+        stripIndex,
+        fraction,
+    }));
+}
+
+/** Reproject a frozen logical layout onto the current canvas-space path. */
+export function projectDirectionArrowAnchors(
+    points: [number, number][],
+    anchors: DirectionArrowAnchor[],
+): DirectionArrowPlacement[] {
+    const placements: DirectionArrowPlacement[] = [];
+    for (const anchor of anchors) {
+        const from = points[anchor.segmentIndex];
+        const to = points[anchor.segmentIndex + 1];
+        if (!from || !to) continue;
+        const dx = to[0] - from[0];
+        const dy = to[1] - from[1];
+        if (Math.hypot(dx, dy) <= Number.EPSILON) continue;
+        const fraction = Math.min(1, Math.max(0, anchor.fraction));
+        placements.push({
+            x: from[0] + dx * fraction,
+            y: from[1] + dy * fraction,
+            angle: Math.atan2(dy, dx),
+            segmentIndex: anchor.segmentIndex,
+            stripIndex: anchor.stripIndex,
+            fraction,
+        });
+    }
     return placements;
 }

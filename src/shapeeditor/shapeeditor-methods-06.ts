@@ -438,9 +438,8 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
             const dy = cy - self.zoomStartY;
             if (Math.abs(dy) > 3) self.rightClickMoved = true;
             if (self.rightClickMoved) {
-                self.camZoom = Math.max(0.1, Math.min(10, self.zoomStartLevel * Math.pow(2, -dy / 200)));
+                self.applyInteractiveZoom(self.zoomStartLevel * Math.pow(2, -dy / 200));
                 self._oc().style.cursor = 'ns-resize';
-                self.setNeedsRender();
             }
             return;
         }

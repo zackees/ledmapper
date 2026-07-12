@@ -13,6 +13,7 @@ import type { BackupMeta } from '../screenmap-store';
 import { type StripStore } from './strips-model';
 import { type Selection } from './selection';
 import type { PresetPickerHandle } from '../ui/preset-picker';
+import type { DirectionArrowTransition, DirectionArrowTransitionPhase } from './direction-arrow-transition';
 
 import type { UndoAction, InsertDialogOpts, OBBox, GizmoDragStart, BgGizmoDragStart, BgImageBBox, GizmoHandle, RulerEntry, RulerDragStart, RulerDragHandle, ConnectorDrag, StartHandleDrag, PlacingState, PasteStateActive, StripDragPt, PresetEntry } from './shapeeditor-types';
 
@@ -44,6 +45,7 @@ export class ShapeEditor {
     declare hslStringToRgb: (hslStr: string) => any;
     declare setNeedsGeometryUpdate: () => any;
     declare setNeedsRender: () => any;
+    declare applyInteractiveZoom: (zoom: number) => boolean;
     declare _oc: () => HTMLCanvasElement;
     declare _octx: () => CanvasRenderingContext2D;
     declare _scene: () => Scene;
@@ -339,6 +341,9 @@ export class ShapeEditor {
     declare isHovering: boolean;
     declare overlayAlpha: number;
     declare directionArrowCount: number;
+    declare directionArrowLayers: { count: number; opacity: number }[];
+    declare directionArrowTransitionPhase: DirectionArrowTransitionPhase;
+    declare directionArrowTransition: DirectionArrowTransition;
     declare ptsBBox: OBBox | null;
     declare geometryDirty: boolean;
     declare frameDirty: boolean;

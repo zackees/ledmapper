@@ -86,7 +86,9 @@ ShapeEditor.prototype._wireTouchHandlers = function (this: ShapeEditor, signal: 
                 const dys = t0.clientY - t1.clientY;
                 const dist = Math.hypot(dxs, dys) || 1;
                 const ratio = dist / self.multiStartDist;
-                self.camZoom = Math.max(0.1, Math.min(10, self.multiPinchStartZoom * ratio));
+                self.applyInteractiveZoom(self.multiPinchStartZoom * ratio);
+                // A two-finger gesture also pans; render even when the pinch
+                // ratio is unchanged or the zoom is clamped at its limit.
                 self.setNeedsRender();
             }
         }, { passive: false, signal });
@@ -445,6 +447,7 @@ ShapeEditor.prototype.animate = function (this: ShapeEditor) {
         // Keep animating while overlayAlpha is mid-transition
         const targetAlpha = self.isHovering ? 1 : 0;
         if (Math.abs(self.overlayAlpha - targetAlpha) > 0.001) self.frameDirty = true;
+        if (self.directionArrowTransition.isActive()) self.frameDirty = true;
 
         // Issue #111: drag preview lifecycle.
         // While a gizmo drag is in flight, push the live transform delta to

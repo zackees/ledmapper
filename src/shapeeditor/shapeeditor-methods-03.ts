@@ -709,8 +709,7 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
         self.overlayCanvas.addEventListener('wheel', (e: WheelEvent) => {
             e.preventDefault();
             const zoomFactor = Math.pow(2, -e.deltaY / 3000);
-            self.camZoom = Math.max(0.1, Math.min(10, self.camZoom * zoomFactor));
-            self.setNeedsRender();
+            self.applyInteractiveZoom(self.camZoom * zoomFactor);
         }, { passive: false, signal: self.signal });
 
         self._wireTouchHandlers(self.signal);

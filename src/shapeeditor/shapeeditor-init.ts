@@ -16,6 +16,7 @@ import { getBackup, promoteToBackup } from '../screenmap-store';
 import { createCircleTexture } from '../three-utils';
 import { StripStore } from './strips-model';
 import { Selection } from './selection';
+import { DirectionArrowTransition } from './direction-arrow-transition';
 import { PANEL_CATALOG } from './panel-catalog';
 
 import templateHtml from './template.html?raw';
@@ -343,6 +344,8 @@ registerDebugState('shapeeditor', {
         dirty: !this.dom_btn_reset.disabled,
         directionArrowCount: this.directionArrowCount,
         directionArrowAlpha: this.overlayAlpha,
+        directionArrowLayers: this.directionArrowLayers,
+        directionArrowTransitionPhase: this.directionArrowTransitionPhase,
     }),
     debug: shapeeditorDebug,
 });
@@ -370,6 +373,9 @@ registerDebugState('shapeeditor', {
         this.isHovering = false;
         this.overlayAlpha = 0;
         this.directionArrowCount = 0;
+        this.directionArrowLayers = [];
+        this.directionArrowTransitionPhase = 'idle';
+        this.directionArrowTransition = new DirectionArrowTransition();
         this.ptsBBox = null;
         this.geometryDirty = true;
         this.frameDirty = true;
