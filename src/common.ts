@@ -235,13 +235,83 @@ export function parse_screenmap_data(text: string): PointArrayWithDiameter {
 /**
  * Center and scale points to fit within given dimensions.
  */
+export interface CenterAndFitOptions {
+    margin?: number;
+    center?: string;
+    /** Quantize a >=1px input-unit pitch so integer-grid rows rasterize evenly. */
+    pixelAlignScale?: boolean;
+}
+
+function isCompleteRegularGrid(pts: StripPoint[]): boolean {
+    if (pts.length < 4) return false;
+    const xs = [...new Set(pts.map(([x]) => x))].sort((a, b) => a - b);
+    const ys = [...new Set(pts.map(([, y]) => y))].sort((a, b) => a - b);
+    if (xs.length < 2 || ys.length < 2 || xs.length * ys.length !== pts.length) return false;
+
+    const uniform = (values: number[]) => {
+        const pitch = (values[1] ?? 0) - (values[0] ?? 0);
+        return pitch > Number.EPSILON
+            && Math.abs(pitch - Math.round(pitch)) <= 1e-9
+            && values.slice(2).every((value, index) => (
+            Math.abs(value - (values[index + 1] ?? value) - pitch) <= 1e-9
+            ));
+    };
+    if (!uniform(xs) || !uniform(ys)) return false;
+
+    const seen = new Set(pts.map(([x, y]) => `${String(x)},${String(y)}`));
+    return seen.size === pts.length;
+}
+
+export function computeCenterFitScale(
+    pts: StripPoint[],
+    width: number,
+    height: number,
+    { margin = 0.95, pixelAlignScale = false }: CenterAndFitOptions = {},
+): number {
+    if (pts.length === 0) return 1;
+
+    let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+    pts.forEach(([x, y]) => {
+        xmin = Math.min(xmin, x); xmax = Math.max(xmax, x);
+        ymin = Math.min(ymin, y); ymax = Math.max(ymax, y);
+    });
+    const w = xmax - xmin;
+    const h = ymax - ymin;
+    const availW = margin <= 1 ? margin * width : width - 2 * margin;
+    const availH = margin <= 1 ? margin * height : height - 2 * margin;
+    const scaleX = w > 0 ? availW / w : availW;
+    const scaleY = h > 0 ? availH / h : availH;
+    const continuousScale = Math.min(scaleX, scaleY);
+
+    if (
+        !pixelAlignScale
+        || !isCompleteRegularGrid(pts)
+        || continuousScale < 1
+        || !Number.isFinite(continuousScale)
+    ) {
+        return continuousScale;
+    }
+
+    const lower = Math.max(1, Math.floor(continuousScale));
+    const upper = Math.ceil(continuousScale);
+    const span = Math.max(w, h);
+    // Prefer the nearest integer pitch when it exceeds the requested fit by
+    // no more than one total raster pixel; otherwise stay inside the margin.
+    return upper - continuousScale <= continuousScale - lower
+        && (upper - continuousScale) * span <= 1 + Number.EPSILON
+        ? upper
+        : lower;
+}
+
 export function centerAndFitPoints(
     pts: StripPoint[],
     width: number,
     height: number,
-    { margin = 0.95, center = 'canvas' }: { margin?: number; center?: string } = {},
+    options: CenterAndFitOptions = {},
 ): StripPoint[] {
     if (pts.length === 0) return [];
+
+    const { center = 'canvas' } = options;
 
     let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
     pts.forEach(([x, y]) => {
@@ -251,21 +321,8 @@ export function centerAndFitPoints(
 
     const xcenter = (xmin + xmax) / 2;
     const ycenter = (ymin + ymax) / 2;
-    const w = xmax - xmin;
-    const h = ymax - ymin;
 
-    let availW, availH;
-    if (margin <= 1) {
-        availW = margin * width;
-        availH = margin * height;
-    } else {
-        availW = width - 2 * margin;
-        availH = height - 2 * margin;
-    }
-
-    const scaleX = w > 0 ? availW / w : availW;
-    const scaleY = h > 0 ? availH / h : availH;
-    const scale = Math.min(scaleX, scaleY);
+    const scale = computeCenterFitScale(pts, width, height, options);
 
     const offsetX = center === 'canvas' ? width / 2 : 0;
     const offsetY = center === 'canvas' ? height / 2 : 0;

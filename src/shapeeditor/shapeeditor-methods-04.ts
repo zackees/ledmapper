@@ -5,7 +5,7 @@ import { ShapeEditor } from './shapeeditor-class';
 import { BufferGeometry, Float32BufferAttribute, LineSegments, LineBasicMaterial, TextureLoader, PlaneGeometry, MeshBasicMaterial, Mesh, SRGBColorSpace, DoubleSide, type Material } from 'three';
 import type { StripEntry, StripInfo } from './strips-model';
 
-import { parse_screenmap_data, centerAndFitPoints, parseScreenmapMultiStrip, getPinColors } from '../common';
+import { parse_screenmap_data, centerAndFitPoints, computeCenterFitScale, parseScreenmapMultiStrip, getPinColors } from '../common';
 
 import { fileHasExtension } from '../drag-drop';
 import { saveScreenmap, notePinMutation } from '../screenmap-store';
@@ -173,7 +173,11 @@ ShapeEditor.prototype.buildGrid = function (this: ShapeEditor, width: number, he
 
 ShapeEditor.prototype.center_and_fit = function (this: ShapeEditor, pts: [number, number][], canvasW: number, canvasH: number) {
 
-        return centerAndFitPoints(pts, canvasW, canvasH, { margin: 0.95, center: 'origin' });
+        return centerAndFitPoints(pts, canvasW, canvasH, {
+            margin: 0.95,
+            center: 'origin',
+            pixelAlignScale: true,
+        });
     };
 
 ShapeEditor.prototype.load_screenmap_data = function (this: ShapeEditor, text: string) {
@@ -219,12 +223,11 @@ ShapeEditor.prototype.load_screenmap_data = function (this: ShapeEditor, text: s
         // Use the smaller reference size so the screenmap stays the same pixel
         // size regardless of how large the canvas is (leaves room for pan/zoom).
         const { width: fitW, height: fitH } = self.getFitSize();
-        const availW = 0.95 * fitW;
-        const availH = 0.95 * fitH;
-        self.fitScale = Math.min(
-            self.origWidth > 0 ? availW / self.origWidth : availW,
-            self.origHeight > 0 ? availH / self.origHeight : availH,
-        );
+        self.fitScale = computeCenterFitScale(self.rawPts, fitW, fitH, {
+            margin: 0.95,
+            center: 'origin',
+            pixelAlignScale: true,
+        });
         self.screenmap_pts = self.center_and_fit(self.screenmap_pts, fitW, fitH);
         self.positionRulerAboveBBox();
         // A loaded map is a document you can export straight away (#292).

@@ -10,7 +10,11 @@ import type { StripPoint } from '../types/domain';
  * Points are centered around origin (0,0) so that rotation works correctly.
  */
 export function transformToCenter(pts: StripPoint[] | number[][], videoWidth: number, videoHeight: number): StripPoint[] {
-    return centerAndFitPoints(pts as StripPoint[], videoWidth, videoHeight, { margin: 20, center: 'origin' });
+    return centerAndFitPoints(pts as StripPoint[], videoWidth, videoHeight, {
+        margin: 20,
+        center: 'origin',
+        pixelAlignScale: true,
+    });
 }
 
 /**
