@@ -5,6 +5,7 @@ import { ShapeEditor } from './shapeeditor-class';
 
 import { getStripColors, stripStartEndLabels } from '../common';
 import { gfxColors, withAlpha } from '../ui/theme';
+import { computeDirectionArrowPlacements } from './direction-arrows';
 
 import type { GizmoHandle } from './shapeeditor-types';
 
@@ -14,8 +15,8 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
         if (!self.overlayCtx) return;
         self.overlayCtx.clearRect(0, 0, self.canvasW, self.canvasH);
 
-        // Lerp overlayAlpha: 1 = rainbow visible (default), 0 = faded out (hovering inside bbox)
-        const target = self.isHovering ? 0 : 1;
+        // Hover progress drives independent path, arrow, and gizmo opacity.
+        const target = self.isHovering ? 1 : 0;
         const speed = 1 / (0.2 * 60); // step per frame for 0.2s
         if (self.overlayAlpha < target) self.overlayAlpha = Math.min(target, self.overlayAlpha + speed);
         else if (self.overlayAlpha > target) self.overlayAlpha = Math.max(target, self.overlayAlpha - speed);
@@ -37,7 +38,7 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
             self.bgImageBBox = null;
         }
 
-        if (self.lastTransformedPts.length === 0) { self.ptsBBox = null; self.drawBgGizmoHandles(); self.drawRuler(); self._drawPlacingGhost(); self._drawPasteGhost(); return; }
+        if (self.lastTransformedPts.length === 0) { self.ptsBBox = null; self.directionArrowCount = 0; self.drawBgGizmoHandles(); self.drawRuler(); self._drawPlacingGhost(); self._drawPasteGhost(); return; }
 
         const pts = self.lastTransformedPts.map(([x, y]: [number, number]) => self.toCanvasCoords(x, y));
 
@@ -117,16 +118,18 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
             return;
         }
 
-        // Rainbow lines and arrows fade with hover
-        if (self.overlayAlpha > 0) {
-            self.overlayCtx.globalAlpha = self.overlayAlpha;
+        // Paths stay visible at rest; arrowheads use the independent hover
+        // progress below and are absent until the pointer enters the map.
+        {
+            const pathAlpha = 0.35 + self.overlayAlpha * 0.3;
+            self.overlayCtx.globalAlpha = pathAlpha;
             self.overlayCtx.lineWidth = 2;
             const hasMultiStrip = self.stripInfo && self.stripInfo.strips.length > 1;
             const stripColors = hasMultiStrip ? getStripColors(self._si().strips.length) : null;
             // Build a set of boundary indices (last point of each non-empty strip) to skip
             // cross-strip lines, plus a precomputed index→strip lookup table.
-            const stripBoundaries = new Set();
-            let idxToStrip = null;
+            const stripBoundaries = new Set<number>();
+            let idxToStrip: Int32Array | null = null;
             if (hasMultiStrip) {
                 for (const strip of self._si().strips) {
                     if (strip.count > 0) {
@@ -160,27 +163,31 @@ ShapeEditor.prototype.drawOverlay = function (this: ShapeEditor) {
                 self.overlayCtx.lineTo(x2, y2);
                 self.overlayCtx.stroke();
 
-                if (i % 5 === 1 || i === pts.length - 2) {
-                    const dx = x2 - x1, dy = y2 - y1;
-                    const len = Math.sqrt(dx * dx + dy * dy);
-                    if (len > 2) {
-                        const angle = Math.atan2(dy, dx);
-                        const t = 0.5;
-                        const ax = x1 + dx * t, ay = y1 + dy * t;
-                        const arrowLen = 12;
-                        const arrowHalf = 0.45;
-                        self.overlayCtx.fillStyle = self.overlayCtx.strokeStyle;
-                        self.overlayCtx.beginPath();
-                        self.overlayCtx.moveTo(ax, ay);
-                        self.overlayCtx.lineTo(ax - arrowLen * Math.cos(angle - arrowHalf), ay - arrowLen * Math.sin(angle - arrowHalf));
-                        self.overlayCtx.lineTo(ax - arrowLen * Math.cos(angle + arrowHalf), ay - arrowLen * Math.sin(angle + arrowHalf));
-                        self.overlayCtx.closePath();
-                        self.overlayCtx.fill();
-                    }
-                }
             }
             for (let i = 2; i < pts.length - 1; i++) {
                 self.fillCircle(self.nn(pts[i])[0], self.nn(pts[i])[1], 4, withAlpha(gfxColors.textStrong(), 0.5));
+            }
+
+            const arrowStrips = hasMultiStrip
+                ? self._si().strips.map((strip) => ({ offset: strip.offset, count: strip.count }))
+                : [{ offset: 0, count: pts.length }];
+            const arrowPlacements = computeDirectionArrowPlacements(pts, arrowStrips);
+            self.directionArrowCount = arrowPlacements.length;
+            if (self.overlayAlpha > 0) {
+                self.overlayCtx.globalAlpha = self.overlayAlpha;
+                const arrowLen = 12;
+                const arrowHalf = 0.45;
+                for (const arrow of arrowPlacements) {
+                    self.overlayCtx.fillStyle = hasMultiStrip
+                        ? stripColors?.[arrow.stripIndex] ?? gfxColors.textStrong()
+                        : `hsl(${String((120 + arrow.segmentIndex * 2) % 360)}, 100%, 50%)`;
+                    self.overlayCtx.beginPath();
+                    self.overlayCtx.moveTo(arrow.x, arrow.y);
+                    self.overlayCtx.lineTo(arrow.x - arrowLen * Math.cos(arrow.angle - arrowHalf), arrow.y - arrowLen * Math.sin(arrow.angle - arrowHalf));
+                    self.overlayCtx.lineTo(arrow.x - arrowLen * Math.cos(arrow.angle + arrowHalf), arrow.y - arrowLen * Math.sin(arrow.angle + arrowHalf));
+                    self.overlayCtx.closePath();
+                    self.overlayCtx.fill();
+                }
             }
         }
 
@@ -452,8 +459,9 @@ ShapeEditor.prototype.drawGizmoHandles = function (this: ShapeEditor) {
         // Hide handles if bbox is too small on screen (very zoomed out)
         if (handles.hw < 8 || handles.hh < 8) return;
 
-        // Fade in as rainbow fades out (inverse of overlayAlpha)
-        const gizmoAlpha = 1 - self.overlayAlpha;
+        // Transform handles join the hover affordance without controlling
+        // path or direction-arrow opacity.
+        const gizmoAlpha = self.overlayAlpha;
         if (gizmoAlpha < 0.01) return;
 
         if (!self.ptsBBox) return;
@@ -997,7 +1005,7 @@ ShapeEditor.prototype._drawGizmoPreviewOverlay = function (this: ShapeEditor, pt
 
     // One batched stroke for the entire trace (rainbow + arrows + interior
     // dots are skipped — they return on commit). Cheap even for 4096 points.
-    if (self.overlayAlpha > 0) {
+    {
         const hasMultiStrip = self.stripInfo && self.stripInfo.strips.length > 1;
         const stripBoundaries = new Set<number>();
         if (hasMultiStrip) {
@@ -1005,7 +1013,8 @@ ShapeEditor.prototype._drawGizmoPreviewOverlay = function (this: ShapeEditor, pt
                 if (strip.count > 0) stripBoundaries.add(strip.offset + strip.count - 1);
             }
         }
-        ctx.globalAlpha = self.overlayAlpha * 0.55;
+        const previewPathAlpha = 0.35 + self.overlayAlpha * 0.3;
+        ctx.globalAlpha = previewPathAlpha * 0.55;
         ctx.strokeStyle = gfxColors.textMuted();
         ctx.lineWidth = 1.5;
         ctx.beginPath();

@@ -86,6 +86,8 @@ test.describe('window.__lmDebug registry (#225)', () => {
         expect(typeof state?.stripCount).toBe('number');
         expect(typeof state?.totalPoints).toBe('number');
         expect(typeof state?.dirty).toBe('boolean');
+        expect(typeof state?.directionArrowCount).toBe('number');
+        expect(typeof state?.directionArrowAlpha).toBe('number');
 
         // The pre-existing __shapeeditorDebug alias is untouched (16 specs
         // depend on it) and is also reachable via the registry entry's

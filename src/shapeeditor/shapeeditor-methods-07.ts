@@ -443,7 +443,7 @@ ShapeEditor.prototype.animate = function (this: ShapeEditor) {
         }
 
         // Keep animating while overlayAlpha is mid-transition
-        const targetAlpha = self.isHovering ? 0 : 1;
+        const targetAlpha = self.isHovering ? 1 : 0;
         if (Math.abs(self.overlayAlpha - targetAlpha) > 0.001) self.frameDirty = true;
 
         // Issue #111: drag preview lifecycle.

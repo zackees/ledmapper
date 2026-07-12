@@ -59,6 +59,8 @@ export interface ShapeeditorDebugState {
     stripCount: number;
     totalPoints: number;
     dirty: boolean;
+    directionArrowCount: number;
+    directionArrowAlpha: number;
 }
 
 /**

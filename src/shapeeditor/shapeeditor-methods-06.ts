@@ -703,6 +703,18 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
             return;
         }
 
+        // Update the map-level hover before any specialized handle returns.
+        // Direction arrows should reveal anywhere inside the screenmap OBB,
+        // including over ruler/rotate/scale affordances.
+        const wasHovering = self.isHovering;
+        let pointerInScreenmapObb = false;
+        if (self.ptsBBox) {
+            const [lx, ly] = self.canvasToObbLocal(self.ptsBBox, cx, cy);
+            pointerInScreenmapObb = Math.abs(lx) <= self.ptsBBox.hw && Math.abs(ly) <= self.ptsBBox.hh;
+        }
+        self.isHovering = pointerInScreenmapObb;
+        if (self.isHovering !== wasHovering) self.setNeedsRender();
+
         // Ruler hover cursor
         const rulerHoverHit = self.hitTestRuler(cx, cy);
         if (rulerHoverHit) {
@@ -728,17 +740,11 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
         const prevGizmoHover = self.gizmoHover;
         self.gizmoHover = self.hitTestGizmo(cx, cy);
         if (self.gizmoHover !== prevGizmoHover) self.setNeedsRender();
-
-        // Check if mouse is inside the points bounding box (controls rainbow fade)
-        const wasHovering = self.isHovering;
-        if (self.ptsBBox) {
-            const [lx, ly] = self.canvasToObbLocal(self.ptsBBox, cx, cy);
-            const inObb = Math.abs(lx) <= self.ptsBBox.hw && Math.abs(ly) <= self.ptsBBox.hh;
-            self.isHovering = inObb || !!self.gizmoHover;
-        } else {
-            self.isHovering = false;
+        const hoveringMapOrGizmo = pointerInScreenmapObb || !!self.gizmoHover;
+        if (self.isHovering !== hoveringMapOrGizmo) {
+            self.isHovering = hoveringMapOrGizmo;
+            self.setNeedsRender();
         }
-        if (self.isHovering !== wasHovering) self.setNeedsRender();
 
         // Background image gizmo hover (only when not hovering screenmap gizmo)
         const prevBgGizmoHover = self.bgGizmoHover;
