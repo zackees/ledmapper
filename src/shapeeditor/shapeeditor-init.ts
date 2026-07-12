@@ -341,6 +341,8 @@ registerDebugState('shapeeditor', {
         // Reset stays dirty-gated, so its enabled state is the dirty flag now
         // that Save As… is existence-gated instead (#292).
         dirty: !this.dom_btn_reset.disabled,
+        directionArrowCount: this.directionArrowCount,
+        directionArrowAlpha: this.overlayAlpha,
     }),
     debug: shapeeditorDebug,
 });
@@ -366,7 +368,8 @@ registerDebugState('shapeeditor', {
         this.tooltip = null;
         this.lastTransformedPts = [];
         this.isHovering = false;
-        this.overlayAlpha = 1;
+        this.overlayAlpha = 0;
+        this.directionArrowCount = 0;
         this.ptsBBox = null;
         this.geometryDirty = true;
         this.frameDirty = true;

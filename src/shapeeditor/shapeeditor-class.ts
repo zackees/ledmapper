@@ -338,6 +338,7 @@ export class ShapeEditor {
     declare lastTransformedPts: [number, number][];
     declare isHovering: boolean;
     declare overlayAlpha: number;
+    declare directionArrowCount: number;
     declare ptsBBox: OBBox | null;
     declare geometryDirty: boolean;
     declare frameDirty: boolean;
