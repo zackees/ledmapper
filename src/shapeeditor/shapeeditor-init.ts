@@ -380,6 +380,7 @@ registerDebugState('shapeeditor', {
         this.geometryDirty = true;
         this.frameDirty = true;
         this.lastBuiltPointCount = -1;
+        this.layoutLoadGeneration = 0;
         this.pointsColorAttr = null;
         this.selectedIdx = -1;
         this.isDragging = false;

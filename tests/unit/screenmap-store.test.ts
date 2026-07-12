@@ -28,6 +28,7 @@ const {
     restoreBackup,
     backfillMeta,
     savePresetSelection,
+    savePresetScreenmap,
     getPresetSelection,
     notePinMutation,
     _resetPinMutationGuardForTests,
@@ -342,5 +343,20 @@ describe('screenmap-store: pinCount meta + regression guard', () => {
         });
         assert.equal(saveScreenmapWithMeta(twoPins, { source: 'save' }), true);
         assert.equal(getScreenmapMeta()!.pinCount, 2);
+    });
+
+    it('atomically replaces a higher-pin custom map with a selected preset and preserves backup', () => {
+        const custom = makePinMap({
+            a: { count: 4, pin: 'pin1' },
+            b: { count: 4, pin: 'pin2' },
+        });
+        notePinMutation();
+        assert.equal(saveScreenmapWithMeta(custom, { source: 'save' }), true);
+        _resetPinMutationGuardForTests();
+        const preset = makeMap({ strip1: 8 });
+        assert.equal(savePresetScreenmap(preset, 'canonical.json'), true);
+        assert.equal(getScreenmap(), preset);
+        assert.equal(getPresetSelection(), 'canonical.json');
+        assert.equal(getBackup()?.json, custom);
     });
 });

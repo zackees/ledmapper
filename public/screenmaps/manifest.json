@@ -1,5 +1,6 @@
 {
     "schemaVersion": 2,
+    "defaultPreset": "64x64_quad_serpentine.json",
     "categories": [
         { "id": "grids",  "label": "Grids" },
         { "id": "strips", "label": "Strips & Rings" },

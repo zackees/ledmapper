@@ -77,7 +77,7 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
     // The worker shares one browser context; earlier specs can leave a stored
     // screenmap via screenmap-store (e.g. the shapeeditor autosaves its default
     // shape when console-errors.spec visits it), which would suppress the
-    // default 16x16 preset these tests assert. Clear it before each load.
+    // canonical default preset these tests assert. Clear it before each load.
     test.beforeEach(async ({ page }) => {
         await page.addInitScript(() => {
             try {
@@ -111,8 +111,8 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
             await page.locator('#btn_play_pause').click();
             await expect(page.locator('#btn_play_pause')).toHaveAttribute('title', 'Pause');
 
-            // 16x16 preset is selected by default (256 LEDs)
-            await expect(page.locator('.preset-btn[data-preset-file="16x16_grid.json"]')).toHaveClass(/active-preset/);
+            // Canonical 64x64 quad preset is selected by default (4096 LEDs).
+            await expect(page.locator('.preset-btn[data-preset-file="64x64_quad_serpentine.json"]')).toHaveClass(/active-preset/);
 
             // Controls should be enabled (screenmap loaded by default)
             await expect(page.locator('#rng_blur')).toBeEnabled();
@@ -138,7 +138,7 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
             // (test-video.mp4 = 60 frames @ 30 fps), and the detected fps
             // rides in the metadata.
             const payload = fledPayload(data);
-            const bytesPerFrame = 256 * 3; // 16x16 grid = 256 LEDs, 3 bytes each
+            const bytesPerFrame = 4096 * 3;
             expect(payload.length % bytesPerFrame).toBe(0);
             expect(payload.length / bytesPerFrame).toBe(60);
             const jsonLength = data.readUInt32LE(8);
@@ -164,15 +164,15 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
             await page.locator('[data-trigger="btn_start_webcam"]').click();
             await waitForSourceActive(page);
 
-            // 16x16 preset is active by default
-            await expect(page.locator('.preset-btn[data-preset-file="16x16_grid.json"]')).toHaveClass(/active-preset/);
+            // Canonical 64x64 quad preset is active by default.
+            await expect(page.locator('.preset-btn[data-preset-file="64x64_quad_serpentine.json"]')).toHaveClass(/active-preset/);
             await expect(page.locator('#btn_toggle_record')).toBeEnabled();
 
             // Record
             const data = await recordAndDownload(page, 2000);
 
             const payload = fledPayload(data);
-            const bytesPerFrame = 256 * 3;
+            const bytesPerFrame = 4096 * 3;
             expect(payload.length).toBeGreaterThan(0);
             expect(payload.length % bytesPerFrame).toBe(0);
         });

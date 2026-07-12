@@ -161,6 +161,18 @@ export function savePresetSelection(file: string): void {
     safeStorage.set(PRESET_KEY, file);
 }
 
+/** Atomically persist a user-selected built-in preset and its provenance. */
+export function savePresetScreenmap(jsonText: string, file: string): boolean {
+    notePinMutation();
+    const ok = saveScreenmapWithMeta(jsonText, { source: `preset:${file}` });
+    if (!ok) return false;
+    if (!safeStorage.set(PRESET_KEY, file)) {
+        safeStorage.remove(PRESET_KEY);
+        return false;
+    }
+    return true;
+}
+
 /**
  * Retrieve the active built-in preset filename, or null.
  * @returns {string|null}

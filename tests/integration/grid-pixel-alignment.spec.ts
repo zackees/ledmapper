@@ -22,16 +22,16 @@ test.afterEach(async ({ page }) => {
     }, STORAGE_KEYS).catch(() => undefined);
 });
 
-test('Create pixel-aligns every row and column of the default 16x16 Grid', async ({ page }) => {
+test('Create pixel-aligns every row and column of the default 64x64 Quad Serpentine', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await clearStoredLayout(page);
     await page.goto('/create');
-    await page.waitForFunction(() => Boolean(window.__shapeeditorDebug?.getLedCanvasPos?.(255)));
+    await page.waitForFunction(() => Boolean(window.__shapeeditorDebug?.getLedCanvasPos?.(4095)));
 
     const axes = await page.evaluate(() => {
         const xs = new Set<number>();
         const ys = new Set<number>();
-        for (let index = 0; index < 256; index++) {
+        for (let index = 0; index < 4096; index++) {
             const point = window.__shapeeditorDebug?.getLedCanvasPos?.(index);
             if (!point) continue;
             xs.add(Math.round(point.canvasX));
@@ -43,14 +43,14 @@ test('Create pixel-aligns every row and column of the default 16x16 Grid', async
         };
     });
 
-    expectUniformAxisLevels(axes.xs, 16);
-    expectUniformAxisLevels(axes.ys, 16);
+    expectUniformAxisLevels(axes.xs, 64);
+    expectUniformAxisLevels(axes.ys, 64);
 });
 
-test('Record pixel-aligns every row and column of the default 16x16 Grid', async ({ page }) => {
+test('Record pixel-aligns every row and column of the default 64x64 Quad Serpentine', async ({ page }) => {
     await clearStoredLayout(page);
     await page.goto('/record?perfdebug=1');
-    await page.waitForFunction(() => window.__mmDebug?.getState?.().localPts?.length === 256);
+    await page.waitForFunction(() => window.__mmDebug?.getState?.().localPts?.length === 4096);
 
     const axes = await page.evaluate(() => {
         const points = window.__mmDebug?.getState?.().localPts ?? [];
@@ -60,6 +60,6 @@ test('Record pixel-aligns every row and column of the default 16x16 Grid', async
         };
     });
 
-    expectUniformAxisLevels(axes.xs, 16);
-    expectUniformAxisLevels(axes.ys, 16);
+    expectUniformAxisLevels(axes.xs, 64);
+    expectUniformAxisLevels(axes.ys, 64);
 });

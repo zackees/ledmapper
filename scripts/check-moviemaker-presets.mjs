@@ -26,6 +26,9 @@ for (const cat of manifest.categories) {
 
 const presets = manifest.presets || [];
 assert.ok(presets.length > 0, 'manifest.json must declare at least one preset');
+assert.equal(typeof manifest.defaultPreset, 'string', 'manifest.json must declare "defaultPreset"');
+assert.ok(presets.some(p => p.file === manifest.defaultPreset),
+    'manifest.json defaultPreset must name a listed preset');
 
 const categoryIdSet = new Set(categoryIds);
 for (const preset of presets) {

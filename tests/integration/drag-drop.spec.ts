@@ -63,7 +63,7 @@ test.describe('Moviemaker drag-and-drop', () => {
         // Activate a preset first so we can observe the drop clearing it.
         // The preset accordion (issue #206) groups buttons by category; the
         // 8x8 Grid lives in the "Grids" category which is open by default
-        // because the autoload picks 16x16_grid as the initial selection.
+        // because the canonical 64x64 default keeps the Grids category open.
         const presetBtn = page.locator('button[data-preset-file="8x8_grid.json"]');
         await expandScreenmapBand(page);
         await presetBtn.click();

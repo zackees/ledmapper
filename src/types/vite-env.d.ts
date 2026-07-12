@@ -33,6 +33,7 @@ declare module 'virtual:screenmap-presets' {
   }
   export interface PresetManifest {
     schemaVersion?: number;
+    defaultPreset?: string;
     categories?: PresetCategory[];
     presets: PresetEntry[];
   }
