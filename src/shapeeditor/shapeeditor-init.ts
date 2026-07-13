@@ -23,6 +23,7 @@ import templateHtml from './template.html?raw';
 import type { InsertDialogOpts } from './shapeeditor-types';
 import type { ShapeeditorDebugHooks } from '../types/domain';
 import { registerDebugState, unregisterDebugState } from '../debug-registry';
+import { emptyStripSnapTargetSet } from './strip-snap-targets';
 
 ShapeEditor.prototype._construct = function (this: ShapeEditor): void {
 this.container.innerHTML = templateHtml;
@@ -223,16 +224,31 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
         },
         getCamZoom: () => this.camZoom,
         getCamPan: () => ({ x: this.camPanX, y: this.camPanY }),
+        getStripSnapState: () => ({
+            active: this.stripDragActive,
+            targetCounts: {
+                x: this.stripSnapTargets.x.length,
+                y: this.stripSnapTargets.y.length,
+                rulerBodies: this.stripSnapTargets.rulerBodies.length,
+            },
+            targetKinds: {
+                x: this.stripSnapTargets.x.map((target) => target.kind),
+                y: this.stripSnapTargets.y.map((target) => target.kind),
+            },
+            engagement: this.stripSnapEngagement,
+        }),
         // Drive a synthetic L-drag from (flatIdx) by (dxClient, dyClient) client px.
         simulateLedDrag: (flatIdx: number, dxClient: number, dyClient: number, opts: Record<string, unknown> | null | undefined) => {
             const pos = window.__shapeeditorDebug?.getLedCanvasPos?.(flatIdx) ?? null;
             if (!pos) return false;
             const altKey = Boolean(opts?.altKey);
-            const evtOpts = (x: number, y: number) => ({ clientX: x, clientY: y, button: 0, bubbles: true, altKey });
-            if (!this.overlayCanvas) return false;
-            this.overlayCanvas.dispatchEvent(new MouseEvent('mousedown', evtOpts(pos.clientX, pos.clientY)));
-            this.overlayCanvas.dispatchEvent(new MouseEvent('mousemove', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
-            this.overlayCanvas.dispatchEvent(new MouseEvent('mouseup', evtOpts(pos.clientX + dxClient, pos.clientY + dyClient)));
+            const shiftKey = Boolean(opts?.shiftKey);
+            // Drive the same handlers directly because modern browsers route
+            // canvas input through PointerEvents (there is no mouse listener
+            // to receive a synthetic MouseEvent in that mode).
+            this._synth('mousedown', pos.clientX, pos.clientY, { altKey, shiftKey });
+            this._synth('mousemove', pos.clientX + dxClient, pos.clientY + dyClient, { altKey, shiftKey });
+            this._synth('mouseup', pos.clientX + dxClient, pos.clientY + dyClient, { altKey, shiftKey });
             return true;
         },
         // Synthetic per-strip rotation drag: select strip `i`, then drive
@@ -397,12 +413,10 @@ registerDebugState('shapeeditor', {
         this.stripDragStartRaw = null;
         this.stripDragLastSdx = 0;
         this.stripDragLastSdy = 0;
-        this.stripSnapActive = false;
-        this.stripSnapXTargets = [];
-        this.stripSnapYTargets = [];
-        this.stripSnapStartCenter = null;
-        this.stripSnapEngagedX = null;
-        this.stripSnapEngagedY = null;
+        this.stripSnapStartGeometry = null;
+        this.stripSnapTransform = null;
+        this.stripSnapTargets = emptyStripSnapTargetSet();
+        this.stripSnapEngagement = { mode: 'none' };
         this.stripRotateActive = false;
         this.stripRotateIdx = -1;
         this.stripRotateStartScreenmap = null;

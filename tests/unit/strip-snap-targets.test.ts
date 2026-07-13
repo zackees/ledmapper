@@ -1,219 +1,251 @@
-/**
- * Tests for computeStripSnapTargets — issue #110 (brick-laying snap).
- *
- * The helper extends the center-to-center snap (#105) with ±k·pitch
- * candidates so a dragged strip can lock onto the neighbor's LED grid.
- * These tests pin the math and the variance guard.
- */
-
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 
 import {
+    computeStripSnapGeometry,
     computeStripSnapTargets,
+    inverseTransformSnapDelta,
+    resolveStripDragSnap,
+    transformPointForSnap,
+    type SnapRulerRef,
     type SnapStripRef,
 } from '../../src/shapeeditor/strip-snap-targets';
 
-function near(actual: number, expected: number, eps = 1e-9): boolean {
-    return Math.abs(actual - expected) < eps;
+function includesNear(values: readonly number[], expected: number, eps = 1e-9): boolean {
+    return values.some((value) => Math.abs(value - expected) < eps);
 }
 
-function includesNear(actuals: readonly number[], expected: number, eps = 1e-9): boolean {
-    for (const a of actuals) if (near(a, expected, eps)) return true;
-    return false;
+function targetValues(targets: ReturnType<typeof computeStripSnapTargets>, axis: 'x' | 'y'): number[] {
+    return targets[axis].map((target) => target.value);
 }
 
-describe('computeStripSnapTargets (issue #110)', () => {
-    test('horizontal strip emits center + ±k·pitch on both axes', () => {
-        // Strip A: 3 LEDs along x at y=0, spaced 10. Center = (10, 0).
-        // Dragged strip is index 1 (single LED, off to the side).
-        const strips: SnapStripRef[] = [
-            { offset: 0, count: 3 },
-            { offset: 3, count: 1 },
-        ];
-        const points: [number, number][] = [
-            [0, 0], [10, 0], [20, 0],
-            [999, 999],
-        ];
-        const { xTargets, yTargets } = computeStripSnapTargets(strips, 1, points);
-
-        // k=0 center, then k = ±1, ±2, ±3 at pitch=10.
-        for (const k of [0, 1, -1, 2, -2, 3, -3]) {
-            assert.ok(includesNear(xTargets, 10 + k * 10), `xTargets missing ${String(10 + k * 10)}: ${JSON.stringify(xTargets)}`);
-            assert.ok(includesNear(yTargets, 0 + k * 10), `yTargets missing ${String(0 + k * 10)}: ${JSON.stringify(yTargets)}`);
-        }
-        assert.equal(xTargets.length, 7);
-        assert.equal(yTargets.length, 7);
+describe('strip snap geometry', () => {
+    test('computes mean and world AABB while ignoring null points', () => {
+        assert.deepEqual(
+            computeStripSnapGeometry([[0, 5], null, [10, -5], undefined]),
+            { centroid: { x: 5, y: 0 }, bounds: { minX: 0, maxX: 10, minY: -5, maxY: 5 } },
+        );
+        assert.equal(computeStripSnapGeometry([null, undefined]), null);
     });
 
-    test('rotated 45° strip yields pitch = √2 · leg', () => {
-        // 3 LEDs on the y=x diagonal, leg=5 ⇒ LED-to-LED dist = √50 ≈ 7.071.
-        const strips: SnapStripRef[] = [{ offset: 0, count: 3 }];
-        const points: [number, number][] = [[0, 0], [5, 5], [10, 10]];
-        const { xTargets, yTargets } = computeStripSnapTargets(strips, -1, points);
-
-        const pitch = Math.sqrt(50);
-        // center is (5, 5).
-        for (const k of [0, 1, -1, 2, -2, 3, -3]) {
-            assert.ok(includesNear(xTargets, 5 + k * pitch, 1e-9));
-            assert.ok(includesNear(yTargets, 5 + k * pitch, 1e-9));
-        }
-    });
-
-    test('singleton strip emits only k=0 (no pitch)', () => {
-        const strips: SnapStripRef[] = [{ offset: 0, count: 1 }];
-        const points: [number, number][] = [[3, 4]];
-        const { xTargets, yTargets } = computeStripSnapTargets(strips, -1, points);
-
-        assert.deepEqual(xTargets, [3]);
-        assert.deepEqual(yTargets, [4]);
-    });
-
-    test('variance guard: irregular strip drops the ±k·pitch extras', () => {
-        // Distances [1, 99] — clearly not a uniform grid; only k=0 should
-        // be emitted so we don't pollute the candidate set.
-        const strips: SnapStripRef[] = [{ offset: 0, count: 3 }];
-        const points: [number, number][] = [[0, 0], [1, 0], [100, 0]];
-        const { xTargets, yTargets } = computeStripSnapTargets(strips, -1, points);
-
-        // center = ((0 + 1 + 100)/3, 0) = (101/3, 0).
-        assert.equal(xTargets.length, 1);
-        assert.equal(yTargets.length, 1);
-        assert.ok(near(xTargets[0]!, 101 / 3));
-        assert.ok(near(yTargets[0]!, 0));
-    });
-
-    test('dragged strip is excluded from targets', () => {
-        // Two horizontal strips. If we drag strip 0, only strip 1
-        // should contribute targets, and vice versa.
-        const strips: SnapStripRef[] = [
-            { offset: 0, count: 3 },   // center (10, 0), pitch 10
-            { offset: 3, count: 3 },   // center (60, 50), pitch 10
-        ];
-        const points: [number, number][] = [
-            [0, 0], [10, 0], [20, 0],
-            [50, 50], [60, 50], [70, 50],
-        ];
-
-        const dragging0 = computeStripSnapTargets(strips, 0, points);
-        assert.ok(includesNear(dragging0.xTargets, 60));   // strip 1's center
-        assert.ok(!includesNear(dragging0.xTargets, 10));  // strip 0 must be skipped
-
-        const dragging1 = computeStripSnapTargets(strips, 1, points);
-        assert.ok(includesNear(dragging1.xTargets, 10));
-        assert.ok(!includesNear(dragging1.xTargets, 60));
-    });
-
-    test('zero-count strip contributes nothing', () => {
-        const strips: SnapStripRef[] = [
-            { offset: 0, count: 0 },
-            { offset: 0, count: 2 },
-        ];
-        const points: [number, number][] = [[0, 0], [4, 0]];
-        const { xTargets, yTargets } = computeStripSnapTargets(strips, -1, points);
-
-        // Only strip 1 contributes: center (2, 0), pitch 4. 7 entries each.
-        assert.equal(xTargets.length, 7);
-        assert.equal(yTargets.length, 7);
-        assert.ok(includesNear(xTargets, 2));
-        assert.ok(includesNear(xTargets, 2 + 4));
-        assert.ok(includesNear(xTargets, 2 - 4));
-    });
-
-    test('null points in the array are ignored', () => {
-        // A null gap between two LEDs shouldn't produce a bogus huge distance.
-        const strips: SnapStripRef[] = [{ offset: 0, count: 3 }];
-        const points: ([number, number] | null)[] = [[0, 0], null, [10, 0]];
-        const { xTargets, yTargets } = computeStripSnapTargets(strips, -1, points);
-
-        // Two surviving points (0,0) and (10,0), so center=(5,0), pitch=10.
-        assert.ok(includesNear(xTargets, 5));
-        assert.ok(includesNear(xTargets, 5 + 10));
-        assert.ok(includesNear(yTargets, 0));
-        assert.ok(includesNear(yTargets, 10));
+    test('forward point transform and inverse delta transform round-trip', () => {
+        const transform = { scaleX: 2, scaleY: 3, cos: 0, sin: 1, translateX: 10, translateY: -4 };
+        assert.deepEqual(transformPointForSnap([2, 3], transform), [1, 0]);
+        const local = inverseTransformSnapDelta({ x: 6, y: -4 }, transform);
+        assert.ok(Math.abs(local.x + 2) < 1e-9);
+        assert.ok(Math.abs(local.y + 2) < 1e-9);
     });
 });
 
-describe('inter-strip grid pitch (issue #115)', () => {
-    test('Red 1: 4-panel row infers pitch and snaps one panel beyond each end', () => {
-        // 4 horizontal strips, 2 LEDs each, centered at x = 0, 10, 20, 30 on y=0.
+describe('typed legacy and advanced target generation', () => {
+    test('preserves center and LED-pitch candidates', () => {
+        const strips: SnapStripRef[] = [{ offset: 0, count: 3 }, { offset: 3, count: 1 }];
+        const points: [number, number][] = [[0, 0], [10, 0], [20, 0], [999, 999]];
+        const targets = computeStripSnapTargets({ strips, draggedIdx: 1, points });
+        const xs = targetValues(targets, 'x');
+        const ys = targetValues(targets, 'y');
+        for (const k of [0, 1, -1, 2, -2, 3, -3]) {
+            assert.ok(includesNear(xs, 10 + k * 10), `missing x=${String(10 + k * 10)}`);
+            assert.ok(includesNear(ys, k * 10), `missing y=${String(k * 10)}`);
+        }
+        assert.equal(targets.x[0]!.kind, 'centroid');
+        assert.equal(targets.x[0]?.sourceStripIdx, 0);
+    });
+
+    test('rotated strip keeps rendered LED pitch', () => {
+        const targets = computeStripSnapTargets({
+            strips: [{ offset: 0, count: 3 }], draggedIdx: -1,
+            points: [[0, 0], [5, 5], [10, 10]],
+        });
+        const pitch = Math.sqrt(50);
+        for (const k of [0, 1, -1, 2, -2, 3, -3]) {
+            assert.ok(includesNear(targetValues(targets, 'x'), 5 + k * pitch));
+            assert.ok(includesNear(targetValues(targets, 'y'), 5 + k * pitch));
+        }
+    });
+
+    test('singleton and irregular strips emit no pitch extras', () => {
+        const singleton = computeStripSnapTargets({
+            strips: [{ offset: 0, count: 1 }], draggedIdx: -1, points: [[3, 4]],
+        });
+        assert.deepEqual(targetValues(singleton, 'x'), [3]);
+        assert.deepEqual(targetValues(singleton, 'y'), [4]);
+        const irregular = computeStripSnapTargets({
+            strips: [{ offset: 0, count: 3 }], draggedIdx: -1,
+            points: [[0, 0], [1, 0], [100, 0]],
+        });
+        assert.ok(includesNear(targetValues(irregular, 'x'), 101 / 3));
+    });
+
+    test('excludes dragged and zero-count strips', () => {
+        const strips = [{ offset: 0, count: 3 }, { offset: 3, count: 3 }, { offset: 6, count: 0 }];
+        const points: [number, number][] = [[0, 0], [10, 0], [20, 0], [50, 50], [60, 50], [70, 50]];
+        const targets = computeStripSnapTargets({ strips, draggedIdx: 0, points });
+        assert.ok(targetValues(targets, 'x').includes(60));
+        assert.ok(!targetValues(targets, 'x').includes(10));
+    });
+
+    test('infers inter-strip pitch and preserves band filtering', () => {
         const strips: SnapStripRef[] = [
             { offset: 0, count: 2 }, { offset: 2, count: 2 },
             { offset: 4, count: 2 }, { offset: 6, count: 2 },
         ];
         const points: [number, number][] = [
-            [-1, 0], [1, 0],
-            [9, 0], [11, 0],
-            [19, 0], [21, 0],
-            [29, 0], [31, 0],
+            [-1, 0], [1, 0], [9, 0], [11, 0], [19, 0], [21, 0], [29, 0], [31, 0],
         ];
-        const { xTargets } = computeStripSnapTargets(strips, -1, points, { x: 40, y: 0 });
-        assert.ok(
-            xTargets.some((v) => Math.abs(v - 40) < 1e-9),
-            `expected 40, got ${JSON.stringify(xTargets)}`,
-        );
-        assert.ok(
-            xTargets.some((v) => Math.abs(v + 10) < 1e-9),
-            `expected -10, got ${JSON.stringify(xTargets)}`,
-        );
+        const targets = computeStripSnapTargets({
+            strips, draggedIdx: -1, points, toleranceWorld: 1,
+        });
+        assert.ok(includesNear(targetValues(targets, 'x'), 40));
+        assert.ok(includesNear(targetValues(targets, 'x'), -10));
     });
 
-    test('Red 2: 5-panel row emits ±k targets two panels out', () => {
-        // 5 strips at cx = 0, 10, 20, 30, 40. Inter-strip pitch = 10.
-        // Expect 50 (k=1 past 40), 60 (k=2 past 40), -10 (k=1 below 0), -20 (k=2).
-        const strips: SnapStripRef[] = Array.from(
-            { length: 5 },
-            (_, i) => ({ offset: i * 2, count: 2 }),
-        );
-        const points: [number, number][] = [];
-        for (let i = 0; i < 5; i++) {
-            points.push([i * 10 - 1, 0], [i * 10 + 1, 0]);
-        }
-        const { xTargets } = computeStripSnapTargets(strips, -1, points, { x: 50, y: 0 });
-        for (const x of [50, 60, -10, -20]) {
-            assert.ok(
-                xTargets.some((v) => Math.abs(v - x) < 1e-9),
-                `missing ${String(x)}: ${JSON.stringify(xTargets)}`,
-            );
-        }
+    test('adds AABB edge targets and rotated world bounds', () => {
+        const targets = computeStripSnapTargets({
+            strips: [{ offset: 0, count: 4 }, { offset: 4, count: 2 }], draggedIdx: 1,
+            points: [[-2, -1], [2, -1], [2, 1], [-2, 1], [20, 20], [21, 21]],
+        });
+        const edgeTargets = targets.x.filter((target) => target.kind === 'bbox-edge');
+        assert.deepEqual(edgeTargets.map((target) => target.value), [-2, 2]);
+        assert.deepEqual(edgeTargets[0]?.anchors, ['min', 'max']);
+
+        const rotated = computeStripSnapTargets({
+            strips: [{ offset: 0, count: 4 }, { offset: 4, count: 1 }], draggedIdx: 1,
+            points: [[-1, -2], [2, 1], [1, 3], [-2, 0], [20, 20]],
+        });
+        assert.ok(includesNear(targetValues(rotated, 'x'), -2));
+        assert.ok(includesNear(targetValues(rotated, 'x'), 2));
+        assert.ok(includesNear(targetValues(rotated, 'y'), -2));
+        assert.ok(includesNear(targetValues(rotated, 'y'), 3));
     });
 
-    test('Red 3: irregular spacing yields true-median pitch', () => {
-        // 3 strips at cx = 0, 10, 25. Diffs = [10, 15]. True median = 12.5.
-        // Expect a target at 25 + 12.5 = 37.5 OR 0 - 12.5 = -12.5.
-        const strips: SnapStripRef[] = [
-            { offset: 0, count: 2 }, { offset: 2, count: 2 }, { offset: 4, count: 2 },
-        ];
-        const points: [number, number][] = [
-            [-1, 0], [1, 0],
-            [9, 0], [11, 0],
-            [24, 0], [26, 0],
-        ];
-        const { xTargets } = computeStripSnapTargets(strips, -1, points, { x: 35, y: 0 });
-        assert.ok(
-            xTargets.some((v) => Math.abs(v - 37.5) < 1e-6)
-            || xTargets.some((v) => Math.abs(v + 12.5) < 1e-6),
-            `expected 37.5 or -12.5, got ${JSON.stringify(xTargets)}`,
-        );
+    test('creates median row/column clusters without transitive chaining', () => {
+        const targets = computeStripSnapTargets({
+            strips: [{ offset: 0, count: 1 }, { offset: 1, count: 1 }, { offset: 2, count: 1 }, { offset: 3, count: 1 }],
+            draggedIdx: 3,
+            points: [[0, 0], [10, 0.4], [20, 100], [30, 30]],
+            toleranceWorld: 0.5,
+        });
+        const row = targets.y.find((target) => target.kind === 'row');
+        assert.ok(row);
+        assert.ok(Math.abs(row.value - 0.2) < 1e-9);
+        assert.deepEqual(row.supportStripIdxs, [0, 1]);
+        assert.equal(targets.x.some((target) => target.kind === 'column'), false);
     });
 
-    test('Red 4: perpendicular band filter excludes far-axis strip from pitch inference', () => {
-        // A=(0,0) B=(20,0) C=(10,100). Dragging near y=0 ⇒ pitch from {A,B} only.
-        // Inter-strip X pitch = 20. Expect 40 (B + 20) in targets.
-        // Without the band filter a buggy implementation would infer pitch=10
-        // from {0, 10, 20} and yield x=30 (and miss x=40).
-        const strips: SnapStripRef[] = [
-            { offset: 0, count: 2 }, { offset: 2, count: 2 }, { offset: 4, count: 2 },
+    test('adds endpoint and finite ruler-body targets', () => {
+        const rulers: SnapRulerRef[] = [
+            { ax: 0, ay: 0, bx: 10, by: 0 },
+            { ax: 5, ay: 5, bx: 5, by: 5 },
         ];
-        const points: [number, number][] = [
-            [-1, 0], [1, 0],
-            [19, 0], [21, 0],
-            [9, 100], [11, 100],
-        ];
-        const { xTargets } = computeStripSnapTargets(strips, -1, points, { x: 30, y: 0 });
-        assert.ok(
-            xTargets.some((v) => Math.abs(v - 40) < 1e-9),
-            `expected 40 from {A,B} pitch=20, got ${JSON.stringify(xTargets)}`,
-        );
+        const targets = computeStripSnapTargets({
+            strips: [{ offset: 0, count: 1 }], draggedIdx: -1, points: [[20, 20]], rulers,
+        });
+        assert.equal(targets.rulerBodies.length, 1);
+        assert.equal(targets.rulerBodies[0]?.sourceRulerIdx, 0);
+        assert.equal(targets.x.filter((target) => target.kind === 'ruler-endpoint').length, 3);
+    });
+
+    test('deduplicates coordinates while retaining source kinds and legacy order', () => {
+        const targets = computeStripSnapTargets({
+            strips: [{ offset: 0, count: 1 }, { offset: 1, count: 1 }], draggedIdx: 1,
+            points: [[0, 0], [10, 10]], rulers: [{ ax: 0, ay: 5, bx: 2, by: 5 }],
+        });
+        const zero = targets.x.find((target) => Math.abs(target.value) < 1e-9);
+        assert.ok(zero);
+        assert.equal(zero.kind, 'centroid');
+        assert.ok(zero.sourceKinds?.includes('ruler-endpoint'));
+    });
+});
+
+describe('strip snap resolver', () => {
+    const geometry = computeStripSnapGeometry([[20, 20], [30, 30]])!;
+    const axisTargets = computeStripSnapTargets({
+        strips: [{ offset: 0, count: 2 }, { offset: 2, count: 2 }], draggedIdx: 0,
+        points: [[20, 20], [30, 30], [0, 0], [10, 10]],
+    });
+
+    test('snaps a dragged edge to an opposite reference edge', () => {
+        const result = resolveStripDragSnap({
+            cursorDxPx: 9, cursorDyPx: 0, rawDx: -9, rawDy: 0,
+            startGeometry: geometry,
+            targets: {
+                x: [{ id: 1, axis: 'x', value: 10, kind: 'bbox-edge', anchors: ['min', 'max'], order: 0 }],
+                y: [], rulerBodies: [],
+            },
+            camZoom: 1, tolerancePx: 2, snapEnabled: true, shiftBypass: false,
+        });
+        assert.equal(result.dx, -10);
+        assert.deepEqual(result.engagement, { mode: 'axis', x: { targetId: 1, anchor: 'min' }, y: null });
+    });
+
+    test('allows both axes to engage and preserves origin priority', () => {
+        const both = resolveStripDragSnap({
+            cursorDxPx: 9, cursorDyPx: 9, rawDx: -9, rawDy: -9,
+            startGeometry: geometry,
+            targets: {
+                x: [{ id: 1, axis: 'x', value: 10, kind: 'bbox-edge', anchors: ['min'], order: 0 }],
+                y: [{ id: 2, axis: 'y', value: 10, kind: 'bbox-edge', anchors: ['min'], order: 1 }], rulerBodies: [],
+            },
+            camZoom: 1, tolerancePx: 2, snapEnabled: true, shiftBypass: false,
+        });
+        assert.equal(both.dx, -10);
+        assert.equal(both.dy, -10);
+        const origin = resolveStripDragSnap({
+            cursorDxPx: 1, cursorDyPx: 1, rawDx: 10, rawDy: 10,
+            startGeometry: geometry, targets: axisTargets, camZoom: 1, tolerancePx: 2,
+            snapEnabled: true, shiftBypass: false,
+        });
+        assert.deepEqual(origin, { dx: 0, dy: 0, engagement: { mode: 'origin' } });
+    });
+
+    test('Shift and disabled settings bypass every target', () => {
+        const input = {
+            cursorDxPx: 9, cursorDyPx: 0, rawDx: -9, rawDy: 0,
+            startGeometry: geometry, targets: axisTargets, camZoom: 1, tolerancePx: 2,
+            snapEnabled: true, shiftBypass: true,
+        };
+        assert.deepEqual(resolveStripDragSnap(input), { dx: -9, dy: 0, engagement: { mode: 'none' } });
+        assert.deepEqual(resolveStripDragSnap({ ...input, shiftBypass: false, snapEnabled: false }), {
+            dx: -9, dy: 0, engagement: { mode: 'none' },
+        });
+    });
+
+    test('projects to horizontal and diagonal finite ruler bodies', () => {
+        const bodyTargets = {
+            x: [], y: [],
+            rulerBodies: [{ id: 7, kind: 'ruler-body' as const, sourceRulerIdx: 3, ax: 0, ay: 0, bx: 10, by: 0, order: 0 }],
+        };
+        const horizontal = resolveStripDragSnap({
+            cursorDxPx: -15, cursorDyPx: -19, rawDx: -15, rawDy: -19,
+            startGeometry: computeStripSnapGeometry([[15, 20]])!, targets: bodyTargets,
+            camZoom: 1, tolerancePx: 2, snapEnabled: true, shiftBypass: false,
+        });
+        assert.deepEqual(horizontal.engagement, { mode: 'ruler-body', targetId: 7, sourceRulerIdx: 3 });
+        assert.equal(horizontal.dx, -15);
+        assert.equal(horizontal.dy, -20);
+
+        const diagonal = resolveStripDragSnap({
+            cursorDxPx: -4, cursorDyPx: -6, rawDx: -4, rawDy: -6,
+            startGeometry: computeStripSnapGeometry([[5, 5]])!,
+            targets: { x: [], y: [], rulerBodies: [{ id: 8, kind: 'ruler-body', sourceRulerIdx: 1, ax: 0, ay: 0, bx: 10, by: 10, order: 0 }] },
+            camZoom: 1, tolerancePx: 2, snapEnabled: true, shiftBypass: false,
+        });
+        assert.deepEqual(diagonal.engagement, { mode: 'ruler-body', targetId: 8, sourceRulerIdx: 1 });
+        assert.equal(diagonal.dx, -5);
+        assert.equal(diagonal.dy, -5);
+    });
+
+    test('axis proposal wins exact ruler score ties', () => {
+        const result = resolveStripDragSnap({
+            cursorDxPx: 9, cursorDyPx: 0, rawDx: -9, rawDy: 0,
+            startGeometry: computeStripSnapGeometry([[10, 0]])!,
+            targets: {
+                x: [{ id: 2, axis: 'x', value: 0, kind: 'centroid', anchors: ['centroid'], order: 0 }], y: [],
+                rulerBodies: [{ id: 3, kind: 'ruler-body', sourceRulerIdx: 0, ax: 0, ay: -1, bx: 0, by: 1, order: 1 }],
+            },
+            camZoom: 1, tolerancePx: 2, snapEnabled: true, shiftBypass: false,
+        });
+        assert.equal(result.engagement.mode, 'axis');
     });
 });

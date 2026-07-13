@@ -29,6 +29,7 @@ import type { EditorOverlayMethods } from './editor-overlay';
 import type { EditorInteractionMethods } from './editor-interaction';
 import type { EditorPanelsMethods } from './editor-panels';
 import type { EditorPasteMethods } from './editor-paste';
+import type { SnapDocumentTransform, StripSnapEngagement, StripSnapGeometry, StripSnapTargetSet } from './strip-snap-targets';
 
 // Prototype bundles are composed into this class through the typed interface below.
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
@@ -157,13 +158,10 @@ export class ShapeEditor {
     declare stripDragStartRaw: StripDragPt[] | null;
     declare stripDragLastSdx: number;
     declare stripDragLastSdy: number;
-    declare stripSnapActive: boolean;
-    // Center-to-center snap (issue #105)
-    declare stripSnapXTargets: number[];
-    declare stripSnapYTargets: number[];
-    declare stripSnapStartCenter: { x: number; y: number } | null;
-    declare stripSnapEngagedX: number | null;
-    declare stripSnapEngagedY: number | null;
+    declare stripSnapStartGeometry: StripSnapGeometry | null;
+    declare stripSnapTransform: SnapDocumentTransform | null;
+    declare stripSnapTargets: StripSnapTargetSet;
+    declare stripSnapEngagement: StripSnapEngagement;
     // Per-strip (sub-group) rotation handle â€” independent of the
     // whole-screenmap rotation gizmo. Active only while the user is
     // dragging the strip's dedicated rotate handle.

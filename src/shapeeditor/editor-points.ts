@@ -177,12 +177,7 @@ export const editorPointsMethods: EditorPointsMethods & ThisType<ShapeEditor> = 
         this.stripDragIdx = -1;
         this.stripDragStartScreenmap = null;
         this.stripDragStartRaw = null;
-        this.stripSnapActive = false;
-        this.stripSnapXTargets = [];
-        this.stripSnapYTargets = [];
-        this.stripSnapStartCenter = null;
-        this.stripSnapEngagedX = null;
-        this.stripSnapEngagedY = null;
+        this._clearStripSnapState();
         this.stripRotateActive = false;
         this.stripRotateIdx = -1;
         this.stripRotateStartScreenmap = null;
