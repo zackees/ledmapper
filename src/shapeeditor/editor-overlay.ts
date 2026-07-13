@@ -315,7 +315,8 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
             this.overlayCtx.lineWidth = 2;
             this.overlayCtx.setLineDash([6, 4]);
             this.overlayCtx.beginPath();
-            this.overlayCtx.moveTo(corners[0]!.x, corners[0]!.y);
+            const firstCorner = corners[0] ?? { x: cx, y: cy };
+            this.overlayCtx.moveTo(firstCorner.x, firstCorner.y);
             for (const point of corners.slice(1)) this.overlayCtx.lineTo(point.x, point.y);
             this.overlayCtx.closePath();
             this.overlayCtx.stroke();

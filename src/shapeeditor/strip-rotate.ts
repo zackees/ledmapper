@@ -31,12 +31,22 @@ function convexHull(points: readonly Pt[]): Pt[] {
     if (unique.length <= 2) return unique;
     const lower: Pt[] = [];
     for (const point of unique) {
-        while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, point) <= 0) lower.pop();
+        while (lower.length >= 2) {
+            const penultimate = lower[lower.length - 2] ?? point;
+            const previous = lower[lower.length - 1] ?? point;
+            if (cross(penultimate, previous, point) > 0) break;
+            lower.pop();
+        }
         lower.push(point);
     }
     const upper: Pt[] = [];
     for (const point of [...unique].reverse()) {
-        while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, point) <= 0) upper.pop();
+        while (upper.length >= 2) {
+            const penultimate = upper[upper.length - 2] ?? point;
+            const previous = upper[upper.length - 1] ?? point;
+            if (cross(penultimate, previous, point) > 0) break;
+            upper.pop();
+        }
         upper.push(point);
     }
     return lower.slice(0, -1).concat(upper.slice(0, -1));
@@ -56,8 +66,8 @@ export function minimumAreaObb(points: readonly Pt[]): OrientedBox | null {
     let best: OrientedBox | null = null;
     let bestArea = Infinity;
     for (let i = 0; i < hull.length; i++) {
-        const a = hull[i]!;
-        const b = hull[(i + 1) % hull.length]!;
+        const a = hull[i] ?? [0, 0];
+        const b = hull[(i + 1) % hull.length] ?? [0, 0];
         const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
         if (length <= EPSILON) continue;
         let cos = (b[0] - a[0]) / length;
