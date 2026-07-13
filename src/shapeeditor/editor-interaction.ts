@@ -342,6 +342,20 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         }
 
         // Priority 2: LED point hit test
+        const hitCandidates = this.hitTestLEDCandidates(cx, cy);
+        const hitStrips = new Set(hitCandidates.map((candidate) => candidate.stripIdx));
+        const selectedStrip = this.selection.getStripIdx();
+        if (!e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey
+            && hitStrips.size > 1 && (selectedStrip === null || !hitStrips.has(selectedStrip))) {
+            const resolvedStrip = hitCandidates[hitCandidates.length - 1]?.stripIdx;
+            if (resolvedStrip !== undefined) {
+                this.selectedIdx = -1;
+                this.selection.selectStrip(resolvedStrip);
+                this.setNeedsGeometryUpdate();
+                void this._toastInfo(`Selected "${this.stripStore.getStrips()[resolvedStrip]?.name ?? ''}" — click again to select its LED`);
+                return;
+            }
+        }
         const idx = this.hitTestLED(cx, cy);
         if (idx >= 0) {
             // Multi-selection modifiers: ctrl/meta toggles, shift adds.

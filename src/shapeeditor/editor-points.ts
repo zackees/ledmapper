@@ -16,6 +16,7 @@ export interface EditorPointsMethods {
     showContextMenu: (clientX: number, clientY: number, idx: number, edgeIdx: number, insideBBox?: boolean) => void;
     hideContextMenu: () => void;
     hitTestLED: (canvasX: number, canvasY: number) => number;
+    hitTestLEDCandidates: (canvasX: number, canvasY: number) => { idx: number; stripIdx: number; distSq: number }[];
 }
 
 export const editorPointsMethods: EditorPointsMethods & ThisType<ShapeEditor> = {
@@ -268,35 +269,30 @@ export const editorPointsMethods: EditorPointsMethods & ThisType<ShapeEditor> = 
             this.setNeedsRender();
         }
     },
-    hitTestLED(this: ShapeEditor, canvasX: number, canvasY: number){
-
-        if (this.lastTransformedPts.length === 0) return -1;
+    hitTestLEDCandidates(this: ShapeEditor, canvasX: number, canvasY: number){
+        if (this.lastTransformedPts.length === 0) return [];
         const threshold = 10;
         const threshSq = threshold * threshold;
-        let bestIdx = -1, bestDist = threshSq;
-        let bestStripIdx = -1;
-        const selectedStripIdx = this.selection.getStripIdx();
         const strips = this.stripInfo?.strips ?? [{ offset: 0, count: this.lastTransformedPts.length }];
+        const candidates: { idx: number; stripIdx: number; distSq: number }[] = [];
         for (let stripIdx = 0; stripIdx < strips.length; stripIdx++) {
             const strip = strips[stripIdx];
             if (!strip) continue;
-            const start = Math.max(0, strip.offset);
-            const end = Math.min(this.lastTransformedPts.length, strip.offset + strip.count);
-            for (let i = start; i < end; i++) {
-                const [cx, cy] = this.toCanvasCoords(this.nn(this.lastTransformedPts[i])[0], this.nn(this.lastTransformedPts[i])[1]);
-                const dx = canvasX - cx;
-                const dy = canvasY - cy;
-                const d = dx * dx + dy * dy;
-                const tied = Math.abs(d - bestDist) < 0.01;
-                const selectedWinsTie = tied && stripIdx === selectedStripIdx && bestStripIdx !== selectedStripIdx;
-                const topmostWinsTie = tied && stripIdx > bestStripIdx && bestStripIdx !== selectedStripIdx;
-                if (d < bestDist - 0.01 || selectedWinsTie || topmostWinsTie) {
-                    bestDist = d;
-                    bestIdx = i;
-                    bestStripIdx = stripIdx;
-                }
+            for (let i = Math.max(0, strip.offset); i < Math.min(this.lastTransformedPts.length, strip.offset + strip.count); i++) {
+                const point = this.nn(this.lastTransformedPts[i]);
+                const [cx, cy] = this.toCanvasCoords(point[0], point[1]);
+                const dx = canvasX - cx, dy = canvasY - cy;
+                const distSq = dx * dx + dy * dy;
+                if (distSq <= threshSq) candidates.push({ idx: i, stripIdx, distSq });
             }
         }
-        return bestIdx;
+        return candidates.sort((a, b) => a.distSq - b.distSq || a.stripIdx - b.stripIdx || a.idx - b.idx);
+    },
+    hitTestLED(this: ShapeEditor, canvasX: number, canvasY: number){
+        const candidates = this.hitTestLEDCandidates(canvasX, canvasY);
+        if (!Array.isArray(candidates) || candidates.length === 0) return -1;
+        const selectedStripIdx = this.selection.getStripIdx();
+        const selected = candidates.find((candidate) => candidate.stripIdx === selectedStripIdx);
+        return (selected ?? candidates[candidates.length - 1])?.idx ?? -1;
     },
 };
