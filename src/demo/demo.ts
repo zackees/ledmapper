@@ -4,9 +4,8 @@ import { wireFileDropTarget, wireFilePicker, fileHasExtension } from '../drag-dr
 import { errorDialog } from '../ui/dialogs';
 import { safeStorage } from '../services/storage';
 import { gfxColors, withAlpha } from '../ui/theme';
-import { createGfx, wireBloomUi, createFramePacer } from '../gfx';
-import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
-import { parseRgbFrames, prependFledHeader, readVideoFps, PixelFormat } from '../render/rgb-video';
+import { createGfx, wireBloomUi, createFramePacer } from '@fastled/gfx';
+import { resolveLedDiameter, computeFitScale, parseRgbFrames, prependFledHeader, readVideoFps, PixelFormat } from '@fastled/gfx/core';
 import { registerDebugState, unregisterDebugState, type DemoDebugState } from '../debug-registry';
 import type { MultiStripParseResult, StripPoint } from '../types/domain';
 import templateHtml from './template.html?raw';

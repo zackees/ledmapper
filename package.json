@@ -2,6 +2,7 @@
   "name": "ledmapper",
   "version": "1.0.0",
   "type": "module",
+  "workspaces": ["packages/gfx"],
   "sideEffects": [
     "./src/shapeeditor/shapeeditor-init.ts",
     "./src/shapeeditor/shapeeditor-methods-*.ts",
@@ -41,6 +42,7 @@
   },
   "homepage": "https://github.com/zackees/ledmapper#readme",
   "dependencies": {
+    "@fastled/gfx": "file:packages/gfx",
     "@tailwindcss/vite": "^4.2.2",
     "eruda": "^3.4.3",
     "lil-gui": "^0.21.0",

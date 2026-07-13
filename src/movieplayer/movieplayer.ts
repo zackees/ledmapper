@@ -3,12 +3,11 @@ import { createLabelRenderer } from '../label-render';
 import { wireFileSource, fileHasExtension } from '../drag-drop';
 import { errorDialog } from '../ui/dialogs';
 import { saveVideo, getVideo, clearVideo } from '../video-store';
-import { buildVideoChannelMap } from '../moviemaker/transforms';
-import { createGfx, wireBloomUi, createPlayer } from '../gfx';
+import { createGfx, wireBloomUi, createPlayer } from '@fastled/gfx';
 import { createCanvasRecorder } from '../render/canvas-recorder';
-import { parseRgbFrames, hasFledMagic, readVideoFps } from '../render/rgb-video';
+import { buildVideoChannelMap, parseRgbFrames, hasFledMagic, readVideoFps } from '@fastled/gfx/core';
 import type { ParsedStrip } from '../types/domain';
-import type { Player } from '../gfx';
+import type { Player } from '@fastled/gfx';
 import { createLogger } from '../debug-log';
 import { registerDebugState, unregisterDebugState, type MovieplayerDebugState } from '../debug-registry';
 
