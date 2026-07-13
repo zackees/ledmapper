@@ -9,6 +9,10 @@ The root entry is the browser/main-thread surface. `@fastled/gfx/core` is
 DOM-free and worker-safe, `@fastled/gfx/fled` contains pure FLED/player
 helpers, and `@fastled/gfx/worker` is the dedicated-worker entry.
 
+These are subpath exports of one package, not separate npm packages. All
+subpaths are released together so FastLED pins one version and one set of
+Three.js/protocol compatibility guarantees.
+
 Worker messages carry `protocolVersion`. A worker must reject an unsupported
 version with `code: "protocol-mismatch"`; a host must reject a `ready` message
 with an unsupported version. Capability names are additive and consumers must

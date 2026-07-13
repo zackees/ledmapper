@@ -1,5 +1,19 @@
 # @fastled/gfx
 
+## Distribution model
+
+`@fastled/gfx` is one published npm artifact. The `/core`, `/fled`, and
+`/worker` names are subpath exports within that same package, not separately
+versioned packages. They share one release number, peer dependency policy,
+provenance record, and compatibility test matrix. Install the package once:
+
+```sh
+npm install @fastled/gfx three
+```
+
+Then import only the capability needed by the consumer, for example
+`@fastled/gfx/core` or `@fastled/gfx/worker`.
+
 FastLED-compatible LED renderer for the web. Three.js + UnrealBloom + density-aware iris. Two consumers:
 - [ledmapper.com](https://www.ledmapper.com/) — the package source lives under `packages/gfx/src/` in this repository.
 - [FastLED's wasm compiler](https://github.com/FastLED/FastLED) — pins a strict version of this package and embeds it in its simulator bundle.
