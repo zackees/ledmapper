@@ -1,0 +1,47 @@
+name: Publish @fastled/gfx
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing gfx-v<version> tag to publish'
+        required: true
+        type: string
+  push:
+    tags: ['gfx-v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/gfx-v')
+    runs-on: ubuntu-latest
+    environment: npm-gfx
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - run: npm run build:gfx
+      - run: npm run check:gfx-api
+      - run: npm run test:gfx:package
+      - run: npx publint packages/gfx
+      - run: npx @arethetypeswrong/cli --pack packages/gfx --ignore-rules cjs-resolves-to-esm
+      - run: npm run check:gfx-release
+        env:
+          GFX_RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      - name: Publish with npm provenance
+        run: npm publish --provenance --access public
+        working-directory: packages/gfx
+      - name: Verify published package
+        run: |
+          version=$(node -p "require('./packages/gfx/package.json').version")
+          npm view "@fastled/gfx@${version}" version
+          npm exec --yes --package="@fastled/gfx@${version}" -- node -e "import('@fastled/gfx/core').then(m => { if (!m.normalizeScreenmap) process.exit(1); console.log('published package smoke passed') })"
