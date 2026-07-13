@@ -4,6 +4,7 @@ import { safeStorage } from "../services/storage";
 import { getStripColors, stripStartEndLabels } from "../common";
 import { gfxColors, withAlpha } from "../ui/theme";
 import { computeDirectionArrowPlacements, directionArrowAnchorsFromPlacements, projectDirectionArrowAnchors } from "./direction-arrows";
+import { minimumAreaObb } from "./strip-rotate";
 
 export interface EditorOverlayMethods {
     drawOverlay: () => void;
@@ -12,8 +13,8 @@ export interface EditorOverlayMethods {
     _setOverlayCollapsed: (collapsed: boolean) => void;
     _drawSnapGuides: () => void;
     _drawStripRotateHandle: () => void;
-    _stripRotateHandlePos: () => { idx: number; anchorX: number; anchorY: number; handleX: number; handleY: number } | null;
-    _selectedStripBboxCanvas: () => { idx: number; minX: number; minY: number; maxX: number; maxY: number } | null;
+    _stripRotateHandlePos: () => { idx: number; anchorX: number; anchorY: number; handleX: number; handleY: number; centerX: number; centerY: number } | null;
+    _selectedStripObbCanvas: () => { idx: number; cx: number; cy: number; cos: number; sin: number; hw: number; hh: number } | null;
     hitTestStripRotateHandle: (canvasX: number, canvasY: number) => boolean;
 }
 
@@ -304,19 +305,21 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
 
         // The selection box and rotation handle must share projected canvas
         // geometry so the affordance stays attached during pan and zoom.
-        const selectedBbox = this._selectedStripBboxCanvas();
-        if (selectedBbox) {
-            const pad = 10;
+        const selectedObb = this._selectedStripObbCanvas();
+        if (selectedObb) {
+            const { cx, cy, cos, sin, hw, hh } = selectedObb;
+            const corner = (u: number, v: number) => ({ x: cx + u * cos - v * sin, y: cy + u * sin + v * cos });
+            const corners = [corner(-hw, -hh), corner(hw, -hh), corner(hw, hh), corner(-hw, hh)];
             this.overlayCtx.globalAlpha = 0.9;
             this.overlayCtx.strokeStyle = gfxColors.accentBlue();
             this.overlayCtx.lineWidth = 2;
             this.overlayCtx.setLineDash([6, 4]);
-            this.overlayCtx.strokeRect(
-                selectedBbox.minX - pad,
-                selectedBbox.minY - pad,
-                (selectedBbox.maxX - selectedBbox.minX) + pad * 2,
-                (selectedBbox.maxY - selectedBbox.minY) + pad * 2,
-            );
+            this.overlayCtx.beginPath();
+            const firstCorner = corners[0] ?? { x: cx, y: cy };
+            this.overlayCtx.moveTo(firstCorner.x, firstCorner.y);
+            for (const point of corners.slice(1)) this.overlayCtx.lineTo(point.x, point.y);
+            this.overlayCtx.closePath();
+            this.overlayCtx.stroke();
             this.overlayCtx.setLineDash([]);
         }
 
@@ -428,36 +431,38 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
     ctx.setLineDash([]);
     ctx.restore();
 },
-    _selectedStripBboxCanvas(this: ShapeEditor){
+    _selectedStripObbCanvas(this: ShapeEditor){
     const idx = this.selection.getStripIdx();
     if (idx === null || !this.stripInfo || idx >= this.stripInfo.strips.length) return null;
     const st = this.nn(this.stripInfo.strips[idx]);
     if (st.count <= 0) return null;
     const lo = Math.max(0, st.offset);
     const hi = Math.min(this.lastTransformedPts.length, st.offset + st.count);
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const canvasPts: [number, number][] = [];
     for (let i = lo; i < hi; i++) {
         const [worldX, worldY] = this.nn(this.lastTransformedPts[i]);
         const [px, py] = this.toCanvasCoords(worldX, worldY);
-        if (px < minX) minX = px;
-        if (py < minY) minY = py;
-        if (px > maxX) maxX = px;
-        if (py > maxY) maxY = py;
+        canvasPts.push([px, py]);
     }
-    if (!isFinite(minX)) return null;
-    return { idx, minX, minY, maxX, maxY };
+    const obb = minimumAreaObb(canvasPts);
+    return obb ? { idx, ...obb } : null;
 },
     _stripRotateHandlePos(this: ShapeEditor){
-    const bb = this._selectedStripBboxCanvas();
-    if (!bb) return null;
-    const pad = 10;
+    const box = this._selectedStripObbCanvas();
+    if (!box) return null;
     const armLen = 30;
+    const normalX = box.sin;
+    const normalY = -box.cos;
+    const anchorX = box.cx + normalX * box.hh;
+    const anchorY = box.cy + normalY * box.hh;
     return {
-        idx: bb.idx,
-        anchorX: (bb.minX + bb.maxX) / 2,
-        anchorY: bb.minY - pad,
-        handleX: (bb.minX + bb.maxX) / 2,
-        handleY: bb.minY - pad - armLen,
+        idx: box.idx,
+        anchorX,
+        anchorY,
+        handleX: anchorX + normalX * armLen,
+        handleY: anchorY + normalY * armLen,
+        centerX: box.cx,
+        centerY: box.cy,
     };
 },
     hitTestStripRotateHandle(this: ShapeEditor, canvasX: number, canvasY: number): boolean{

@@ -7,7 +7,7 @@ import { getBackup, notePinMutation } from "../screenmap-store";
 import type { UndoAction } from "./shapeeditor-types";
 import { getStripColors } from "../common";
 import { gfxColors } from "../ui/theme";
-import { bboxCenter, rotatePointsAround } from "./strip-rotate";
+import { rotatePointsAround } from "./strip-rotate";
 import type { PointArrayWithDiameter } from "../common";
 
 export interface EditorStripsMethods {
@@ -793,13 +793,12 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
         if (stripIdx === null || !isFinite(deltaDeg) || deltaDeg === 0 || !this.stripInfo) return false;
         const strip = this.stripInfo.strips[stripIdx];
         if (!strip || strip.count <= 0) return false;
-        const lo = strip.offset;
-        const hi = lo + strip.count;
-        const sliceSm = this.screenmap_pts.slice(lo, hi).map(([x, y]) => [x, y] as [number, number]);
-        const sliceRaw = this.rawPts.slice(lo, hi).map(([x, y]) => [x, y] as [number, number]);
-        const centerSm = bboxCenter(sliceSm);
-        const centerRaw = bboxCenter(sliceRaw);
-        if (!centerSm || !centerRaw) return false;
+        const handle = this._stripRotateHandlePos();
+        if (!handle) return false;
+        const [smX, smY] = this.canvasToScreenmapCoords(handle.centerX, handle.centerY);
+        const [rawX, rawY] = this.screenmapToRawCoords(smX, smY);
+        const centerSm = { x: smX, y: smY };
+        const centerRaw = { x: rawX, y: rawY };
         this._applyStripRotate(stripIdx, deltaDeg * Math.PI / 180, centerSm, centerRaw);
         this.pushUndo({
             type: 'strip-rotate',

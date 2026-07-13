@@ -9,7 +9,8 @@ import {
     inverseTransformSnapDelta,
     type SnapDocumentTransform,
 } from "./strip-snap-targets";
-import { bboxCenter, rotatePointsAround } from "./strip-rotate";
+import { rotatePointsAround } from "./strip-rotate";
+import { safeStorage } from "../services/storage";
 
 const STRIP_STROKE_HIT_PX = 10;
 
@@ -303,22 +304,18 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
                     this.stripRotateStartScreenmap.push([sm[0], sm[1]]);
                     this.stripRotateStartRaw.push([rw[0], rw[1]]);
                 }
-                const centerSm = bboxCenter(this.stripRotateStartScreenmap);
-                const centerRaw = bboxCenter(this.stripRotateStartRaw);
-                if (!centerSm || !centerRaw) return;
-                this.stripRotateCenterSm = centerSm;
-                this.stripRotateCenterRaw = centerRaw;
-                // Cursor angle is based on the same projected bbox that
-                // draws and hit-tests the on-canvas handle.
-                const bb = this._selectedStripBboxCanvas();
-                if (bb) {
-                    const anchorX = (bb.minX + bb.maxX) / 2;
-                    const anchorY = (bb.minY + bb.maxY) / 2;
-                    this.stripRotateStartAngle = Math.atan2(cy - anchorY, cx - anchorX);
-                } else {
-                    this.stripRotateStartAngle = 0;
-                }
+                const handle = this._stripRotateHandlePos();
+                if (!handle) return;
+                const [centerX, centerY] = this.canvasToScreenmapCoords(handle.centerX, handle.centerY);
+                const [rawX, rawY] = this.screenmapToRawCoords(centerX, centerY);
+                this.stripRotateCenterSm = { x: centerX, y: centerY };
+                this.stripRotateCenterRaw = { x: rawX, y: rawY };
+                this.stripRotateStartAngle = Math.atan2(cy - handle.centerY, cx - handle.centerX);
                 this.stripRotateLastDeg = 0;
+                if (!e.shiftKey && safeStorage.get('shapeeditor.freeRotateHintSeen') !== '1') {
+                    safeStorage.set('shapeeditor.freeRotateHintSeen', '1');
+                    void this._toast({ icon: 'info', title: 'Hold Shift + Click to free rotate', timer: 4000 });
+                }
                 this._oc().style.cursor = 'grabbing';
                 return;
             }
@@ -535,17 +532,14 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         if (this.stripRotateActive && this.stripRotateIdx >= 0 && this.stripInfo
             && this.stripRotateStartScreenmap && this.stripRotateStartRaw
             && this.stripRotateCenterSm && this.stripRotateCenterRaw) {
-            const bb = this._selectedStripBboxCanvas();
-            if (!bb) return;
-            const anchorX = (bb.minX + bb.maxX) / 2;
-            const anchorY = (bb.minY + bb.maxY) / 2;
-            const curAngle = Math.atan2(cy - anchorY, cx - anchorX);
+            const handle = this._stripRotateHandlePos();
+            if (!handle) return;
+            const curAngle = Math.atan2(cy - handle.centerY, cx - handle.centerX);
             let deltaDeg = (curAngle - this.stripRotateStartAngle) * 180 / Math.PI;
             // Shift snaps to 15° increments, matching the global gizmo
             // (rotation always uses INTEGER degree steps so the resulting
             // points are deterministic and undo-friendly).
-            if (this.shiftHeld) deltaDeg = Math.round(deltaDeg / 15) * 15;
-            else deltaDeg = Math.round(deltaDeg);
+            if (!e.shiftKey) deltaDeg = Math.round(deltaDeg);
             const deltaRad = deltaDeg * Math.PI / 180;
             const strip = this.nn(this.stripInfo.strips[this.stripRotateIdx]);
             const csm = this.stripRotateCenterSm;
