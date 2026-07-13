@@ -127,31 +127,6 @@ export default tseslint.config(
     },
   },
   {
-    // Files produced by the one-time mechanical split of the original
-    // 6.6K-LOC shapeeditor.ts. They use `const self = this` for `this`-binding
-    // inside inner `function()` declarations, `any` typing in a few places
-    // where the original closure code could not be inferred cleanly, and a
-    // handful of always-truthy conditional checks because some DOM-element
-    // fields are typed as non-nullable post-refactor (the original code
-    // guarded them with `if (X)` — unnecessary now but harmless).
-    files: [
-      'src/shapeeditor/shapeeditor.ts',
-      'src/shapeeditor/shapeeditor-class.ts',
-      'src/shapeeditor/shapeeditor-init.ts',
-      'src/shapeeditor/shapeeditor-methods-*.ts',
-      'src/shapeeditor/shapeeditor-types.ts',
-    ],
-    rules: {
-      '@typescript-eslint/no-this-alias': 'off',
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unsafe-assignment': 'off',
-      '@typescript-eslint/no-unsafe-member-access': 'off',
-      '@typescript-eslint/no-unsafe-call': 'off',
-      '@typescript-eslint/no-unsafe-return': 'off',
-      '@typescript-eslint/no-unsafe-argument': 'off',
-    },
-  },
-  {
     // Tests legitimately use hex colors as fixtures (screenmap parse,
     // V2 group palette assertions, webcam mock pattern generation).
     // Tests don't ship to users, so the inline-color guard doesn't

@@ -18,210 +18,207 @@ import { snapToGrid } from './grid-snap';
 import type { UndoAction } from './shapeeditor-types';
 
 ShapeEditor.prototype._wireTouchHandlers = function (this: ShapeEditor, signal: AbortSignal) {
-    const self = this;
 
-        self._oc().addEventListener('touchstart', (e: TouchEvent) => {
+        this._oc().addEventListener('touchstart', (e: TouchEvent) => {
             // Cancel scrolling/zooming on the page during canvas touches
             e.preventDefault();
             if (e.touches.length === 1) {
-                const t = self.nn(e.touches[0]);
-                self.touchMode = 'single';
-                self.touchStartClientX = t.clientX;
-                self.touchStartClientY = t.clientY;
-                const [cx, cy] = self.getCanvasCoords(t);
-                self.touchStartCanvasX = cx;
-                self.touchStartCanvasY = cy;
+                const t = this.nn(e.touches[0]);
+                this.touchMode = 'single';
+                this.touchStartClientX = t.clientX;
+                this.touchStartClientY = t.clientY;
+                const [cx, cy] = this.getCanvasCoords(t);
+                this.touchStartCanvasX = cx;
+                this.touchStartCanvasY = cy;
                 // Start long-press timer
-                self._clearLongPress();
-                self.longPressTimer = setTimeout(() => {
-                    self.longPressTimer = null;
-                    if (self.touchMode !== 'single') return;
-                    self._doLongPress(self.touchStartCanvasX, self.touchStartCanvasY, self.touchStartClientX, self.touchStartClientY);
-                }, self.LONG_PRESS_MS);
+                this._clearLongPress();
+                this.longPressTimer = setTimeout(() => {
+                    this.longPressTimer = null;
+                    if (this.touchMode !== 'single') return;
+                    this._doLongPress(this.touchStartCanvasX, this.touchStartCanvasY, this.touchStartClientX, this.touchStartClientY);
+                }, this.LONG_PRESS_MS);
                 // Forward as a synthesized mousedown for the drag/select path
-                self._synth('mousedown', t.clientX, t.clientY);
+                this._synth('mousedown', t.clientX, t.clientY);
             } else if (e.touches.length >= 2) {
                 // Cancel any single-touch state cleanly
-                self._clearLongPress();
-                if (self.touchMode === 'single') {
-                    self._cancelSingleTouchGesture();
+                this._clearLongPress();
+                if (this.touchMode === 'single') {
+                    this._cancelSingleTouchGesture();
                 }
-                self.touchMode = 'multi';
-                const t0 = self.nn(e.touches[0]), t1 = self.nn(e.touches[1]);
-                self.multiStartCentroid = [(t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2];
+                this.touchMode = 'multi';
+                const t0 = this.nn(e.touches[0]), t1 = this.nn(e.touches[1]);
+                this.multiStartCentroid = [(t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2];
                 const dxs = t0.clientX - t1.clientX;
                 const dys = t0.clientY - t1.clientY;
-                self.multiStartDist = Math.hypot(dxs, dys) || 1;
-                self.multiPanStartCamPanX = self.camPanX;
-                self.multiPanStartCamPanY = self.camPanY;
-                self.multiPinchStartZoom = self.camZoom;
+                this.multiStartDist = Math.hypot(dxs, dys) || 1;
+                this.multiPanStartCamPanX = this.camPanX;
+                this.multiPanStartCamPanY = this.camPanY;
+                this.multiPinchStartZoom = this.camZoom;
             }
         }, { passive: false, signal });
 
-        self._oc().addEventListener('touchmove', (e: TouchEvent) => {
+        this._oc().addEventListener('touchmove', (e: TouchEvent) => {
             e.preventDefault();
-            if (self.touchMode === 'longpress-fired') return;
-            if (self.touchMode === 'single' && e.touches.length === 1) {
-                const t = self.nn(e.touches[0]);
-                const ddx = t.clientX - self.touchStartClientX;
-                const ddy = t.clientY - self.touchStartClientY;
-                if (Math.hypot(ddx, ddy) > self.LONG_PRESS_MOVE_TOL) self._clearLongPress();
-                self._synth('mousemove', t.clientX, t.clientY);
+            if (this.touchMode === 'longpress-fired') return;
+            if (this.touchMode === 'single' && e.touches.length === 1) {
+                const t = this.nn(e.touches[0]);
+                const ddx = t.clientX - this.touchStartClientX;
+                const ddy = t.clientY - this.touchStartClientY;
+                if (Math.hypot(ddx, ddy) > this.LONG_PRESS_MOVE_TOL) this._clearLongPress();
+                this._synth('mousemove', t.clientX, t.clientY);
                 return;
             }
-            if (self.touchMode === 'multi' && e.touches.length >= 2) {
-                const t0 = self.nn(e.touches[0]), t1 = self.nn(e.touches[1]);
+            if (this.touchMode === 'multi' && e.touches.length >= 2) {
+                const t0 = this.nn(e.touches[0]), t1 = this.nn(e.touches[1]);
                 const cx = (t0.clientX + t1.clientX) / 2;
                 const cy = (t0.clientY + t1.clientY) / 2;
-                const dx = cx - (self.multiStartCentroid?.[0] ?? 0);
-                const dy = cy - (self.multiStartCentroid?.[1] ?? 0);
+                const dx = cx - (this.multiStartCentroid?.[0] ?? 0);
+                const dy = cy - (this.multiStartCentroid?.[1] ?? 0);
                 // Pan: centroid delta in client px -> canvas px -> world px
-                const rect = self._oc().getBoundingClientRect();
-                const sx = self.canvasW / rect.width;
-                const sy = self.canvasH / rect.height;
-                self.camPanX = self.multiPanStartCamPanX + (dx * sx) / self.camZoom;
-                self.camPanY = self.multiPanStartCamPanY + (dy * sy) / self.camZoom;
+                const rect = this._oc().getBoundingClientRect();
+                const sx = this.canvasW / rect.width;
+                const sy = this.canvasH / rect.height;
+                this.camPanX = this.multiPanStartCamPanX + (dx * sx) / this.camZoom;
+                this.camPanY = this.multiPanStartCamPanY + (dy * sy) / this.camZoom;
                 // Pinch: distance ratio
                 const dxs = t0.clientX - t1.clientX;
                 const dys = t0.clientY - t1.clientY;
                 const dist = Math.hypot(dxs, dys) || 1;
-                const ratio = dist / self.multiStartDist;
-                self.applyInteractiveZoom(self.multiPinchStartZoom * ratio);
+                const ratio = dist / this.multiStartDist;
+                this.applyInteractiveZoom(this.multiPinchStartZoom * ratio);
                 // A two-finger gesture also pans; render even when the pinch
                 // ratio is unchanged or the zoom is clamped at its limit.
-                self.setNeedsRender();
+                this.setNeedsRender();
             }
         }, { passive: false, signal });
 
-        self._oc().addEventListener('touchend', (e: TouchEvent) => {
+        this._oc().addEventListener('touchend', (e: TouchEvent) => {
             e.preventDefault();
-            self._clearLongPress();
-            if (self.touchMode === 'longpress-fired') {
+            this._clearLongPress();
+            if (this.touchMode === 'longpress-fired') {
                 // Discard the residual touch — drag was already cancelled.
                 if (e.touches.length === 0) {
-                    self.touchMode = 'idle';
+                    this.touchMode = 'idle';
                 }
                 return;
             }
-            if (self.touchMode === 'single') {
+            if (this.touchMode === 'single') {
                 // Forward as mouseup to commit / select
                 const t = e.changedTouches[0] ?? null;
                 if (t) {
-                    self._synth('mouseup', t.clientX, t.clientY);
+                    this._synth('mouseup', t.clientX, t.clientY);
                 }
-                self.touchMode = 'idle';
+                this.touchMode = 'idle';
                 return;
             }
-            if (self.touchMode === 'multi') {
+            if (this.touchMode === 'multi') {
                 if (e.touches.length === 0) {
-                    self.touchMode = 'idle';
+                    this.touchMode = 'idle';
                 } else if (e.touches.length === 1) {
                     // Demote to single but don't restart drag — leave idle so
                     // the user can lift their second finger without surprises.
-                    self.touchMode = 'idle';
+                    this.touchMode = 'idle';
                 }
             }
         }, { passive: false, signal });
 
-        self._oc().addEventListener('touchcancel', () => {
-            self._clearLongPress();
-            self._cancelSingleTouchGesture();
-            self.touchMode = 'idle';
+        this._oc().addEventListener('touchcancel', () => {
+            this._clearLongPress();
+            this._cancelSingleTouchGesture();
+            this.touchMode = 'idle';
         }, { passive: true, signal });
     };
 
 ShapeEditor.prototype.onMouseLeave = function (this: ShapeEditor) {
-    const self = this;
 
-        if (self.gizmoActive) {
-            self.commitGizmoDrag();
-            self.gizmoActive = null;
-            self.gizmoDragStart = null;
+        if (this.gizmoActive) {
+            this.commitGizmoDrag();
+            this.gizmoActive = null;
+            this.gizmoDragStart = null;
         }
-        self.gizmoHover = null;
-        if (self.bgGizmoActive) {
-            self.bgGizmoActive = null;
-            self.bgGizmoDragStart = null;
+        this.gizmoHover = null;
+        if (this.bgGizmoActive) {
+            this.bgGizmoActive = null;
+            this.bgGizmoDragStart = null;
         }
-        self.bgGizmoHover = null;
-        if (self.isPanning) {
-            self.isPanning = false;
+        this.bgGizmoHover = null;
+        if (this.isPanning) {
+            this.isPanning = false;
         }
-        if (self.rightButtonDown) {
-            self.rightButtonDown = false;
-            self.rightClickMoved = false;
+        if (this.rightButtonDown) {
+            this.rightButtonDown = false;
+            this.rightClickMoved = false;
         }
-        if (self.isDragging && self.selectedIdx >= 0) {
+        if (this.isDragging && this.selectedIdx >= 0) {
             // Finalize drag on leave
-            const newScreenmapPt = [...self.nn(self.screenmap_pts[self.selectedIdx])];
-            const newRawPt = [...self.nn(self.rawPts[self.selectedIdx])];
-            if (newScreenmapPt[0] !== (self.dragStartScreenmapPt?.[0] ?? 0) ||
-                newScreenmapPt[1] !== (self.dragStartScreenmapPt?.[1] ?? 0)) {
-                self.pushUndo({
+            const newScreenmapPt = [...this.nn(this.screenmap_pts[this.selectedIdx])];
+            const newRawPt = [...this.nn(this.rawPts[this.selectedIdx])];
+            if (newScreenmapPt[0] !== (this.dragStartScreenmapPt?.[0] ?? 0) ||
+                newScreenmapPt[1] !== (this.dragStartScreenmapPt?.[1] ?? 0)) {
+                this.pushUndo({
                     type: 'move',
-                    idx: self.selectedIdx,
-                    oldScreenmapPt: self.dragStartScreenmapPt,
+                    idx: this.selectedIdx,
+                    oldScreenmapPt: this.dragStartScreenmapPt,
                     newScreenmapPt,
-                    oldRawPt: self.dragStartRawPt,
+                    oldRawPt: this.dragStartRawPt,
                     newRawPt,
                 });
             }
-            self.isDragging = false;
-            self.altQuasimode = false;
+            this.isDragging = false;
+            this.altQuasimode = false;
         }
-        if (self.stripDragActive) {
-            self._finalizeStripDrag();
+        if (this.stripDragActive) {
+            this._finalizeStripDrag();
         }
-        if (self.marqueeActive) {
-            self._commitMarquee();
+        if (this.marqueeActive) {
+            this._commitMarquee();
         }
-        if (self.multiDragActive) {
-            self._finalizeMultiDrag();
+        if (this.multiDragActive) {
+            this._finalizeMultiDrag();
         }
         // Drop a half-resolved Ctrl+mousedown without firing append
         // (the cursor left the canvas — we can't tell click vs. drag).
-        self._pendingMarquee = null;
-        self.isHovering = false;
-        self.tooltipLedIdx = -1;
-        self._tooltip().style.opacity = '0';
-        self._oc().style.cursor = 'default';
+        this._pendingMarquee = null;
+        this.isHovering = false;
+        this.tooltipLedIdx = -1;
+        this._tooltip().style.opacity = '0';
+        this._oc().style.cursor = 'default';
     };
 
 ShapeEditor.prototype.buildScreenmap = function (this: ShapeEditor, transformedPts: [number, number][]) {
-    const self = this;
 
         const count = transformedPts.length;
 
-        if (count !== self.lastBuiltPointCount) {
+        if (count !== this.lastBuiltPointCount) {
             // Point count changed — full rebuild required
-            if (self.screenmapOutline) {
-                self._scene().remove(self.screenmapOutline);
-                self.screenmapOutline.geometry.dispose();
-                ((self.screenmapOutline.material as Material)).dispose();
+            if (this.screenmapOutline) {
+                this._scene().remove(this.screenmapOutline);
+                this.screenmapOutline.geometry.dispose();
+                ((this.screenmapOutline.material as Material)).dispose();
             }
-            if (self.pointsMesh) {
-                self._scene().remove(self.pointsMesh);
-                self.pointsGeometry?.dispose();
-                self.pointsMaterial?.dispose();
+            if (this.pointsMesh) {
+                this._scene().remove(this.pointsMesh);
+                this.pointsGeometry?.dispose();
+                this.pointsMaterial?.dispose();
             }
 
-            const hasMultiStrip = self.stripInfo && self.stripInfo.strips.length > 1;
+            const hasMultiStrip = this.stripInfo && this.stripInfo.strips.length > 1;
 
             if (hasMultiStrip) {
                 // Build LineSegments pairs, skipping cross-strip boundaries.
                 // Skip empty strips (count <= 0) so we don't introduce bogus boundaries.
-                const stripColors = getStripColors(self._si().strips.length);
-                const stripRgbs = stripColors.map(self.hslStringToRgb);
+                const stripColors = getStripColors(this._si().strips.length);
+                const stripRgbs = stripColors.map(this.hslStringToRgb);
                 const stripBoundaries = new Set();
-                for (const strip of self._si().strips) {
+                for (const strip of this._si().strips) {
                     if (strip.count > 0) {
                         stripBoundaries.add(strip.offset + strip.count - 1);
                     }
                 }
                 // Per-index strip lookup table — O(N) once, instead of O(N*S) inside the loop.
                 const idxToStrip = new Int32Array(count).fill(-1);
-                for (let s = 0; s < self._si().strips.length; s++) {
-                    const st = self.nn(self._si().strips[s]);
+                for (let s = 0; s < this._si().strips.length; s++) {
+                    const st = this.nn(this._si().strips[s]);
                     const lo = Math.max(0, st.offset);
                     const hi = Math.min(count, st.offset + st.count);
                     for (let i = lo; i < hi; i++) idxToStrip[i] = s;
@@ -238,9 +235,9 @@ ShapeEditor.prototype.buildScreenmap = function (this: ShapeEditor, transformedP
                     if (stripBoundaries.has(i)) continue;
                     const rawStripIdx = idxToStrip[i] ?? 0;
                     const stripIdx = rawStripIdx >= 0 ? rawStripIdx : 0;
-                    const rgb = self.nn(stripRgbs[stripIdx]);
-                    const sr = self.nn(rgb[0]), sg = self.nn(rgb[1]), sb = self.nn(rgb[2]);
-                    const pti = self.nn(transformedPts[i]), pti1 = self.nn(transformedPts[i + 1]);
+                    const rgb = this.nn(stripRgbs[stripIdx]);
+                    const sr = this.nn(rgb[0]), sg = this.nn(rgb[1]), sb = this.nn(rgb[2]);
+                    const pti = this.nn(transformedPts[i]), pti1 = this.nn(transformedPts[i + 1]);
                     const v = seg * 6;
                     lineVerts[v] = pti[0]; lineVerts[v + 1] = pti[1]; lineVerts[v + 2] = 0;
                     lineVerts[v + 3] = pti1[0]; lineVerts[v + 4] = pti1[1]; lineVerts[v + 5] = 0;
@@ -251,11 +248,11 @@ ShapeEditor.prototype.buildScreenmap = function (this: ShapeEditor, transformedP
                 const lineGeom = new BufferGeometry();
                 lineGeom.setAttribute('position', new Float32BufferAttribute(lineVerts, 3));
                 lineGeom.setAttribute('color', new Float32BufferAttribute(lineColors, 3));
-                self.screenmapOutline = new LineSegments(lineGeom, new LineBasicMaterial({ vertexColors: true, transparent: true }));
+                this.screenmapOutline = new LineSegments(lineGeom, new LineBasicMaterial({ vertexColors: true, transparent: true }));
             } else {
                 const lineVerts = new Float32Array(count * 3);
                 for (let i = 0; i < count; i++) {
-                    const tp = self.nn(transformedPts[i]);
+                    const tp = this.nn(transformedPts[i]);
                     lineVerts[i * 3] = tp[0];
                     lineVerts[i * 3 + 1] = tp[1];
                     lineVerts[i * 3 + 2] = 0;
@@ -264,42 +261,42 @@ ShapeEditor.prototype.buildScreenmap = function (this: ShapeEditor, transformedP
                 const linePosAttr = new Float32BufferAttribute(lineVerts, 3);
                 linePosAttr.setUsage(DynamicDrawUsage);
                 lineGeom.setAttribute('position', linePosAttr);
-                self.screenmapOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3, transparent: true }));
+                this.screenmapOutline = new Line(lineGeom, new LineBasicMaterial({ color: 0x2196F3, transparent: true }));
             }
-            self.screenmapOutline.renderOrder = 2;
-            self._scene().add(self.screenmapOutline);
+            this.screenmapOutline.renderOrder = 2;
+            this._scene().add(this.screenmapOutline);
 
-            const diameterCm = parseFloat(self.dom_txt_diameter.value) || 0.5;
-            const scaleGlobal = parseFloat(self.dom_txt_scale.value) || 1;
-            const pixelDiameter = Math.max(2, diameterCm * self.fitScale * scaleGlobal);
+            const diameterCm = parseFloat(this.dom_txt_diameter.value) || 0.5;
+            const scaleGlobal = parseFloat(this.dom_txt_scale.value) || 1;
+            const pixelDiameter = Math.max(2, diameterCm * this.fitScale * scaleGlobal);
 
             const result = buildPointsMesh({
                 points: transformedPts,
-                circleTexture: self.circleTexture,
+                circleTexture: this.circleTexture,
                 diameter: pixelDiameter,
                 defaultColor: [244 / 255, 67 / 255, 54 / 255],
             });
             (result.geometry.getAttribute('position') as BufferAttribute).setUsage(DynamicDrawUsage);
 
-            self.pointsGeometry = result.geometry;
-            self.pointsMaterial = result.material;
-            self.pointsMesh = result.mesh;
-            self.pointsColorAttr = result.colorAttribute;
-            self.pointsMesh.renderOrder = 3;
-            self._scene().add(self.pointsMesh);
+            this.pointsGeometry = result.geometry;
+            this.pointsMaterial = result.material;
+            this.pointsMesh = result.mesh;
+            this.pointsColorAttr = result.colorAttribute;
+            this.pointsMesh.renderOrder = 3;
+            this._scene().add(this.pointsMesh);
 
-            self.lastBuiltPointCount = count;
+            this.lastBuiltPointCount = count;
         } else {
             // Same point count — update buffers in place (no allocation)
-            const hasMultiStrip = self.stripInfo && self.stripInfo.strips.length > 1;
-            const outlinePos = self._outline().geometry.getAttribute('position');
-            const pointsPos = self.pointsGeometry?.getAttribute('position');
+            const hasMultiStrip = this.stripInfo && this.stripInfo.strips.length > 1;
+            const outlinePos = this._outline().geometry.getAttribute('position');
+            const pointsPos = this.pointsGeometry?.getAttribute('position');
 
             if (hasMultiStrip) {
                 // LineSegments layout: pairs of vertices, skipping cross-strip boundaries.
                 // Skip empty strips so we don't introduce bogus boundary indices.
                 const stripBoundaries = new Set();
-                for (const strip of self._si().strips) {
+                for (const strip of this._si().strips) {
                     if (strip.count > 0) {
                         stripBoundaries.add(strip.offset + strip.count - 1);
                     }
@@ -308,20 +305,20 @@ ShapeEditor.prototype.buildScreenmap = function (this: ShapeEditor, transformedP
                 for (let i = 0; i < count - 1; i++) {
                     if (stripBoundaries.has(i)) continue;
                     const v = seg * 2;
-                    const pti = self.nn(transformedPts[i]), pti1 = self.nn(transformedPts[i + 1]);
+                    const pti = this.nn(transformedPts[i]), pti1 = this.nn(transformedPts[i + 1]);
                     outlinePos.setXY(v, pti[0], pti[1]);
                     outlinePos.setXY(v + 1, pti1[0], pti1[1]);
                     seg++;
                 }
             } else {
                 for (let i = 0; i < count; i++) {
-                    const tp = self.nn(transformedPts[i]);
+                    const tp = this.nn(transformedPts[i]);
                     outlinePos.setXY(i, tp[0], tp[1]);
                 }
             }
             if (pointsPos) {
                 for (let i = 0; i < count; i++) {
-                    const tp = self.nn(transformedPts[i]);
+                    const tp = this.nn(transformedPts[i]);
                     pointsPos.setXY(i, tp[0], tp[1]);
                 }
                 pointsPos.needsUpdate = true;
@@ -329,26 +326,26 @@ ShapeEditor.prototype.buildScreenmap = function (this: ShapeEditor, transformedP
             outlinePos.needsUpdate = true;
 
             // Update point size
-            const diameterCm = parseFloat(self.dom_txt_diameter.value) || 0.5;
-            const scaleGlobal = parseFloat(self.dom_txt_scale.value) || 1;
-            if (self.pointsMaterial) self.pointsMaterial.size = Math.max(2, diameterCm * self.fitScale * scaleGlobal);
+            const diameterCm = parseFloat(this.dom_txt_diameter.value) || 0.5;
+            const scaleGlobal = parseFloat(this.dom_txt_scale.value) || 1;
+            if (this.pointsMaterial) this.pointsMaterial.size = Math.max(2, diameterCm * this.fitScale * scaleGlobal);
         }
 
         // Update colors (selection highlight, first/last LED markers)
-        if (self.pointsColorAttr) {
-            const colors = self.pointsColorAttr.array;
-            const hasMultiStrip = self.stripInfo && self.stripInfo.strips.length > 1;
+        if (this.pointsColorAttr) {
+            const colors = this.pointsColorAttr.array;
+            const hasMultiStrip = this.stripInfo && this.stripInfo.strips.length > 1;
 
             if (hasMultiStrip) {
                 // Per-strip coloring (dim non-selected strips when one is selected)
-                const stripColors = getStripColors(self._si().strips.length);
-                const stripRgbs = stripColors.map(self.hslStringToRgb);
-                const selStrip = self.selection.getStripIdx();
+                const stripColors = getStripColors(this._si().strips.length);
+                const stripRgbs = stripColors.map(this.hslStringToRgb);
+                const selStrip = this.selection.getStripIdx();
                 const dim = 0.35;
-                for (let s = 0; s < self._si().strips.length; s++) {
-                    const strip = self.nn(self._si().strips[s]);
-                    const rgb = self.nn(stripRgbs[s]);
-                    let sr = self.nn(rgb[0]), sg = self.nn(rgb[1]), sb = self.nn(rgb[2]);
+                for (let s = 0; s < this._si().strips.length; s++) {
+                    const strip = this.nn(this._si().strips[s]);
+                    const rgb = this.nn(stripRgbs[s]);
+                    let sr = this.nn(rgb[0]), sg = this.nn(rgb[1]), sb = this.nn(rgb[2]);
                     if (selStrip !== null && s !== selStrip) {
                         sr *= dim; sg *= dim; sb *= dim;
                     }
@@ -368,125 +365,124 @@ ShapeEditor.prototype.buildScreenmap = function (this: ShapeEditor, transformedP
             // First LED green
             colors[0] = 76 / 255; colors[1] = 175 / 255; colors[2] = 80 / 255;
             // Marquee multi-selection: paint every selected LED cyan.
-            if (self.multiSelectedIdxs.size > 0) {
-                for (const i of self.multiSelectedIdxs) {
+            if (this.multiSelectedIdxs.size > 0) {
+                for (const i of this.multiSelectedIdxs) {
                     if (i < 0 || i >= count) continue;
                     const ci = i * 3;
                     colors[ci] = 0; colors[ci + 1] = 1; colors[ci + 2] = 1;
                 }
             }
             // Single selected LED cyan (existing single-selection highlight)
-            if (self.selectedIdx > 0 && self.selectedIdx < count) {
-                const ci = self.selectedIdx * 3;
+            if (this.selectedIdx > 0 && this.selectedIdx < count) {
+                const ci = this.selectedIdx * 3;
                 colors[ci] = 0; colors[ci + 1] = 1; colors[ci + 2] = 1;
             }
-            self.pointsColorAttr.needsUpdate = true;
+            this.pointsColorAttr.needsUpdate = true;
         }
     };
 
 ShapeEditor.prototype.updateLabels = function (this: ShapeEditor, transformedPts: [number, number][]) {
-    const self = this;
 
         if (transformedPts.length === 0) {
-            self._placeholderDiv().style.display = '';
-            self._infoDiv().textContent = '';
+            this._placeholderDiv().style.display = '';
+            this._infoDiv().textContent = '';
             return;
         }
 
-        self._placeholderDiv().style.display = 'none';
+        this._placeholderDiv().style.display = 'none';
 
-        const scaleG = parseFloat(self.dom_txt_scale.value) || 1;
-        const sX = (parseFloat(self.dom_txt_scale_x.value) || 1) * scaleG;
-        const sY = (parseFloat(self.dom_txt_scale_y.value) || 1) * scaleG;
-        const physW = (self.origWidth * sX).toFixed(2);
-        const physH = (self.origHeight * sY).toFixed(2);
+        const scaleG = parseFloat(this.dom_txt_scale.value) || 1;
+        const sX = (parseFloat(this.dom_txt_scale_x.value) || 1) * scaleG;
+        const sY = (parseFloat(this.dom_txt_scale_y.value) || 1) * scaleG;
+        const physW = (this.origWidth * sX).toFixed(2);
+        const physH = (this.origHeight * sY).toFixed(2);
 
-        self._infoDiv().innerHTML =
-            `Points: ${String(self.screenmap_pts.length)}<br>Size: ${physW} &times; ${physH} cm` +
+        this._infoDiv().innerHTML =
+            `Points: ${String(this.screenmap_pts.length)}<br>Size: ${physW} &times; ${physH} cm` +
             `<br><span class="shapeeditor-info-hint">Shift+click: insert between &nbsp; Ctrl+click: extend end</span>`;
     };
 
 ShapeEditor.prototype.handleResize = function (this: ShapeEditor) {
-    const self = this;
 
-        const { width, height } = self.getCanvasSize();
-        self.canvasW = width;
-        self.canvasH = height;
-        self._renderer().setSize(width, height);
+        const { width, height } = this.getCanvasSize();
+        this.canvasW = width;
+        this.canvasH = height;
+        this._renderer().setSize(width, height);
 
         const hw = width / 2, hh = height / 2;
-        self._camera().left = -hw;
-        self._camera().right = hw;
-        self._camera().top = -hh;
-        self._camera().bottom = hh;
-        self._camera().zoom = self.camZoom;
-        self._camera().updateProjectionMatrix();
+        this._camera().left = -hw;
+        this._camera().right = hw;
+        this._camera().top = -hh;
+        this._camera().bottom = hh;
+        this._camera().zoom = this.camZoom;
+        this._camera().updateProjectionMatrix();
 
         const dpr = window.devicePixelRatio || 1;
-        self._oc().width = width * dpr;
-        self._oc().height = height * dpr;
-        self._octx().scale(dpr, dpr);
+        this._oc().width = width * dpr;
+        this._oc().height = height * dpr;
+        this._octx().scale(dpr, dpr);
 
-        self.buildGrid(width, height);
-        self.drawOverlay();
+        this.buildGrid(width, height);
+        this.drawOverlay();
     };
 
 ShapeEditor.prototype.animate = function (this: ShapeEditor) {
-    const self = this;
 
-        self.rafId = requestAnimationFrame(() => self.animate());
+        this.rafId = requestAnimationFrame(() => {
+            this.animate();
+        });
 
         // Auto-sync canvas/camera/overlay if mainEl dimensions changed
-        const { width: curW, height: curH } = self.getCanvasSize();
-        if (curW !== self.canvasW || curH !== self.canvasH) {
-            self.handleResize();
-            self.geometryDirty = true;
-            self.frameDirty = true;
+        const { width: curW, height: curH } = this.getCanvasSize();
+        if (curW !== this.canvasW || curH !== this.canvasH) {
+            this.handleResize();
+            this.geometryDirty = true;
+            this.frameDirty = true;
         }
 
         // Keep animating while overlayAlpha is mid-transition
-        const targetAlpha = self.isHovering ? 1 : 0;
-        if (Math.abs(self.overlayAlpha - targetAlpha) > 0.001) self.frameDirty = true;
-        if (self.directionArrowTransition.isActive()) self.frameDirty = true;
+        const targetAlpha = this.isHovering ? 1 : 0;
+        if (Math.abs(this.overlayAlpha - targetAlpha) > 0.001) this.frameDirty = true;
+        if (this.directionArrowTransition.isActive()) this.frameDirty = true;
 
         // Issue #111: drag preview lifecycle.
         // While a gizmo drag is in flight, push the live transform delta to
         // the mesh model matrix instead of rebaking the vertex buffer. When
         // the drag ends, animate() reverts the mesh transforms so the next
         // baked rebuild lines up.
-        const previewing = self._isGizmoDragPreview();
+        const previewing = this._isGizmoDragPreview();
         if (previewing) {
-            self._dragPreviewActive = true;
-            self.frameDirty = true;
-        } else if (self._dragPreviewActive) {
-            self._resetMeshTransforms();
-            self._dragPreviewActive = false;
+            this._dragPreviewActive = true;
+            this.frameDirty = true;
+        } else if (this._dragPreviewActive) {
+            this._resetMeshTransforms();
+            this._dragPreviewActive = false;
             // Bake the committed transform into the buffer this frame.
-            self.geometryDirty = true;
-            self.frameDirty = true;
+            this.geometryDirty = true;
+            this.frameDirty = true;
         }
 
         // Nothing to do — skip all work this frame
-        if (!self.geometryDirty && !self.frameDirty) return;
+        if (!this.geometryDirty && !this.frameDirty) return;
 
-        if (self.screenmap_pts.length > 0) {
+        if (this.screenmap_pts.length > 0) {
             // The rebuild path bakes the current DOM transform into the
             // points-mesh / outline buffers. While previewing, handleGizmoDrag
             // no longer sets geometryDirty, so this only runs at preview entry
             // (if the buffer was stale) and at preview exit (to bake the
             // committed transform).
-            if (self.geometryDirty) {
-                const scaleGlobal = parseFloat(self.dom_txt_scale.value) || 1;
-                const scaleX = (parseFloat(self.dom_txt_scale_x.value) || 1) * scaleGlobal;
-                const scaleY = (parseFloat(self.dom_txt_scale_y.value) || 1) * scaleGlobal;
-                const rotateDeg = parseInt(self.dom_txt_rotate.value) || 0;
+            if (this.geometryDirty) {
+                const scaleGlobal = parseFloat(this.dom_txt_scale.value) || 1;
+                const scaleX = (parseFloat(this.dom_txt_scale_x.value) || 1) * scaleGlobal;
+                const scaleY = (parseFloat(this.dom_txt_scale_y.value) || 1) * scaleGlobal;
+                const rotateDeg = parseInt(this.dom_txt_rotate.value) || 0;
                 const rotateRad = rotateDeg * Math.PI / 180;
                 const cosR = Math.cos(rotateRad);
                 const sinR = Math.sin(rotateRad);
-                const tx = parseFloat(self.dom_txt_translate_x.value) || 0;
-                const ty = parseFloat(self.dom_txt_translate_y.value) || 0;
+                const tx = parseFloat(this.dom_txt_translate_x.value) || 0;
+                const ty = parseFloat(this.dom_txt_translate_y.value) || 0;
 
-                const transformedPts: [number, number][] = self.screenmap_pts.map(([x, y]: [number, number]) => {
+                const transformedPts: [number, number][] = this.screenmap_pts.map(([x, y]: [number, number]) => {
                     const sx = x * scaleX;
                     const sy = y * scaleY;
                     return [
@@ -494,66 +490,64 @@ ShapeEditor.prototype.animate = function (this: ShapeEditor) {
                         sx * sinR + sy * cosR + ty,
                     ] as [number, number];
                 });
-                self.lastTransformedPts = transformedPts;
-                self.buildScreenmap(transformedPts);
-                self.updateLabels(transformedPts);
+                this.lastTransformedPts = transformedPts;
+                this.buildScreenmap(transformedPts);
+                this.updateLabels(transformedPts);
             }
             // Push the live drag delta onto the (possibly just-rebuilt) mesh.
             // No-op when not previewing.
-            if (previewing) self._applyDragPreviewMatrices();
-            self.drawOverlay();
+            if (previewing) this._applyDragPreviewMatrices();
+            this.drawOverlay();
         } else {
-            if (self.screenmapOutline) {
-                self._scene().remove(self.screenmapOutline);
-                self.screenmapOutline.geometry.dispose();
-                ((self.screenmapOutline.material as Material)).dispose();
-                self.screenmapOutline = null;
+            if (this.screenmapOutline) {
+                this._scene().remove(this.screenmapOutline);
+                this.screenmapOutline.geometry.dispose();
+                ((this.screenmapOutline.material as Material)).dispose();
+                this.screenmapOutline = null;
             }
-            if (self.pointsMesh) {
-                self._scene().remove(self.pointsMesh);
-                self.pointsGeometry?.dispose();
-                self.pointsMaterial?.dispose();
-                self.pointsMesh = null;
-                self.lastBuiltPointCount = -1;
+            if (this.pointsMesh) {
+                this._scene().remove(this.pointsMesh);
+                this.pointsGeometry?.dispose();
+                this.pointsMaterial?.dispose();
+                this.pointsMesh = null;
+                this.lastBuiltPointCount = -1;
             }
-            self.updateLabels([]);
-            self.lastTransformedPts = [];
-            self.drawOverlay();
+            this.updateLabels([]);
+            this.lastTransformedPts = [];
+            this.drawOverlay();
         }
 
         // Apply camera pan/zoom (view-only, not an edit)
-        self._camera().position.x = -self.camPanX;
-        self._camera().position.y = -self.camPanY;
-        self._camera().zoom = self.camZoom;
-        self._camera().updateProjectionMatrix();
+        this._camera().position.x = -this.camPanX;
+        this._camera().position.y = -this.camPanY;
+        this._camera().zoom = this.camZoom;
+        this._camera().updateProjectionMatrix();
 
-        self._renderer().render(self._scene(), self._camera());
+        this._renderer().render(this._scene(), this._camera());
 
-        self.geometryDirty = false;
-        self.frameDirty = false;
+        this.geometryDirty = false;
+        this.frameDirty = false;
     };
 
 ShapeEditor.prototype._readPanelOpts = function (this: ShapeEditor): PanelOpts {
-    const self = this;
 
-        const rot = parseInt(self.dom_pp_rotation.value, 10) || 0;
+        const rot = parseInt(this.dom_pp_rotation.value, 10) || 0;
         // Clamp to the valid RotationDeg union
         const validRots: RotationDeg[] = [0, 90, 180, 270];
         const rotation = (validRots.includes(rot as RotationDeg)
             ? rot
             : 0) as RotationDeg;
         return {
-            wiring: self.dom_pp_wiring.value as WiringStyle,
-            dataInCorner: self.dom_pp_corner.value as DataInCorner,
+            wiring: this.dom_pp_wiring.value as WiringStyle,
+            dataInCorner: this.dom_pp_corner.value as DataInCorner,
             rotation,
-            flipH: self.dom_pp_flipH.checked,
-            flipV: self.dom_pp_flipV.checked,
-            spacing: parseFloat(self.dom_pp_spacing.value) || 1,
+            flipH: this.dom_pp_flipH.checked,
+            flipV: this.dom_pp_flipV.checked,
+            spacing: parseFloat(this.dom_pp_spacing.value) || 1,
         };
     };
 
 ShapeEditor.prototype._enterPlacing = function (this: ShapeEditor, catalogId: string) {
-    const self = this;
 
         const entry = getCatalogEntry(catalogId);
         if (!entry) return;
@@ -561,65 +555,60 @@ ShapeEditor.prototype._enterPlacing = function (this: ShapeEditor, catalogId: st
         // chain/reorder mode up front so the placed strip is immediately
         // selectable and draggable instead of inheriting a stale mode that
         // deliberately suppresses LED hit-testing.
-        if (self.editorMode) self.setEditorMode(null);
-        const opts = self._readPanelOpts();
+        if (this.editorMode) this.setEditorMode(null);
+        const opts = this._readPanelOpts();
         const localPts = generatePanelPoints(entry, opts);
-        self.placingState = { entry, opts, localPts, ghostWorld: null };
-        self._updateHintStrip();
-        self.dom_pp_status.textContent = `Placing ${entry.label} — click canvas (Esc to cancel)`;
-        self._oc().style.cursor = 'crosshair';
-        self.setNeedsRender();
+        this.placingState = { entry, opts, localPts, ghostWorld: null };
+        this._updateHintStrip();
+        this.dom_pp_status.textContent = `Placing ${entry.label} — click canvas (Esc to cancel)`;
+        this._oc().style.cursor = 'crosshair';
+        this.setNeedsRender();
     };
 
 ShapeEditor.prototype._cancelPlacing = function (this: ShapeEditor) {
-    const self = this;
 
-        self.placingState = null;
-        self.pendingNewStripPin = null;
-        self.dom_pp_status.textContent = '';
-        self._oc().style.cursor = 'default';
-        self.setNeedsRender();
-        self._updateHintStrip();
+        this.placingState = null;
+        this.pendingNewStripPin = null;
+        this.dom_pp_status.textContent = '';
+        this._oc().style.cursor = 'default';
+        this.setNeedsRender();
+        this._updateHintStrip();
     };
 
 ShapeEditor.prototype._canvasToWorldPx = function (this: ShapeEditor, cx: number, cy: number): [number, number] {
-    const self = this;
 
         return [
-            (cx - self.canvasW / 2) / self.camZoom - self.camPanX,
-            (cy - self.canvasH / 2) / self.camZoom - self.camPanY,
+            (cx - this.canvasW / 2) / this.camZoom - this.camPanX,
+            (cy - this.canvasH / 2) / this.camZoom - this.camPanY,
         ];
     };
 
 ShapeEditor.prototype._gridSizePx = function (this: ShapeEditor) {
-    const self = this;
 
-        const grid = parseFloat(self.dom_pp_grid.value) || 1;
-        const fs = self.fitScale > 0 ? self.fitScale : 1;
+        const grid = parseFloat(this.dom_pp_grid.value) || 1;
+        const fs = this.fitScale > 0 ? this.fitScale : 1;
         return grid * fs;
     };
 
 ShapeEditor.prototype._updateGhostFromCanvas = function (this: ShapeEditor, cx: number, cy: number) {
-    const self = this;
 
-        if (!self.placingState) return;
-        let [wx, wy] = self._canvasToWorldPx(cx, cy);
-        if (self.dom_pp_snap.checked) {
-            const gpx = self._gridSizePx();
+        if (!this.placingState) return;
+        let [wx, wy] = this._canvasToWorldPx(cx, cy);
+        if (this.dom_pp_snap.checked) {
+            const gpx = this._gridSizePx();
             [wx, wy] = snapToGrid([wx, wy], gpx);
         }
-        self.placingState.ghostWorld = [wx, wy];
-        self.setNeedsRender();
+        this.placingState.ghostWorld = [wx, wy];
+        this.setNeedsRender();
     };
 
 ShapeEditor.prototype._drawPlacingGhost = function (this: ShapeEditor) {
-    const self = this;
 
-        if (!self.placingState?.ghostWorld) return;
-        const ctx = self._octx();
-        const [wx, wy] = self.placingState.ghostWorld;
-        const fs = self.fitScale > 0 ? self.fitScale : 1;
-        const pts = self.placingState.localPts;
+        if (!this.placingState?.ghostWorld) return;
+        const ctx = this._octx();
+        const [wx, wy] = this.placingState.ghostWorld;
+        const fs = this.fitScale > 0 ? this.fitScale : 1;
+        const pts = this.placingState.localPts;
         if (pts.length === 0) return;
         ctx.save();
         ctx.lineWidth = 1;
@@ -628,20 +617,20 @@ ShapeEditor.prototype._drawPlacingGhost = function (this: ShapeEditor) {
         // Connecting polyline (wiring order)
         ctx.beginPath();
         for (let i = 0; i < pts.length; i++) {
-            const [px, py] = self.nn(pts[i]);
-            const [cx, cy] = self.toCanvasCoords(wx + px * fs, wy + py * fs);
+            const [px, py] = this.nn(pts[i]);
+            const [cx, cy] = this.toCanvasCoords(wx + px * fs, wy + py * fs);
             if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
         }
         ctx.stroke();
-        const r = Math.max(2, 0.3 * fs * self.camZoom);
+        const r = Math.max(2, 0.3 * fs * this.camZoom);
         for (const [px, py] of pts) {
-            const [cx, cy] = self.toCanvasCoords(wx + px * fs, wy + py * fs);
+            const [cx, cy] = this.toCanvasCoords(wx + px * fs, wy + py * fs);
             ctx.beginPath();
             ctx.arc(cx, cy, r, 0, Math.PI * 2);
             ctx.fill();
         }
         // Crosshair at origin
-        const [ocx, ocy] = self.toCanvasCoords(wx, wy);
+        const [ocx, ocy] = this.toCanvasCoords(wx, wy);
         ctx.strokeStyle = withAlpha(gfxColors.textStrong(), 0.8);
         ctx.beginPath();
         ctx.moveTo(ocx - 6, ocy); ctx.lineTo(ocx + 6, ocy);
@@ -651,10 +640,9 @@ ShapeEditor.prototype._drawPlacingGhost = function (this: ShapeEditor) {
     };
 
 ShapeEditor.prototype._uniqueStripName = function (this: ShapeEditor, base: string) {
-    const self = this;
 
         const used = new Set();
-        const strips = self.stripStore.getStrips();
+        const strips = this.stripStore.getStrips();
         for (const s of strips) used.add(s.name);
         let i = 1;
         while (used.has(`${base}${String(i)}`)) i++;
@@ -662,48 +650,45 @@ ShapeEditor.prototype._uniqueStripName = function (this: ShapeEditor, base: stri
     };
 
 ShapeEditor.prototype._isEmptyScreenmap = function (this: ShapeEditor) {
-    const self = this;
 
-        return !self.stripInfo || self.stripInfo.strips.length === 0
-            || (self.stripInfo.strips.length === 1 && (self.stripInfo.strips[0]?.count ?? 0) <= 1
-                && self.stripInfo.totalCount <= 1);
+        return !this.stripInfo || this.stripInfo.strips.length === 0
+            || (this.stripInfo.strips.length === 1 && (this.stripInfo.strips[0]?.count ?? 0) <= 1
+                && this.stripInfo.totalCount <= 1);
     };
 
 ShapeEditor.prototype._initFreshScreenmapForPanel = function (this: ShapeEditor) {
-    const self = this;
 
         // Initialise transform + fitScale + storage for a brand-new screenmap
         // when the user places a panel onto an empty editor.
-        self.screenmap_pts = [];
-        self.rawPts = [];
-        self.stripInfo = null;
-        self.stripStore.load(null);
-        self.origDiameter = 0.5;
-        self.dom_txt_diameter.value = String(self.origDiameter);
-        self.origWidth = 0;
-        self.origHeight = 0;
+        this.screenmap_pts = [];
+        this.rawPts = [];
+        this.stripInfo = null;
+        this.stripStore.load(null);
+        this.origDiameter = 0.5;
+        this.dom_txt_diameter.value = String(this.origDiameter);
+        this.origWidth = 0;
+        this.origHeight = 0;
         // Choose a fitScale that gives a reasonable initial pixel pitch.
-        const { width: fitW, height: fitH } = self.getFitSize();
-        self.fitScale = Math.min(fitW, fitH) / 40;
-        if (!isFinite(self.fitScale) || self.fitScale <= 0) self.fitScale = 20;
-        self.resetTransforms();
+        const { width: fitW, height: fitH } = this.getFitSize();
+        this.fitScale = Math.min(fitW, fitH) / 40;
+        if (!isFinite(this.fitScale) || this.fitScale <= 0) this.fitScale = 20;
+        this.resetTransforms();
     };
 
 ShapeEditor.prototype._commitPlacingAt = function (this: ShapeEditor, cx: number, cy: number) {
-    const self = this;
 
-        if (!self.placingState) return;
-        const entry = self.placingState.entry;
-        const opts = self.placingState.opts;
-        let [wx, wy] = self._canvasToWorldPx(cx, cy);
-        if (self.dom_pp_snap.checked) {
-            const gpx = self._gridSizePx();
+        if (!this.placingState) return;
+        const entry = this.placingState.entry;
+        const opts = this.placingState.opts;
+        let [wx, wy] = this._canvasToWorldPx(cx, cy);
+        if (this.dom_pp_snap.checked) {
+            const gpx = this._gridSizePx();
             [wx, wy] = snapToGrid([wx, wy], gpx);
         }
-        if (self._isEmptyScreenmap()) {
-            self._initFreshScreenmapForPanel();
+        if (this._isEmptyScreenmap()) {
+            this._initFreshScreenmapForPanel();
         }
-        const name = self._uniqueStripName('panel');
+        const name = this._uniqueStripName('panel');
         const action = {
             type: 'panel-place',
             catalogId: entry.id,
@@ -711,28 +696,27 @@ ShapeEditor.prototype._commitPlacingAt = function (this: ShapeEditor, cx: number
             worldX: wx,
             worldY: wy,
             name,
-            pin: self.pendingNewStripPin ?? self._defaultNewStripPin(),
+            pin: this.pendingNewStripPin ?? this._defaultNewStripPin(),
         };
-        self.pendingNewStripPin = null;
-        self._doPanelPlace(action);
-        self.pushUndo(action);
+        this.pendingNewStripPin = null;
+        this._doPanelPlace(action);
+        this.pushUndo(action);
         notePinMutation();
-        self._persistMultiStrip();
-        self.renderStripsPanel();
-        self.setNeedsGeometryUpdate();
-        self.placingState = null;
-        self.dom_pp_status.textContent = `Placed ${entry.label} as ${String(name)}`;
-        self._oc().style.cursor = 'default';
-        self._updateHintStrip();
+        this._persistMultiStrip();
+        this.renderStripsPanel();
+        this.setNeedsGeometryUpdate();
+        this.placingState = null;
+        this.dom_pp_status.textContent = `Placed ${entry.label} as ${name}`;
+        this._oc().style.cursor = 'default';
+        this._updateHintStrip();
     };
 
 ShapeEditor.prototype._doPanelPlace = function (this: ShapeEditor, action: UndoAction) {
-    const self = this;
 
         const entry = getCatalogEntry(action.catalogId as string);
         if (!entry) return;
         const localPts = generatePanelPoints(entry, (action.opts as PanelOpts | undefined) ?? {});
-        const fs = self.fitScale > 0 ? self.fitScale : 1;
+        const fs = this.fitScale > 0 ? this.fitScale : 1;
         // rawPts (cm-units): use worldX/worldY divided by fitScale to place
         // the panel origin at the click point. screenmap_pts = rawPts * fs
         // - offset (keeps consistency with existing screenmap_pts coords).
@@ -742,9 +726,9 @@ ShapeEditor.prototype._doPanelPlace = function (this: ShapeEditor, action: UndoA
         const rawPtsAdd: [number, number][] = [];
         // Determine current "raw->screenmap" offset using existing point 0
         let offX = 0, offY = 0;
-        if (self.rawPts.length > 0) {
-            offX = self.nn(self.rawPts[0])[0] * fs - self.nn(self.screenmap_pts[0])[0];
-            offY = self.nn(self.rawPts[0])[1] * fs - self.nn(self.screenmap_pts[0])[1];
+        if (this.rawPts.length > 0) {
+            offX = this.nn(this.rawPts[0])[0] * fs - this.nn(this.screenmap_pts[0])[0];
+            offY = this.nn(this.rawPts[0])[1] * fs - this.nn(this.screenmap_pts[0])[1];
         }
         const actionWorldX = action.worldX as number;
         const actionWorldY = action.worldY as number;
@@ -755,72 +739,69 @@ ShapeEditor.prototype._doPanelPlace = function (this: ShapeEditor, action: UndoA
             rawPtsAdd.push([(sx + offX) / fs, (sy + offY) / fs]);
         }
         // Append to flat arrays
-        const insertAt = self.screenmap_pts.length;
+        const insertAt = this.screenmap_pts.length;
         for (let i = 0; i < screenmapPts.length; i++) {
-            self.screenmap_pts.push(self.nn(screenmapPts[i]));
-            self.rawPts.push(self.nn(rawPtsAdd[i]));
+            this.screenmap_pts.push(this.nn(screenmapPts[i]));
+            this.rawPts.push(this.nn(rawPtsAdd[i]));
         }
-        const newIdx = self.stripStore.addStrip({
+        const newIdx = this.stripStore.addStrip({
             name: action.name as string,
             points: rawPtsAdd,
-            diameter: typeof self.origDiameter === 'number' ? self.origDiameter : 0.5,
+            diameter: typeof this.origDiameter === 'number' ? this.origDiameter : 0.5,
             video_offset: insertAt,
             pin: (typeof action.pin === 'string' && action.pin) ? (action.pin) : 'pin1',
             videoOffsetOverride: false,
         });
-        self.stripInfo = self.stripStore.get();
+        this.stripInfo = this.stripStore.get();
         // origWidth/Height may still be 0 for fresh maps — recompute from rawPts
         // so the cm size label is reasonable.
-        if (self.origWidth === 0 && self.origHeight === 0 && self.rawPts.length > 0) {
+        if (this.origWidth === 0 && this.origHeight === 0 && this.rawPts.length > 0) {
             let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-            for (const [x, y] of self.rawPts) {
+            for (const [x, y] of this.rawPts) {
                 if (x < xmin) xmin = x; if (x > xmax) xmax = x;
                 if (y < ymin) ymin = y; if (y > ymax) ymax = y;
             }
-            self.origWidth = xmax - xmin;
-            self.origHeight = ymax - ymin;
+            this.origWidth = xmax - xmin;
+            this.origHeight = ymax - ymin;
         }
-        self.selection.selectStrip(newIdx);
+        this.selection.selectStrip(newIdx);
         action._insertAt = insertAt;
         action._count = screenmapPts.length;
     };
 
 ShapeEditor.prototype._redoPanelPlace = function (this: ShapeEditor, action: UndoAction) {
-    const self = this;
 
-        self._doPanelPlace(action);
+        this._doPanelPlace(action);
     };
 
 ShapeEditor.prototype._undoPanelPlace = function (this: ShapeEditor, action: UndoAction) {
-    const self = this;
 
-        if (!self.stripInfo) return;
+        if (!this.stripInfo) return;
         // Find the strip we added by name (most reliable after reordering).
         let stripIdx = -1;
-        const strips = self.stripInfo.strips;
+        const strips = this.stripInfo.strips;
         for (let i = strips.length - 1; i >= 0; i--) {
             if (strips[i]?.name === action.name) { stripIdx = i; break; }
         }
         if (stripIdx < 0) return;
-        const strip = self.nn(strips[stripIdx]);
-        self.screenmap_pts.splice(strip.offset, strip.count);
-        self.rawPts.splice(strip.offset, strip.count);
-        self.stripStore.removeStrip(stripIdx);
-        self.selection.onStripRemove(stripIdx);
-        self.selectedIdx = -1;
-        self.stripInfo = self.stripStore.get();
+        const strip = this.nn(strips[stripIdx]);
+        this.screenmap_pts.splice(strip.offset, strip.count);
+        this.rawPts.splice(strip.offset, strip.count);
+        this.stripStore.removeStrip(stripIdx);
+        this.selection.onStripRemove(stripIdx);
+        this.selectedIdx = -1;
+        this.stripInfo = this.stripStore.get();
     };
 
 ShapeEditor.prototype._debugPlacePanel = function (this: ShapeEditor, catalogId: string, worldX: number, worldY: number, opts: PanelOpts) {
-    const self = this;
 
         const entry = getCatalogEntry(catalogId);
         if (!entry) return null;
-        const mergedOpts = { ...self._readPanelOpts(), ...opts };
-        if (self._isEmptyScreenmap()) {
-            self._initFreshScreenmapForPanel();
+        const mergedOpts = { ...this._readPanelOpts(), ...opts };
+        if (this._isEmptyScreenmap()) {
+            this._initFreshScreenmapForPanel();
         }
-        const name = self._uniqueStripName('panel');
+        const name = this._uniqueStripName('panel');
         const action = {
             type: 'panel-place',
             catalogId,
@@ -828,14 +809,14 @@ ShapeEditor.prototype._debugPlacePanel = function (this: ShapeEditor, catalogId:
             worldX,
             worldY,
             name,
-            pin: self.pendingNewStripPin ?? self._defaultNewStripPin(),
+            pin: this.pendingNewStripPin ?? this._defaultNewStripPin(),
         };
-        self.pendingNewStripPin = null;
-        self._doPanelPlace(action);
-        self.pushUndo(action);
+        this.pendingNewStripPin = null;
+        this._doPanelPlace(action);
+        this.pushUndo(action);
         notePinMutation();
-        self._persistMultiStrip();
-        self.renderStripsPanel();
-        self.setNeedsGeometryUpdate();
+        this._persistMultiStrip();
+        this.renderStripsPanel();
+        this.setNeedsGeometryUpdate();
         return name;
     };
