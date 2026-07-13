@@ -6,7 +6,7 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 
-import { bboxCenter, rotatePointsAround, type Pt } from '../../src/shapeeditor/strip-rotate';
+import { bboxCenter, minimumAreaObb, rotatePointsAround, type Pt } from '../../src/shapeeditor/strip-rotate';
 
 function approx(a: number, b: number, eps = 1e-9): boolean {
     return Math.abs(a - b) < eps;
@@ -37,6 +37,28 @@ describe('bboxCenter', () => {
         assert.ok(c !== null);
         assert.equal(c.x, 5);
         assert.equal(c.y, 1.5);
+    });
+});
+
+describe('minimumAreaObb', () => {
+    test('fits a rotated rectangle tightly and preserves its center', () => {
+        const c = Math.cos(Math.PI / 6), s = Math.sin(Math.PI / 6);
+        const points: Pt[] = [[-5, -1], [5, -1], [5, 1], [-5, 1]].map(([x, y]) => [x * c - y * s + 8, x * s + y * c - 3]);
+        const box = minimumAreaObb(points);
+        assert.ok(box);
+        assert.ok(Math.abs(box.cx - 8) < 1e-8);
+        assert.ok(Math.abs(box.cy + 3) < 1e-8);
+        assert.ok(Math.abs(box.hw - 5) < 1e-8);
+        assert.ok(Math.abs(box.hh - 1) < 1e-8);
+    });
+
+    test('handles singleton and collinear groups deterministically', () => {
+        assert.deepEqual(minimumAreaObb([[2, 3]]), { cx: 2, cy: 3, cos: 1, sin: 0, hw: 0, hh: 0 });
+        const line = minimumAreaObb([[0, 0], [4, 4], [2, 2]]);
+        assert.ok(line);
+        assert.ok(Math.abs(line.cx - 2) < 1e-8);
+        assert.ok(Math.abs(line.cy - 2) < 1e-8);
+        assert.ok(Math.abs(line.hh) < 1e-8);
     });
 });
 

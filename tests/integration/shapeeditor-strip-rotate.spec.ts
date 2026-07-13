@@ -8,6 +8,7 @@ const KEYS = [
     'lm:screenmap-meta',
     'lm:screenmap-backup',
     'lm:shapeeditor-helpDismissed',
+    'shapeeditor.freeRotateHintSeen',
 ];
 
 function makeTwoStripMap() {
@@ -136,4 +137,5 @@ test.describe('Shapeeditor per-strip rotation', () => {
             );
         }, before)).toBe(true);
     });
+
 });

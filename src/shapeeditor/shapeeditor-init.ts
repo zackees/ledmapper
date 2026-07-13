@@ -213,6 +213,7 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
             });
             const anchor = toClient(handle.anchorX, handle.anchorY);
             const button = toClient(handle.handleX, handle.handleY);
+            const center = toClient(handle.centerX, handle.centerY);
             return {
                 anchorX: handle.anchorX,
                 anchorY: handle.anchorY,
@@ -222,6 +223,8 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
                 clientAnchorY: anchor.y,
                 clientHandleX: button.x,
                 clientHandleY: button.y,
+                clientCenterX: center.x,
+                clientCenterY: center.y,
             };
         },
         // Paste flow hooks (Phase 3)
@@ -284,11 +287,9 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
             this.selection.selectStrip(i);
             const handle = this._stripRotateHandlePos();
             if (!handle || !this.overlayCanvas) return false;
-            // Anchor of the rotation pivot in canvas px = bbox center.
-            const bb = this._selectedStripBboxCanvas();
-            if (!bb) return false;
-            const anchorX = (bb.minX + bb.maxX) / 2;
-            const anchorY = (bb.minY + bb.maxY) / 2;
+            // The OBB center is the rotation pivot in canvas pixels.
+            const anchorX = handle.centerX;
+            const anchorY = handle.centerY;
             const rect = this.overlayCanvas.getBoundingClientRect();
             const toClient = (cx: number, cy: number) => ({
                 clientX: rect.left + (cx / this.canvasW) * rect.width,
