@@ -22,6 +22,9 @@ interface ToolRoute {
 
 const tools: ToolRoute[] = [
     { path: '/',             name: 'hub',         readySelector: '.tool-card, #main, main' },
+    { path: '/play',         name: 'app-play',    readySelector: '#app-mode-bar, canvas' },
+    { path: '/create',       name: 'app-create',  readySelector: '#app-mode-bar, canvas' },
+    { path: '/record',       name: 'app-record',  readySelector: '#app-mode-bar, canvas' },
     { path: '/demo/',        name: 'demo',        readySelector: 'canvas' },
     { path: '/screenmap/',   name: 'screenmap',   readySelector: '#btn_webcam, #btn_upload, canvas' },
     { path: '/moviemaker/',  name: 'moviemaker',  readySelector: 'canvas' },
