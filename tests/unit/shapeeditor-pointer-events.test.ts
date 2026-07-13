@@ -10,5 +10,5 @@ test('shapeeditor overlay uses pointer events with a legacy touch fallback', () 
     assert.match(source, /addEventListener\('pointerdown'/);
     assert.match(source, /addEventListener\('pointermove'/);
     assert.match(source, /addEventListener\('pointercancel'/);
-    assert.match(source, /_wireTouchHandlers\(self\.signal\)/);
+    assert.match(source, /_wireTouchHandlers\(this\.signal\)/);
 });

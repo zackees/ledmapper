@@ -99,10 +99,10 @@ this.mainEl.classList.add('shapeeditor-main');
         this.signal = this.ac.signal;
 for (const el of [this.dom_txt_scale, this.dom_txt_scale_x, this.dom_txt_scale_y,
         this.dom_txt_rotate, this.dom_txt_translate_x, this.dom_txt_translate_y, this.dom_txt_diameter]) {
-        el.addEventListener('input', (...args: any[]) => (this.markDirtyAndGeometry as any)(...args), { signal: this.signal });
+        el.addEventListener('input', () => { this.markDirtyAndGeometry(); }, { signal: this.signal });
     }
-this.dom_btn_reset.addEventListener('click', (...args: any[]) => (this.resetTransforms as any)(...args), { signal: this.signal });
-this.dom_btn_save.addEventListener('click', (...args: any[]) => (this.saveAs as any)(...args), { signal: this.signal });
+this.dom_btn_reset.addEventListener('click', () => { this.resetTransforms(); }, { signal: this.signal });
+this.dom_btn_save.addEventListener('click', () => { this.saveAs(); }, { signal: this.signal });
         this.SCALE_MIN = 0.1;
         this.SCALE_MAX = 10;
 this.dom_txt_scale.addEventListener('change', () => { this.writeScale(this.dom_txt_scale, this.dom_txt_scale.value); }, { signal: this.signal });
@@ -308,7 +308,9 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
         // Chain / Reorder modes (issue #24, Phase 3)
         getMode: () => this.editorMode,
         setMode: (m: string | null) => { this.setEditorMode(m); return this.editorMode; },
-        simulateConnectorDrag: (stripIdx: number, targetStripIdx: number) => this.doConnectorRetarget(stripIdx, targetStripIdx),
+        simulateConnectorDrag: (stripIdx: number, targetStripIdx: number) => {
+            this.doConnectorRetarget(stripIdx, targetStripIdx);
+        },
         getCrossPinBadgeCount: () => this._crossPinBadgeCount(),
         getChainGeom: () => ({
             connectors: this._chainGeom.connectors.map((c) => ({ up: c.up, down: c.down, x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2 })),
@@ -477,15 +479,15 @@ registerDebugState('shapeeditor', {
 ;
         this.undoStack = [];
         this.redoStack = [];
-this.dom_btn_undo.addEventListener('click', (...args: any[]) => (this.performUndo as any)(...args), { signal: this.signal });
-this.dom_btn_redo.addEventListener('click', (...args: any[]) => (this.performRedo as any)(...args), { signal: this.signal });
+this.dom_btn_undo.addEventListener('click', () => { this.performUndo(); }, { signal: this.signal });
+this.dom_btn_redo.addEventListener('click', () => { this.performRedo(); }, { signal: this.signal });
         this.dom_strips_panel = this.qe<HTMLElement>('#strips_panel');
         this.dom_strips_list = this.qe<HTMLElement>('#strips_list');
         this.collapsedPins = new Set();
         this.dom_strips_backup_row = this.qe<HTMLElement>('#strips_backup_row');
         this.dom_strips_backup_summary = this.qe<HTMLElement>('#strips_backup_summary');
         this.dom_strips_btn_restore_backup = this.qeb('#strips_btn_restore_backup');
-        this.dom_strips_btn_restore_backup.addEventListener('click', (...args: any[]) => (this.doRestoreBackupFromButton as any)(...args), { signal: this.signal });
+        this.dom_strips_btn_restore_backup.addEventListener('click', () => { this.doRestoreBackupFromButton(); }, { signal: this.signal });
 
         this.dom_strips_list.addEventListener('click', (e: MouseEvent) => { void (async () => {
             const tgt = e.target as Element | null;
@@ -686,14 +688,16 @@ this.dom_btn_new.addEventListener('click', () => {
         safeStorage.remove('lm:screenmap-preset');
         try { this.renderBackupRow(); } catch { /* render is best-effort */ }
         if (hadBackupPromote) {
-            void this._toastInfo('New layout — previous layout kept as backup');
+            void this._toastInfo('New layout — previous layout kept as backup').catch(() => { /* toast is best effort */ });
         }
     }, { signal: this.signal });
         this.screenmapDropTarget = this.qe<HTMLElement>('#screenmap_drop_target');
         wireFileSource({
             input: this.dom_btn_upload_screenmap,
             target: this.screenmapDropTarget,
-            onFile: (file: File | null | undefined) => this.loadScreenmapFile(file),
+            onFile: (file: File | null | undefined) => {
+                this.loadScreenmapFile(file);
+            },
             signal: this.signal,
         });
         this.imageDropTarget = this.qe<HTMLElement>('#image_drop_target');
@@ -760,7 +764,7 @@ this.dom_txt_image_ty.addEventListener('change', () => {
         this.dom_txt_image_ty.value = String(parseInt(this.dom_txt_image_ty.value) || 0);
         this.applyBgImageTransform();
     }, { signal: this.signal });
-this.dom_btn_remove_image.addEventListener('click', (...args: any[]) => (this.removeBackgroundImage as any)(...args), { signal: this.signal });
+this.dom_btn_remove_image.addEventListener('click', () => { this.removeBackgroundImage(); }, { signal: this.signal });
         this.rulers = [];
         this.rulerDrag = null;
         this.rulerDragStart = null;
@@ -858,7 +862,7 @@ window.addEventListener('keydown', (e) => {
             }
         }
     }, { signal: this.signal });
-window.addEventListener('resize', (...args: any[]) => (this.handleResize as any)(...args), { signal: this.signal });
+window.addEventListener('resize', () => { this.handleResize(); }, { signal: this.signal });
         this.placingState = null;
         this.pendingNewStripPin = null;
         this.pasteState = null;
@@ -899,7 +903,9 @@ ShapeEditor.prototype.start = function (this: ShapeEditor): void {
     this.initRenderer();
     void this.loadPresetsFromManifest();
     this.renderStripsPanel();
-    this.rafId = requestAnimationFrame(() => this.animate());
+    this.rafId = requestAnimationFrame(() => {
+        this.animate();
+    });
 };
 
 ShapeEditor.prototype.destroy = function (this: ShapeEditor): void {

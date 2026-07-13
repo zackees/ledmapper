@@ -8,188 +8,185 @@ import { rotatePointsAround } from './strip-rotate';
 const STRIP_STROKE_HIT_PX = 10;
 
 ShapeEditor.prototype.onContextMenu = function (this: ShapeEditor, e: MouseEvent) {
-    const self = this;
 
         e.preventDefault();
         // Cancel panel placement on right-click
-        if (self.placingState) {
-            self._cancelPlacing();
+        if (this.placingState) {
+            this._cancelPlacing();
             return;
         }
-        if (self.pasteState) {
-            self._cancelPaste();
+        if (this.pasteState) {
+            this._cancelPaste();
             return;
         }
         // If right-click was used for zoom dragging, skip the context menu
-        const wasMoved = self.rightClickMoved;
-        self.rightClickMoved = false;
+        const wasMoved = this.rightClickMoved;
+        this.rightClickMoved = false;
         if (wasMoved) return;
-        if (self.screenmap_pts.length === 0) return;
-        const [cx, cy] = self.getCanvasCoords(e);
+        if (this.screenmap_pts.length === 0) return;
+        const [cx, cy] = this.getCanvasCoords(e);
         // Ruler hit-test: stash the index so the context menu can show
         // "Duplicate ruler" / "Delete ruler" wired to this specific ruler.
         // -1 means "no ruler under the cursor at right-click time".
-        self.ctxMenuRulerIdx = self._findRulerAtCanvasPoint(cx, cy);
+        this.ctxMenuRulerIdx = this._findRulerAtCanvasPoint(cx, cy);
         // Stash the screenmap (world) coordinates so "Insert ruler" can place
         // the new 60 cm ruler centered at the click location.
-        const worldClick = self.canvasToScreenmapCoords(cx, cy);
-        self.ctxMenuClickX = worldClick[0];
-        self.ctxMenuClickY = worldClick[1];
+        const worldClick = this.canvasToScreenmapCoords(cx, cy);
+        this.ctxMenuClickX = worldClick[0];
+        this.ctxMenuClickY = worldClick[1];
         // Chain mode: right-click on a connector arrow opens the connector menu
-        if (self.editorMode === 'chain') {
-            const conn = self._hitConnectorBody(cx, cy);
+        if (this.editorMode === 'chain') {
+            const conn = this._hitConnectorBody(cx, cy);
             if (conn) {
-                if (conn.up !== undefined && conn.down !== undefined) self._openConnectorMenu(conn.up, conn.down, e.clientX, e.clientY);
+                if (conn.up !== undefined && conn.down !== undefined) this._openConnectorMenu(conn.up, conn.down, e.clientX, e.clientY);
                 return;
             }
         }
-        const idx = self.hitTestLED(cx, cy);
+        const idx = this.hitTestLED(cx, cy);
         if (idx >= 0) {
-            self.selectedIdx = idx;
-            self.syncPointSelection(idx);
-            self.highlightedEdgeIdx = -1;
-            self.setNeedsGeometryUpdate();
-            self.showContextMenu(e.clientX, e.clientY, idx, -1);
+            this.selectedIdx = idx;
+            this.syncPointSelection(idx);
+            this.highlightedEdgeIdx = -1;
+            this.setNeedsGeometryUpdate();
+            this.showContextMenu(e.clientX, e.clientY, idx, -1);
             return;
         }
         // No point hit — check for edge hit
-        const edge = self.findNearestEdge(cx, cy);
+        const edge = this.findNearestEdge(cx, cy);
         if (edge && edge.distSq <= STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) {
-            self.highlightedEdgeIdx = edge.idx;
-            self.setNeedsRender();
-            self.showContextMenu(e.clientX, e.clientY, -1, edge.idx);
+            this.highlightedEdgeIdx = edge.idx;
+            this.setNeedsRender();
+            this.showContextMenu(e.clientX, e.clientY, -1, edge.idx);
             return;
         }
-        self.highlightedEdgeIdx = -1;
+        this.highlightedEdgeIdx = -1;
         let insideBBox = false;
-        if (self.ptsBBox) {
-            const [lx, ly] = self.canvasToObbLocal(self.ptsBBox, cx, cy);
-            insideBBox = Math.abs(lx) <= self.ptsBBox.hw && Math.abs(ly) <= self.ptsBBox.hh;
+        if (this.ptsBBox) {
+            const [lx, ly] = this.canvasToObbLocal(this.ptsBBox, cx, cy);
+            insideBBox = Math.abs(lx) <= this.ptsBBox.hw && Math.abs(ly) <= this.ptsBBox.hh;
         }
-        self.showContextMenu(e.clientX, e.clientY, -1, -1, insideBBox);
+        this.showContextMenu(e.clientX, e.clientY, -1, -1, insideBBox);
     };
 
 ShapeEditor.prototype._startStripDrag = function (this: ShapeEditor, stripIdx: number, canvasX: number, canvasY: number) {
-    const self = this;
-    if (!self.stripInfo || stripIdx < 0 || stripIdx >= self.stripInfo.strips.length) return false;
+    if (!this.stripInfo || stripIdx < 0 || stripIdx >= this.stripInfo.strips.length) return false;
 
-    const strip = self.stripInfo.strips[stripIdx];
+    const strip = this.stripInfo.strips[stripIdx];
     if (!strip) return false;
-    self.dragStartCanvasX = canvasX;
-    self.dragStartCanvasY = canvasY;
-    self.stripDragActive = true;
-    self.stripDragIdx = stripIdx;
-    self.stripDragStartScreenmap = [];
-    self.stripDragStartRaw = [];
+    this.dragStartCanvasX = canvasX;
+    this.dragStartCanvasY = canvasY;
+    this.stripDragActive = true;
+    this.stripDragIdx = stripIdx;
+    this.stripDragStartScreenmap = [];
+    this.stripDragStartRaw = [];
     for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-        self.stripDragStartScreenmap.push([self.nn(self.screenmap_pts[k])[0], self.nn(self.screenmap_pts[k])[1]]);
-        self.stripDragStartRaw.push([self.nn(self.rawPts[k])[0], self.nn(self.rawPts[k])[1]]);
+        this.stripDragStartScreenmap.push([this.nn(this.screenmap_pts[k])[0], this.nn(this.screenmap_pts[k])[1]]);
+        this.stripDragStartRaw.push([this.nn(this.rawPts[k])[0], this.nn(this.rawPts[k])[1]]);
     }
-    self.stripDragLastSdx = 0;
-    self.stripDragLastSdy = 0;
+    this.stripDragLastSdx = 0;
+    this.stripDragLastSdy = 0;
 
     let cx0 = 0, cy0 = 0, count = 0;
     for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-        const point = self.screenmap_pts[k];
+        const point = this.screenmap_pts[k];
         if (!point) continue;
         cx0 += point[0];
         cy0 += point[1];
         count++;
     }
-    self.stripSnapStartCenter = count > 0 ? { x: cx0 / count, y: cy0 / count } : null;
+    this.stripSnapStartCenter = count > 0 ? { x: cx0 / count, y: cy0 / count } : null;
     const { xTargets, yTargets } = computeStripSnapTargets(
-        self.stripInfo.strips,
+        this.stripInfo.strips,
         stripIdx,
-        self.screenmap_pts,
-        self.stripSnapStartCenter ?? undefined,
+        this.screenmap_pts,
+        this.stripSnapStartCenter ?? undefined,
     );
-    self.stripSnapXTargets = xTargets;
-    self.stripSnapYTargets = yTargets;
-    self.stripSnapEngagedX = null;
-    self.stripSnapEngagedY = null;
-    self._oc().style.cursor = 'grabbing';
+    this.stripSnapXTargets = xTargets;
+    this.stripSnapYTargets = yTargets;
+    this.stripSnapEngagedX = null;
+    this.stripSnapEngagedY = null;
+    this._oc().style.cursor = 'grabbing';
     return true;
 };
 
 ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) {
-    const self = this;
 
         // Dismiss context menu on any click
-        self.hideContextMenu();
+        this.hideContextMenu();
 
         // Panel placement takes priority over every other handler
-        if (self.placingState) {
+        if (this.placingState) {
             if (e.button === 2) {
                 e.preventDefault();
-                self._cancelPlacing();
+                this._cancelPlacing();
                 return;
             }
             if (e.button === 0) {
                 e.preventDefault();
-                const [cx, cy] = self.getCanvasCoords(e);
-                self._commitPlacingAt(cx, cy);
+                const [cx, cy] = this.getCanvasCoords(e);
+                this._commitPlacingAt(cx, cy);
                 return;
             }
             return;
         }
 
         // Paste-pending ghost commit / cancel
-        if (self.pasteState) {
+        if (this.pasteState) {
             if (e.button === 2) {
                 e.preventDefault();
-                self._cancelPaste();
+                this._cancelPaste();
                 return;
             }
             if (e.button === 0) {
                 e.preventDefault();
-                const [cx, cy] = self.getCanvasCoords(e);
-                self._commitPasteAt(cx, cy);
+                const [cx, cy] = this.getCanvasCoords(e);
+                this._commitPasteAt(cx, cy);
                 return;
             }
             return;
         }
 
-        if (self.screenmap_pts.length === 0 && !self.bgImageMesh) return;
+        if (this.screenmap_pts.length === 0 && !this.bgImageMesh) return;
 
         if (e.button === 2) {
             // Right-click: start potential zoom drag
-            self.rightButtonDown = true;
-            self.rightClickMoved = false;
-            const [, cy] = self.getCanvasCoords(e);
-            self.zoomStartY = cy;
-            self.zoomStartLevel = self.camZoom;
+            this.rightButtonDown = true;
+            this.rightClickMoved = false;
+            const [, cy] = this.getCanvasCoords(e);
+            this.zoomStartY = cy;
+            this.zoomStartLevel = this.camZoom;
             return;
         }
 
         if (e.button !== 0) return;
-        const [cx, cy] = self.getCanvasCoords(e);
+        const [cx, cy] = this.getCanvasCoords(e);
 
         // Chain mode: arrowhead / Start-handle drags only; LED hit-test and
         // group-drag are suppressed (issue #24 §1.7). Everything else pans.
-        if (self.editorMode === 'chain') {
-            const conn = self._hitChainArrowhead(cx, cy);
+        if (this.editorMode === 'chain') {
+            const conn = this._hitChainArrowhead(cx, cy);
             if (conn) {
-                self.connectorDrag = { upIdx: conn.up ?? 0, x: cx, y: cy, targetIdx: null };
-                self._oc().style.cursor = 'grabbing';
-                self.setNeedsRender();
+                this.connectorDrag = { upIdx: conn.up ?? 0, x: cx, y: cy, targetIdx: null };
+                this._oc().style.cursor = 'grabbing';
+                this.setNeedsRender();
                 return;
             }
-            const startIdx = self._hitStartHandle(cx, cy, -1);
+            const startIdx = this._hitStartHandle(cx, cy, -1);
             if (startIdx !== null) {
-                self.startHandleDrag = { stripIdx: startIdx, x: cx, y: cy, targetIdx: null };
-                self._oc().style.cursor = 'grabbing';
-                self.setNeedsRender();
+                this.startHandleDrag = { stripIdx: startIdx, x: cx, y: cy, targetIdx: null };
+                this._oc().style.cursor = 'grabbing';
+                this.setNeedsRender();
                 return;
             }
             // Fall through to pan
-            if (self.selectedIdx >= 0) { self.selectedIdx = -1; self.setNeedsGeometryUpdate(); }
-            self.selection.clear();
-            self.isPanning = true;
-            self.panStartX = cx;
-            self.panStartY = cy;
-            self.panStartCamX = self.camPanX;
-            self.panStartCamY = self.camPanY;
-            self._oc().style.cursor = 'move';
+            if (this.selectedIdx >= 0) { this.selectedIdx = -1; this.setNeedsGeometryUpdate(); }
+            this.selection.clear();
+            this.isPanning = true;
+            this.panStartX = cx;
+            this.panStartY = cy;
+            this.panStartCamX = this.camPanX;
+            this.panStartCamY = this.camPanY;
+            this._oc().style.cursor = 'move';
             return;
         }
 
@@ -197,18 +194,18 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
         // the LED-hit branch below). Skip the insert/append paths when the
         // cursor is over a LED so multi-select stays usable.
         const hitLedForModCheck = (e.shiftKey || e.ctrlKey || e.metaKey)
-            ? self.hitTestLED(cx, cy)
+            ? this.hitTestLED(cx, cy)
             : -1;
 
         // Shift+Left-click on empty area: insert a new point between two existing points
-        if (e.shiftKey && self.screenmap_pts.length >= 2 && hitLedForModCheck < 0) {
-            const edge = self.findNearestEdge(cx, cy);
+        if (e.shiftKey && this.screenmap_pts.length >= 2 && hitLedForModCheck < 0) {
+            const edge = this.findNearestEdge(cx, cy);
             if (edge && edge.distSq <= STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) {
                 const { idx, t }: { idx: number; t: number } = edge;
-                const si: [number, number] = self.nn(self.screenmap_pts[idx]);
-                const si1: [number, number] = self.nn(self.screenmap_pts[idx + 1]);
-                const ri: [number, number] = self.nn(self.rawPts[idx]);
-                const ri1: [number, number] = self.nn(self.rawPts[idx + 1]);
+                const si: [number, number] = this.nn(this.screenmap_pts[idx]);
+                const si1: [number, number] = this.nn(this.screenmap_pts[idx + 1]);
+                const ri: [number, number] = this.nn(this.rawPts[idx]);
+                const ri1: [number, number] = this.nn(this.rawPts[idx + 1]);
                 const newScreenmapPt: [number, number] = [
                     si[0] + t * (si1[0] - si[0]),
                     si[1] + t * (si1[1] - si[1]),
@@ -217,7 +214,7 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
                     ri[0] + t * (ri1[0] - ri[0]),
                     ri[1] + t * (ri1[1] - ri[1]),
                 ];
-                self.insertPointAt(idx + 1, newScreenmapPt, newRawPt);
+                this.insertPointAt(idx + 1, newScreenmapPt, newRawPt);
                 return;
             }
         }
@@ -225,28 +222,28 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
         // Ctrl+Left-mousedown on empty area: ambiguous — could be a click
         // ("append point") or a drag ("marquee select"). Stash the intent and
         // resolve in mousemove / mouseup once we know whether the user moved.
-        if ((e.ctrlKey || e.metaKey) && self.screenmap_pts.length > 0 && hitLedForModCheck < 0) {
-            self._pendingMarquee = {
+        if ((e.ctrlKey || e.metaKey) && this.screenmap_pts.length > 0 && hitLedForModCheck < 0) {
+            this._pendingMarquee = {
                 cx, cy,
                 mode: e.shiftKey ? 'add' : 'replace',
                 appendOnClick: true,
             };
-            self._oc().style.cursor = 'crosshair';
+            this._oc().style.cursor = 'crosshair';
             return;
         }
 
         // Priority 0: Ruler handle / body
-        const rulerHit = self.hitTestRuler(cx, cy);
+        const rulerHit = this.hitTestRuler(cx, cy);
         if (rulerHit) {
-            const ruler = self.rulers[rulerHit.idx];
+            const ruler = this.rulers[rulerHit.idx];
             if (ruler) {
-                self.rulerDrag = rulerHit;
-                self.rulerDragStart = {
+                this.rulerDrag = rulerHit;
+                this.rulerDragStart = {
                     cx, cy,
                     ax: ruler.ax, ay: ruler.ay,
                     bx: ruler.bx, by: ruler.by,
                 };
-                self._oc().style.cursor = rulerHit.kind === 'body' ? 'move' : 'grab';
+                this._oc().style.cursor = rulerHit.kind === 'body' ? 'move' : 'grab';
                 return;
             }
         }
@@ -254,241 +251,240 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
         // Priority 0.5: Per-strip rotation handle (only when a strip is
         // selected). Checked before the global gizmo so a strip near the
         // top of the screenmap's bbox still gets its own handle hit.
-        if (self.hitTestStripRotateHandle(cx, cy)) {
-            const idx = self.selection.getStripIdx();
-            if (idx !== null && self.stripInfo && idx < self.stripInfo.strips.length) {
-                const strip = self.nn(self.stripInfo.strips[idx]);
-                self.stripRotateActive = true;
-                self.stripRotateIdx = idx;
-                self.stripRotateStartScreenmap = [];
-                self.stripRotateStartRaw = [];
+        if (this.hitTestStripRotateHandle(cx, cy)) {
+            const idx = this.selection.getStripIdx();
+            if (idx !== null && this.stripInfo && idx < this.stripInfo.strips.length) {
+                const strip = this.nn(this.stripInfo.strips[idx]);
+                this.stripRotateActive = true;
+                this.stripRotateIdx = idx;
+                this.stripRotateStartScreenmap = [];
+                this.stripRotateStartRaw = [];
                 let cxSm = 0, cySm = 0, cxRw = 0, cyRw = 0, n = 0;
                 for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-                    const sm = self.nn(self.screenmap_pts[k]);
-                    const rw = self.nn(self.rawPts[k]);
-                    self.stripRotateStartScreenmap.push([sm[0], sm[1]]);
-                    self.stripRotateStartRaw.push([rw[0], rw[1]]);
+                    const sm = this.nn(this.screenmap_pts[k]);
+                    const rw = this.nn(this.rawPts[k]);
+                    this.stripRotateStartScreenmap.push([sm[0], sm[1]]);
+                    this.stripRotateStartRaw.push([rw[0], rw[1]]);
                     cxSm += sm[0]; cySm += sm[1]; cxRw += rw[0]; cyRw += rw[1]; n++;
                 }
                 if (n > 0) {
                     cxSm /= n; cySm /= n; cxRw /= n; cyRw /= n;
                 }
-                self.stripRotateCenterSm = { x: cxSm, y: cySm };
-                self.stripRotateCenterRaw = { x: cxRw, y: cyRw };
+                this.stripRotateCenterSm = { x: cxSm, y: cySm };
+                this.stripRotateCenterRaw = { x: cxRw, y: cyRw };
                 // Cursor angle around the canvas-space handle anchor (the
                 // top-center of the strip bbox in canvas px). We rotate the
                 // points around their screenmap-space mean (also at the
                 // bbox center), so the rotation pivot in cm == the visual
                 // pivot in canvas px.
-                const bb = self._selectedStripBboxCanvas();
+                const bb = this._selectedStripBboxCanvas();
                 if (bb) {
                     const anchorX = (bb.minX + bb.maxX) / 2;
                     const anchorY = (bb.minY + bb.maxY) / 2;
-                    self.stripRotateStartAngle = Math.atan2(cy - anchorY, cx - anchorX);
+                    this.stripRotateStartAngle = Math.atan2(cy - anchorY, cx - anchorX);
                 } else {
-                    self.stripRotateStartAngle = 0;
+                    this.stripRotateStartAngle = 0;
                 }
-                self.stripRotateLastDeg = 0;
-                self._oc().style.cursor = 'grabbing';
+                this.stripRotateLastDeg = 0;
+                this._oc().style.cursor = 'grabbing';
                 return;
             }
         }
 
         // Priority 1: Gizmo handle (corner/edge/rotation)
-        const gizmoHit = self.hitTestGizmo(cx, cy);
+        const gizmoHit = this.hitTestGizmo(cx, cy);
         if (gizmoHit && gizmoHit !== 'translate') {
-            self.gizmoActive = gizmoHit;
-            const handles = self.computeGizmoHandles(self.ptsBBox);
-            self.gizmoDragStart = {
+            this.gizmoActive = gizmoHit;
+            const handles = this.computeGizmoHandles(this.ptsBBox);
+            this.gizmoDragStart = {
                 canvasX: cx, canvasY: cy,
-                scale: parseFloat(self.dom_txt_scale.value) || 1,
-                scaleX: parseFloat(self.dom_txt_scale_x.value) || 1,
-                scaleY: parseFloat(self.dom_txt_scale_y.value) || 1,
-                rotate: parseInt(self.dom_txt_rotate.value) || 0,
-                translateX: parseInt(self.dom_txt_translate_x.value) || 0,
-                translateY: parseInt(self.dom_txt_translate_y.value) || 0,
+                scale: parseFloat(this.dom_txt_scale.value) || 1,
+                scaleX: parseFloat(this.dom_txt_scale_x.value) || 1,
+                scaleY: parseFloat(this.dom_txt_scale_y.value) || 1,
+                rotate: parseInt(this.dom_txt_rotate.value) || 0,
+                translateX: parseInt(this.dom_txt_translate_x.value) || 0,
+                translateY: parseInt(this.dom_txt_translate_y.value) || 0,
                 bboxCenter: handles?.center ?? { x: 0, y: 0 },
             };
-            self._oc().style.cursor = gizmoHit === 'rotate' ? 'grabbing' : self.getCursorForGizmo(gizmoHit);
+            this._oc().style.cursor = gizmoHit === 'rotate' ? 'grabbing' : this.getCursorForGizmo(gizmoHit);
             return;
         }
 
         // Priority 2: LED point hit test
-        const idx = self.hitTestLED(cx, cy);
+        const idx = this.hitTestLED(cx, cy);
         if (idx >= 0) {
             // Multi-selection modifiers: ctrl/meta toggles, shift adds.
             // Both consume the click — no drag is started so the user can
             // adjust the selection before initiating a group move.
             if (e.ctrlKey || e.metaKey) {
-                if (self.multiSelectedIdxs.has(idx)) self.multiSelectedIdxs.delete(idx);
-                else self.multiSelectedIdxs.add(idx);
-                self.setNeedsGeometryUpdate();
+                if (this.multiSelectedIdxs.has(idx)) this.multiSelectedIdxs.delete(idx);
+                else this.multiSelectedIdxs.add(idx);
+                this.setNeedsGeometryUpdate();
                 return;
             }
             if (e.shiftKey) {
-                self.multiSelectedIdxs.add(idx);
-                self.setNeedsGeometryUpdate();
+                this.multiSelectedIdxs.add(idx);
+                this.setNeedsGeometryUpdate();
                 return;
             }
             // Plain click on an already multi-selected LED: start a group drag.
-            if (self.multiSelectedIdxs.has(idx)) {
-                self._startMultiDrag(cx, cy);
+            if (this.multiSelectedIdxs.has(idx)) {
+                this._startMultiDrag(cx, cy);
                 return;
             }
             // Plain click on a non-selected LED: clear any prior multi-selection
             // before falling through to the strip / single-LED drag path.
-            if (self.multiSelectedIdxs.size > 0) {
-                self.multiSelectedIdxs.clear();
-                self.setNeedsGeometryUpdate();
+            if (this.multiSelectedIdxs.size > 0) {
+                this.multiSelectedIdxs.clear();
+                this.setNeedsGeometryUpdate();
             }
 
-            self.selectedIdx = idx;
-            self.syncPointSelection(idx);
-            self.highlightedEdgeIdx = -1;
-            self.setNeedsGeometryUpdate(); // color update for selection
-            self.dragStartCanvasX = cx;
-            self.dragStartCanvasY = cy;
-            self.dragStartScreenmapPt = [...self.nn(self.screenmap_pts[idx])] as [number, number];
-            self.dragStartRawPt = [...self.nn(self.rawPts[idx])] as [number, number];
+            this.selectedIdx = idx;
+            this.syncPointSelection(idx);
+            this.highlightedEdgeIdx = -1;
+            this.setNeedsGeometryUpdate(); // color update for selection
+            this.dragStartCanvasX = cx;
+            this.dragStartCanvasY = cy;
+            this.dragStartScreenmapPt = [...this.nn(this.screenmap_pts[idx])] as [number, number];
+            this.dragStartRawPt = [...this.nn(this.rawPts[idx])] as [number, number];
 
             // Alt quasimode = single-point move regardless of mode.
-            self.altQuasimode = e.altKey;
-            const hitStripIdx = self.stripStore.findStripForIndex(idx);
-            const inPointEdit = self.pointEditStripIdx !== null && self.pointEditStripIdx === hitStripIdx;
+            this.altQuasimode = e.altKey;
+            const hitStripIdx = this.stripStore.findStripForIndex(idx);
+            const inPointEdit = this.pointEditStripIdx !== null && this.pointEditStripIdx === hitStripIdx;
 
-            if (self.altQuasimode || inPointEdit) {
+            if (this.altQuasimode || inPointEdit) {
                 // Single-point drag (existing behavior)
-                self.isDragging = true;
-                self._oc().style.cursor = 'grabbing';
+                this.isDragging = true;
+                this._oc().style.cursor = 'grabbing';
             } else {
-                self._startStripDrag(hitStripIdx, cx, cy);
+                this._startStripDrag(hitStripIdx, cx, cy);
             }
             return;
         }
 
         // Priority 3: visible strip stroke. The line is part of the strip's
         // direct-manipulation target, ahead of broad background affordances.
-        if (self.screenmap_pts.length >= 2) {
-            const edge = self.findNearestEdge(cx, cy);
+        if (this.screenmap_pts.length >= 2) {
+            const edge = this.findNearestEdge(cx, cy);
             if (edge && edge.distSq <= STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) {
-                self.highlightedEdgeIdx = edge.idx;
-                self.selectedIdx = -1;
-                self.selection.selectStrip(edge.stripIdx);
-                self.setNeedsRender();
-                self._startStripDrag(edge.stripIdx, cx, cy);
+                this.highlightedEdgeIdx = edge.idx;
+                this.selectedIdx = -1;
+                this.selection.selectStrip(edge.stripIdx);
+                this.setNeedsRender();
+                this._startStripDrag(edge.stripIdx, cx, cy);
                 return;
             }
         }
-        if (self.highlightedEdgeIdx >= 0) { self.highlightedEdgeIdx = -1; self.setNeedsRender(); }
+        if (this.highlightedEdgeIdx >= 0) { this.highlightedEdgeIdx = -1; this.setNeedsRender(); }
 
         // Marquee select is gated behind Ctrl+drag (handled by the
         // _pendingMarquee branch above). Plain left-drag keeps its
         // original behavior: pan on empty canvas.
 
         // Priority 4: Background image gizmo (mouse is outside screenmap bbox)
-        if (self.bgImageMesh) {
-            const bgHit = self.hitTestBgGizmo(cx, cy);
+        if (this.bgImageMesh) {
+            const bgHit = this.hitTestBgGizmo(cx, cy);
             if (bgHit && bgHit !== 'translate') {
-                self.startBgGizmoDrag(bgHit, cx, cy);
-                self._oc().style.cursor = bgHit === 'rotate' ? 'grabbing' : self.getCursorForGizmo(bgHit);
+                this.startBgGizmoDrag(bgHit, cx, cy);
+                this._oc().style.cursor = bgHit === 'rotate' ? 'grabbing' : this.getCursorForGizmo(bgHit);
                 return;
             }
             if (bgHit === 'translate') {
-                self.startBgGizmoDrag('translate', cx, cy);
-                self._oc().style.cursor = 'move';
+                this.startBgGizmoDrag('translate', cx, cy);
+                this._oc().style.cursor = 'move';
                 return;
             }
         }
 
         // Priority 5: Pan camera (outside bbox)
-        if (self.selectedIdx >= 0) { self.selectedIdx = -1; self.setNeedsGeometryUpdate(); }
-        if (self.pointEditStripIdx !== null) { self.pointEditStripIdx = null; self._updateHintStrip(); }
-        self.selection.clear();
-        self.isPanning = true;
-        self.panStartX = cx;
-        self.panStartY = cy;
-        self.panStartCamX = self.camPanX;
-        self.panStartCamY = self.camPanY;
-        self._oc().style.cursor = 'move';
+        if (this.selectedIdx >= 0) { this.selectedIdx = -1; this.setNeedsGeometryUpdate(); }
+        if (this.pointEditStripIdx !== null) { this.pointEditStripIdx = null; this._updateHintStrip(); }
+        this.selection.clear();
+        this.isPanning = true;
+        this.panStartX = cx;
+        this.panStartY = cy;
+        this.panStartCamX = this.camPanX;
+        this.panStartCamY = this.camPanY;
+        this._oc().style.cursor = 'move';
     };
 
 ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) {
-    const self = this;
 
-        if (self.placingState) {
-            const [cx, cy] = self.getCanvasCoords(e);
-            self._updateGhostFromCanvas(cx, cy);
-            self._oc().style.cursor = 'crosshair';
+        if (this.placingState) {
+            const [cx, cy] = this.getCanvasCoords(e);
+            this._updateGhostFromCanvas(cx, cy);
+            this._oc().style.cursor = 'crosshair';
             return;
         }
-        if (self.pasteState) {
-            const [cx, cy] = self.getCanvasCoords(e);
-            self._updatePasteGhostFromCanvas(cx, cy);
-            self._oc().style.cursor = 'crosshair';
+        if (this.pasteState) {
+            const [cx, cy] = this.getCanvasCoords(e);
+            this._updatePasteGhostFromCanvas(cx, cy);
+            this._oc().style.cursor = 'crosshair';
             return;
         }
-        if (self.screenmap_pts.length === 0 && !self.bgImageMesh) return;
-        const [cx, cy] = self.getCanvasCoords(e);
+        if (this.screenmap_pts.length === 0 && !this.bgImageMesh) return;
+        const [cx, cy] = this.getCanvasCoords(e);
 
         // Track shift key for rotation snapping
-        self.shiftHeld = e.shiftKey;
+        this.shiftHeld = e.shiftKey;
 
         // Right-click drag: zoom
-        if (self.rightButtonDown) {
-            const dy = cy - self.zoomStartY;
-            if (Math.abs(dy) > 3) self.rightClickMoved = true;
-            if (self.rightClickMoved) {
-                self.applyInteractiveZoom(self.zoomStartLevel * Math.pow(2, -dy / 200));
-                self._oc().style.cursor = 'ns-resize';
+        if (this.rightButtonDown) {
+            const dy = cy - this.zoomStartY;
+            if (Math.abs(dy) > 3) this.rightClickMoved = true;
+            if (this.rightClickMoved) {
+                this.applyInteractiveZoom(this.zoomStartLevel * Math.pow(2, -dy / 200));
+                this._oc().style.cursor = 'ns-resize';
             }
             return;
         }
 
         // Chain-mode connector drag (arrowhead → new downstream target)
-        if (self.connectorDrag) {
-            self.connectorDrag.x = cx;
-            self.connectorDrag.y = cy;
-            const target = self._hitStartHandle(cx, cy, self.connectorDrag.upIdx);
-            if (target !== self.connectorDrag.targetIdx) {
-                self.connectorDrag.targetIdx = target;
+        if (this.connectorDrag) {
+            this.connectorDrag.x = cx;
+            this.connectorDrag.y = cy;
+            const target = this._hitStartHandle(cx, cy, this.connectorDrag.upIdx);
+            if (target !== this.connectorDrag.targetIdx) {
+                this.connectorDrag.targetIdx = target;
                 if (target !== null) {
-                    self._previewConnectorTarget(self.connectorDrag.upIdx, target);
+                    this._previewConnectorTarget(this.connectorDrag.upIdx, target);
                 } else {
-                    self.renderStripsPanel();
+                    this.renderStripsPanel();
                 }
             }
-            self.setNeedsRender();
+            this.setNeedsRender();
             return;
         }
 
         // Chain-mode Start-handle drag (strip Start → upstream End target)
-        if (self.startHandleDrag) {
-            self.startHandleDrag.x = cx;
-            self.startHandleDrag.y = cy;
-            const target = self._hitEndHandle(cx, cy, self.startHandleDrag.stripIdx);
-            if (target !== self.startHandleDrag.targetIdx) {
-                self.startHandleDrag.targetIdx = target;
+        if (this.startHandleDrag) {
+            this.startHandleDrag.x = cx;
+            this.startHandleDrag.y = cy;
+            const target = this._hitEndHandle(cx, cy, this.startHandleDrag.stripIdx);
+            if (target !== this.startHandleDrag.targetIdx) {
+                this.startHandleDrag.targetIdx = target;
                 if (target !== null) {
-                    self._previewConnectorTarget(target, self.startHandleDrag.stripIdx);
+                    this._previewConnectorTarget(target, this.startHandleDrag.stripIdx);
                 } else {
-                    self.renderStripsPanel();
+                    this.renderStripsPanel();
                 }
             }
-            self.setNeedsRender();
+            this.setNeedsRender();
             return;
         }
 
         // Ruler drag in progress
-        if (self.rulerDrag && self.rulerDragStart) {
-            const ds = self.rulerDragStart;
-            const wdx = (cx - ds.cx) / self.camZoom;
-            const wdy = (cy - ds.cy) / self.camZoom;
-            const ruler = self.rulers[self.rulerDrag.idx];
+        if (this.rulerDrag && this.rulerDragStart) {
+            const ds = this.rulerDragStart;
+            const wdx = (cx - ds.cx) / this.camZoom;
+            const wdy = (cy - ds.cy) / this.camZoom;
+            const ruler = this.rulers[this.rulerDrag.idx];
             if (ruler) {
-                if (self.rulerDrag.kind === 'a') {
+                if (this.rulerDrag.kind === 'a') {
                     ruler.ax = ds.ax + wdx;
                     ruler.ay = ds.ay + wdy;
-                } else if (self.rulerDrag.kind === 'b') {
+                } else if (this.rulerDrag.kind === 'b') {
                     ruler.bx = ds.bx + wdx;
                     ruler.by = ds.by + wdy;
                 } else {
@@ -499,136 +495,136 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
                     ruler.by = ds.by + wdy;
                 }
             }
-            self.setNeedsRender();
+            this.setNeedsRender();
             return;
         }
 
         // Per-strip rotation drag in progress
-        if (self.stripRotateActive && self.stripRotateIdx >= 0 && self.stripInfo
-            && self.stripRotateStartScreenmap && self.stripRotateStartRaw
-            && self.stripRotateCenterSm && self.stripRotateCenterRaw) {
-            const bb = self._selectedStripBboxCanvas();
+        if (this.stripRotateActive && this.stripRotateIdx >= 0 && this.stripInfo
+            && this.stripRotateStartScreenmap && this.stripRotateStartRaw
+            && this.stripRotateCenterSm && this.stripRotateCenterRaw) {
+            const bb = this._selectedStripBboxCanvas();
             if (!bb) return;
             const anchorX = (bb.minX + bb.maxX) / 2;
             const anchorY = (bb.minY + bb.maxY) / 2;
             const curAngle = Math.atan2(cy - anchorY, cx - anchorX);
-            let deltaDeg = (curAngle - self.stripRotateStartAngle) * 180 / Math.PI;
+            let deltaDeg = (curAngle - this.stripRotateStartAngle) * 180 / Math.PI;
             // Shift snaps to 15° increments, matching the global gizmo
             // (rotation always uses INTEGER degree steps so the resulting
             // points are deterministic and undo-friendly).
-            if (self.shiftHeld) deltaDeg = Math.round(deltaDeg / 15) * 15;
+            if (this.shiftHeld) deltaDeg = Math.round(deltaDeg / 15) * 15;
             else deltaDeg = Math.round(deltaDeg);
             const deltaRad = deltaDeg * Math.PI / 180;
-            const strip = self.nn(self.stripInfo.strips[self.stripRotateIdx]);
-            const csm = self.stripRotateCenterSm;
-            const crw = self.stripRotateCenterRaw;
-            const rotatedSm = rotatePointsAround(self.stripRotateStartScreenmap, csm.x, csm.y, deltaRad);
-            const rotatedRw = rotatePointsAround(self.stripRotateStartRaw, crw.x, crw.y, deltaRad);
+            const strip = this.nn(this.stripInfo.strips[this.stripRotateIdx]);
+            const csm = this.stripRotateCenterSm;
+            const crw = this.stripRotateCenterRaw;
+            const rotatedSm = rotatePointsAround(this.stripRotateStartScreenmap, csm.x, csm.y, deltaRad);
+            const rotatedRw = rotatePointsAround(this.stripRotateStartRaw, crw.x, crw.y, deltaRad);
             for (let k = 0; k < strip.count; k++) {
                 const base = strip.offset + k;
-                self.screenmap_pts[base] = rotatedSm[k] ?? [0, 0] as [number, number];
-                self.rawPts[base] = rotatedRw[k] ?? [0, 0] as [number, number];
+                this.screenmap_pts[base] = rotatedSm[k] ?? [0, 0] as [number, number];
+                this.rawPts[base] = rotatedRw[k] ?? [0, 0] as [number, number];
             }
-            self.stripRotateLastDeg = deltaDeg;
-            self.setNeedsGeometryUpdate();
+            this.stripRotateLastDeg = deltaDeg;
+            this.setNeedsGeometryUpdate();
             return;
         }
 
         // Gizmo drag in progress
-        if (self.gizmoActive) {
-            self.handleGizmoDrag(cx, cy);
+        if (this.gizmoActive) {
+            this.handleGizmoDrag(cx, cy);
             return;
         }
 
         // Background image gizmo drag in progress
-        if (self.bgGizmoActive) {
-            self.handleBgGizmoDrag(cx, cy);
+        if (this.bgGizmoActive) {
+            this.handleBgGizmoDrag(cx, cy);
             return;
         }
 
         // Left-click drag on empty space: pan
-        if (self.isPanning) {
-            const dx = cx - self.panStartX;
-            const dy = cy - self.panStartY;
-            self.camPanX = self.panStartCamX + dx / self.camZoom;
-            self.camPanY = self.panStartCamY + dy / self.camZoom;
-            self.setNeedsRender();
+        if (this.isPanning) {
+            const dx = cx - this.panStartX;
+            const dy = cy - this.panStartY;
+            this.camPanX = this.panStartCamX + dx / this.camZoom;
+            this.camPanY = this.panStartCamY + dy / this.camZoom;
+            this.setNeedsRender();
             return;
         }
 
         // Pending Ctrl+mousedown promotes to a marquee on the first move
         // past a small threshold. Below the threshold, the click stays a
         // click and onMouseUp will run the append-point action.
-        if (self._pendingMarquee) {
-            const pm = self._pendingMarquee;
+        if (this._pendingMarquee) {
+            const pm = this._pendingMarquee;
             const ddx = cx - pm.cx;
             const ddy = cy - pm.cy;
             if (ddx * ddx + ddy * ddy > 9) { // ~3px threshold
-                self.marqueeActive = true;
-                self.marqueeStartCx = pm.cx;
-                self.marqueeStartCy = pm.cy;
-                self.marqueeCurCx = cx;
-                self.marqueeCurCy = cy;
-                self.marqueeMode = pm.mode;
-                self._marqueeBaseSelection = new Set(self.multiSelectedIdxs);
-                if (pm.mode === 'replace') self.multiSelectedIdxs.clear();
-                self._pendingMarquee = null;
-                self._updateMarqueeSelection();
-                self.setNeedsGeometryUpdate();
+                this.marqueeActive = true;
+                this.marqueeStartCx = pm.cx;
+                this.marqueeStartCy = pm.cy;
+                this.marqueeCurCx = cx;
+                this.marqueeCurCy = cy;
+                this.marqueeMode = pm.mode;
+                this._marqueeBaseSelection = new Set(this.multiSelectedIdxs);
+                if (pm.mode === 'replace') this.multiSelectedIdxs.clear();
+                this._pendingMarquee = null;
+                this._updateMarqueeSelection();
+                this.setNeedsGeometryUpdate();
                 return;
             }
         }
 
         // Marquee drag: live LED hit-test against the rectangle, eagerly
         // updating the multi-selection so the user sees what they'll get.
-        if (self.marqueeActive) {
-            self.marqueeCurCx = cx;
-            self.marqueeCurCy = cy;
-            self._updateMarqueeSelection();
-            self.setNeedsGeometryUpdate();
+        if (this.marqueeActive) {
+            this.marqueeCurCx = cx;
+            this.marqueeCurCy = cy;
+            this._updateMarqueeSelection();
+            this.setNeedsGeometryUpdate();
             return;
         }
 
         // Multi-LED group drag: same canvas→screenmap delta math as
         // single-LED / strip drag, applied to every multi-selected index.
-        if (self.multiDragActive) {
-            const dx = cx - self.multiDragStartCanvasX;
-            const dy = cy - self.multiDragStartCanvasY;
-            const [sdx, sdy] = self.canvasDeltaToScreenmapDelta(dx, dy);
-            for (const i of self.multiSelectedIdxs) {
-                const startSm = self.multiDragStartScreenmap.get(i);
-                const startRw = self.multiDragStartRaw.get(i);
+        if (this.multiDragActive) {
+            const dx = cx - this.multiDragStartCanvasX;
+            const dy = cy - this.multiDragStartCanvasY;
+            const [sdx, sdy] = this.canvasDeltaToScreenmapDelta(dx, dy);
+            for (const i of this.multiSelectedIdxs) {
+                const startSm = this.multiDragStartScreenmap.get(i);
+                const startRw = this.multiDragStartRaw.get(i);
                 if (!startSm || !startRw) continue;
-                self.screenmap_pts[i] = [startSm[0] + sdx, startSm[1] + sdy];
-                self.rawPts[i] = [startRw[0] + sdx / self.fitScale, startRw[1] + sdy / self.fitScale];
+                this.screenmap_pts[i] = [startSm[0] + sdx, startSm[1] + sdy];
+                this.rawPts[i] = [startRw[0] + sdx / this.fitScale, startRw[1] + sdy / this.fitScale];
             }
-            self.multiDragLastSdx = sdx;
-            self.multiDragLastSdy = sdy;
-            self.setNeedsGeometryUpdate();
+            this.multiDragLastSdx = sdx;
+            this.multiDragLastSdy = sdy;
+            this.setNeedsGeometryUpdate();
             return;
         }
 
-        if (self.isDragging && self.selectedIdx >= 0) {
+        if (this.isDragging && this.selectedIdx >= 0) {
             // Move the point
-            const dx = cx - self.dragStartCanvasX;
-            const dy = cy - self.dragStartCanvasY;
-            const [sdx, sdy] = self.canvasDeltaToScreenmapDelta(dx, dy);
-            self.screenmap_pts[self.selectedIdx] = [
-                (self.dragStartScreenmapPt?.[0] ?? 0) + sdx,
-                (self.dragStartScreenmapPt?.[1] ?? 0) + sdy,
+            const dx = cx - this.dragStartCanvasX;
+            const dy = cy - this.dragStartCanvasY;
+            const [sdx, sdy] = this.canvasDeltaToScreenmapDelta(dx, dy);
+            this.screenmap_pts[this.selectedIdx] = [
+                (this.dragStartScreenmapPt?.[0] ?? 0) + sdx,
+                (this.dragStartScreenmapPt?.[1] ?? 0) + sdy,
             ];
-            self.rawPts[self.selectedIdx] = [
-                (self.dragStartRawPt?.[0] ?? 0) + sdx / self.fitScale,
-                (self.dragStartRawPt?.[1] ?? 0) + sdy / self.fitScale,
+            this.rawPts[this.selectedIdx] = [
+                (this.dragStartRawPt?.[0] ?? 0) + sdx / this.fitScale,
+                (this.dragStartRawPt?.[1] ?? 0) + sdy / this.fitScale,
             ];
-            self.setNeedsGeometryUpdate();
+            this.setNeedsGeometryUpdate();
             return;
         }
 
-        if (self.stripDragActive && self.stripDragIdx >= 0 && self.stripInfo) {
-            const dx = cx - self.dragStartCanvasX;
-            const dy = cy - self.dragStartCanvasY;
-            let [sdx, sdy] = self.canvasDeltaToScreenmapDelta(dx, dy);
+        if (this.stripDragActive && this.stripDragIdx >= 0 && this.stripInfo) {
+            const dx = cx - this.dragStartCanvasX;
+            const dy = cy - this.dragStartCanvasY;
+            let [sdx, sdy] = this.canvasDeltaToScreenmapDelta(dx, dy);
             // ── Magnetic snap-back to original position ─────────────────
             // When the drag has only moved the cursor a few pixels from the
             // initial mousedown point, zero out the delta so the strip
@@ -640,363 +636,359 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
             // Holding Shift bypasses every kind of snap for this move
             // (Figma convention).
             const shiftBypass = e.shiftKey;
-            const snapPx = !shiftBypass && self.snapBackEnabled ? self.snapBackPx : 0;
-            const wasSnapped = self.stripSnapActive;
-            self.stripSnapActive = snapPx > 0 && Math.hypot(dx, dy) < snapPx;
-            if (self.stripSnapActive) {
+            const snapPx = !shiftBypass && this.snapBackEnabled ? this.snapBackPx : 0;
+            const wasSnapped = this.stripSnapActive;
+            this.stripSnapActive = snapPx > 0 && Math.hypot(dx, dy) < snapPx;
+            if (this.stripSnapActive) {
                 sdx = 0;
                 sdy = 0;
             }
-            if (self.stripSnapActive !== wasSnapped) self.setNeedsRender();
+            if (this.stripSnapActive !== wasSnapped) this.setNeedsRender();
             // ── Center-to-center snap (issue #105) ─────────────────────
             // When the snap-back-to-origin isn't active, look for the
             // closest other strip's center on each axis independently.
             // Engage if within `snapBackPx / pxPerCm` cm.
-            const prevSnapX = self.stripSnapEngagedX;
-            const prevSnapY = self.stripSnapEngagedY;
-            if (!self.stripSnapActive && snapPx > 0 && self.stripSnapStartCenter) {
-                const pxPerCm = self.fitScale * self.camZoom;
+            const prevSnapX = this.stripSnapEngagedX;
+            const prevSnapY = this.stripSnapEngagedY;
+            if (!this.stripSnapActive && snapPx > 0 && this.stripSnapStartCenter) {
+                const pxPerCm = this.fitScale * this.camZoom;
                 const tolCm = pxPerCm > 0 ? snapPx / pxPerCm : 0;
-                const candCx = self.stripSnapStartCenter.x + sdx;
-                const candCy = self.stripSnapStartCenter.y + sdy;
+                const candCx = this.stripSnapStartCenter.x + sdx;
+                const candCy = this.stripSnapStartCenter.y + sdy;
                 let bestX: number | null = null;
                 let bestXDist = tolCm;
-                for (const t of self.stripSnapXTargets) {
+                for (const t of this.stripSnapXTargets) {
                     const d = Math.abs(t - candCx);
                     if (d < bestXDist) { bestX = t; bestXDist = d; }
                 }
                 let bestY: number | null = null;
                 let bestYDist = tolCm;
-                for (const t of self.stripSnapYTargets) {
+                for (const t of this.stripSnapYTargets) {
                     const d = Math.abs(t - candCy);
                     if (d < bestYDist) { bestY = t; bestYDist = d; }
                 }
-                if (bestX !== null) sdx = bestX - self.stripSnapStartCenter.x;
-                if (bestY !== null) sdy = bestY - self.stripSnapStartCenter.y;
-                self.stripSnapEngagedX = bestX;
-                self.stripSnapEngagedY = bestY;
+                if (bestX !== null) sdx = bestX - this.stripSnapStartCenter.x;
+                if (bestY !== null) sdy = bestY - this.stripSnapStartCenter.y;
+                this.stripSnapEngagedX = bestX;
+                this.stripSnapEngagedY = bestY;
             } else {
-                self.stripSnapEngagedX = null;
-                self.stripSnapEngagedY = null;
+                this.stripSnapEngagedX = null;
+                this.stripSnapEngagedY = null;
             }
-            if (prevSnapX !== self.stripSnapEngagedX || prevSnapY !== self.stripSnapEngagedY) {
-                self.setNeedsRender();
+            if (prevSnapX !== this.stripSnapEngagedX || prevSnapY !== this.stripSnapEngagedY) {
+                this.setNeedsRender();
             }
-            const strip = self.nn(self.stripInfo.strips[self.stripDragIdx]);
+            const strip = this.nn(this.stripInfo.strips[this.stripDragIdx]);
             for (let k = 0; k < strip.count; k++) {
                 const base = strip.offset + k;
-                const startSm = self.stripDragStartScreenmap ? (self.stripDragStartScreenmap[k] ?? [0, 0] as [number, number]) : [0, 0] as [number, number];
-                const startRw = self.stripDragStartRaw ? (self.stripDragStartRaw[k] ?? [0, 0] as [number, number]) : [0, 0] as [number, number];
-                self.screenmap_pts[base] = [
+                const startSm = this.stripDragStartScreenmap ? (this.stripDragStartScreenmap[k] ?? [0, 0] as [number, number]) : [0, 0] as [number, number];
+                const startRw = this.stripDragStartRaw ? (this.stripDragStartRaw[k] ?? [0, 0] as [number, number]) : [0, 0] as [number, number];
+                this.screenmap_pts[base] = [
                     startSm[0] + sdx,
                     startSm[1] + sdy,
                 ];
-                self.rawPts[base] = [
-                    startRw[0] + sdx / self.fitScale,
-                    startRw[1] + sdy / self.fitScale,
+                this.rawPts[base] = [
+                    startRw[0] + sdx / this.fitScale,
+                    startRw[1] + sdy / this.fitScale,
                 ];
             }
-            self.stripDragLastSdx = sdx;
-            self.stripDragLastSdy = sdy;
-            self.setNeedsGeometryUpdate();
+            this.stripDragLastSdx = sdx;
+            this.stripDragLastSdy = sdy;
+            this.setNeedsGeometryUpdate();
             return;
         }
 
         // Update the map-level hover before any specialized handle returns.
         // Direction arrows should reveal anywhere inside the screenmap OBB,
         // including over ruler/rotate/scale affordances.
-        const wasHovering = self.isHovering;
+        const wasHovering = this.isHovering;
         let pointerInScreenmapObb = false;
-        if (self.ptsBBox) {
-            const [lx, ly] = self.canvasToObbLocal(self.ptsBBox, cx, cy);
-            pointerInScreenmapObb = Math.abs(lx) <= self.ptsBBox.hw && Math.abs(ly) <= self.ptsBBox.hh;
+        if (this.ptsBBox) {
+            const [lx, ly] = this.canvasToObbLocal(this.ptsBBox, cx, cy);
+            pointerInScreenmapObb = Math.abs(lx) <= this.ptsBBox.hw && Math.abs(ly) <= this.ptsBBox.hh;
         }
-        self.isHovering = pointerInScreenmapObb;
-        if (self.isHovering !== wasHovering) self.setNeedsRender();
+        this.isHovering = pointerInScreenmapObb;
+        if (this.isHovering !== wasHovering) this.setNeedsRender();
 
         // Ruler hover cursor
-        const rulerHoverHit = self.hitTestRuler(cx, cy);
+        const rulerHoverHit = this.hitTestRuler(cx, cy);
         if (rulerHoverHit) {
-            self._oc().style.cursor = rulerHoverHit.kind === 'body' ? 'move' : 'grab';
-            self.tooltipLedIdx = -1;
-            self._tooltip().style.opacity = '0';
+            this._oc().style.cursor = rulerHoverHit.kind === 'body' ? 'move' : 'grab';
+            this.tooltipLedIdx = -1;
+            this._tooltip().style.opacity = '0';
             // still update gizmo/bbox hover state below so rendering stays correct
         }
 
         // Per-strip rotate handle hover detection (takes priority over
         // the global gizmo so the handle glows when the user is over it).
-        const prevStripRotHover = self.stripRotateHover;
-        self.stripRotateHover = self.hitTestStripRotateHandle(cx, cy);
-        if (self.stripRotateHover !== prevStripRotHover) self.setNeedsRender();
-        if (self.stripRotateHover) {
-            self._oc().style.cursor = 'grab';
-            self.tooltipLedIdx = -1;
-            self._tooltip().style.opacity = '0';
+        const prevStripRotHover = this.stripRotateHover;
+        this.stripRotateHover = this.hitTestStripRotateHandle(cx, cy);
+        if (this.stripRotateHover !== prevStripRotHover) this.setNeedsRender();
+        if (this.stripRotateHover) {
+            this._oc().style.cursor = 'grab';
+            this.tooltipLedIdx = -1;
+            this._tooltip().style.opacity = '0';
             return;
         }
 
         // Gizmo hover detection
-        const prevGizmoHover = self.gizmoHover;
-        self.gizmoHover = self.hitTestGizmo(cx, cy);
-        if (self.gizmoHover !== prevGizmoHover) self.setNeedsRender();
-        const hoveringMapOrGizmo = pointerInScreenmapObb || !!self.gizmoHover;
-        if (self.isHovering !== hoveringMapOrGizmo) {
-            self.isHovering = hoveringMapOrGizmo;
-            self.setNeedsRender();
+        const prevGizmoHover = this.gizmoHover;
+        this.gizmoHover = this.hitTestGizmo(cx, cy);
+        if (this.gizmoHover !== prevGizmoHover) this.setNeedsRender();
+        const hoveringMapOrGizmo = pointerInScreenmapObb || !!this.gizmoHover;
+        if (this.isHovering !== hoveringMapOrGizmo) {
+            this.isHovering = hoveringMapOrGizmo;
+            this.setNeedsRender();
         }
 
         // Background image gizmo hover (only when not hovering screenmap gizmo)
-        const prevBgGizmoHover = self.bgGizmoHover;
-        if (!self.gizmoHover && self.bgImageMesh) {
-            self.bgGizmoHover = self.hitTestBgGizmo(cx, cy);
+        const prevBgGizmoHover = this.bgGizmoHover;
+        if (!this.gizmoHover && this.bgImageMesh) {
+            this.bgGizmoHover = this.hitTestBgGizmo(cx, cy);
         } else {
-            self.bgGizmoHover = null;
+            this.bgGizmoHover = null;
         }
-        if (self.bgGizmoHover !== prevBgGizmoHover) self.setNeedsRender();
+        if (this.bgGizmoHover !== prevBgGizmoHover) this.setNeedsRender();
 
         // Ruler hover takes top cursor priority
         if (rulerHoverHit) return;
 
         // Gizmo handle hover takes cursor priority
-        if (self.gizmoHover && self.gizmoHover !== 'translate') {
-            self._oc().style.cursor = self.getCursorForGizmo(self.gizmoHover);
-            self.tooltipLedIdx = -1;
-            self._tooltip().style.opacity = '0';
+        if (this.gizmoHover && this.gizmoHover !== 'translate') {
+            this._oc().style.cursor = this.getCursorForGizmo(this.gizmoHover);
+            this.tooltipLedIdx = -1;
+            this._tooltip().style.opacity = '0';
             return;
         }
 
         // Shift held: crosshair (insert between)
         // Ctrl held: copy cursor (extend/append)
-        if (self.screenmap_pts.length > 0 && (e.shiftKey || e.ctrlKey || e.metaKey)) {
-            self._oc().style.cursor = e.shiftKey ? 'crosshair' : 'copy';
-            self.tooltipLedIdx = -1;
-            self._tooltip().style.opacity = '0';
+        if (this.screenmap_pts.length > 0 && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+            this._oc().style.cursor = e.shiftKey ? 'crosshair' : 'copy';
+            this.tooltipLedIdx = -1;
+            this._tooltip().style.opacity = '0';
             return;
         }
 
-        const idx = self.hitTestLED(cx, cy);
+        const idx = this.hitTestLED(cx, cy);
         if (idx >= 0) {
-            self._oc().style.cursor = 'grab';
-            if (idx !== self.tooltipLedIdx) {
-                self.tooltipLedIdx = idx;
-                const [ox, oy] = self.nn(self.rawPts[idx]);
-                self._tooltip().textContent = `LED #${String(idx)}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
+            this._oc().style.cursor = 'grab';
+            if (idx !== this.tooltipLedIdx) {
+                this.tooltipLedIdx = idx;
+                const [ox, oy] = this.nn(this.rawPts[idx]);
+                this._tooltip().textContent = `LED #${String(idx)}  (${ox.toFixed(1)}, ${oy.toFixed(1)}) cm`;
             }
-            const tx = Math.min(cx + 14, self.canvasW - self._tooltip().offsetWidth - 4);
+            const tx = Math.min(cx + 14, this.canvasW - this._tooltip().offsetWidth - 4);
             const ty = Math.max(cy - 28, 4);
-            self._tooltip().style.left = `${String(tx)}px`;
-            self._tooltip().style.top = `${String(ty)}px`;
-            self._tooltip().style.opacity = '1';
-        } else if (self.findNearestEdge(cx, cy)?.distSq <= STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) {
-            self._oc().style.cursor = 'grab';
-            self.tooltipLedIdx = -1;
-            self._tooltip().style.opacity = '0';
-        } else if (self.bgGizmoHover && self.bgGizmoHover !== 'translate') {
-            self._oc().style.cursor = self.getCursorForGizmo(self.bgGizmoHover);
-            self.tooltipLedIdx = -1;
-            self._tooltip().style.opacity = '0';
-        } else if (self.bgGizmoHover === 'translate') {
-            self._oc().style.cursor = 'move';
-            self.tooltipLedIdx = -1;
-            self._tooltip().style.opacity = '0';
+            this._tooltip().style.left = `${String(tx)}px`;
+            this._tooltip().style.top = `${String(ty)}px`;
+            this._tooltip().style.opacity = '1';
+        } else if ((this.findNearestEdge(cx, cy)?.distSq ?? Infinity) <= STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) {
+            this._oc().style.cursor = 'grab';
+            this.tooltipLedIdx = -1;
+            this._tooltip().style.opacity = '0';
+        } else if (this.bgGizmoHover && this.bgGizmoHover !== 'translate') {
+            this._oc().style.cursor = this.getCursorForGizmo(this.bgGizmoHover);
+            this.tooltipLedIdx = -1;
+            this._tooltip().style.opacity = '0';
+        } else if (this.bgGizmoHover === 'translate') {
+            this._oc().style.cursor = 'move';
+            this.tooltipLedIdx = -1;
+            this._tooltip().style.opacity = '0';
         } else {
-            self._oc().style.cursor = 'default';
-            self.tooltipLedIdx = -1;
-            self._tooltip().style.opacity = '0';
+            this._oc().style.cursor = 'default';
+            this.tooltipLedIdx = -1;
+            this._tooltip().style.opacity = '0';
         }
     };
 
 ShapeEditor.prototype.onMouseUp = function (this: ShapeEditor, e: MouseEvent) {
-    const self = this;
 
         if (e.button === 2) {
-            self.rightButtonDown = false;
+            this.rightButtonDown = false;
             // rightClickMoved is consumed by onContextMenu
-            self._oc().style.cursor = 'default';
+            this._oc().style.cursor = 'default';
             return;
         }
 
         // Chain-mode drags: commit on a valid drop target, else cancel.
-        if (self.connectorDrag) {
-            const { upIdx, targetIdx } = self.connectorDrag;
-            self.connectorDrag = null;
-            self._oc().style.cursor = 'default';
+        if (this.connectorDrag) {
+            const { upIdx, targetIdx } = this.connectorDrag;
+            this.connectorDrag = null;
+            this._oc().style.cursor = 'default';
             if (targetIdx !== null) {
-                self.doConnectorRetarget(upIdx, targetIdx);
+                this.doConnectorRetarget(upIdx, targetIdx);
             } else {
-                self.renderStripsPanel();
+                this.renderStripsPanel();
             }
-            self.setNeedsRender();
+            this.setNeedsRender();
             return;
         }
-        if (self.startHandleDrag) {
-            const { stripIdx, targetIdx } = self.startHandleDrag;
-            self.startHandleDrag = null;
-            self._oc().style.cursor = 'default';
+        if (this.startHandleDrag) {
+            const { stripIdx, targetIdx } = this.startHandleDrag;
+            this.startHandleDrag = null;
+            this._oc().style.cursor = 'default';
             if (targetIdx !== null) {
                 // Dropping a strip's Start on another strip's End wires that
                 // strip downstream of the target: target ──▶ stripIdx.
-                self.doConnectorRetarget(targetIdx, stripIdx);
+                this.doConnectorRetarget(targetIdx, stripIdx);
             } else {
-                self.renderStripsPanel();
+                this.renderStripsPanel();
             }
-            self.setNeedsRender();
+            this.setNeedsRender();
             return;
         }
 
-        if (self.rulerDrag) {
-            self.rulerDrag = null;
-            self.rulerDragStart = null;
-            self._oc().style.cursor = 'default';
+        if (this.rulerDrag) {
+            this.rulerDrag = null;
+            this.rulerDragStart = null;
+            this._oc().style.cursor = 'default';
             return;
         }
 
-        if (self.stripRotateActive) {
-            self._finalizeStripRotate();
-            self._oc().style.cursor = 'grab';
+        if (this.stripRotateActive) {
+            this._finalizeStripRotate();
+            this._oc().style.cursor = 'grab';
             return;
         }
 
-        if (self.gizmoActive) {
-            self.commitGizmoDrag();
-            self.gizmoActive = null;
-            self.gizmoDragStart = null;
-            self._oc().style.cursor = 'default';
+        if (this.gizmoActive) {
+            this.commitGizmoDrag();
+            this.gizmoActive = null;
+            this.gizmoDragStart = null;
+            this._oc().style.cursor = 'default';
             return;
         }
 
-        if (self.bgGizmoActive) {
-            self.bgGizmoActive = null;
-            self.bgGizmoDragStart = null;
-            self._oc().style.cursor = 'default';
+        if (this.bgGizmoActive) {
+            this.bgGizmoActive = null;
+            this.bgGizmoDragStart = null;
+            this._oc().style.cursor = 'default';
             return;
         }
 
-        if (self.isPanning) {
-            self.isPanning = false;
-            self._oc().style.cursor = 'default';
+        if (this.isPanning) {
+            this.isPanning = false;
+            this._oc().style.cursor = 'default';
             return;
         }
 
         // Ctrl+mousedown that never crossed the marquee threshold reverts to
         // the original ctrl+click "append point at click location" behavior.
-        if (self._pendingMarquee) {
-            const pm = self._pendingMarquee;
-            self._pendingMarquee = null;
-            if (pm.appendOnClick && self.screenmap_pts.length > 0) {
-                const newScreenmapPt = self.canvasToScreenmapCoords(pm.cx, pm.cy);
-                const newRawPt = self.screenmapToRawCoords(newScreenmapPt[0], newScreenmapPt[1]);
-                self.insertPointAt(self.screenmap_pts.length, newScreenmapPt, newRawPt);
+        if (this._pendingMarquee) {
+            const pm = this._pendingMarquee;
+            this._pendingMarquee = null;
+            if (pm.appendOnClick && this.screenmap_pts.length > 0) {
+                const newScreenmapPt = this.canvasToScreenmapCoords(pm.cx, pm.cy);
+                const newRawPt = this.screenmapToRawCoords(newScreenmapPt[0], newScreenmapPt[1]);
+                this.insertPointAt(this.screenmap_pts.length, newScreenmapPt, newRawPt);
             }
-            self._oc().style.cursor = 'default';
+            this._oc().style.cursor = 'default';
             return;
         }
 
-        if (self.marqueeActive) {
-            self._commitMarquee();
-            self._oc().style.cursor = 'default';
+        if (this.marqueeActive) {
+            this._commitMarquee();
+            this._oc().style.cursor = 'default';
             return;
         }
 
-        if (self.multiDragActive) {
-            self._finalizeMultiDrag();
-            self._oc().style.cursor = 'grab';
+        if (this.multiDragActive) {
+            this._finalizeMultiDrag();
+            this._oc().style.cursor = 'grab';
             return;
         }
 
-        if (self.isDragging && self.selectedIdx >= 0) {
-            const newScreenmapPt = [...self.nn(self.screenmap_pts[self.selectedIdx])];
-            const newRawPt = [...self.nn(self.rawPts[self.selectedIdx])];
+        if (this.isDragging && this.selectedIdx >= 0) {
+            const newScreenmapPt = [...this.nn(this.screenmap_pts[this.selectedIdx])];
+            const newRawPt = [...this.nn(this.rawPts[this.selectedIdx])];
             // Only record undo if the point actually moved
-            if (newScreenmapPt[0] !== (self.dragStartScreenmapPt?.[0] ?? 0) ||
-                newScreenmapPt[1] !== (self.dragStartScreenmapPt?.[1] ?? 0)) {
-                self.pushUndo({
+            if (newScreenmapPt[0] !== (this.dragStartScreenmapPt?.[0] ?? 0) ||
+                newScreenmapPt[1] !== (this.dragStartScreenmapPt?.[1] ?? 0)) {
+                this.pushUndo({
                     type: 'move',
-                    idx: self.selectedIdx,
-                    oldScreenmapPt: self.dragStartScreenmapPt,
+                    idx: this.selectedIdx,
+                    oldScreenmapPt: this.dragStartScreenmapPt,
                     newScreenmapPt,
-                    oldRawPt: self.dragStartRawPt,
+                    oldRawPt: this.dragStartRawPt,
                     newRawPt,
                 });
             }
-            self.isDragging = false;
-            self.altQuasimode = false;
-            self._oc().style.cursor = 'grab';
+            this.isDragging = false;
+            this.altQuasimode = false;
+            this._oc().style.cursor = 'grab';
             return;
         }
 
-        if (self.stripDragActive) {
-            self._finalizeStripDrag();
-            self._oc().style.cursor = 'grab';
+        if (this.stripDragActive) {
+            this._finalizeStripDrag();
+            this._oc().style.cursor = 'grab';
             return;
         }
     };
 
 ShapeEditor.prototype._finalizeStripDrag = function (this: ShapeEditor) {
-    const self = this;
 
-        if (!self.stripDragActive) return;
-        const sdx = self.stripDragLastSdx;
-        const sdy = self.stripDragLastSdy;
+        if (!this.stripDragActive) return;
+        const sdx = this.stripDragLastSdx;
+        const sdy = this.stripDragLastSdy;
         if (sdx !== 0 || sdy !== 0) {
-            self.pushUndo({
+            this.pushUndo({
                 type: 'strip-translate',
-                stripIdx: self.stripDragIdx,
+                stripIdx: this.stripDragIdx,
                 sdx,
                 sdy,
             });
-            self._persistMultiStrip();
+            this._persistMultiStrip();
         }
-        self.stripDragActive = false;
-        self.stripDragIdx = -1;
-        self.stripDragStartScreenmap = null;
-        self.stripDragStartRaw = null;
-        self.stripSnapActive = false;
-        self.stripSnapXTargets = [];
-        self.stripSnapYTargets = [];
-        self.stripSnapStartCenter = null;
-        self.stripSnapEngagedX = null;
-        self.stripSnapEngagedY = null;
-        self.stripDragLastSdx = 0;
-        self.stripDragLastSdy = 0;
+        this.stripDragActive = false;
+        this.stripDragIdx = -1;
+        this.stripDragStartScreenmap = null;
+        this.stripDragStartRaw = null;
+        this.stripSnapActive = false;
+        this.stripSnapXTargets = [];
+        this.stripSnapYTargets = [];
+        this.stripSnapStartCenter = null;
+        this.stripSnapEngagedX = null;
+        this.stripSnapEngagedY = null;
+        this.stripDragLastSdx = 0;
+        this.stripDragLastSdy = 0;
     };
 
 ShapeEditor.prototype._applyStripTranslate = function (this: ShapeEditor, stripIdx: number, sdx: number, sdy: number) {
-    const self = this;
 
-        if (!self.stripInfo || stripIdx < 0 || stripIdx >= self.stripInfo.strips.length) return;
-        const strip = self.nn(self.stripInfo.strips[stripIdx]);
+        if (!this.stripInfo || stripIdx < 0 || stripIdx >= this.stripInfo.strips.length) return;
+        const strip = this.nn(this.stripInfo.strips[stripIdx]);
         for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-            self.screenmap_pts[k] = [self.nn(self.screenmap_pts[k])[0] + sdx, self.nn(self.screenmap_pts[k])[1] + sdy];
-            self.rawPts[k] = [self.nn(self.rawPts[k])[0] + sdx / self.fitScale, self.nn(self.rawPts[k])[1] + sdy / self.fitScale];
+            this.screenmap_pts[k] = [this.nn(this.screenmap_pts[k])[0] + sdx, this.nn(this.screenmap_pts[k])[1] + sdy];
+            this.rawPts[k] = [this.nn(this.rawPts[k])[0] + sdx / this.fitScale, this.nn(this.rawPts[k])[1] + sdy / this.fitScale];
         }
     };
 
 ShapeEditor.prototype._finalizeStripRotate = function (this: ShapeEditor) {
-    const self = this;
-        if (!self.stripRotateActive) return;
-        const deg = self.stripRotateLastDeg;
-        const stripIdx = self.stripRotateIdx;
-        const csm = self.stripRotateCenterSm;
-        const crw = self.stripRotateCenterRaw;
+        if (!this.stripRotateActive) return;
+        const deg = this.stripRotateLastDeg;
+        const stripIdx = this.stripRotateIdx;
+        const csm = this.stripRotateCenterSm;
+        const crw = this.stripRotateCenterRaw;
         if (deg !== 0 && csm && crw && stripIdx >= 0) {
-            self.pushUndo({
+            this.pushUndo({
                 type: 'strip-rotate',
                 stripIdx,
                 deltaDeg: deg,
                 centerSm: { x: csm.x, y: csm.y },
                 centerRaw: { x: crw.x, y: crw.y },
             });
-            self._persistMultiStrip();
+            this._persistMultiStrip();
         }
-        self.stripRotateActive = false;
-        self.stripRotateIdx = -1;
-        self.stripRotateStartScreenmap = null;
-        self.stripRotateStartRaw = null;
-        self.stripRotateCenterSm = null;
-        self.stripRotateCenterRaw = null;
-        self.stripRotateStartAngle = 0;
-        self.stripRotateLastDeg = 0;
+        this.stripRotateActive = false;
+        this.stripRotateIdx = -1;
+        this.stripRotateStartScreenmap = null;
+        this.stripRotateStartRaw = null;
+        this.stripRotateCenterSm = null;
+        this.stripRotateCenterRaw = null;
+        this.stripRotateStartAngle = 0;
+        this.stripRotateLastDeg = 0;
     };
 
 /**
@@ -1005,138 +997,132 @@ ShapeEditor.prototype._finalizeStripRotate = function (this: ShapeEditor) {
  * Used by `applyAction` / `applyInverse` for the `strip-rotate` undo type.
  */
 ShapeEditor.prototype._applyStripRotate = function (this: ShapeEditor, stripIdx: number, deltaRad: number, centerSm: { x: number; y: number }, centerRaw: { x: number; y: number }) {
-    const self = this;
-        if (!self.stripInfo || stripIdx < 0 || stripIdx >= self.stripInfo.strips.length) return;
-        const strip = self.nn(self.stripInfo.strips[stripIdx]);
+        if (!this.stripInfo || stripIdx < 0 || stripIdx >= this.stripInfo.strips.length) return;
+        const strip = this.nn(this.stripInfo.strips[stripIdx]);
         const lo = strip.offset;
         const hi = strip.offset + strip.count;
         const sliceSm: [number, number][] = [];
         const sliceRw: [number, number][] = [];
         for (let k = lo; k < hi; k++) {
-            sliceSm.push([self.nn(self.screenmap_pts[k])[0], self.nn(self.screenmap_pts[k])[1]]);
-            sliceRw.push([self.nn(self.rawPts[k])[0], self.nn(self.rawPts[k])[1]]);
+            sliceSm.push([this.nn(this.screenmap_pts[k])[0], this.nn(this.screenmap_pts[k])[1]]);
+            sliceRw.push([this.nn(this.rawPts[k])[0], this.nn(this.rawPts[k])[1]]);
         }
         const rotatedSm = rotatePointsAround(sliceSm, centerSm.x, centerSm.y, deltaRad);
         const rotatedRw = rotatePointsAround(sliceRw, centerRaw.x, centerRaw.y, deltaRad);
         for (let k = lo; k < hi; k++) {
-            self.screenmap_pts[k] = rotatedSm[k - lo] ?? [0, 0] as [number, number];
-            self.rawPts[k] = rotatedRw[k - lo] ?? [0, 0] as [number, number];
+            this.screenmap_pts[k] = rotatedSm[k - lo] ?? [0, 0] as [number, number];
+            this.rawPts[k] = rotatedRw[k - lo] ?? [0, 0] as [number, number];
         }
     };
 
 ShapeEditor.prototype.onDoubleClick = function (this: ShapeEditor, e: MouseEvent) {
-    const self = this;
 
-        if (self.placingState) return;
+        if (this.placingState) return;
         if (e.button !== 0) return;
-        if (self.screenmap_pts.length === 0) return;
-        const [cx, cy] = self.getCanvasCoords(e);
-        const idx = self.hitTestLED(cx, cy);
+        if (this.screenmap_pts.length === 0) return;
+        const [cx, cy] = this.getCanvasCoords(e);
+        const idx = this.hitTestLED(cx, cy);
         if (idx < 0) return;
-        const sIdx = self.stripStore.findStripForIndex(idx);
+        const sIdx = this.stripStore.findStripForIndex(idx);
         if (sIdx < 0) return;
-        if (self.pointEditStripIdx === sIdx) {
+        if (this.pointEditStripIdx === sIdx) {
             // Double-click again exits point-edit
-            self.pointEditStripIdx = null;
+            this.pointEditStripIdx = null;
         } else {
-            self.pointEditStripIdx = sIdx;
-            self.selection.selectStrip(sIdx);
+            this.pointEditStripIdx = sIdx;
+            this.selection.selectStrip(sIdx);
         }
-        self._updateHintStrip();
-        self.setNeedsGeometryUpdate();
+        this._updateHintStrip();
+        this.setNeedsGeometryUpdate();
     };
 
 ShapeEditor.prototype._clearLongPress = function (this: ShapeEditor) {
-    const self = this;
 
-        if (self.longPressTimer !== null) {
-            clearTimeout(self.longPressTimer);
-            self.longPressTimer = null;
+        if (this.longPressTimer !== null) {
+            clearTimeout(this.longPressTimer);
+            this.longPressTimer = null;
         }
     };
 
 ShapeEditor.prototype._synth = function (this: ShapeEditor, type: string, clientX: number, clientY: number, opts: Record<string, unknown> = {}) {
-    const self = this;
 
         const init = { clientX, clientY, button: (typeof opts.button === 'number' ? opts.button : 0), bubbles: true };
         const evt = new MouseEvent(type, init);
-        if (type === 'mousedown') self.onMouseDown(evt);
-        else if (type === 'mousemove') self.onMouseMove(evt);
-        else if (type === 'mouseup') self.onMouseUp(evt);
+        if (type === 'mousedown') this.onMouseDown(evt);
+        else if (type === 'mousemove') this.onMouseMove(evt);
+        else if (type === 'mouseup') this.onMouseUp(evt);
     };
 
 ShapeEditor.prototype._cancelSingleTouchGesture = function (this: ShapeEditor) {
-    const self = this;
 
         // Cancel any in-flight single-touch drag cleanly (no undo entry).
-        if (self.stripDragActive) {
-            self.stripDragActive = false;
-            self.stripDragIdx = -1;
-            self.stripDragStartScreenmap = null;
-            self.stripDragStartRaw = null;
-            self.stripSnapActive = false;
-            self.stripSnapXTargets = [];
-            self.stripSnapYTargets = [];
-            self.stripSnapStartCenter = null;
-            self.stripSnapEngagedX = null;
-            self.stripSnapEngagedY = null;
-            self.stripDragLastSdx = 0;
-            self.stripDragLastSdy = 0;
+        if (this.stripDragActive) {
+            this.stripDragActive = false;
+            this.stripDragIdx = -1;
+            this.stripDragStartScreenmap = null;
+            this.stripDragStartRaw = null;
+            this.stripSnapActive = false;
+            this.stripSnapXTargets = [];
+            this.stripSnapYTargets = [];
+            this.stripSnapStartCenter = null;
+            this.stripSnapEngagedX = null;
+            this.stripSnapEngagedY = null;
+            this.stripDragLastSdx = 0;
+            this.stripDragLastSdy = 0;
         }
-        if (self.stripRotateActive) {
-            self.stripRotateActive = false;
-            self.stripRotateIdx = -1;
-            self.stripRotateStartScreenmap = null;
-            self.stripRotateStartRaw = null;
-            self.stripRotateCenterSm = null;
-            self.stripRotateCenterRaw = null;
-            self.stripRotateStartAngle = 0;
-            self.stripRotateLastDeg = 0;
+        if (this.stripRotateActive) {
+            this.stripRotateActive = false;
+            this.stripRotateIdx = -1;
+            this.stripRotateStartScreenmap = null;
+            this.stripRotateStartRaw = null;
+            this.stripRotateCenterSm = null;
+            this.stripRotateCenterRaw = null;
+            this.stripRotateStartAngle = 0;
+            this.stripRotateLastDeg = 0;
         }
-        if (self.isDragging) {
-            self.isDragging = false;
-            self.altQuasimode = false;
+        if (this.isDragging) {
+            this.isDragging = false;
+            this.altQuasimode = false;
         }
-        if (self.isPanning) {
-            self.isPanning = false;
+        if (this.isPanning) {
+            this.isPanning = false;
         }
-        if (self.gizmoActive) {
-            self.gizmoActive = null;
-            self.gizmoDragStart = null;
+        if (this.gizmoActive) {
+            this.gizmoActive = null;
+            this.gizmoDragStart = null;
         }
-        if (self.rulerDrag) {
-            self.rulerDrag = null;
-            self.rulerDragStart = null;
+        if (this.rulerDrag) {
+            this.rulerDrag = null;
+            this.rulerDragStart = null;
         }
-        self._oc().style.cursor = 'default';
+        this._oc().style.cursor = 'default';
     };
 
 ShapeEditor.prototype._doLongPress = function (this: ShapeEditor, canvasX: number, canvasY: number, clientX: number, clientY: number) {
-    const self = this;
 
         // Cancel the pending single-touch synth gesture so it does not also
         // commit a drag.
-        self._cancelSingleTouchGesture();
-        if (self.screenmap_pts.length === 0) {
+        this._cancelSingleTouchGesture();
+        if (this.screenmap_pts.length === 0) {
             // Empty: open context menu
-            self.showContextMenu(clientX || 0, clientY || 0, -1, -1, false);
-            self.touchMode = 'longpress-fired';
+            this.showContextMenu(clientX || 0, clientY || 0, -1, -1, false);
+            this.touchMode = 'longpress-fired';
             return;
         }
-        const idx = self.hitTestLED(canvasX, canvasY);
+        const idx = this.hitTestLED(canvasX, canvasY);
         if (idx >= 0) {
-            const sIdx = self.stripStore.findStripForIndex(idx);
+            const sIdx = this.stripStore.findStripForIndex(idx);
             if (sIdx >= 0) {
-                self.selection.selectStrip(sIdx);
-                self.pointEditStripIdx = sIdx;
-                self._updateHintStrip();
-                self.setNeedsGeometryUpdate();
-                void self._toastInfo(`Editing points in "${self.stripStore.getStrips()[sIdx]?.name ?? ''}"`);
+                this.selection.selectStrip(sIdx);
+                this.pointEditStripIdx = sIdx;
+                this._updateHintStrip();
+                this.setNeedsGeometryUpdate();
+                void this._toastInfo(`Editing points in "${this.stripStore.getStrips()[sIdx]?.name ?? ''}"`);
             }
         } else {
-            self.showContextMenu(clientX || 0, clientY || 0, -1, -1, false);
+            this.showContextMenu(clientX || 0, clientY || 0, -1, -1, false);
         }
-        self.touchMode = 'longpress-fired';
+        this.touchMode = 'longpress-fired';
     };
 
 // ── Marquee + multi-LED group drag ──────────────────────────────────────
@@ -1145,18 +1131,17 @@ ShapeEditor.prototype._doLongPress = function (this: ShapeEditor, canvasX: numbe
 // inline (instead of allocating a fresh canvas-coords array via map())
 // so the marquee stays cheap even on a 64x64 grid.
 ShapeEditor.prototype._ledIdxsInCanvasRect = function (this: ShapeEditor, c1x: number, c1y: number, c2x: number, c2y: number): Set<number> {
-    const self = this;
     const minX = Math.min(c1x, c2x);
     const maxX = Math.max(c1x, c2x);
     const minY = Math.min(c1y, c2y);
     const maxY = Math.max(c1y, c2y);
     const out = new Set<number>();
-    const camPanX = self.camPanX;
-    const camPanY = self.camPanY;
-    const z = self.camZoom;
-    const hw = self.canvasW / 2;
-    const hh = self.canvasH / 2;
-    const pts = self.lastTransformedPts;
+    const camPanX = this.camPanX;
+    const camPanY = this.camPanY;
+    const z = this.camZoom;
+    const hw = this.canvasW / 2;
+    const hh = this.canvasH / 2;
+    const pts = this.lastTransformedPts;
     for (let i = 0; i < pts.length; i++) {
         const p = pts[i];
         if (!p) continue;
@@ -1168,13 +1153,12 @@ ShapeEditor.prototype._ledIdxsInCanvasRect = function (this: ShapeEditor, c1x: n
 };
 
 ShapeEditor.prototype._updateMarqueeSelection = function (this: ShapeEditor) {
-    const self = this;
-    const hits = self._ledIdxsInCanvasRect(self.marqueeStartCx, self.marqueeStartCy, self.marqueeCurCx, self.marqueeCurCy);
-    const base = self._marqueeBaseSelection;
+    const hits = this._ledIdxsInCanvasRect(this.marqueeStartCx, this.marqueeStartCy, this.marqueeCurCx, this.marqueeCurCy);
+    const base = this._marqueeBaseSelection;
     let next: Set<number>;
-    if (self.marqueeMode === 'replace') {
+    if (this.marqueeMode === 'replace') {
         next = hits;
-    } else if (self.marqueeMode === 'add') {
+    } else if (this.marqueeMode === 'add') {
         next = new Set(base);
         for (const i of hits) next.add(i);
     } else { // toggle: symmetric difference
@@ -1184,74 +1168,69 @@ ShapeEditor.prototype._updateMarqueeSelection = function (this: ShapeEditor) {
             else next.add(i);
         }
     }
-    self.multiSelectedIdxs = next;
+    this.multiSelectedIdxs = next;
 };
 
 ShapeEditor.prototype._commitMarquee = function (this: ShapeEditor) {
-    const self = this;
     // Selection was updated eagerly during mousemove; just clear the drag state.
-    self.marqueeActive = false;
-    self._marqueeBaseSelection = new Set<number>();
-    self.setNeedsGeometryUpdate();
+    this.marqueeActive = false;
+    this._marqueeBaseSelection = new Set<number>();
+    this.setNeedsGeometryUpdate();
 };
 
 ShapeEditor.prototype._cancelMarquee = function (this: ShapeEditor) {
-    const self = this;
-    if (!self.marqueeActive) return;
+    if (!this.marqueeActive) return;
     // Restore the pre-drag selection.
-    self.multiSelectedIdxs = new Set(self._marqueeBaseSelection);
-    self.marqueeActive = false;
-    self._marqueeBaseSelection = new Set<number>();
-    self.setNeedsGeometryUpdate();
+    this.multiSelectedIdxs = new Set(this._marqueeBaseSelection);
+    this.marqueeActive = false;
+    this._marqueeBaseSelection = new Set<number>();
+    this.setNeedsGeometryUpdate();
 };
 
 ShapeEditor.prototype._startMultiDrag = function (this: ShapeEditor, cx: number, cy: number) {
-    const self = this;
-    self.multiDragActive = true;
-    self.multiDragStartCanvasX = cx;
-    self.multiDragStartCanvasY = cy;
-    self.multiDragLastSdx = 0;
-    self.multiDragLastSdy = 0;
-    self.multiDragStartScreenmap = new Map<number, [number, number]>();
-    self.multiDragStartRaw = new Map<number, [number, number]>();
-    for (const i of self.multiSelectedIdxs) {
-        const sm = self.screenmap_pts[i];
-        const rw = self.rawPts[i];
+    this.multiDragActive = true;
+    this.multiDragStartCanvasX = cx;
+    this.multiDragStartCanvasY = cy;
+    this.multiDragLastSdx = 0;
+    this.multiDragLastSdy = 0;
+    this.multiDragStartScreenmap = new Map<number, [number, number]>();
+    this.multiDragStartRaw = new Map<number, [number, number]>();
+    for (const i of this.multiSelectedIdxs) {
+        const sm = this.screenmap_pts[i];
+        const rw = this.rawPts[i];
         if (!sm || !rw) continue;
-        self.multiDragStartScreenmap.set(i, [sm[0], sm[1]]);
-        self.multiDragStartRaw.set(i, [rw[0], rw[1]]);
+        this.multiDragStartScreenmap.set(i, [sm[0], sm[1]]);
+        this.multiDragStartRaw.set(i, [rw[0], rw[1]]);
     }
-    self._oc().style.cursor = 'grabbing';
+    this._oc().style.cursor = 'grabbing';
 };
 
 ShapeEditor.prototype._finalizeMultiDrag = function (this: ShapeEditor) {
-    const self = this;
-    if (!self.multiDragActive) return;
-    const sdx = self.multiDragLastSdx;
-    const sdy = self.multiDragLastSdy;
-    if ((sdx !== 0 || sdy !== 0) && self.multiSelectedIdxs.size > 0) {
-        self.pushUndo({
+    if (!this.multiDragActive) return;
+    const sdx = this.multiDragLastSdx;
+    const sdy = this.multiDragLastSdy;
+    if ((sdx !== 0 || sdy !== 0) && this.multiSelectedIdxs.size > 0) {
+        this.pushUndo({
             type: 'multi-translate',
-            idxs: [...self.multiSelectedIdxs],
+            idxs: [...this.multiSelectedIdxs],
             sdx,
             sdy,
         });
-        self._persistMultiStrip();
+        this._persistMultiStrip();
     }
-    self.multiDragActive = false;
-    self.multiDragStartScreenmap = new Map<number, [number, number]>();
-    self.multiDragStartRaw = new Map<number, [number, number]>();
-    self.multiDragLastSdx = 0;
-    self.multiDragLastSdy = 0;
+    this.multiDragActive = false;
+    this.multiDragStartScreenmap = new Map<number, [number, number]>();
+    this.multiDragStartRaw = new Map<number, [number, number]>();
+    this.multiDragLastSdx = 0;
+    this.multiDragLastSdy = 0;
 };
 
 ShapeEditor.prototype._applyMultiTranslate = function (this: ShapeEditor, idxs: number[], sdx: number, sdy: number) {
-    const self = this;
     for (const i of idxs) {
-        const sm = self.screenmap_pts[i];
-        const rw = self.rawPts[i];
+        const sm = this.screenmap_pts[i];
+        const rw = this.rawPts[i];
         if (!sm || !rw) continue;
-        self.screenmap_pts[i] = [sm[0] + sdx, sm[1] + sdy];
-        self.rawPts[i] = [rw[0] + sdx / self.fitScale, rw[1] + sdy / self.fitScale];
+        this.screenmap_pts[i] = [sm[0] + sdx, sm[1] + sdy];
+        this.rawPts[i] = [rw[0] + sdx / this.fitScale, rw[1] + sdy / this.fitScale];
     }
 };
