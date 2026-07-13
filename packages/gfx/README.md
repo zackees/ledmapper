@@ -1,7 +1,7 @@
 # @fastled/gfx
 
 FastLED-compatible LED renderer for the web. Three.js + UnrealBloom + density-aware iris. Two consumers:
-- [ledmapper.com](https://www.ledmapper.com/) — the source of truth lives in this repo at `src/gfx/`.
+- [ledmapper.com](https://www.ledmapper.com/) — the package source lives under `packages/gfx/src/` in this repository.
 - [FastLED's wasm compiler](https://github.com/FastLED/FastLED) — pins a strict version of this package and embeds it in its simulator bundle.
 
 > **Status:** `0.x` — surface is still being refined. See [issue #157](https://github.com/zackees/ledmapper/issues/157) for the design conversation; `1.0` ships once the worker variant lands and both consumers are on it.
