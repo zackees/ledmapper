@@ -208,6 +208,18 @@ export function init(container: HTMLElement) {
     const recording = createRecording({
         getSwal,
         getScreenmapJson: () => currentScreenmapJson ?? getScreenmap(),
+        onSaved: () => {
+            void getSwal().then((swal) => swal.fire({
+                title: 'Recording ready',
+                text: 'Your LED video is saved. Open it in Video Player now?',
+                icon: 'success',
+                showCancelButton: true,
+                confirmButtonText: 'Play video',
+                cancelButtonText: 'Stay here',
+            }).then((result) => {
+                if (result.isConfirmed) window.location.href = '/movieplayer/';
+            }));
+        },
     });
 
     // ── Helpers ─────────────────────────────────────────────────────────────────
