@@ -548,4 +548,4 @@ export const editorPasteMethods: EditorPasteMethods & ThisType<ShapeEditor> = {
         }
         return null;
     },
-};`n
+};

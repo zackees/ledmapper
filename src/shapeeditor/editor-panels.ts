@@ -302,4 +302,4 @@ export const editorPanelsMethods: EditorPanelsMethods & ThisType<ShapeEditor> = 
         this.setNeedsGeometryUpdate();
         return name;
     },
-};`n
+};

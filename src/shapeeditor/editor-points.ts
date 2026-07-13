@@ -303,4 +303,4 @@ export const editorPointsMethods: EditorPointsMethods & ThisType<ShapeEditor> = 
         }
         return bestIdx;
     },
-};`n
+};

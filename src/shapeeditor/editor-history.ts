@@ -254,4 +254,4 @@ export const editorHistoryMethods: EditorHistoryMethods & ThisType<ShapeEditor> 
         this.dom_btn_redo.disabled = this.redoStack.length === 0;
         this.dom_btn_reset.disabled = this.undoStack.length === 0 && this.redoStack.length === 0;
     },
-};`n
+};

@@ -600,4 +600,4 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
         this.geometryDirty = false;
         this.frameDirty = false;
     },
-};`n
+};

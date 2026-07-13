@@ -585,4 +585,4 @@ export const editorTransformMethods: EditorTransformMethods & ThisType<ShapeEdit
         ctx.stroke();
     }
 },
-};`n
+};

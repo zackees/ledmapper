@@ -167,4 +167,4 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
         if (!this.hintStripTextEl) return;
         this.hintStripTextEl.textContent = hintTextFor(this._currentHintState());
     },
-};`n
+};

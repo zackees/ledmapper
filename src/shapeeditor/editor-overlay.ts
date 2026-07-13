@@ -487,4 +487,4 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
     ctx.fill();
     ctx.restore();
 },
-};`n
+};

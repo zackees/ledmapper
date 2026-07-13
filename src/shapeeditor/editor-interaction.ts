@@ -1312,4 +1312,4 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         this._tooltip().style.opacity = '0';
         this._oc().style.cursor = 'default';
     },
-};`n
+};

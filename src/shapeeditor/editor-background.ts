@@ -330,4 +330,4 @@ export const editorBackgroundMethods: EditorBackgroundMethods & ThisType<ShapeEd
             bboxCenter: handles ? handles.center : (this.bgImageBBox ? { x: this.bgImageBBox.cx, y: this.bgImageBBox.cy } : { x: 0, y: 0 }),
         };
     },
-};`n
+};
