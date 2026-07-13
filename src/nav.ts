@@ -1,16 +1,10 @@
-// Labels mirror the app-shell's Play / Create / Record vocabulary (#133) so
-// the product speaks one language everywhere: the shell's bottom mode bar, the
-// hub cards, and this legacy top nav all name the same tools identically
-// (issue #286). The hrefs stay on the standalone tool routes — many deep links
-// and integration tests target them directly — but the words a user reads no
-// longer flip between "Demo/Video Maker" here and "Play/Record" in the shell.
+// The product has three user-facing modes. Legacy standalone routes remain
+// available for old bookmarks, but are intentionally absent from product
+// navigation (#384).
 const tools = [
-    { name: 'Hub', href: '/hub/' },
-    { name: 'Play', href: '/demo/' },
-    { name: 'Create', href: '/shapeeditor/' },
-    { name: 'Record', href: '/moviemaker/' },
-    { name: 'Screenmap Maker', href: '/screenmap/' },
-    { name: 'Video Player', href: '/movieplayer/' },
+    { name: 'Play', href: '/play' },
+    { name: 'Create', href: '/create' },
+    { name: 'Record', href: '/record' },
 ];
 
 let navEl: HTMLElement | null = null;
@@ -26,7 +20,7 @@ export function initNav() {
 
     const brand = document.createElement('a');
     brand.className = 'nav-brand';
-    brand.href = '/hub/';
+    brand.href = '/play';
     brand.textContent = 'FastLED Video Mapper';
     nav.appendChild(brand);
 
@@ -53,12 +47,19 @@ export function initNav() {
 
 export function updateActiveLink(path: string) {
     if (!navEl) return;
+    const canonicalPath = path.startsWith('/demo') || path.startsWith('/movieplayer')
+        ? '/play'
+        : path.startsWith('/shapeeditor') || path.startsWith('/screenmap')
+            ? '/create'
+            : path.startsWith('/moviemaker')
+                ? '/record'
+                : path;
     navEl.querySelectorAll('.nav-links a').forEach(a => {
         const href = a.getAttribute('href');
         const toolDir = href === '/' ? null : (href ?? '').split('/').find(Boolean);
-        if (toolDir && path.includes(toolDir)) {
+        if (toolDir && canonicalPath.startsWith(`/${toolDir}`)) {
             a.classList.add('active');
-        } else if (!toolDir && (path === '/' || path === '/index.html')) {
+        } else if (!toolDir && (canonicalPath === '/' || canonicalPath === '/index.html')) {
             a.classList.add('active');
         } else {
             a.classList.remove('active');

@@ -5,10 +5,10 @@ import os from 'os';
 import { dropFixture } from '../helpers/drag-drop.ts';
 import { prependFledHeader, PixelFormat } from '../../src/render/rgb-video';
 
-test.describe('Video Player', () => {
+test.describe('Play legacy route', () => {
     test('loads and shows title', async ({ page }) => {
         await page.goto('/movieplayer/');
-        await expect(page.locator('h1')).toContainText('Video Player');
+        await expect(page.locator('h1')).toContainText('Play');
     });
 
     test('has movie upload input', async ({ page }) => {

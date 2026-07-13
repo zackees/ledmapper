@@ -2,7 +2,7 @@
  * End-to-end usability walkthrough of the full ledmapper pipeline.
  *
  * Simulates a brand-new user driving:
- *   / (default route) → /hub → screenmap creation (/screenmap, fake webcam)
+ *   / (default Play mode) → screenmap creation (/screenmap, fake webcam)
  *   → shapeeditor (/shapeeditor) → moviemaker (/moviemaker: video import +
  *   record .fled) → movieplayer (/movieplayer: playback).
  *
@@ -74,15 +74,11 @@ page.on('console', (m) => {
 page.on('pageerror', (e) => log.pageErrors.push({ url: page.url(), text: e.message }));
 
 try {
-    // ---------- Step 1: default route + hub (first impression) ----------
-    note('STEP 1: default route "/" (app shell) and /hub');
+    // ---------- Step 1: default route (first impression) ----------
+    note('STEP 1: default route "/" (Play mode)');
     await page.goto(BASE + '/', { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await shot(page, 'root-default-route');
-
-    await page.goto(BASE + '/hub', { waitUntil: 'networkidle' });
-    await shot(page, 'hub-landing');
-    probe('hub.cardHrefs', await page.$$eval('a.tool-card', (as) => as.map((a) => a.getAttribute('href'))));
 
     // ---------- Step 2: Screenmap Maker ----------
     note('STEP 2: screenmap maker — create a map from scratch (fake webcam)');

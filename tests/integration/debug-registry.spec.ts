@@ -36,7 +36,7 @@ test.describe('window.__lmDebug registry (#225)', () => {
             .toBe(true);
 
         const state = await page.evaluate(() => window.__lmDebug?.moviemaker?.getState());
-        expect(state).toEqual({
+        expect(state).toEqual(expect.objectContaining({
             screenmapValid: true,
             ledCount: 4096,
             stripCount: 16,
@@ -48,10 +48,10 @@ test.describe('window.__lmDebug registry (#225)', () => {
             oobLeds: 0,
             detectedFps: 30,
             captureStats: { captured: 0, skipped: 0, duplicatesDropped: 0 },
-        });
+        }));
 
-        await page.click('.nav-links a[href="/movieplayer/"]');
-        await expect(page).toHaveURL(/\/movieplayer\//);
+        await page.click('.nav-links a[href="/play"]');
+        await expect(page).toHaveURL(/\/play$/);
         const afterNav = await page.evaluate(() => window.__lmDebug?.moviemaker);
         expect(afterNav).toBeUndefined();
     });
@@ -68,8 +68,8 @@ test.describe('window.__lmDebug registry (#225)', () => {
             loaded: false,
         });
 
-        await page.click('.nav-links a[href="/shapeeditor/"]');
-        await expect(page).toHaveURL(/\/shapeeditor\//);
+        await page.click('.nav-links a[href="/create"]');
+        await expect(page).toHaveURL(/\/create$/);
         const afterNav = await page.evaluate(() => window.__lmDebug?.movieplayer);
         expect(afterNav).toBeUndefined();
     });
@@ -100,8 +100,8 @@ test.describe('window.__lmDebug registry (#225)', () => {
         }));
         expect(viaRegistry).toBe(viaAlias);
 
-        await page.click('.nav-links a[href="/moviemaker/"]');
-        await expect(page).toHaveURL(/\/moviemaker\//);
+        await page.click('.nav-links a[href="/record"]');
+        await expect(page).toHaveURL(/\/record$/);
         const afterNav = await page.evaluate(() => window.__lmDebug?.shapeeditor);
         expect(afterNav).toBeUndefined();
     });

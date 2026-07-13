@@ -214,7 +214,7 @@ export function init(container: HTMLElement) {
         onSaved: () => {
             void getSwal().then((swal) => swal.fire({
                 title: 'Recording ready',
-                text: 'Your LED video is saved. Open it in Video Player now?',
+                text: 'Your LED video is saved. Play it now?',
                 icon: 'success',
                 showCancelButton: true,
                 confirmButtonText: 'Play video',
