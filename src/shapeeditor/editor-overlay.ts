@@ -19,6 +19,86 @@ export interface EditorOverlayMethods {
     hitTestStripRotateHandle: (canvasX: number, canvasY: number) => boolean;
 }
 
+type SelectedStripObb = NonNullable<ReturnType<EditorOverlayMethods['_selectedStripObbCanvas']>>;
+
+/** Draw an upright, local mode label without covering a nearby LED or rotate handle. */
+function drawPointEditBadge(
+    ctx: CanvasRenderingContext2D,
+    obb: SelectedStripObb,
+    canvasW: number,
+    canvasH: number,
+    points: readonly [number, number][],
+    rotateHandle: ReturnType<EditorOverlayMethods['_stripRotateHandlePos']>,
+): void {
+    const title = 'EDIT LED MODE';
+    const subtitle = 'Drag LEDs individually · Esc to exit';
+    const margin = 8;
+    const paddingX = 10;
+    const paddingY = 7;
+    const titleLineH = 14;
+    const subtitleLineH = 13;
+
+    const corner = (u: number, v: number) => ({
+        x: obb.cx + u * obb.cos - v * obb.sin,
+        y: obb.cy + u * obb.sin + v * obb.cos,
+    });
+    const corners = [corner(-obb.hw, -obb.hh), corner(obb.hw, -obb.hh), corner(obb.hw, obb.hh), corner(-obb.hw, obb.hh)];
+    const minX = Math.min(...corners.map((point) => point.x));
+    const maxX = Math.max(...corners.map((point) => point.x));
+    const minY = Math.min(...corners.map((point) => point.y));
+    const maxY = Math.max(...corners.map((point) => point.y));
+
+    ctx.save();
+    ctx.font = '700 12px "Outfit", system-ui, sans-serif';
+    const titleW = ctx.measureText(title).width;
+    ctx.font = '12px "Outfit", system-ui, sans-serif';
+    const subtitleW = ctx.measureText(subtitle).width;
+    const badgeW = Math.max(titleW, subtitleW) + paddingX * 2;
+    const badgeH = paddingY * 2 + titleLineH + subtitleLineH + 2;
+    // The dedicated rotation handle sits above the OBB, so reserve its arm
+    // before considering the preferred visual-top placement.
+    const handleClearance = rotateHandle ? 46 : 12;
+    const candidates = [
+        { x: obb.cx - badgeW / 2, y: minY - badgeH - handleClearance },
+        { x: obb.cx - badgeW / 2, y: maxY + 12 },
+        { x: maxX + 12, y: obb.cy - badgeH / 2 },
+        { x: minX - badgeW - 12, y: obb.cy - badgeH / 2 },
+    ];
+    const fits = (candidate: { x: number; y: number }) => (
+        candidate.x >= margin && candidate.y >= margin
+        && candidate.x + badgeW <= canvasW - margin && candidate.y + badgeH <= canvasH - margin
+    );
+    const hidesAffordance = (candidate: { x: number; y: number }) => {
+        const contains = (x: number, y: number, radius: number) => (
+            x + radius >= candidate.x && x - radius <= candidate.x + badgeW
+            && y + radius >= candidate.y && y - radius <= candidate.y + badgeH
+        );
+        return points.some(([x, y]) => contains(x, y, 10))
+            || (rotateHandle !== null && contains(rotateHandle.handleX, rotateHandle.handleY, 12));
+    };
+    const chosen = candidates.find((candidate) => fits(candidate) && !hidesAffordance(candidate))
+        ?? candidates.find(fits)
+        ?? {
+            x: Math.max(margin, Math.min(canvasW - badgeW - margin, obb.cx - badgeW / 2)),
+            y: Math.max(margin, Math.min(canvasH - badgeH - margin, maxY + 12)),
+        };
+
+    ctx.globalAlpha = 0.98;
+    ctx.fillStyle = gfxColors.bgPopoverStrong();
+    ctx.fillRect(chosen.x, chosen.y, badgeW, badgeH);
+    ctx.strokeStyle = gfxColors.accentRed();
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.strokeRect(chosen.x, chosen.y, badgeW, badgeH);
+    ctx.fillStyle = gfxColors.accentRed();
+    ctx.font = '700 12px "Outfit", system-ui, sans-serif';
+    ctx.fillText(title, chosen.x + paddingX, chosen.y + paddingY + titleLineH - 2);
+    ctx.fillStyle = gfxColors.textStrong();
+    ctx.font = '12px "Outfit", system-ui, sans-serif';
+    ctx.fillText(subtitle, chosen.x + paddingX, chosen.y + paddingY + titleLineH + subtitleLineH);
+    ctx.restore();
+}
+
 export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> = {
     _setOverlayCollapsed(this: ShapeEditor, collapsed: boolean): void{
     this.overlayCollapsed = collapsed;
@@ -112,12 +192,11 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
 
         this.ptsBBox = { cx: ccx, cy: ccy, hw, hh, cos: bboxCos, sin: bboxSin };
 
-        // Draw oriented bounding box outline
+        // Draw the whole-screenmap transform outline. Point-edit mode applies
+        // to a selected strip below, not this global transform affordance.
         if (this.gizmoHover === 'translate' || this.gizmoActive === 'translate') {
             this.overlayCtx.globalAlpha = this.gizmoActive === 'translate' ? 0.8 : 0.5;
-            this.overlayCtx.strokeStyle = this.pointEditStripIdx === selectedObb.idx
-                ? gfxColors.accentRed()
-                : gfxColors.accentBlue();
+            this.overlayCtx.strokeStyle = gfxColors.accentBlue();
         } else {
             this.overlayCtx.globalAlpha = 0.3;
             this.overlayCtx.strokeStyle = gfxColors.textMuted();
@@ -319,10 +398,11 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
             const { cx, cy, cos, sin, hw, hh } = selectedObb;
             const corner = (u: number, v: number) => ({ x: cx + u * cos - v * sin, y: cy + u * sin + v * cos });
             const corners = [corner(-hw, -hh), corner(hw, -hh), corner(hw, hh), corner(-hw, hh)];
+            const isPointEditing = this.pointEditStripIdx === selectedObb.idx;
             this.overlayCtx.globalAlpha = 0.9;
-            this.overlayCtx.strokeStyle = gfxColors.accentBlue();
-            this.overlayCtx.lineWidth = 2;
-            this.overlayCtx.setLineDash([6, 4]);
+            this.overlayCtx.strokeStyle = isPointEditing ? gfxColors.accentRed() : gfxColors.accentBlue();
+            this.overlayCtx.lineWidth = isPointEditing ? 3 : 2;
+            this.overlayCtx.setLineDash(isPointEditing ? [] : [6, 4]);
             this.overlayCtx.beginPath();
             const firstCorner = corners[0] ?? { x: cx, y: cy };
             this.overlayCtx.moveTo(firstCorner.x, firstCorner.y);
@@ -330,6 +410,16 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
             this.overlayCtx.closePath();
             this.overlayCtx.stroke();
             this.overlayCtx.setLineDash([]);
+            if (isPointEditing) {
+                drawPointEditBadge(
+                    this.overlayCtx,
+                    selectedObb,
+                    this.canvasW,
+                    this.canvasH,
+                    pts,
+                    this._stripRotateHandlePos(),
+                );
+            }
         }
 
         // Selection indicator

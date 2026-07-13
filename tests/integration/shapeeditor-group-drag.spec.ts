@@ -9,6 +9,9 @@ const KEYS = [
     'lm:shapeeditor-helpDismissed',
 ];
 
+interface OverlayOperation { kind: string; style?: string; dash?: number[]; width?: number; text?: string; x?: number; y?: number }
+interface OverlayCapture { operations: OverlayOperation[]; width: number; height: number }
+
 function makeTwoStripMap() {
     return JSON.stringify({
         map: {
@@ -57,6 +60,36 @@ async function cleanup(page) {
             for (const k of keys) localStorage.removeItem(k);
         }, KEYS);
     } catch { /* ignore */ }
+}
+
+async function beginOverlayCapture(page) {
+    await page.evaluate(() => {
+        const recorder: OverlayCapture = { operations: [], width: 0, height: 0 };
+        const canvas = document.querySelector<HTMLCanvasElement>('canvas.shapeeditor-overlay-canvas');
+        if (!canvas) throw new Error('shapeeditor overlay canvas missing');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('shapeeditor overlay context missing');
+        recorder.width = canvas.width / window.devicePixelRatio;
+        recorder.height = canvas.height / window.devicePixelRatio;
+        const originalStroke = ctx.stroke.bind(ctx);
+        const originalFillText = ctx.fillText.bind(ctx);
+        ctx.stroke = (...args: Parameters<CanvasRenderingContext2D['stroke']>) => {
+            recorder.operations.push({ kind: 'stroke', style: ctx.strokeStyle, dash: ctx.getLineDash(), width: ctx.lineWidth });
+            originalStroke(...args);
+        };
+        ctx.fillText = (text: string, x: number, y: number, maxWidth?: number) => {
+            recorder.operations.push({ kind: 'text', text, x, y });
+            if (maxWidth === undefined) originalFillText(text, x, y);
+            else originalFillText(text, x, y, maxWidth);
+        };
+        (window as unknown as { __shapeeditorOverlayCapture: OverlayCapture }).__shapeeditorOverlayCapture = recorder;
+    });
+}
+
+async function clearOverlayCapture(page) {
+    await page.evaluate(() => {
+        (window as unknown as { __shapeeditorOverlayCapture: OverlayCapture }).__shapeeditorOverlayCapture.operations = [];
+    });
 }
 
 test.describe('Shapeeditor group drag + point-edit mode', () => {
@@ -129,20 +162,59 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
         expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(beforeA);
     });
 
-    test('double-click LED enters point-edit mode with a red outline; Esc restores blue group mode', async ({ page }) => {
+    test('double-click renders the red edit frame and badge; Esc restores the blue dashed frame', async ({ page }) => {
         await seedAndOpen(page);
+        await beginOverlayCapture(page);
         await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
-        const blue = await page.evaluate(() => window.__shapeeditorDebug.getSelectionOutlineColor());
+        await expect.poll(() => page.evaluate(() => (
+            (window as unknown as { __shapeeditorOverlayCapture: OverlayCapture })
+                .__shapeeditorOverlayCapture.operations.some((operation) => operation.kind === 'stroke'
+                    && /#3b82f6|59,\\s*130,\\s*246/i.test(operation.style ?? '')
+                    && operation.dash?.join(',') === '6,4')
+        ))).toBe(true);
+        await clearOverlayCapture(page);
         const pos = await page.evaluate(() => window.__shapeeditorDebug.getLedCanvasPos(0));
         await page.mouse.dblclick(pos.clientX, pos.clientY);
         expect(await page.evaluate(() => window.__shapeeditorDebug.getPointEditMode())).toBe(0);
-        const red = await page.evaluate(() => window.__shapeeditorDebug.getSelectionOutlineColor());
-        expect(red).not.toBe(blue);
+        await expect.poll(() => page.evaluate(() => (
+            (window as unknown as { __shapeeditorOverlayCapture: OverlayCapture })
+                .__shapeeditorOverlayCapture.operations.some((operation) => operation.kind === 'stroke'
+                    && /#ef4444|239,\s*68,\s*68/i.test(operation.style ?? '')
+                    && operation.dash?.length === 0 && operation.width === 3)
+                && (window as unknown as { __shapeeditorOverlayCapture: OverlayCapture })
+                    .__shapeeditorOverlayCapture.operations.some((operation) => operation.kind === 'text' && operation.text === 'EDIT LED MODE')
+        ))).toBe(true);
+        const editOperations = await page.evaluate(() => (
+            (window as unknown as { __shapeeditorOverlayCapture: OverlayCapture })
+                .__shapeeditorOverlayCapture
+        ));
+        expect(editOperations.operations.some((operation) => operation.kind === 'stroke'
+            && /#ef4444|239,\s*68,\s*68/i.test(operation.style ?? '')
+            && operation.dash?.length === 0 && operation.width === 3)).toBe(true);
+        const title = editOperations.operations.find((operation) => operation.kind === 'text' && operation.text === 'EDIT LED MODE');
+        expect(title).toBeDefined();
+        expect(title?.x).toBeGreaterThanOrEqual(0);
+        expect(title?.y).toBeGreaterThanOrEqual(0);
+        expect(title?.x).toBeLessThan(editOperations.width);
+        expect(title?.y).toBeLessThan(editOperations.height);
+        expect(editOperations.operations.some((operation) => operation.kind === 'text'
+            && operation.text === 'Drag LEDs individually · Esc to exit')).toBe(true);
         const hint = await page.evaluate(() => window.__shapeeditorDebug.getHintText());
         expect(hint).toMatch(/Editing points/);
+        await clearOverlayCapture(page);
         await page.keyboard.press('Escape');
         expect(await page.evaluate(() => window.__shapeeditorDebug.getPointEditMode())).toBe(null);
-        expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectionOutlineColor())).toBe(blue);
+        await expect.poll(() => page.evaluate(() => (
+            (window as unknown as { __shapeeditorOverlayCapture: OverlayCapture })
+                .__shapeeditorOverlayCapture.operations.some((operation) => operation.kind === 'stroke'
+                    && /#3b82f6|59,\s*130,\s*246/i.test(operation.style ?? '')
+                    && operation.dash?.join(',') === '6,4')
+        ))).toBe(true);
+        const escapedOperations = await page.evaluate(() => (
+            (window as unknown as { __shapeeditorOverlayCapture: OverlayCapture })
+                .__shapeeditorOverlayCapture.operations
+        ));
+        expect(escapedOperations.some((operation) => operation.kind === 'text' && operation.text === 'EDIT LED MODE')).toBe(false);
     });
 
     test('in point-edit mode, dragging an LED moves only that single LED', async ({ page }) => {
