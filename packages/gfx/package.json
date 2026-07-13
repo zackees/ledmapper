@@ -34,6 +34,7 @@
   "files": [
     "dist",
     "README.md",
+    "API.md",
     "LICENSE",
     "core.js",
     "core.d.ts",

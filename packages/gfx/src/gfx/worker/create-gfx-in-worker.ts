@@ -30,7 +30,7 @@ import { BLOOM_RENDER_PX } from '../../bloom-utils.js';
 import { normalizeScreenmap } from '../screenmap.js';
 import type { BloomConfig, Screenmap } from '../types.js';
 import type { GfxToWorker, WorkerToGfx } from './protocol.js';
-import { pushFramePayload } from './protocol.js';
+import { GFX_CAPABILITIES, GFX_PROTOCOL_VERSION, pushFramePayload } from './protocol.js';
 
 const DEFAULT_PANE_SIZE = 800;
 const DEFAULT_DIAMETER = 16;
@@ -122,7 +122,11 @@ export async function createGfxInWorker(opts: CreateGfxInWorkerOptions): Promise
             if (ev.data.type === 'ready') {
                 clearTimeout(timeout);
                 opts.worker.removeEventListener('message', onReady);
-                resolve();
+                if (ev.data.protocolVersion !== GFX_PROTOCOL_VERSION) {
+                    reject(new Error(`createGfxInWorker: unsupported worker protocol ${String(ev.data.protocolVersion)} (expected ${String(GFX_PROTOCOL_VERSION)})`));
+                } else {
+                    resolve();
+                }
             } else if (ev.data.type === 'error') {
                 clearTimeout(timeout);
                 opts.worker.removeEventListener('message', onReady);
@@ -134,6 +138,8 @@ export async function createGfxInWorker(opts: CreateGfxInWorkerOptions): Promise
 
     const initMsg: GfxToWorker = {
         type: 'init',
+        protocolVersion: GFX_PROTOCOL_VERSION,
+        capabilities: GFX_CAPABILITIES,
         canvas: offscreen,
         screenmap,
         paneSize,

@@ -13,8 +13,17 @@
 
 import type { BloomConfig, Screenmap } from '../types.js';
 
+/** Wire contract version. Increment only for incompatible message changes. */
+export const GFX_PROTOCOL_VERSION = 1 as const;
+export type GfxCapability = 'offscreen-canvas' | 'transferable-frames' | 'stats' | 'bloom-strength';
+export const GFX_CAPABILITIES: readonly GfxCapability[] = [
+    'offscreen-canvas', 'transferable-frames', 'stats', 'bloom-strength',
+];
+
 export interface InitMessage {
     type: 'init';
+    protocolVersion: number;
+    capabilities: readonly GfxCapability[];
     /** OffscreenCanvas transferred from the main thread. */
     canvas: OffscreenCanvas;
     /** Already-normalized screenmap (parsed on the main thread so the
@@ -54,13 +63,17 @@ export type GfxToWorker =
     | SetTargetFPSMessage
     | DisposeMessage;
 
-export interface ReadyMessage { type: 'ready' }
+export interface ReadyMessage {
+    type: 'ready';
+    protocolVersion: typeof GFX_PROTOCOL_VERSION;
+    capabilities: readonly GfxCapability[];
+}
 export interface StatsMessage {
     type: 'stats';
     stats: { renderFps: number; pushFps: number; frameTimeMs: number; framesRendered: number };
 }
 export interface BloomStrengthMessage { type: 'bloomStrength'; value: number }
-export interface ErrorMessage         { type: 'error'; message: string; stack?: string }
+export interface ErrorMessage { type: 'error'; message: string; stack?: string; code?: string }
 
 export type WorkerToGfx =
     | ReadyMessage

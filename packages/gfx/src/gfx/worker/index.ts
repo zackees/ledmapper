@@ -12,9 +12,11 @@
 
 export { runGfxWorker } from './worker-host.js';
 export type {
+    GfxCapability,
     GfxToWorker,
     WorkerToGfx,
     InitMessage,
     PushFrameMessage,
     StatsMessage,
 } from './protocol.js';
+export { GFX_CAPABILITIES, GFX_PROTOCOL_VERSION } from './protocol.js';
