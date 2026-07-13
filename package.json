@@ -15,6 +15,7 @@
     "prebuild": "npm run build:gfx",
     "build": "vite build",
     "build:gfx": "cd packages/gfx && vite build && tsc -p tsconfig.json",
+    "test:gfx:package": "npm run build:gfx && node scripts/test-gfx-package.mjs",
     "prelint": "npm run build:gfx",
     "check:gfx-api": "node scripts/check-gfx-api.mjs",
     "preview": "vite preview",
