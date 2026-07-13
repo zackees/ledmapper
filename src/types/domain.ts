@@ -373,6 +373,7 @@ export interface ShapeeditorDebugHooks {
     getStripNames?: () => string[];
     getLedCanvasPos?: (flatIdx: number) => { clientX: number; clientY: number; canvasX: number; canvasY: number } | null;
     simulateLedDrag?: (flatIdx: number, dxClient: number, dyClient: number, opts?: Record<string, unknown> | null) => boolean;
+    getStripSnapState?: () => unknown;
     [key: string]: unknown;
 }
 

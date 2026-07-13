@@ -357,30 +357,54 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
     // Only draw the candidates while a strip drag is in flight. Outside a
     // drag there are no targets to show.
     if (!this.stripDragActive) return;
-    if (this.stripSnapXTargets.length === 0 && this.stripSnapYTargets.length === 0) return;
+    if (this.stripSnapTargets.x.length === 0
+        && this.stripSnapTargets.y.length === 0
+        && this.stripSnapTargets.rulerBodies.length === 0) return;
     const ctx = this.overlayCtx;
     const INACTIVE = withAlpha(gfxColors.accentRed(), 0.18);  // greyed red
     const ACTIVE   = withAlpha(gfxColors.accentRed(), 0.80);  // deep red, 80% opacity
     ctx.save();
     ctx.setLineDash([6, 4]);
-    for (const tx of this.stripSnapXTargets) {
-        const isActive = tx === this.stripSnapEngagedX;
+    const activeX = this.stripSnapEngagement.mode === 'axis'
+        ? this.stripSnapEngagement.x?.targetId ?? null
+        : null;
+    const activeY = this.stripSnapEngagement.mode === 'axis'
+        ? this.stripSnapEngagement.y?.targetId ?? null
+        : null;
+    const activeBody = this.stripSnapEngagement.mode === 'ruler-body'
+        ? this.stripSnapEngagement.targetId
+        : null;
+    for (const target of this.stripSnapTargets.x) {
+        const [cx] = this.toCanvasCoords(target.value, 0);
+        if (cx < -32 || cx > this.canvasW + 32) continue;
+        const isActive = target.id === activeX;
         ctx.strokeStyle = isActive ? ACTIVE : INACTIVE;
         ctx.lineWidth = isActive ? 1.5 : 1;
-        const [cx] = this.toCanvasCoords(tx, 0);
         ctx.beginPath();
         ctx.moveTo(cx, 0);
         ctx.lineTo(cx, this.canvasH);
         ctx.stroke();
     }
-    for (const ty of this.stripSnapYTargets) {
-        const isActive = ty === this.stripSnapEngagedY;
+    for (const target of this.stripSnapTargets.y) {
+        const [, cy] = this.toCanvasCoords(0, target.value);
+        if (cy < -32 || cy > this.canvasH + 32) continue;
+        const isActive = target.id === activeY;
         ctx.strokeStyle = isActive ? ACTIVE : INACTIVE;
         ctx.lineWidth = isActive ? 1.5 : 1;
-        const [, cy] = this.toCanvasCoords(0, ty);
         ctx.beginPath();
         ctx.moveTo(0, cy);
         ctx.lineTo(this.canvasW, cy);
+        ctx.stroke();
+    }
+    for (const target of this.stripSnapTargets.rulerBodies) {
+        const [ax, ay] = this.toCanvasCoords(target.ax, target.ay);
+        const [bx, by] = this.toCanvasCoords(target.bx, target.by);
+        const isActive = target.id === activeBody;
+        ctx.strokeStyle = isActive ? ACTIVE : INACTIVE;
+        ctx.lineWidth = isActive ? 2 : 1;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
         ctx.stroke();
     }
     ctx.restore();

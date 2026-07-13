@@ -228,8 +228,11 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
             overlayCanvas.addEventListener('mousemove', (e: MouseEvent) => { this.onMouseMove(e); }, { signal: this.signal });
             overlayCanvas.addEventListener('mouseup', (e: MouseEvent) => { this.onMouseUp(e); }, { signal: this.signal });
             overlayCanvas.addEventListener('mouseleave', () => { this.onMouseLeave(); }, { signal: this.signal });
-            this._wireTouchHandlers(this.signal);
         }
+        // TouchEvents remain a supported test and mobile input path even when
+        // pointer events are available; pointer listeners above do not receive
+        // synthetic TouchEvents dispatched by the browser/app.
+        this._wireTouchHandlers(this.signal);
         overlayCanvas.addEventListener('contextmenu', (e: MouseEvent) => { this.onContextMenu(e); }, { signal: this.signal });
         overlayCanvas.addEventListener('dblclick', (e: MouseEvent) => { this.onDoubleClick(e); }, { signal: this.signal });
         overlayCanvas.addEventListener('wheel', (e: WheelEvent) => {

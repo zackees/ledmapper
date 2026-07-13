@@ -1,11 +1,20 @@
 // Named ShapeEditor method bundle: interaction.
 import type { ShapeEditor } from './shapeeditor-class';
-import { computeStripSnapTargets } from "./strip-snap-targets";
+import {
+    computeStripSnapGeometry,
+    computeStripSnapTargets,
+    emptyStripSnapTargetSet,
+    resolveStripDragSnap,
+    transformPointForSnap,
+    inverseTransformSnapDelta,
+    type SnapDocumentTransform,
+} from "./strip-snap-targets";
 import { rotatePointsAround } from "./strip-rotate";
 
 const STRIP_STROKE_HIT_PX = 10;
 
 export interface EditorInteractionMethods {
+    _clearStripSnapState: () => void;
     _startStripDrag: (stripIdx: number, canvasX: number, canvasY: number) => boolean;
     _ledIdxsInCanvasRect: (c1x: number, c1y: number, c2x: number, c2y: number) => Set<number>;
     _updateMarqueeSelection: () => void;
@@ -28,6 +37,12 @@ export interface EditorInteractionMethods {
 }
 
 export const editorInteractionMethods: EditorInteractionMethods & ThisType<ShapeEditor> = {
+    _clearStripSnapState(this: ShapeEditor){
+        this.stripSnapStartGeometry = null;
+        this.stripSnapTransform = null;
+        this.stripSnapTargets = emptyStripSnapTargetSet();
+        this.stripSnapEngagement = { mode: 'none' };
+    },
     onContextMenu(this: ShapeEditor, e: MouseEvent){
 
         e.preventDefault();
@@ -106,26 +121,30 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
     this.stripDragLastSdx = 0;
     this.stripDragLastSdy = 0;
 
-    let cx0 = 0, cy0 = 0, count = 0;
-    for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-        const point = this.screenmap_pts[k];
-        if (!point) continue;
-        cx0 += point[0];
-        cy0 += point[1];
-        count++;
-    }
-    this.stripSnapStartCenter = count > 0 ? { x: cx0 / count, y: cy0 / count } : null;
-    const { xTargets, yTargets } = computeStripSnapTargets(
-        this.stripInfo.strips,
-        stripIdx,
-        this.screenmap_pts,
-        this.stripSnapStartCenter ?? undefined,
+    const transform = this.getCurrentTransform();
+    const snapTransform: SnapDocumentTransform = {
+        scaleX: transform.sX,
+        scaleY: transform.sY,
+        cos: transform.cosR,
+        sin: transform.sinR,
+        translateX: transform.tx,
+        translateY: transform.ty,
+    };
+    this.stripSnapTransform = snapTransform;
+    const renderedPoints = this.screenmap_pts.map((point) => transformPointForSnap(point, snapTransform));
+    this.stripSnapStartGeometry = computeStripSnapGeometry(
+        renderedPoints.slice(strip.offset, strip.offset + strip.count),
     );
-    this.stripSnapXTargets = xTargets;
-    this.stripSnapYTargets = yTargets;
-    this.stripSnapEngagedX = null;
-    this.stripSnapEngagedY = null;
+    this.stripSnapTargets = computeStripSnapTargets({
+        strips: this.stripInfo.strips,
+        draggedIdx: stripIdx,
+        points: renderedPoints,
+        rulers: this.rulers,
+        toleranceWorld: this.camZoom > 0 ? this.snapBackPx / this.camZoom : this.snapBackPx,
+    });
+    this.stripSnapEngagement = { mode: 'none' };
     this._oc().style.cursor = 'grabbing';
+    this.setNeedsRender();
     return true;
 },
     onMouseDown(this: ShapeEditor, e: MouseEvent){
@@ -642,60 +661,32 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         if (this.stripDragActive && this.stripDragIdx >= 0 && this.stripInfo) {
             const dx = cx - this.dragStartCanvasX;
             const dy = cy - this.dragStartCanvasY;
-            let [sdx, sdy] = this.canvasDeltaToScreenmapDelta(dx, dy);
-            // ── Magnetic snap-back to original position ─────────────────
-            // When the drag has only moved the cursor a few pixels from the
-            // initial mousedown point, zero out the delta so the strip
-            // visibly snaps back to its starting place. The threshold is in
-            // canvas pixels (not cm) so it stays the same on screen at any
-            // zoom level. Both the toggle and the threshold are user-
-            // controllable via the Magnetic-snap checkbox + Tolerance slider
-            // in the Screenmap controls panel (persisted in localStorage).
-            // Holding Shift bypasses every kind of snap for this move
-            // (Figma convention).
-            const shiftBypass = e.shiftKey;
-            const snapPx = !shiftBypass && this.snapBackEnabled ? this.snapBackPx : 0;
-            const wasSnapped = this.stripSnapActive;
-            this.stripSnapActive = snapPx > 0 && Math.hypot(dx, dy) < snapPx;
-            if (this.stripSnapActive) {
-                sdx = 0;
-                sdy = 0;
-            }
-            if (this.stripSnapActive !== wasSnapped) this.setNeedsRender();
-            // ── Center-to-center snap (issue #105) ─────────────────────
-            // When the snap-back-to-origin isn't active, look for the
-            // closest other strip's center on each axis independently.
-            // Engage if within `snapBackPx / pxPerCm` cm.
-            const prevSnapX = this.stripSnapEngagedX;
-            const prevSnapY = this.stripSnapEngagedY;
-            if (!this.stripSnapActive && snapPx > 0 && this.stripSnapStartCenter) {
-                const pxPerCm = this.fitScale * this.camZoom;
-                const tolCm = pxPerCm > 0 ? snapPx / pxPerCm : 0;
-                const candCx = this.stripSnapStartCenter.x + sdx;
-                const candCy = this.stripSnapStartCenter.y + sdy;
-                let bestX: number | null = null;
-                let bestXDist = tolCm;
-                for (const t of this.stripSnapXTargets) {
-                    const d = Math.abs(t - candCx);
-                    if (d < bestXDist) { bestX = t; bestXDist = d; }
-                }
-                let bestY: number | null = null;
-                let bestYDist = tolCm;
-                for (const t of this.stripSnapYTargets) {
-                    const d = Math.abs(t - candCy);
-                    if (d < bestYDist) { bestY = t; bestYDist = d; }
-                }
-                if (bestX !== null) sdx = bestX - this.stripSnapStartCenter.x;
-                if (bestY !== null) sdy = bestY - this.stripSnapStartCenter.y;
-                this.stripSnapEngagedX = bestX;
-                this.stripSnapEngagedY = bestY;
-            } else {
-                this.stripSnapEngagedX = null;
-                this.stripSnapEngagedY = null;
-            }
-            if (prevSnapX !== this.stripSnapEngagedX || prevSnapY !== this.stripSnapEngagedY) {
-                this.setNeedsRender();
-            }
+            const camZoom = this.camZoom > 0 ? this.camZoom : 1;
+            const rawDx = dx / camZoom;
+            const rawDy = dy / camZoom;
+            const snapResult = resolveStripDragSnap({
+                cursorDxPx: dx,
+                cursorDyPx: dy,
+                rawDx,
+                rawDy,
+                startGeometry: this.stripSnapStartGeometry,
+                targets: this.stripSnapTargets,
+                camZoom,
+                tolerancePx: this.snapBackPx,
+                snapEnabled: this.snapBackEnabled,
+                shiftBypass: e.shiftKey,
+            });
+            const previousEngagement = JSON.stringify(this.stripSnapEngagement);
+            this.stripSnapEngagement = snapResult.engagement;
+            if (previousEngagement !== JSON.stringify(snapResult.engagement)) this.setNeedsRender();
+            const localDelta = inverseTransformSnapDelta(
+                { x: snapResult.dx, y: snapResult.dy },
+                this.stripSnapTransform ?? {
+                    scaleX: 1, scaleY: 1, cos: 1, sin: 0,
+                },
+            );
+            const sdx = localDelta.x;
+            const sdy = localDelta.y;
             const strip = this.nn(this.stripInfo.strips[this.stripDragIdx]);
             for (let k = 0; k < strip.count; k++) {
                 const base = strip.offset + k;
@@ -972,7 +963,16 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
     },
     _synth(this: ShapeEditor, type: string, clientX: number, clientY: number, opts: Record<string, unknown> = {}){
 
-        const init = { clientX, clientY, button: (typeof opts.button === 'number' ? opts.button : 0), bubbles: true };
+        const init = {
+            clientX,
+            clientY,
+            button: (typeof opts.button === 'number' ? opts.button : 0),
+            bubbles: true,
+            altKey: Boolean(opts.altKey),
+            shiftKey: Boolean(opts.shiftKey),
+            ctrlKey: Boolean(opts.ctrlKey),
+            metaKey: Boolean(opts.metaKey),
+        };
         const evt = new MouseEvent(type, init);
         if (type === 'mousedown') this.onMouseDown(evt);
         else if (type === 'mousemove') this.onMouseMove(evt);
@@ -986,12 +986,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this.stripDragIdx = -1;
             this.stripDragStartScreenmap = null;
             this.stripDragStartRaw = null;
-            this.stripSnapActive = false;
-            this.stripSnapXTargets = [];
-            this.stripSnapYTargets = [];
-            this.stripSnapStartCenter = null;
-            this.stripSnapEngagedX = null;
-            this.stripSnapEngagedY = null;
+            this._clearStripSnapState();
             this.stripDragLastSdx = 0;
             this.stripDragLastSdy = 0;
         }
