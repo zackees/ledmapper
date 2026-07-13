@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { normalizeScreenmap, parseRgbFrames, prependFledHeader, PixelFormat } from '@fastled/gfx/core';
 
-const fixture = JSON.parse(await readFile(new URL('../tests/fixtures/gfx-parity.json', import.meta.url)));
+const fixture = JSON.parse(await readFile(new URL('./fixtures/gfx-parity.json', import.meta.url)));
 const reports = [];
 for (const layout of fixture.layouts) {
   const x = layout.x ?? [];
