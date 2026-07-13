@@ -2,7 +2,7 @@
   "name": "ledmapper",
   "version": "1.0.0",
   "type": "module",
-  "workspaces": ["packages/gfx"],
+  "workspaces": ["packages/*"],
   "sideEffects": [
     "./src/shapeeditor/shapeeditor-init.ts",
     "./src/shapeeditor/shapeeditor-methods-*.ts",
@@ -20,6 +20,7 @@
     "test:gfx:fastled-adapter": "npm run build:gfx && node scripts/test-fastled-adapter.mjs",
     "prelint": "npm run build:gfx",
     "check:gfx-api": "node scripts/check-gfx-api.mjs",
+    "check:gfx-policy": "node scripts/check-package-publish-policy.mjs",
     "check:gfx-release": "node scripts/check-gfx-release.mjs",
     "preview": "vite preview",
     "lint": "eslint src/ tests/ --max-warnings 0 --cache --cache-location node_modules/.cache/eslint/ && node scripts/check-moviemaker-presets.mjs && node scripts/check-css-var-prefixes.mjs",

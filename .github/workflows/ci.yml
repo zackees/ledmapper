@@ -42,6 +42,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: npm run check:gfx-policy
       - run: npm run test:gfx:package
       - run: npm run test:gfx:parity
       - run: npm run test:gfx:fastled-adapter

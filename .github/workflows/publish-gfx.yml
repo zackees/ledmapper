@@ -30,6 +30,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:gfx
+      - run: npm run check:gfx-policy
       - run: npm run check:gfx-api
       - run: npm run test:gfx:package
       - run: npx publint packages/gfx
