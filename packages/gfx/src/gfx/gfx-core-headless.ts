@@ -66,12 +66,15 @@ export interface CreateGfxCoreOptions {
     /** Pixel ratio. Defaults to `window.devicePixelRatio` if available,
      *  else 1. Worker callers should pass the host's DPR explicitly. */
     devicePixelRatio?: number;
+    /** Optional main-thread CSS color snapshot for worker consumers. */
+    colors?: Readonly<Record<string, string>>;
 }
 
 /** The slice of `Gfx` that has no DOM-side fields. */
 export interface GfxCore {
     readonly canvas: HTMLCanvasElement | OffscreenCanvas;
     readonly screenmap: Screenmap;
+    readonly colors: Readonly<Record<string, string>>;
     pushFrame(rgb: Uint8Array): void;
     setBloom(cfg: BloomConfig): void;
     getBloomStrength(): number;
@@ -92,6 +95,7 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
     const initialBloom: BloomConfig = opts.bloom ?? { mode: 'auto' };
 
     let screenmap = normalizeScreenmap(opts.screenmap, paneSize);
+    const colors = Object.freeze({ ...(opts.colors ?? {}) });
 
     const circleTexture = createCircleTexture(64);
     const { renderer, scene, camera } = createRendererCore({
@@ -216,6 +220,7 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
     const core: GfxCore = {
         canvas: opts.canvas,
         get screenmap(): Screenmap { return screenmap; },
+        colors,
         pushFrame(rgb: Uint8Array): void {
             const expectedBytes = screenmap.points.length * 3;
             if (rgb.byteLength !== expectedBytes) {

@@ -82,6 +82,7 @@ export function runGfxWorker(): void {
                         targetFPS: msg.targetFPS,
                         preserveDrawingBuffer: msg.preserveDrawingBuffer,
                         devicePixelRatio: msg.devicePixelRatio,
+                        ...(msg.colors !== undefined ? { colors: msg.colors } : {}),
                     });
                     statsTimer = setInterval(() => {
                         if (core !== null) post({ type: 'stats', stats: core.getStats() });
