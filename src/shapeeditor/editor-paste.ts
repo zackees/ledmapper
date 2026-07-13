@@ -1,23 +1,33 @@
-// Produced by a one-time mechanical refactor of shapeeditor.ts (see PR description).
-// Prototype-installed methods (chunk 8/8).
+// Named ShapeEditor method bundle: paste.
+import type { ShapeEditor } from './shapeeditor-class';
+import type { StripEntry } from "./strips-model";
+import { fireDialog } from "../ui/dialogs";
+import type { InsertDialogOpts, PasteStateItem, UndoAction } from "./shapeeditor-types";
+import { gfxColors, withAlpha } from "../ui/theme";
+import { notePinMutation } from "../screenmap-store";
+import { PANEL_CATALOG, generatePanelPoints, getCatalogEntry, type DataInCorner, type RotationDeg, type WiringStyle } from "./panel-catalog";
+import { snapToGrid } from "./grid-snap";
+import { parsePastedScreenmap, planPasteMerge } from "./paste-parse";
 
-import { ShapeEditor } from './shapeeditor-class';
+export interface EditorPasteMethods {
+    _enterPasteFromText: (text: string) => boolean;
+    _cancelPaste: () => void;
+    _updatePasteGhostFromCanvas: (cx: number, cy: number) => void;
+    _drawPasteGhost: () => void;
+    _commitPasteAt: (cx: number, cy: number) => void;
+    _uniqueNameAgainst: (baseName: string, used: Set<string>) => string;
+    _doPasteStrips: (action: UndoAction) => void;
+    _undoPasteStrips: (action: UndoAction) => void;
+    _pasteFromClipboardAPI: () => Promise<void>;
+    _copySelectedStripToClipboard: () => void;
+    _openInsertDialog: () => Promise<string | null | undefined>;
+    _readInsertDialog: () => InsertDialogOpts;
+    _writeAccordionFromDialog: (opts: InsertDialogOpts) => void;
+    _submitInsertDialog: (opts: InsertDialogOpts) => string | null;
+}
 
-import type { StripEntry } from './strips-model';
-import type { WiringStyle, DataInCorner, RotationDeg } from './panel-catalog';
-
-import { notePinMutation } from '../screenmap-store';
-import { fireDialog } from '../ui/dialogs';
-import { gfxColors, withAlpha } from '../ui/theme';
-
-import { PANEL_CATALOG, getCatalogEntry, generatePanelPoints } from './panel-catalog';
-import { snapToGrid } from './grid-snap';
-
-import { parsePastedScreenmap, planPasteMerge } from './paste-parse';
-
-import type { UndoAction, InsertDialogOpts, PasteStateItem } from './shapeeditor-types';
-
-ShapeEditor.prototype._enterPasteFromText = function (this: ShapeEditor, text: string) {
+export const editorPasteMethods: EditorPasteMethods & ThisType<ShapeEditor> = {
+    _enterPasteFromText(this: ShapeEditor, text: string){
 
         const parsed = parsePastedScreenmap(text);
         if (!parsed) {
@@ -56,18 +66,16 @@ ShapeEditor.prototype._enterPasteFromText = function (this: ShapeEditor, text: s
         this._updateHintStrip();
         this.setNeedsRender();
         return true;
-    };
-
-ShapeEditor.prototype._cancelPaste = function (this: ShapeEditor) {
+    },
+    _cancelPaste(this: ShapeEditor){
 
         if (!this.pasteState) return;
         this.pasteState = null;
         this._oc().style.cursor = 'default';
         this._updateHintStrip();
         this.setNeedsRender();
-    };
-
-ShapeEditor.prototype._updatePasteGhostFromCanvas = function (this: ShapeEditor, cx: number, cy: number) {
+    },
+    _updatePasteGhostFromCanvas(this: ShapeEditor, cx: number, cy: number){
 
         if (!this.pasteState) return;
         let [wx, wy] = this._canvasToWorldPx(cx, cy);
@@ -77,9 +85,8 @@ ShapeEditor.prototype._updatePasteGhostFromCanvas = function (this: ShapeEditor,
         }
         this.pasteState.ghostWorld = [wx, wy];
         this.setNeedsRender();
-    };
-
-ShapeEditor.prototype._drawPasteGhost = function (this: ShapeEditor) {
+    },
+    _drawPasteGhost(this: ShapeEditor){
 
         if (!this.pasteState?.ghostWorld) return;
         const ctx = this._octx();
@@ -114,9 +121,8 @@ ShapeEditor.prototype._drawPasteGhost = function (this: ShapeEditor) {
         ctx.moveTo(ocx, ocy - 6); ctx.lineTo(ocx, ocy + 6);
         ctx.stroke();
         ctx.restore();
-    };
-
-ShapeEditor.prototype._commitPasteAt = function (this: ShapeEditor, cx: number, cy: number) {
+    },
+    _commitPasteAt(this: ShapeEditor, cx: number, cy: number){
 
         if (!this.pasteState) return;
         let [wx, wy] = this._canvasToWorldPx(cx, cy);
@@ -195,17 +201,15 @@ ShapeEditor.prototype._commitPasteAt = function (this: ShapeEditor, cx: number, 
                 }
             }
         }
-    };
-
-ShapeEditor.prototype._uniqueNameAgainst = function (this: ShapeEditor, baseName: string, used: Set<string>) {
+    },
+    _uniqueNameAgainst(this: ShapeEditor, baseName: string, used: Set<string>){
 
         if (!used.has(baseName)) return baseName;
         let n = 2;
         while (used.has(`${baseName} (${String(n)})`)) n++;
         return `${baseName} (${String(n)})`;
-    };
-
-ShapeEditor.prototype._doPasteStrips = function (this: ShapeEditor, action: UndoAction) {
+    },
+    _doPasteStrips(this: ShapeEditor, action: UndoAction){
 
         // Append every strip atomically. Identical scheme to _doPanelPlace
         // (append to flat arrays + stripStore.addStrip), but for many at once.
@@ -237,9 +241,8 @@ ShapeEditor.prototype._doPasteStrips = function (this: ShapeEditor, action: Undo
             this.origWidth = xmax - xmin;
             this.origHeight = ymax - ymin;
         }
-    };
-
-ShapeEditor.prototype._undoPasteStrips = function (this: ShapeEditor, action: UndoAction) {
+    },
+    _undoPasteStrips(this: ShapeEditor, action: UndoAction){
 
         if (!this.stripInfo) return;
         // Walk added strips in reverse order; locate each by name (most recent
@@ -261,9 +264,8 @@ ShapeEditor.prototype._undoPasteStrips = function (this: ShapeEditor, action: Un
         }
         this.selectedIdx = -1;
         this.stripInfo = this.stripStore.get();
-    };
-
-ShapeEditor.prototype._pasteFromClipboardAPI = async function (this: ShapeEditor) {
+    },
+    async _pasteFromClipboardAPI(this: ShapeEditor){
 
         try {
             // navigator.clipboard can be absent at runtime (e.g., non-secure contexts,
@@ -279,9 +281,8 @@ ShapeEditor.prototype._pasteFromClipboardAPI = async function (this: ShapeEditor
         } catch {
             void this._toastInfo("Clipboard didn't look like a screenmap");
         }
-    };
-
-ShapeEditor.prototype._copySelectedStripToClipboard = function (this: ShapeEditor) {
+    },
+    _copySelectedStripToClipboard(this: ShapeEditor){
 
         const sIdx = this.selection.getStripIdx();
         if (sIdx === null || sIdx < 0) return;
@@ -309,9 +310,8 @@ ShapeEditor.prototype._copySelectedStripToClipboard = function (this: ShapeEdito
         } catch {
             void this._toastInfo('Copy failed — clipboard unavailable');
         }
-    };
-
-ShapeEditor.prototype._openInsertDialog = async function (this: ShapeEditor) {
+    },
+    async _openInsertDialog(this: ShapeEditor){
 
         try {
             if (this.signal.aborted) return;
@@ -490,9 +490,8 @@ ShapeEditor.prototype._openInsertDialog = async function (this: ShapeEditor) {
         } catch {
             return null;
         }
-    };
-
-ShapeEditor.prototype._readInsertDialog = function (this: ShapeEditor): InsertDialogOpts {
+    },
+    _readInsertDialog(this: ShapeEditor): InsertDialogOpts{
 
         const $inp = (id: string) => document.getElementById(id) as HTMLInputElement | null;
         const $sel = (id: string) => document.getElementById(id) as HTMLSelectElement | null;
@@ -516,9 +515,8 @@ ShapeEditor.prototype._readInsertDialog = function (this: ShapeEditor): InsertDi
             snap: insSnap ? insSnap.checked : true,
             grid: insGrid ? (parseFloat(insGrid.value) || 1) : 1,
         };
-    };
-
-ShapeEditor.prototype._writeAccordionFromDialog = function (this: ShapeEditor, opts: InsertDialogOpts) {
+    },
+    _writeAccordionFromDialog(this: ShapeEditor, opts: InsertDialogOpts){
 
         if (opts.wiring) this.dom_pp_wiring.value = opts.wiring;
         if (opts.corner) this.dom_pp_corner.value = opts.corner;
@@ -528,9 +526,8 @@ ShapeEditor.prototype._writeAccordionFromDialog = function (this: ShapeEditor, o
         if (opts.spacing || opts.spacing === 0) this.dom_pp_spacing.value = String(opts.spacing);
         this.dom_pp_snap.checked = opts.snap;
         if (opts.grid || opts.grid === 0) this.dom_pp_grid.value = String(opts.grid);
-    };
-
-ShapeEditor.prototype._submitInsertDialog = function (this: ShapeEditor, opts: InsertDialogOpts) {
+    },
+    _submitInsertDialog(this: ShapeEditor, opts: InsertDialogOpts){
 
         if (!opts.catalogId) return null;
         const entry = getCatalogEntry(opts.catalogId);
@@ -550,4 +547,5 @@ ShapeEditor.prototype._submitInsertDialog = function (this: ShapeEditor, opts: I
             return entry.label;
         }
         return null;
-    };
+    },
+};
