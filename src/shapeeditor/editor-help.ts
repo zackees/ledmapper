@@ -26,9 +26,8 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
                             <li>Drag canvas: pan</li>
                             <li>R-drag: zoom</li>
                             <li>Click LED: select its strip</li>
-                            <li>Drag unselected LED or strip line: move whole strip</li>
-                            <li>Drag LED in selected strip: move single point</li>
-                            <li>Alt + drag LED: move single point</li>
+                            <li>Drag LED or strip line: move whole strip</li>
+                            <li>Double-click LED: enter point-edit, then drag one LED</li>
                             <li>Double-click LED: enter point-edit</li>
                             <li>Drag inside box: move selection</li>
                             <li>Corner/edge/rotate handles: scale &amp; rotate layout</li>
@@ -52,8 +51,8 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
                         <h3 class="help-overlay-h3 is-spaced-top">Touch</h3>
                         <ul class="help-overlay-ul">
                             <li>Tap LED: select strip</li>
-                            <li>Drag unselected LED or strip line: move whole strip</li>
-                            <li>Drag LED in selected strip: move single point</li>
+                            <li>Drag LED or strip line: move whole strip</li>
+                            <li>Long-press LED: enter point-edit, then drag one LED</li>
                             <li>Drag empty space: pan</li>
                             <li>Long-press LED: enter point-edit</li>
                             <li>Long-press empty: context menu</li>
@@ -121,7 +120,7 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
         if (safeStorage.get('lm:shapeeditor-helpDismissed') !== '1') return;
         this._gestureNoticeShown = true;
         safeStorage.set('lm:shapeeditor-gestureNotice', '1');
-        void this._toastInfo('Selected group: drag an LED to move it, or drag its line to move the group');
+        void this._toastInfo('Selected group: drag to move it • double-click an LED to edit points');
     },
     _maybeAutoOpenHelpOnLaunch(this: ShapeEditor){
 
