@@ -57,7 +57,9 @@ test.describe('Moviemaker overlay drag — off-canvas release (issue #31) @gpu',
         });
     });
 
-    test('right-drag released outside canvas does not contaminate next left-drag @gpu-flaky', async ({ page }) => {
+    // Pointer sequencing is valid on real GPUs but not stable under SwiftShader;
+    // classify it as explicit local-only coverage instead of a nightly flake.
+    test('right-drag released outside canvas does not contaminate next left-drag @gpu-heavy', async ({ page }) => {
         test.setTimeout(60_000);
 
         await page.goto('/moviemaker/');
