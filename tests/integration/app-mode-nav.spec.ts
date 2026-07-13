@@ -6,10 +6,9 @@ test.describe('app shell mode navigation', () => {
 
         const nav = page.locator('#app-mode-bar');
         const links = nav.locator('a.app-mode-link[data-mode]');
-        const hubLink = nav.locator('a.app-home-link');
         await expect(nav).toBeVisible();
         await expect(links).toHaveCount(3);
-        await expect(hubLink).toHaveAttribute('href', '/hub/');
+        await expect(nav.locator('a.app-home-link')).toHaveCount(0);
         await expect(links.nth(0)).toHaveAttribute('href', '/play');
         await expect(links.nth(1)).toHaveAttribute('href', '/create');
         await expect(links.nth(2)).toHaveAttribute('href', '/record');

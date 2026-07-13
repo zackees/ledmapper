@@ -2,33 +2,33 @@ import { test, expect } from './fixtures.ts';
 
 test.describe('SPA router history', () => {
     test('multi-step back/forward across tools', async ({ page }) => {
-        await page.goto('/hub/');
-        await page.click('.nav-links a[href="/movieplayer/"]');
-        await expect(page).toHaveURL(/\/movieplayer\//);
-        await page.click('.nav-links a[href="/demo/"]');
-        await expect(page).toHaveURL(/\/demo\//);
+        await page.goto('/play');
+        await page.click('.app-mode-link[href="/create"]');
+        await expect(page).toHaveURL(/\/create$/);
+        await page.click('.app-mode-link[href="/record"]');
+        await expect(page).toHaveURL(/\/record$/);
 
         await page.goBack();
-        await expect(page).toHaveURL(/\/movieplayer\//);
-        expect(await page.evaluate(() => document.getElementById('app')?.dataset.tool)).toBe('movieplayer');
+        await expect(page).toHaveURL(/\/create$/);
+        expect(await page.evaluate(() => document.getElementById('app')?.dataset.tool)).toBe('app');
 
         await page.goBack();
-        await expect(page).toHaveURL('/hub/');
-        expect(await page.evaluate(() => document.getElementById('app')?.dataset.tool)).toBe('hub');
+        await expect(page).toHaveURL('/play');
+        expect(await page.evaluate(() => document.getElementById('app')?.dataset.tool)).toBe('app');
 
         await page.goForward();
-        await expect(page).toHaveURL(/\/movieplayer\//);
-        expect(await page.evaluate(() => document.getElementById('app')?.dataset.tool)).toBe('movieplayer');
+        await expect(page).toHaveURL(/\/create$/);
+        expect(await page.evaluate(() => document.getElementById('app')?.dataset.tool)).toBe('app');
     });
 
     test('modifier-click is not soft-navigated', async ({ page }) => {
-        await page.goto('/hub/');
+        await page.goto('/play');
         // Ctrl/Cmd-click must fall through to the browser (new tab) rather than
         // the router's soft-navigation, so the main page must NOT change route.
-        await page.click('.nav-links a[href="/demo/"]', { modifiers: ['ControlOrMeta'] });
+        await page.click('.app-mode-link[href="/create"]', { modifiers: ['ControlOrMeta'] });
         await page.waitForTimeout(100);
-        await expect(page).toHaveURL('/hub/');
-        expect(await page.evaluate(() => document.getElementById('app')?.dataset.tool)).toBe('hub');
+        await expect(page).toHaveURL('/play');
+        expect(await page.evaluate(() => document.getElementById('app')?.dataset.tool)).toBe('app');
     });
 
     test('pushView/onPopView simulates in-SPA back without leaving the route', async ({ page }) => {

@@ -15,13 +15,13 @@ interface ToolRoute {
     path: string;
     name: string;
     // CSS selector to wait for as the "the tool finished mounting" signal.
-    // hub has no canvas; screenmap shows a source-picker (webcam/upload)
+    // app shell has a mode bar; screenmap shows a source-picker (webcam/upload)
     // before mounting its canvas.
     readySelector: string;
 }
 
 const tools: ToolRoute[] = [
-    { path: '/',             name: 'hub',         readySelector: '.tool-card, #main, main' },
+    { path: '/',             name: 'app-root',    readySelector: '#app-mode-bar, canvas' },
     { path: '/play',         name: 'app-play',    readySelector: '#app-mode-bar, canvas' },
     { path: '/create',       name: 'app-create',  readySelector: '#app-mode-bar, canvas' },
     { path: '/record',       name: 'app-record',  readySelector: '#app-mode-bar, canvas' },

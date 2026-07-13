@@ -13,8 +13,6 @@ const routes = [
     { path: '/create/',          tool: 'app' },
     { path: '/record',           tool: 'app' },
     { path: '/record/',          tool: 'app' },
-    { path: '/hub',              tool: 'hub' },
-    { path: '/hub/',             tool: 'hub' },
     { path: '/demo/',            tool: 'demo' },
     { path: '/demo/index.html',  tool: 'demo' },
     { path: '/moviemaker/',            tool: 'moviemaker' },
@@ -36,9 +34,6 @@ const toolConfig: Record<string, { module: () => Promise<ToolModule> }> = {
     app: {
         module: () => import('./app/app'),
     },
-    hub: {
-        module: () => import('./hub/hub'),
-    },
     demo: {
         module: () => import('./demo/demo'),
     },
@@ -58,13 +53,21 @@ const toolConfig: Record<string, { module: () => Promise<ToolModule> }> = {
 
 const titles: Record<string, string> = {
     app: 'LED Mapper',
-    hub: 'FastLED Video Mapper',
     demo: 'Demo',
     moviemaker: 'Video Maker',
-    movieplayer: 'Video Player',
+    movieplayer: 'Play',
     shapeeditor: 'ScreenMap Design',
-    screenmap: 'Screenmap Maker',
+    screenmap: 'Create',
 };
+
+const legacyRedirects: Record<string, string> = {
+    '/hub': '/play',
+    '/hub/': '/play',
+};
+
+function canonicalPath(path: string): string {
+    return legacyRedirects[path] ?? path;
+}
 
 function setRouteLoading(appEl: HTMLElement): void {
     appEl.classList.add('is-route-loading');
@@ -117,7 +120,12 @@ export function createRouter(appEl: HTMLElement) {
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
     async function loadRoute(path: string) {
-        const tool = resolveTool(path) ?? 'hub';
+        const canonical = canonicalPath(path);
+        if (canonical !== path) {
+            history.replaceState({ p: canonical } satisfies HistoryState, '', canonical + window.location.search + window.location.hash);
+            path = canonical;
+        }
+        const tool = resolveTool(path) ?? 'app';
         log.info('navigate', { path });
         const thisLoad = ++loadId; // capture current load id
 
@@ -206,7 +214,7 @@ export function createRouter(appEl: HTMLElement) {
         // Normalize to a canonical absolute pathname so relative hrefs and any
         // /index.html suffix collapse to the route path used for comparison.
         const url = new URL(path, window.location.origin);
-        const target = url.pathname;
+        const target = canonicalPath(url.pathname);
         if (target === currentPath) return;
         history.pushState({ p: target } satisfies HistoryState, '', target + url.search + url.hash);
         const staysInCurrentTool = routePathHandler !== null
@@ -253,19 +261,23 @@ export function createRouter(appEl: HTMLElement) {
     // Handle back/forward buttons.
     window.addEventListener('popstate', (e) => {
         const path = window.location.pathname;
+        const canonical = canonicalPath(path);
+        if (canonical !== path) {
+            history.replaceState({ p: canonical } satisfies HistoryState, '', canonical + window.location.search + window.location.hash);
+        }
         const state = e.state as HistoryState | null;
-        if (path !== currentPath) {
+        if (canonical !== currentPath) {
             const staysInCurrentTool = routePathHandler !== null
                 && resolveTool(path) !== null
                 && resolveTool(path) === resolveTool(currentPath);
-            currentPath = path;
+            currentPath = canonical;
             if (staysInCurrentTool && routePathHandler) {
-                log.info('navigate', { path, shellPreserved: true, history: 'pop' });
-                updateActiveLink(path);
-                routePathHandler(path);
+                log.info('navigate', { path: canonical, shellPreserved: true, history: 'pop' });
+                updateActiveLink(canonical);
+                routePathHandler(canonical);
             } else {
                 // Crossed a tool boundary — load the tool for the new path.
-                void loadRoute(path);
+                void loadRoute(canonical);
             }
         } else if (popViewHandler) {
             // Same route — an in-tool view boundary was crossed. Let the tool
@@ -310,7 +322,7 @@ export function createRouter(appEl: HTMLElement) {
     return {
         ...spaHistory,
         start() {
-            currentPath = window.location.pathname;
+            currentPath = canonicalPath(window.location.pathname);
             // Seed the initial entry with state so the first Back/Forward has a
             // well-formed state object to read.
             history.replaceState(

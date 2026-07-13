@@ -3,13 +3,14 @@
 `walkthrough.mjs` drives the **full user pipeline** end to end in a headed
 Chromium via Playwright, as a brand-new user would experience it:
 
-1. `/` (default route) and `/hub` — first impressions
-2. `/screenmap` — create a screenmap with the (fake) webcam, click 8 LED
-   positions, export JSON
-3. `/shapeeditor` — load the exported screenmap
-4. `/moviemaker` — import a real video file, apply the screenmap, record a
-   `.fled`
-5. `/movieplayer` — load the `.fled`, verify frames actually advance
+1. `/` (default Play mode) — first impressions
+2. `/screenmap` — legacy screenmap route, create a map with the (fake) webcam,
+   click 8 LED positions, export JSON
+3. `/shapeeditor` — legacy editor route, load the exported screenmap
+4. `/moviemaker` — legacy recording route, import a real video file, apply the
+   screenmap, record a `.fled`
+5. `/movieplayer` — legacy playback route, load the `.fled`, verify frames
+   actually advance
 
 ## Running
 

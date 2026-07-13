@@ -2,7 +2,7 @@ import { test, expect } from './fixtures.ts';
 import { mockWebcam } from '../helpers/webcam-mock.ts';
 
 const allPages = [
-    { name: 'hub', url: '/', needsWebcam: false },
+    { name: 'app-root', url: '/', needsWebcam: false },
     { name: 'demo', url: '/demo/', needsWebcam: false },
     { name: 'moviemaker', url: '/moviemaker/', needsWebcam: false },
     { name: 'movieplayer', url: '/movieplayer/', needsWebcam: false },
