@@ -2,6 +2,7 @@
   "name": "ledmapper",
   "version": "1.0.0",
   "type": "module",
+  "workspaces": ["packages/gfx"],
   "sideEffects": [
     "./src/shapeeditor/shapeeditor-init.ts",
     "./src/shapeeditor/shapeeditor-methods-*.ts",
@@ -11,8 +12,10 @@
   "scripts": {
     "dev": "vite",
     "dev:agent": "node scripts/dev-server.mjs",
+    "prebuild": "npm run build:gfx",
     "build": "vite build",
     "build:gfx": "cd packages/gfx && vite build && tsc -p tsconfig.json",
+    "prelint": "npm run build:gfx",
     "check:gfx-api": "node scripts/check-gfx-api.mjs",
     "preview": "vite preview",
     "lint": "eslint src/ tests/ --max-warnings 0 --cache --cache-location node_modules/.cache/eslint/ && node scripts/check-moviemaker-presets.mjs && node scripts/check-css-var-prefixes.mjs",
@@ -41,6 +44,7 @@
   },
   "homepage": "https://github.com/zackees/ledmapper#readme",
   "dependencies": {
+    "@fastled/gfx": "file:packages/gfx",
     "@tailwindcss/vite": "^4.2.2",
     "eruda": "^3.4.3",
     "lil-gui": "^0.21.0",
