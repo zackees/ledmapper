@@ -196,6 +196,9 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
 
             }
             for (let i = 2; i < pts.length - 1; i++) {
+                const rawIdx = idxToStrip?.[i] ?? 0;
+                const stripIdx = rawIdx >= 0 ? rawIdx : 0;
+                this.overlayCtx.globalAlpha = groupFocusOpacity(selectedStripIdx, stripIdx);
                 this.fillCircle(this.nn(pts[i])[0], this.nn(pts[i])[1], 4, withAlpha(gfxColors.textStrong(), 0.5));
             }
 
@@ -283,9 +286,10 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
                 const endIdx = st.offset + st.count - 1;
                 if (startIdx < 0 || endIdx >= pts.length) continue;
                 const labels = stripStartEndLabels(st, s);
-                labelItems.push({ id: `start:${String(s)}`, text: labels.start, anchorX: this.nn(pts[startIdx])[0], anchorY: this.nn(pts[startIdx])[1], color: START_COLOR, dotRadius: 4 });
+                const opacity = groupFocusOpacity(this.selection.getStripIdx(), s);
+                labelItems.push({ id: `start:${String(s)}`, text: labels.start, anchorX: this.nn(pts[startIdx])[0], anchorY: this.nn(pts[startIdx])[1], color: START_COLOR, dotRadius: 4, opacity });
                 if (labels.end !== null) {
-                    labelItems.push({ id: `end:${String(s)}`, text: labels.end, anchorX: this.nn(pts[endIdx])[0], anchorY: this.nn(pts[endIdx])[1], color: END_COLOR, dotRadius: 4 });
+                    labelItems.push({ id: `end:${String(s)}`, text: labels.end, anchorX: this.nn(pts[endIdx])[0], anchorY: this.nn(pts[endIdx])[1], color: END_COLOR, dotRadius: 4, opacity });
                 }
             }
         } else {
