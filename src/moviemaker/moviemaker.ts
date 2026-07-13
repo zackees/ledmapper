@@ -19,7 +19,9 @@ import { setupToggleButton } from '../ui/toggle-button';
 import { createLogger } from '../debug-log';
 import { createVideoStallWatchdog, createRafHeartbeat } from '../watchdogs';
 import { createFpsEstimator } from './frame-pacing';
-import { runOfflineCapture, isOfflineCaptureSupported } from './offline-capture';
+import { runOfflineCapture, isOfflineCaptureSupported, isOfflineCaptureWorkerSupported } from './offline-capture';
+import { runOfflineCaptureWorkerClient } from './offline-capture-worker-client';
+import type { OfflineCaptureBackend } from './offline-capture-protocol';
 import { registerDebugState, unregisterDebugState, type MoviemakerDebugState } from '../debug-registry';
 
 const log = createLogger('moviemaker');
@@ -137,6 +139,7 @@ export function init(container: HTMLElement) {
     })();
     const forceRealtimeCapture = _urlParams.has('forceRealtimeCapture');
     const ignoreRvfc = _urlParams.has('noRvfc');
+    const offlineCaptureBackend: OfflineCaptureBackend = _urlParams.get('offlineCaptureBackend') === 'main' ? 'main' : _urlParams.get('offlineCaptureBackend') === 'worker' ? 'worker' : 'auto';
 
     // ── State ───────────────────────────────────────────────────────────────────
     let screenmap_pts: [number, number][] = [];
@@ -1041,6 +1044,12 @@ export function init(container: HTMLElement) {
     // pipeline).
     let offlineActive = false;
     let offlineCancelRequested = false;
+    let offlineWorkerCancel: (() => void) | null = null;
+    let offlineBackendState: 'idle' | 'worker' | 'main' | 'realtime' = 'idle';
+    let offlineProgressMessages = 0;
+    let offlineDone = 0;
+    let offlineTotal = 0;
+    let offlineFallbackReason: string | null = null;
 
     async function runOfflineRecordPass(file: File): Promise<void> {
         offlineActive = true;
@@ -1048,8 +1057,70 @@ export function init(container: HTMLElement) {
         offlineCancelRequested = false;
         dom_btn_toggle_record.value = 'Rendering…';
         dom_btn_toggle_record.classList.add('recording');
-        let offlineSampleBuf: Uint8Array | null = null;
+        offlineProgressMessages = 0;
+        offlineDone = 0;
+        offlineTotal = 0;
+        offlineFallbackReason = null;
         let fallbackToRealtime = false;
+        const finishWorkerUi = () => {
+            offlineActive = false;
+            syncSourceActionState();
+            offlineCancelRequested = false;
+            dom_btn_toggle_record.value = 'Start Recording';
+            dom_btn_toggle_record.classList.remove('recording');
+            dom_sel_record_format.disabled = false;
+            syncRecordFormatUi();
+        };
+        const useWorker = offlineCaptureBackend !== 'main' && isOfflineCaptureWorkerSupported();
+        if (useWorker) {
+            offlineBackendState = 'worker';
+            const points = new Float32Array(screenmap_pts.length * 2);
+            screenmap_pts.forEach(([x, y], i) => { points[i * 2] = x; points[i * 2 + 1] = y; });
+            const channelMap = videoChannelMap ? new Int32Array(videoChannelMap) : null;
+            const worker = runOfflineCaptureWorkerClient({
+                file,
+                config: {
+                    width: videoWidth, height: videoHeight, pointCount: screenmap_pts.length,
+                    pointsBuffer: points.buffer, channelMapBuffer: channelMap?.buffer ?? null,
+                    blurRadius: parseFloat(dom_rng_blur.value), sigma: parseFloat(dom_rng_blur_sigma.value),
+                    brightness: parseFloat(dom_rng_brightness.value), maxBrightness: parseFloat(dom_rng_max_bri.value), gamma: parseFloat(dom_rng_gamma.value),
+                    rotateDeg: curr_rotate, zoom: curr_zoom, translateX: curr_translate[0], translateY: curr_translate[1], previewIntervalMs: 100,
+                },
+                onProgress: (message) => {
+                    offlineProgressMessages++;
+                    offlineDone = message.done;
+                    offlineTotal = message.total;
+                    dom_btn_toggle_record.value = `Rendering ${String(message.done)}/${String(message.total)} — click to cancel`;
+                    if (message.previewBuffer) {
+                        const rgb = new Uint8Array(message.previewBuffer);
+                        preview.render(screenmap_pts, dom_chk_preview_rotate.checked ? curr_rotate : 0, { rgbPts: rgb, avgBri: message.avgBrightness ?? 0, oobCount: message.oobCount ?? 0 }, previewLedDiameter);
+                    }
+                },
+            });
+            offlineWorkerCancel = worker.cancel;
+            try {
+                const result = await worker.promise;
+                if (result.type === 'complete') {
+                    offlineTotal = result.total; offlineDone = result.total;
+                    await recording.savePayload(result.payload, { frameCount: result.total, fps: result.fps, ledCount: screenmap_pts.length });
+                    offlineBackendState = 'worker';
+                    finishWorkerUi();
+                    return;
+                }
+                if (result.type === 'cancelled') { finishWorkerUi(); return; }
+                offlineFallbackReason = result.reason;
+                if (result.target === 'realtime') { offlineBackendState = 'realtime'; fallbackToRealtime = true; return; }
+            } catch (error) {
+                log.error('offline-worker-failed', { error: String(error) });
+                void errorDialog('Offline capture failed', String(error));
+                finishWorkerUi();
+                return;
+            } finally {
+                offlineWorkerCancel = null;
+            }
+        }
+        offlineBackendState = 'main';
+        let offlineSampleBuf: Uint8Array | null = null;
         try {
             const result = await runOfflineCapture({
                 file,
@@ -1115,6 +1186,7 @@ export function init(container: HTMLElement) {
     dom_btn_toggle_record.addEventListener('click', () => {
         if (offlineActive) {
             offlineCancelRequested = true;
+            offlineWorkerCancel?.();
             return;
         }
         const fledActive = recording.isActive;
@@ -1389,6 +1461,14 @@ export function init(container: HTMLElement) {
             oobLeds: lastSample?.oobCount ?? 0,
             detectedFps: frame_rate,
             captureStats: recording.getStats(),
+            offlineCapture: {
+                backend: offlineBackendState,
+                workerActive: offlineActive && offlineBackendState === 'worker',
+                done: offlineDone,
+                total: offlineTotal,
+                progressMessages: offlineProgressMessages,
+                lastFallbackReason: offlineFallbackReason,
+            },
         };
     }
     registerDebugState('moviemaker', { getState: getMoviemakerDebugState });

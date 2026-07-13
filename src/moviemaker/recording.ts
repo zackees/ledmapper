@@ -75,6 +75,7 @@ export function createRecording({ getSwal, getScreenmapJson, onSaved }: {
     // capturing (the caller feeds the detected source rate per frame, so a
     // detection that stabilizes mid-recording still lands correctly).
     let recordedFps = 30;
+    let suppressNextSavedNotification = false;
     // Log-only watchdog (issue #226): flags a recording whose readback has
     // gone all-zero for many consecutive frames — the class of bug that let
     // #221's black moviemaker preview go unnoticed. Never auto-remediates.
@@ -133,7 +134,10 @@ export function createRecording({ getSwal, getScreenmapJson, onSaved }: {
             // the downloaded file; storage failure (quota, permission)
             // just means Movie Player won't auto-restore. Log so the
             // failure isn't completely silent. Issue #179.
-            saveVideo(fledFile).then(() => onSaved?.()).catch((error: unknown) => {
+            saveVideo(fledFile).then(() => {
+                if (!suppressNextSavedNotification) onSaved?.();
+                suppressNextSavedNotification = false;
+            }).catch((error: unknown) => {
                 log.error('save-to-indexeddb-failed', { error: String(error) });
             });
         }
@@ -203,9 +207,35 @@ export function createRecording({ getSwal, getScreenmapJson, onSaved }: {
      */
     async function saveFrames(frames: Uint8Array[], fps: number): Promise<void> {
         colorFrames.length = 0;
-        for (const f of frames) colorFrames.push(f);
+        if (frames.length === 0) {
+            await endRecording();
+            return;
+        }
+        suppressNextSavedNotification = false;
+        const frameBytes = frames[0]?.byteLength ?? 0;
+        if (!Number.isInteger(frameBytes) || frameBytes <= 0 || frames.some((f) => f.byteLength !== frameBytes)) {
+            throw new Error('offline capture returned inconsistent frame sizes');
+        }
+        for (const f of frames) colorFrames.push(new Uint8Array(f));
         skippedFrames = 0;
         recordedFps = fps;
+        await endRecording();
+    }
+
+    /** Save a contiguous, already channel-mapped offline payload without
+     * splitting and re-flattening thousands of frame arrays. */
+    async function savePayload(payload: Uint8Array, meta: { frameCount: number; fps: number; ledCount: number }): Promise<void> {
+        if (!Number.isInteger(meta.frameCount) || meta.frameCount <= 0 || !Number.isInteger(meta.ledCount) || meta.ledCount <= 0 || !Number.isFinite(meta.fps) || meta.fps <= 0) {
+            throw new Error('invalid offline capture metadata');
+        }
+        const expected = meta.frameCount * meta.ledCount * 3;
+        if (payload.byteLength !== expected) throw new Error(`offline payload length mismatch: ${String(payload.byteLength)} !== ${String(expected)}`);
+        colorFrames.length = 0;
+        colorFrames.push(new Uint8Array(payload));
+        skippedFrames = 0;
+        recordedFps = meta.fps;
+        suppressNextSavedNotification = true;
+        // endRecording flattens one frame, so the payload remains contiguous.
         await endRecording();
     }
 
@@ -215,6 +245,7 @@ export function createRecording({ getSwal, getScreenmapJson, onSaved }: {
         resetCapture,
         getStats,
         saveFrames,
+        savePayload,
         get isActive() { return active; },
     };
 }

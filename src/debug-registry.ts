@@ -36,6 +36,14 @@ export interface MoviemakerDebugState {
     detectedFps: number;
     /** Live recording pacing counters (#256/#266); zeros when not recording. */
     captureStats: { captured: number; skipped: number; duplicatesDropped: number };
+    offlineCapture: {
+        backend: 'idle' | 'worker' | 'main' | 'realtime';
+        workerActive: boolean;
+        done: number;
+        total: number;
+        progressMessages: number;
+        lastFallbackReason: string | null;
+    };
 }
 
 /** Live debug state for the Movie Player (src/movieplayer). */

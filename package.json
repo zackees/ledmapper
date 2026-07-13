@@ -35,6 +35,7 @@
     "test:all": "node scripts/test-all.mjs",
     "benchmark:tests": "node scripts/benchmark-tests.mjs",
     "benchmark:shapeeditor-snap": "node --import tsx scripts/benchmark-shapeeditor-snap.ts",
+    "benchmark:offline-capture": "node tests/perf/offline-capture-jank.mjs",
     "test:integration": "node scripts/run-playwright.mjs",
     "test:smoke": "vite build && playwright test --config playwright.smoke.config.js",
     "test:canvas-fit": "vite build && playwright test --config playwright.canvas-fit.config.js",
