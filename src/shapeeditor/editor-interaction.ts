@@ -9,7 +9,7 @@ import {
     inverseTransformSnapDelta,
     type SnapDocumentTransform,
 } from "./strip-snap-targets";
-import { rotatePointsAround } from "./strip-rotate";
+import { bboxCenter, rotatePointsAround } from "./strip-rotate";
 
 const STRIP_STROKE_HIT_PX = 10;
 
@@ -297,24 +297,19 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
                 this.stripRotateIdx = idx;
                 this.stripRotateStartScreenmap = [];
                 this.stripRotateStartRaw = [];
-                let cxSm = 0, cySm = 0, cxRw = 0, cyRw = 0, n = 0;
                 for (let k = strip.offset; k < strip.offset + strip.count; k++) {
                     const sm = this.nn(this.screenmap_pts[k]);
                     const rw = this.nn(this.rawPts[k]);
                     this.stripRotateStartScreenmap.push([sm[0], sm[1]]);
                     this.stripRotateStartRaw.push([rw[0], rw[1]]);
-                    cxSm += sm[0]; cySm += sm[1]; cxRw += rw[0]; cyRw += rw[1]; n++;
                 }
-                if (n > 0) {
-                    cxSm /= n; cySm /= n; cxRw /= n; cyRw /= n;
-                }
-                this.stripRotateCenterSm = { x: cxSm, y: cySm };
-                this.stripRotateCenterRaw = { x: cxRw, y: cyRw };
-                // Cursor angle around the canvas-space handle anchor (the
-                // top-center of the strip bbox in canvas px). We rotate the
-                // points around their screenmap-space mean (also at the
-                // bbox center), so the rotation pivot in cm == the visual
-                // pivot in canvas px.
+                const centerSm = bboxCenter(this.stripRotateStartScreenmap);
+                const centerRaw = bboxCenter(this.stripRotateStartRaw);
+                if (!centerSm || !centerRaw) return;
+                this.stripRotateCenterSm = centerSm;
+                this.stripRotateCenterRaw = centerRaw;
+                // Cursor angle is based on the same projected bbox that
+                // draws and hit-tests the on-canvas handle.
                 const bb = this._selectedStripBboxCanvas();
                 if (bb) {
                     const anchorX = (bb.minX + bb.maxX) / 2;

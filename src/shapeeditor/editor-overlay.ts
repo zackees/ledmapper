@@ -302,31 +302,22 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
             obstacles: () => pts.map(([x, y]: [number, number]) => ({ x: x - 3, y: y - 3, w: 6, h: 6 })),
         });
 
-        // Strip selection bounding box (axis-aligned in canvas space)
-        const selStripIdx = this.selection.getStripIdx();
-        if (selStripIdx !== null && this.stripInfo && selStripIdx < this.stripInfo.strips.length) {
-            const st = this.nn(this.stripInfo.strips[selStripIdx]);
-            if (st.count > 0) {
-                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                const lo = Math.max(0, st.offset);
-                const hi = Math.min(pts.length, st.offset + st.count);
-                for (let i = lo; i < hi; i++) {
-                    const [px, py] = this.nn(pts[i]);
-                    if (px < minX) minX = px;
-                    if (py < minY) minY = py;
-                    if (px > maxX) maxX = px;
-                    if (py > maxY) maxY = py;
-                }
-                if (isFinite(minX)) {
-                    const pad = 10;
-                    this.overlayCtx.globalAlpha = 0.9;
-                    this.overlayCtx.strokeStyle = gfxColors.accentBlue();
-                    this.overlayCtx.lineWidth = 2;
-                    this.overlayCtx.setLineDash([6, 4]);
-                    this.overlayCtx.strokeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2);
-                    this.overlayCtx.setLineDash([]);
-                }
-            }
+        // The selection box and rotation handle must share projected canvas
+        // geometry so the affordance stays attached during pan and zoom.
+        const selectedBbox = this._selectedStripBboxCanvas();
+        if (selectedBbox) {
+            const pad = 10;
+            this.overlayCtx.globalAlpha = 0.9;
+            this.overlayCtx.strokeStyle = gfxColors.accentBlue();
+            this.overlayCtx.lineWidth = 2;
+            this.overlayCtx.setLineDash([6, 4]);
+            this.overlayCtx.strokeRect(
+                selectedBbox.minX - pad,
+                selectedBbox.minY - pad,
+                (selectedBbox.maxX - selectedBbox.minX) + pad * 2,
+                (selectedBbox.maxY - selectedBbox.minY) + pad * 2,
+            );
+            this.overlayCtx.setLineDash([]);
         }
 
         // Selection indicator
@@ -443,10 +434,11 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
     const st = this.nn(this.stripInfo.strips[idx]);
     if (st.count <= 0) return null;
     const lo = Math.max(0, st.offset);
-    const hi = Math.min(this.screenmap_pts.length, st.offset + st.count);
+    const hi = Math.min(this.lastTransformedPts.length, st.offset + st.count);
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (let i = lo; i < hi; i++) {
-        const [px, py] = this.nn(this.screenmap_pts[i]);
+        const [worldX, worldY] = this.nn(this.lastTransformedPts[i]);
+        const [px, py] = this.toCanvasCoords(worldX, worldY);
         if (px < minX) minX = px;
         if (py < minY) minY = py;
         if (px > maxX) maxX = px;
@@ -471,7 +463,7 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
     hitTestStripRotateHandle(this: ShapeEditor, canvasX: number, canvasY: number): boolean{
     const h = this._stripRotateHandlePos();
     if (!h) return false;
-    return Math.abs(canvasX - h.handleX) < 14 && Math.abs(canvasY - h.handleY) < 14;
+    return Math.abs(canvasX - h.handleX) <= 22 && Math.abs(canvasY - h.handleY) <= 22;
 },
     _drawStripRotateHandle(this: ShapeEditor){
     if (!this.overlayCtx) return;
@@ -511,6 +503,13 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
     ctx.lineTo(ax - arrowLen * Math.cos(tangent + arrowHalf), ay - arrowLen * Math.sin(tangent + arrowHalf));
     ctx.closePath();
     ctx.fill();
+    if (this.stripRotateActive) {
+        ctx.fillStyle = gfxColors.textStrong();
+        ctx.font = '12px "IBM Plex Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${String(this.stripRotateLastDeg)} deg`, h.handleX + 14, h.handleY);
+    }
     ctx.restore();
 },
 };

@@ -7,7 +7,7 @@ import { getBackup, notePinMutation } from "../screenmap-store";
 import type { UndoAction } from "./shapeeditor-types";
 import { getStripColors } from "../common";
 import { gfxColors } from "../ui/theme";
-import { rotatePointsAround } from "./strip-rotate";
+import { bboxCenter, rotatePointsAround } from "./strip-rotate";
 import type { PointArrayWithDiameter } from "../common";
 
 export interface EditorStripsMethods {
@@ -49,6 +49,7 @@ export interface EditorStripsMethods {
     _applyStripTranslate: (stripIdx: number, sdx: number, sdy: number) => void;
     _applyStripRotate: (stripIdx: number, deltaRad: number, centerSm: { x: number; y: number }, centerRaw: { x: number; y: number }) => void;
     _finalizeStripRotate: () => void;
+    doRotateSelectedStripByDegrees: (degrees: number) => boolean;
 }
 
 export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = {
@@ -785,6 +786,31 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
             this.screenmap_pts[k] = [this.nn(this.screenmap_pts[k])[0] + sdx, this.nn(this.screenmap_pts[k])[1] + sdy];
             this.rawPts[k] = [this.nn(this.rawPts[k])[0] + sdx / this.fitScale, this.nn(this.rawPts[k])[1] + sdy / this.fitScale];
         }
+    },
+    doRotateSelectedStripByDegrees(this: ShapeEditor, degrees: number){
+        const stripIdx = this.selection.getStripIdx();
+        const deltaDeg = Math.round(degrees);
+        if (stripIdx === null || !isFinite(deltaDeg) || deltaDeg === 0 || !this.stripInfo) return false;
+        const strip = this.stripInfo.strips[stripIdx];
+        if (!strip || strip.count <= 0) return false;
+        const lo = strip.offset;
+        const hi = lo + strip.count;
+        const sliceSm = this.screenmap_pts.slice(lo, hi).map(([x, y]) => [x, y] as [number, number]);
+        const sliceRaw = this.rawPts.slice(lo, hi).map(([x, y]) => [x, y] as [number, number]);
+        const centerSm = bboxCenter(sliceSm);
+        const centerRaw = bboxCenter(sliceRaw);
+        if (!centerSm || !centerRaw) return false;
+        this._applyStripRotate(stripIdx, deltaDeg * Math.PI / 180, centerSm, centerRaw);
+        this.pushUndo({
+            type: 'strip-rotate',
+            stripIdx,
+            deltaDeg,
+            centerSm,
+            centerRaw,
+        });
+        this._persistMultiStrip();
+        this.setNeedsGeometryUpdate();
+        return true;
     },
     _finalizeStripRotate(this: ShapeEditor){
         if (!this.stripRotateActive) return;

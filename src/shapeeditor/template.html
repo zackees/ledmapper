@@ -131,9 +131,17 @@
                     </div>
                 </div>
                 <div id="strips_list" class="flex flex-col gap-1 max-h-64 overflow-y-auto"></div>
-                <div id="strips_selected_row" class="flex items-center justify-between gap-2 text-xs text-lm-text-muted" style="display:none;">
+                <div id="strips_selected_row" class="strips-selected-row" style="display:none;">
                     <span id="strips_selected_label"></span>
-                    <select id="strips_move_pin" class="text-xs bg-lm-surface-1 text-lm-text border border-lm-border rounded py-0.5 px-1"></select>
+                    <div class="strips-selected-actions">
+                        <div class="strips-selected-rotate" aria-label="Selected strip rotation controls">
+                            <button id="strips_rotate_left" type="button" class="strips-selected-action" title="Rotate selected strip left 90 degrees" aria-label="Rotate selected strip left 90 degrees">-90</button>
+                            <button id="strips_rotate_right" type="button" class="strips-selected-action" title="Rotate selected strip right 90 degrees" aria-label="Rotate selected strip right 90 degrees">+90</button>
+                            <label class="strips-selected-rotate-by">Rotate by <input id="strips_rotate_degrees" class="strips-selected-rotate-input" type="number" value="90" min="-360" max="360" step="1"> deg</label>
+                            <button id="strips_rotate_apply" type="button" class="strips-selected-action" title="Rotate selected strip by the entered number of degrees">Apply</button>
+                        </div>
+                        <select id="strips_move_pin" class="strips-selected-move-pin"></select>
+                    </div>
                 </div>
                 <div id="strips_backup_row" class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-lm-border text-xs text-lm-text-muted" style="display:none;">
                     <span id="strips_backup_summary">No backup</span>
