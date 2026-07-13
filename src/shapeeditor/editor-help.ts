@@ -26,7 +26,8 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
                             <li>Drag canvas: pan</li>
                             <li>R-drag: zoom</li>
                             <li>Click LED: select its strip</li>
-                            <li>Drag LED: move whole strip</li>
+                            <li>Drag unselected LED or strip line: move whole strip</li>
+                            <li>Drag LED in selected strip: move single point</li>
                             <li>Alt + drag LED: move single point</li>
                             <li>Double-click LED: enter point-edit</li>
                             <li>Drag inside box: move selection</li>
@@ -51,7 +52,8 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
                         <h3 class="help-overlay-h3 is-spaced-top">Touch</h3>
                         <ul class="help-overlay-ul">
                             <li>Tap LED: select strip</li>
-                            <li>Drag LED: move whole strip</li>
+                            <li>Drag unselected LED or strip line: move whole strip</li>
+                            <li>Drag LED in selected strip: move single point</li>
                             <li>Drag empty space: pan</li>
                             <li>Long-press LED: enter point-edit</li>
                             <li>Long-press empty: context menu</li>
@@ -119,7 +121,7 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
         if (safeStorage.get('lm:shapeeditor-helpDismissed') !== '1') return;
         this._gestureNoticeShown = true;
         safeStorage.set('lm:shapeeditor-gestureNotice', '1');
-        void this._toastInfo('New: drag moves the strip — double-click to edit points');
+        void this._toastInfo('Selected group: drag an LED to move it, or drag its line to move the group');
     },
     _maybeAutoOpenHelpOnLaunch(this: ShapeEditor){
 

@@ -103,6 +103,29 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
         }
     });
 
+    test('plain LED drag within an already selected group moves only that LED', async ({ page }) => {
+        await seedAndOpen(page);
+        await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
+
+        const beforeA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
+        const beforeB = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+        const ok = await page.evaluate(() =>
+            window.__shapeeditorDebug.simulateLedDrag(1, 25, 15, {})
+        );
+        expect(ok).toBe(true);
+
+        const afterA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
+        const afterB = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+        expect(afterA[1]).not.toEqual(beforeA[1]);
+        expect(afterA[0]).toEqual(beforeA[0]);
+        expect(afterA[2]).toEqual(beforeA[2]);
+        expect(afterA[3]).toEqual(beforeA[3]);
+        expect(afterB).toEqual(beforeB);
+
+        await page.keyboard.press('Control+z');
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(beforeA);
+    });
+
     test('double-click LED enters point-edit mode; Esc exits', async ({ page }) => {
         await seedAndOpen(page);
         await page.evaluate(() => window.__shapeeditorDebug.enterPointEditMode(0));
