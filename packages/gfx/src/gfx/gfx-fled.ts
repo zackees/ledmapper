@@ -7,12 +7,12 @@
  * `pushFrame` from its own RAF loop.
  */
 
-import { parseRgbFrames } from '../render/rgb-video';
-import { createGfx } from './gfx-core';
-import { createPlayer } from './player';
-import type { CreateGfxFromFledOptions, GfxWithPlayer } from './types';
-import type { ScreenmapJson } from '../types/domain';
-import { parse_screenmap_data_json } from '../common';
+import { parseRgbFrames } from '../render/rgb-video.js';
+import { createGfx } from './gfx-core.js';
+import { createPlayer } from './player.js';
+import type { CreateGfxFromFledOptions, GfxWithPlayer } from './types.js';
+import type { ScreenmapJson } from '../types/domain.js';
+import { parse_screenmap_data_json } from '../common.js';
 
 async function toUint8Array(input: Blob | ArrayBuffer | Uint8Array): Promise<Uint8Array> {
     if (input instanceof Uint8Array) return input;

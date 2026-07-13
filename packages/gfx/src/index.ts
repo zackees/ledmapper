@@ -9,4 +9,4 @@
  * Issue #157 Phase 1 deliverable.
  */
 
-export * from './gfx/index';
+export * from './gfx/index.js';

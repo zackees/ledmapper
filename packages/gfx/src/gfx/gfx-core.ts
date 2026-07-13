@@ -11,11 +11,11 @@
  * also run inside a Worker (#163 Phase 3c).
  */
 
-import { wireResponsiveCanvas } from '../three-utils';
-import { BLOOM_RENDER_PX } from '../bloom-utils';
-import { createGfxCore } from './gfx-core-headless';
-import { mountFpsWidget, resolveInitialVisibility, persistVisibility, isTypingTarget } from './fps';
-import type { CreateGfxOptions, Gfx, Screenmap } from './types';
+import { wireResponsiveCanvas } from '../three-utils.js';
+import { BLOOM_RENDER_PX } from '../bloom-utils.js';
+import { createGfxCore } from './gfx-core-headless.js';
+import { mountFpsWidget, resolveInitialVisibility, persistVisibility, isTypingTarget } from './fps.js';
+import type { CreateGfxOptions, Gfx, Screenmap } from './types.js';
 
 const DEFAULT_PANE_SIZE = 800;
 

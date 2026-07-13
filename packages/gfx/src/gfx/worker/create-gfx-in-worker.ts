@@ -26,11 +26,11 @@
  *     gfx.dispose();                              // terminates the worker
  */
 
-import { BLOOM_RENDER_PX } from '../../bloom-utils';
-import { normalizeScreenmap } from '../screenmap';
-import type { BloomConfig, Screenmap } from '../types';
-import type { GfxToWorker, WorkerToGfx } from './protocol';
-import { pushFramePayload } from './protocol';
+import { BLOOM_RENDER_PX } from '../../bloom-utils.js';
+import { normalizeScreenmap } from '../screenmap.js';
+import type { BloomConfig, Screenmap } from '../types.js';
+import type { GfxToWorker, WorkerToGfx } from './protocol.js';
+import { pushFramePayload } from './protocol.js';
 
 const DEFAULT_PANE_SIZE = 800;
 const DEFAULT_DIAMETER = 16;

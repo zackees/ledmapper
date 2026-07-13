@@ -27,7 +27,7 @@
  * under plain Node. See tests/unit/watchdogs.test.ts.
  */
 
-import { createLogger } from './debug-log';
+import { createLogger } from './debug-log.js';
 
 const log = createLogger('watchdog');
 

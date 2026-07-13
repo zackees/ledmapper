@@ -18,8 +18,8 @@ import {
     computeFrameBrightness,
     stepIrisAttackDecay,
     computeBloomStrength,
-} from './bloom-utils';
-import type { IrisState, BloomStrengthRange } from './types/domain';
+} from './bloom-utils.js';
+import type { IrisState, BloomStrengthRange } from './types/domain.js';
 
 export function createBloomComposer({
     renderer,

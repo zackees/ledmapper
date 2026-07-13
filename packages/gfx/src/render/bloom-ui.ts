@@ -11,8 +11,8 @@
  * changes also update Y and Z" sites (see #72). The public signature is
  * unchanged, so callers don't know the internals went reactive.
  */
-import { effect, signal } from '../ui/signal';
-import { safeStorage } from '../services/storage';
+import { effect, signal } from '../ui/signal.js';
+import { safeStorage } from '../services/storage.js';
 
 /** The bloom controller surface this wiring drives (auto-bloom or preview). */
 export interface BloomControlsAdapter {

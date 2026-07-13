@@ -1,6 +1,6 @@
-import type { ScreenmapJson, StripPoint, MultiStripParseResult, ParsedStrip } from './types/domain';
-import { detectScreenmapVersion, parseScreenmapV2, v2ToMultiStripResult } from './screenmap-v2';
-import { createLogger } from './debug-log';
+import type { ScreenmapJson, StripPoint, MultiStripParseResult, ParsedStrip } from './types/domain.js';
+import { detectScreenmapVersion, parseScreenmapV2, v2ToMultiStripResult } from './screenmap-v2.js';
+import { createLogger } from './debug-log.js';
 
 const log = createLogger('common');
 

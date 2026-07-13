@@ -17,7 +17,7 @@
  * Kept free of DOM/Three.js imports so node:test can load it directly.
  */
 
-import type { BloomAutoRangeInput, BloomRange, BloomParams, FrameBrightnessResult } from './types/domain';
+import type { BloomAutoRangeInput, BloomRange, BloomParams, FrameBrightnessResult } from './types/domain.js';
 
 export const BLOOM_MIN_STRENGTH = 0.5;
 export const BLOOM_MAX_STRENGTH = 16;
