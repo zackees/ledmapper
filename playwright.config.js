@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import { resolve } from 'path';
 import fs from 'fs';
+import os from 'os';
 
 const certPath = resolve(import.meta.dirname, '.certs/cert.pem');
 const hasHttps = fs.existsSync(certPath);
@@ -9,6 +10,7 @@ const isCI = !!process.env.CI;
 // Nightly SwiftShader GPU job (.github/workflows/gpu-nightly.yml) sets
 // GPU_CI=1 to run the @gpu-tagged WebGL specs under headless CPU rendering.
 const isGpuCI = !!process.env.GPU_CI;
+const requestedWorkers = process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : null;
 
 const ciArgs = isCI ? ['--disable-dev-shm-usage'] : [];
 // SwiftShader (CPU) WebGL args — load-bearing since Chrome ~130, per
@@ -27,7 +29,10 @@ export default defineConfig({
   // Single-worker takes longer but eliminates the cross-spec "Target page
   // has been closed" cascade.
   // Local: undefined → Playwright picks N (~core count).
-  workers: isCI ? 1 : undefined,
+  // Local runs previously inherited the full CPU count, which could launch
+  // more Chromium/WebGL contexts than the machine could sustain. Keep the
+  // default bounded while allowing explicit PW_WORKERS tuning for benchmarks.
+  workers: requestedWorkers || (isCI ? 1 : Math.max(1, Math.floor(os.cpus().length / 2))),
   // CI: retry transient browser deaths twice. With workers=1 the
   // serialization helps, but a single OOM still kills the whole run
   // without retries. Local stays at 0 so flaky logic surfaces during
