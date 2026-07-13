@@ -177,7 +177,9 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
             expect(payload.length % bytesPerFrame).toBe(0);
         });
 
-        test('max brightness limit clamps recorded output @gpu-flaky', async ({ page }) => {
+        // SwiftShader cannot reliably complete this renderer/readback assertion;
+        // keep it in the explicit local-only tier rather than nightly quarantine.
+        test('max brightness limit clamps recorded output @gpu-heavy', async ({ page }) => {
             test.setTimeout(60000);
 
             await page.goto('/moviemaker/');
@@ -203,7 +205,7 @@ test.describe('Moviemaker Recording Workflow @gpu', () => {
             expect(maxByte).toBeLessThanOrEqual(130);
         });
 
-        test('can switch presets and record with each @gpu-flaky', async ({ page }) => {
+        test('can switch presets and record with each @gpu-heavy', async ({ page }) => {
             test.setTimeout(60000);
 
             await page.goto('/moviemaker/');
