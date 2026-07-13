@@ -11,7 +11,8 @@
 /* Product-level navigation between the three peer modes. It stays outside
    each tool's scrolling content and remains available at every viewport. */
 .app-mode-bar {
-    @apply flex items-stretch shrink-0 sticky top-0;
+    @apply grid items-stretch shrink-0 sticky top-0;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     z-index: 100;
     min-height: 44px;
     padding-top: env(safe-area-inset-top);
@@ -23,13 +24,19 @@
 
 .app-brand {
     @apply flex items-center no-underline whitespace-nowrap;
-    flex: 0 0 auto;
+    grid-column: 1;
+    justify-self: start;
     color: #a1a1aa;
     padding: 0 24px 0 20px;
     font-size: 0.92rem;
     font-weight: 300;
     letter-spacing: -0.01em;
     transition: color 200ms ease;
+}
+
+.app-mode-links {
+    @apply flex items-stretch;
+    grid-column: 2;
 }
 
 .app-brand:hover {
@@ -81,9 +88,18 @@
 }
 
 @media (max-width: 600px) {
+    .app-mode-bar {
+        @apply flex;
+    }
+
     .app-brand {
         padding: 0 8px 0 10px;
         font-size: 0.78rem;
+    }
+
+    .app-mode-links {
+        @apply flex-1;
+        min-width: 0;
     }
 
     .app-mode-link {
