@@ -61,7 +61,10 @@ function normalizeAxis(cos: number, sin: number): [number, number] {
 export function minimumAreaObb(points: readonly Pt[]): OrientedBox | null {
     const hull = convexHull(points);
     if (hull.length === 0) return null;
-    if (hull.length === 1) return { cx: hull[0]![0], cy: hull[0]![1], cos: 1, sin: 0, hw: 0, hh: 0 };
+    if (hull.length === 1) {
+        const [x, y] = hull[0] ?? [0, 0];
+        return { cx: x, cy: y, cos: 1, sin: 0, hw: 0, hh: 0 };
+    }
 
     let best: OrientedBox | null = null;
     let bestArea = Infinity;
