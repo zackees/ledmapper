@@ -203,6 +203,27 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
             const clientY = rect.top + (cy / this.canvasH) * rect.height;
             return { clientX, clientY, canvasX: cx, canvasY: cy };
         },
+        getStripRotateHandlePos: () => {
+            const handle = this._stripRotateHandlePos();
+            if (!handle || !this.overlayCanvas) return null;
+            const rect = this.overlayCanvas.getBoundingClientRect();
+            const toClient = (canvasX: number, canvasY: number) => ({
+                x: rect.left + (canvasX / this.canvasW) * rect.width,
+                y: rect.top + (canvasY / this.canvasH) * rect.height,
+            });
+            const anchor = toClient(handle.anchorX, handle.anchorY);
+            const button = toClient(handle.handleX, handle.handleY);
+            return {
+                anchorX: handle.anchorX,
+                anchorY: handle.anchorY,
+                handleX: handle.handleX,
+                handleY: handle.handleY,
+                clientAnchorX: anchor.x,
+                clientAnchorY: anchor.y,
+                clientHandleX: button.x,
+                clientHandleY: button.y,
+            };
+        },
         // Paste flow hooks (Phase 3)
         pasteScreenmapText: (text: string) => this._enterPasteFromText(text || ''),
         getPasteState: () => (this.pasteState
@@ -284,11 +305,9 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
             const dxEnd = dxStart * Math.cos(rad) - dyStart * Math.sin(rad);
             const dyEnd = dxStart * Math.sin(rad) + dyStart * Math.cos(rad);
             const end = toClient(anchorX + dxEnd, anchorY + dyEnd);
-            const mk = (type: string, p: { clientX: number; clientY: number }) =>
-                new MouseEvent(type, { clientX: p.clientX, clientY: p.clientY, button: 0, bubbles: true });
-            this.overlayCanvas.dispatchEvent(mk('mousedown', start));
-            this.overlayCanvas.dispatchEvent(mk('mousemove', end));
-            this.overlayCanvas.dispatchEvent(mk('mouseup', end));
+            this._synth('mousedown', start.clientX, start.clientY);
+            this._synth('mousemove', end.clientX, end.clientY);
+            this._synth('mouseup', end.clientX, end.clientY);
             return true;
         },
         // Pins / chain hooks (issue #24, Phases 1-2)
@@ -657,6 +676,15 @@ this.dom_btn_redo.addEventListener('click', () => { this.performRedo(); }, { sig
         this.dom_strips_selected_row = this.qe<HTMLElement>('#strips_selected_row');
         this.dom_strips_selected_label = this.qe<HTMLElement>('#strips_selected_label');
         this.dom_strips_move_pin = this.qe<HTMLSelectElement>('#strips_move_pin');
+        this.dom_strips_rotate_left = this.qeb('#strips_rotate_left');
+        this.dom_strips_rotate_right = this.qeb('#strips_rotate_right');
+        this.dom_strips_rotate_degrees = this.qei('#strips_rotate_degrees');
+        this.dom_strips_rotate_apply = this.qeb('#strips_rotate_apply');
+        this.dom_strips_rotate_left.addEventListener('click', () => { this.doRotateSelectedStripByDegrees(-90); }, { signal: this.signal });
+        this.dom_strips_rotate_right.addEventListener('click', () => { this.doRotateSelectedStripByDegrees(90); }, { signal: this.signal });
+        this.dom_strips_rotate_apply.addEventListener('click', () => {
+            this.doRotateSelectedStripByDegrees(parseFloat(this.dom_strips_rotate_degrees.value));
+        }, { signal: this.signal });
         this.dom_strips_move_pin.addEventListener('change', () => {
             const sIdx = this.selection.getStripIdx();
             const value = this.dom_strips_move_pin.value;

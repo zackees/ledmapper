@@ -236,6 +236,10 @@ export class ShapeEditor {
     declare dom_strips_selected_row: HTMLElement;
     declare dom_strips_selected_label: HTMLElement;
     declare dom_strips_move_pin: HTMLSelectElement;
+    declare dom_strips_rotate_left: HTMLButtonElement;
+    declare dom_strips_rotate_right: HTMLButtonElement;
+    declare dom_strips_rotate_degrees: HTMLInputElement;
+    declare dom_strips_rotate_apply: HTMLButtonElement;
     declare dom_strips_show_chain: HTMLInputElement;
     declare showChainArrows: boolean;
     declare connectorMenuEl: HTMLDivElement | null;

@@ -270,6 +270,29 @@
 
 /* ── Strips inspector panel ────────────────────────────────── */
 
+.strips-selected-row {
+    @apply flex flex-wrap items-center justify-between gap-2 text-xs text-lm-text-muted;
+}
+
+.strips-selected-actions,
+.strips-selected-rotate {
+    @apply flex flex-wrap items-center gap-1;
+}
+
+.strips-selected-action,
+.strips-selected-move-pin {
+    @apply py-0.5 px-1.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs;
+}
+
+.strips-selected-rotate-by {
+    @apply flex items-center gap-1 text-xs text-lm-text-muted;
+}
+
+.strips-selected-rotate-input {
+    @apply bg-lm-surface-1 text-lm-text border border-lm-border rounded py-0.5 px-1 text-xs;
+    width: 52px;
+}
+
 .strip-row {
     @apply flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm text-lm-text;
     background: rgba(255, 255, 255, 0.02);
