@@ -5,11 +5,15 @@ import { errorDialog } from '../ui/dialogs';
 import { safeStorage } from '../services/storage';
 import { gfxColors, withAlpha } from '../ui/theme';
 import { createGfx, wireBloomUi, createFramePacer } from '@fastled/gfx';
-import { resolveLedDiameter, computeFitScale, parseRgbFrames, prependFledHeader, readVideoFps, PixelFormat } from '@fastled/gfx/core';
+import { resolveLedDiameter, computeFitScale, prependFledHeader, readVideoFps, PixelFormat, FledStreamError, streamFled } from '@fastled/gfx/core';
+import type { FledStreamMetadata, FledStreamOptions } from '@fastled/gfx/core';
 import { registerDebugState, unregisterDebugState, type DemoDebugState } from '../debug-registry';
+import { createLogger } from '../debug-log';
 import type { MultiStripParseResult, StripPoint } from '../types/domain';
 import templateHtml from './template.html?raw';
 export { default as css } from './demo.css?url';
+
+const log = createLogger('demo');
 
 function qe<T extends HTMLElement>(container: ParentNode, sel: string, _cast?: (e: Element) => T): T {
     const el = container.querySelector(sel);
@@ -73,6 +77,10 @@ export function init(container: HTMLElement) {
     // "Native" and labels that option (#265).
     let nativeFps = 30;
     let movieLoadGeneration = 0;
+    let movieLoadAbort: AbortController | null = null;
+    let movieStreamLoading = false;
+    let movieStreamComplete = true;
+    let movieStreamUnderflowLogged = false;
 
     function getDemoDebugState(): DemoDebugState {
         return {
@@ -256,7 +264,7 @@ export function init(container: HTMLElement) {
     function refreshDownloadMenuState(): void {
         dom_download_fled.disabled = activeFledBytes === null;
         dom_download_screenmap.disabled = activeEmbeddedJson === null;
-        dom_download_rgb.disabled = movie_frames.length === 0;
+        dom_download_rgb.disabled = movie_frames.length === 0 || activeFledBytes === null;
     }
 
     function showContextMenu(e: MouseEvent): void {
@@ -496,6 +504,11 @@ export function init(container: HTMLElement) {
             void errorDialog('Wrong file type', 'Please choose a .json screenmap file.');
             return;
         }
+        movieLoadAbort?.abort();
+        movieLoadAbort = null;
+        movieLoadGeneration++;
+        movieStreamLoading = false;
+        movieStreamComplete = true;
         void file.text().then((text: string) => {
             // A new screenmap invalidates frames sized for the old LED count.
             movie_frames.length = 0;
@@ -516,13 +529,7 @@ export function init(container: HTMLElement) {
             void errorDialog('Wrong file type', 'Please choose a .fled video file.');
             return;
         }
-        const generation = ++movieLoadGeneration;
-        void file.arrayBuffer().then((buffer) => {
-            if (generation === movieLoadGeneration) load_movie_data(buffer, file.name);
-        }).catch((error: unknown) => {
-            if (generation !== movieLoadGeneration) return;
-            void errorDialog('Error reading video file', String(error));
-        });
+        void loadMovieStream(file.stream(), file.size, file.name);
     }
 
     function formatFps(fps: number): string {
@@ -533,62 +540,154 @@ export function init(container: HTMLElement) {
         dom_media_status.textContent = `${filename} - ${String(ledCount)} LEDs - ${String(frameCount)} frames - ${formatFps(fps)} fps`;
     }
 
-    function load_movie_data(arrayBuffer: ArrayBuffer, filename = 'video.fled') {
-        const uint8_array = new Uint8Array(arrayBuffer);
-        const header = parseRgbFrames(uint8_array, 0);
-        if (!header.isFled || header.fledError !== null || header.embeddedJson === null) {
-            void errorDialog('Invalid FLED file', 'The selected video does not contain a valid FLED header and embedded screenmap.');
-            return;
-        }
-        if (header.pixelFormat !== PixelFormat.rgb8) {
-            void errorDialog('Unsupported FLED format', 'This player currently supports RGB8 FLED files.');
-            return;
-        }
+    interface PendingMovie {
+        filename: string;
+        embeddedMap: Record<string, unknown>;
+        embeddedJson: string;
+        header: Uint8Array;
+        frames: Uint8Array[];
+        ledCount: number;
+        fps: number;
+        committed: boolean;
+    }
 
-        let embeddedMap: Record<string, unknown>;
-        let embeddedPoints: StripPoint[];
-        try {
-            embeddedMap = JSON.parse(header.embeddedJson) as Record<string, unknown>;
-            embeddedPoints = parse_screenmap_data_json(embeddedMap);
-        } catch {
-            void errorDialog('Invalid embedded screenmap', 'The FLED metadata does not contain valid screenmap JSON.');
-            return;
+    function composeFledBytes(header: Uint8Array, frames: Uint8Array[]): Uint8Array {
+        const payloadLength = frames.reduce((total, frame) => total + frame.length, 0);
+        const result = new Uint8Array(header.length + payloadLength);
+        result.set(header);
+        let offset = header.length;
+        for (const frame of frames) {
+            result.set(frame, offset);
+            offset += frame.length;
         }
-        if (embeddedPoints.length === 0) {
-            void errorDialog('Invalid embedded screenmap', 'The FLED screenmap does not contain any LEDs.');
-            return;
-        }
+        return result;
+    }
 
-        const parsed = parseRgbFrames(uint8_array, embeddedPoints.length);
-        const { frames } = parsed;
-        if (parsed.notMultiple) {
-            void errorDialog('Frame size mismatch', 'The RGB payload is not a whole number of frames for the embedded screenmap.');
-            return;
-        }
-        if (frames.length === 0) {
-            void errorDialog('Empty FLED file', 'The selected FLED does not contain any video frames.');
-            return;
-        }
-
-        // Commit only after the container, screenmap, and frames validate so
-        // a failed replacement leaves the currently playing content intact.
-        load_screenmap_data(embeddedMap);
-        // Native source rate rides in the FLED metadata as video.fps (#256);
-        // it drives the pump when the selector is on "Native" (#265). Default
-        // 30 when absent/invalid — every pre-#256 recording played at 30.
-        nativeFps = readVideoFps(parsed.embeddedJson) ?? 30;
+    function commitPendingMovie(movie: PendingMovie): void {
+        if (movie.committed) return;
+        // Commit only after metadata and enough complete frames validate so a
+        // replacement that fails early leaves the currently playing content intact.
+        load_screenmap_data(movie.embeddedMap);
+        nativeFps = movie.fps;
         gfx.setSourceFPS(activeSourceFps());
         refreshNativeFpsLabel();
         movie_frames.length = 0;
         curr_frame_idx = 0;
-        for (const frame of frames) movie_frames.push(frame);
-        activeFledBytes = uint8_array.slice();
-        activeEmbeddedJson = parsed.embeddedJson;
-        activeMovieFilename = filename;
-        setMediaStatus(filename, embeddedPoints.length, frames.length, nativeFps);
+        movie_frames.push(...movie.frames);
+        activeFledBytes = null;
+        activeEmbeddedJson = movie.embeddedJson;
+        activeMovieFilename = movie.filename;
+        movie.committed = true;
+        movieStreamComplete = false;
+        movieStreamLoading = true;
+        movieStreamUnderflowLogged = false;
+        setMediaStatus(movie.filename, movie.ledCount, movie.frames.length, movie.fps);
         refreshDownloadMenuState();
         dom_btn_play.disabled = false;
         set_dom_btn_play(true);
+        log.info('stream-playback-start', { filename: movie.filename, bufferedFrames: movie.frames.length, fps: movie.fps });
+    }
+
+    function streamExpectedLength(response: Response): number | undefined {
+        if (response.headers.has('content-encoding')) return undefined;
+        const raw = response.headers.get('content-length');
+        if (!raw) return undefined;
+        const length = Number(raw);
+        return Number.isSafeInteger(length) && length >= 0 ? length : undefined;
+    }
+
+    async function loadMovieStream(stream: ReadableStream<Uint8Array>, expectedTotalBytes: number | undefined, filename: string): Promise<void> {
+        movieLoadAbort?.abort();
+        const generation = ++movieLoadGeneration;
+        const abort = new AbortController();
+        movieLoadAbort = abort;
+        log.info('stream-start', { filename, expectedTotalBytes: expectedTotalBytes ?? null });
+        const pending: PendingMovie = {
+            filename,
+            embeddedMap: {},
+            embeddedJson: '',
+            header: new Uint8Array(0),
+            frames: [],
+            ledCount: 0,
+            fps: 30,
+            committed: false,
+        };
+        let startupFrames = 0;
+        try {
+            const streamOptions: FledStreamOptions = {
+                signal: abort.signal,
+                ...(expectedTotalBytes === undefined ? {} : { expectedTotalBytes }),
+                onMetadata: (metadata: FledStreamMetadata) => {
+                    if (metadata.pixelFormat !== PixelFormat.rgb8) {
+                        throw new Error('This player currently supports RGB8 FLED files.');
+                    }
+                    let embeddedMap: Record<string, unknown>;
+                    let embeddedPoints: StripPoint[];
+                    try {
+                        embeddedMap = JSON.parse(metadata.embeddedJson) as Record<string, unknown>;
+                        embeddedPoints = parse_screenmap_data_json(embeddedMap);
+                    } catch {
+                        throw new Error('The FLED metadata does not contain valid screenmap JSON.');
+                    }
+                    if (embeddedPoints.length === 0) throw new Error('The FLED screenmap does not contain any LEDs.');
+                    pending.embeddedMap = embeddedMap;
+                    pending.embeddedJson = metadata.embeddedJson;
+                    pending.header = metadata.header;
+                    pending.ledCount = embeddedPoints.length;
+                    pending.fps = readVideoFps(metadata.embeddedJson) ?? 30;
+                    startupFrames = Math.max(1, Math.ceil(pending.fps));
+                    log.info('stream-metadata', { filename, ledCount: pending.ledCount, fps: pending.fps });
+                    return pending.ledCount * metadata.bytesPerPixel;
+                },
+                onFrame: (frame) => {
+                    const wasCommitted = pending.committed;
+                    pending.frames.push(frame);
+                    if (!pending.committed && pending.frames.length >= startupFrames) commitPendingMovie(pending);
+                    if (wasCommitted) {
+                        movie_frames.push(frame);
+                        setMediaStatus(filename, pending.ledCount, movie_frames.length, pending.fps);
+                    }
+                },
+            };
+            const result = await streamFled(stream, streamOptions);
+            if (generation !== movieLoadGeneration) return;
+            if (!pending.committed) commitPendingMovie(pending);
+            activeFledBytes = composeFledBytes(result.header, pending.frames);
+            movieStreamLoading = false;
+            movieStreamComplete = true;
+            setMediaStatus(filename, pending.ledCount, result.frameCount, pending.fps);
+            refreshDownloadMenuState();
+            log.info('stream-complete', { filename, frames: result.frameCount });
+        } catch (error: unknown) {
+            if (generation !== movieLoadGeneration || abort.signal.aborted) {
+                log.info('stream-cancelled', { filename });
+                return;
+            }
+            movieStreamLoading = false;
+            movieStreamComplete = false;
+            if (pending.committed) {
+                set_dom_btn_play(false);
+                dom_btn_play.disabled = true;
+            }
+            const message = error instanceof FledStreamError && error.code === 'empty'
+                ? 'The selected FLED does not contain any video frames.'
+                : error instanceof FledStreamError && error.code === 'not-multiple'
+                    ? 'The RGB payload is not a whole number of frames for the embedded screenmap.'
+                    : error instanceof Error ? error.message : String(error);
+            const title = error instanceof FledStreamError && error.code === 'empty'
+                ? 'Empty FLED file'
+                : error instanceof FledStreamError && error.code === 'not-multiple'
+                    ? 'Frame size mismatch'
+                    : message.includes('screenmap')
+                        ? 'Invalid embedded screenmap'
+                        : error instanceof FledStreamError && error.code === 'unknown-format'
+                            ? 'Unsupported FLED format'
+                            : 'Invalid FLED file';
+            log.error('stream-error', { filename, error: message });
+            void errorDialog(title, message);
+        } finally {
+            if (movieLoadAbort === abort) movieLoadAbort = null;
+        }
     }
 
     wireFilePicker({ input: dom_btn_upload_screenmap, onFile: loadScreenmapFile, signal });
@@ -611,19 +710,21 @@ export function init(container: HTMLElement) {
     });
 
     // --- Video load ---
-    // The .fled file is self-describing (header + embedded screenmap +
-    // payload), so we fetch it once and let parseRgbFrames slice frames
-    // against the screenmap's LED count.
+    // FLED is self-describing and has fixed-size frames after its metadata, so
+    // the stream decoder can begin playback while the tail is still arriving.
     async function fetchAndLoadVideo() {
         const generation = ++movieLoadGeneration;
         try {
-            const response = await fetch('/demo/video.fled');
+            const response = await fetch('/demo/video.fled', { signal });
             if (!response.ok) throw new Error('Network response was not ok');
-            const buffer = await response.arrayBuffer();
-            if (generation !== movieLoadGeneration) return;
-            load_movie_data(buffer, 'Sample FLED');
+            if (!response.body) throw new Error('The browser did not provide a readable response stream.');
+            if (generation !== movieLoadGeneration) {
+                await response.body.cancel();
+                return;
+            }
+            await loadMovieStream(response.body, streamExpectedLength(response), 'Sample FLED');
         } catch (error) {
-            if (generation !== movieLoadGeneration) return;
+            if (generation !== movieLoadGeneration || signal.aborted) return;
             console.error('Error loading video:', error);
             dom_media_status.textContent = 'The sample could not be loaded. Choose a FLED file to continue.';
             void errorDialog('Could not load demo data', `Network or file error loading the sample.\n\n${String(error)}`);
@@ -656,7 +757,21 @@ export function init(container: HTMLElement) {
         const targetFps = sel === 'native' ? nativeFps : Math.max(parseInt(sel), 1);
         const interval = 1000 / Math.max(targetFps, 1);
         if (!framePacer.due(t, interval)) return;
-        if (curr_frame_idx >= movie_frames.length) curr_frame_idx = 0;
+        if (curr_frame_idx >= movie_frames.length) {
+            if (movieStreamLoading && !movieStreamComplete) {
+                if (!movieStreamUnderflowLogged) {
+                    movieStreamUnderflowLogged = true;
+                    dom_media_status.textContent = `Buffering ${String(movie_frames.length)} frames…`;
+                    log.info('stream-underflow', { bufferedFrames: movie_frames.length });
+                }
+                return;
+            }
+            if (movieStreamUnderflowLogged) {
+                movieStreamUnderflowLogged = false;
+                log.info('stream-resume', { bufferedFrames: movie_frames.length });
+            }
+            curr_frame_idx = 0;
+        }
         const frame = movie_frames[curr_frame_idx++];
         if (frame) gfx.pushFrame(frame);
     }
@@ -916,6 +1031,7 @@ export function init(container: HTMLElement) {
     return function destroy() {
         if (frameRafId !== null) cancelAnimationFrame(frameRafId);
         clearControlsHideTimer();
+        movieLoadAbort?.abort();
         ac.abort();
         unregisterDebugState('demo');
         gfx.dispose();

@@ -86,6 +86,61 @@ test('a delayed sample response cannot overwrite a user-selected FLED', async ({
     await expect.poll(() => page.evaluate(() => window.__lmDebug?.demo?.getState().filename)).toBe('user-choice.fled');
 });
 
+test('the sample starts playing before a streaming response reaches EOF', async ({ page }) => {
+    const json = Buffer.from(JSON.stringify({
+        map: { strip1: { x: [0, 1, 2, 3], y: [0, 0, 0, 0] } },
+        video: { fps: 2 },
+    }));
+    const header = Buffer.alloc(12);
+    header.write('FLED', 0, 'ascii');
+    header[4] = 1;
+    header[5] = 0;
+    header.writeUInt32LE(json.length, 8);
+    const payload = Buffer.alloc(6 * 4 * 3);
+    for (let frame = 0; frame < 6; frame++) {
+        payload.fill(frame + 1, frame * 12, (frame + 1) * 12);
+    }
+    const bytes = Buffer.concat([header, json, payload]);
+    const firstLength = header.length + json.length + 2 * 12;
+
+    await page.addInitScript(({ bytes: sourceBytes, firstLength: firstChunkLength }) => {
+        const originalFetch = window.fetch.bind(window);
+        const source = new Uint8Array(sourceBytes);
+        let release: (() => void) | undefined;
+        (window as unknown as { __streamReleased: boolean; __releaseStream?: () => void }).__streamReleased = false;
+        (window as unknown as { __releaseStream?: () => void }).__releaseStream = () => release?.();
+        window.fetch = async (input, init) => {
+            const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+            if (!url.endsWith('/demo/video.fled')) return originalFetch(input, init);
+            const response = new Response(new ReadableStream({
+                start(controller) {
+                    controller.enqueue(source.slice(0, firstChunkLength));
+                    release = () => {
+                        (window as unknown as { __streamReleased: boolean }).__streamReleased = true;
+                        controller.enqueue(source.slice(firstChunkLength));
+                        controller.close();
+                    };
+                },
+            }), { headers: { 'content-type': 'application/octet-stream' } });
+            return response;
+        };
+    }, { bytes: [...bytes], firstLength });
+
+    await page.goto('/play');
+    await expect(page.locator('#btn_play')).toHaveValue('Pause');
+    await expect.poll(() => page.evaluate(() => window.__lmDebug?.demo?.getState())).toMatchObject({
+        frameCount: 2,
+        playing: true,
+        sourceFps: 2,
+    });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __streamReleased: boolean }).__streamReleased)).toBe(false);
+    await expect.poll(() => page.locator('#demo_media_status').textContent()).toContain('Buffering');
+
+    await page.evaluate(() => (window as unknown as { __releaseStream?: () => void }).__releaseStream?.());
+    await expect(page.locator('#demo_media_status')).toContainText('6 frames');
+    await expect.poll(() => page.evaluate(() => window.__lmDebug?.demo?.getState().frameCount)).toBe(6);
+});
+
 test('dropping a FLED uses the same self-contained load path', async ({ page }) => {
     await page.goto('/play');
     const fled = makeFled('dropped-show.fled');
