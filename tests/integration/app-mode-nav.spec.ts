@@ -7,6 +7,8 @@ test.describe('app shell mode navigation', () => {
         const nav = page.locator('#app-mode-bar');
         const links = nav.locator('a.app-mode-link[data-mode]');
         await expect(nav).toBeVisible();
+        await expect(nav.locator('a.app-brand')).toHaveText('FastLED Video Mapper');
+        await expect(nav.locator('a.app-brand')).toHaveAttribute('href', '/play');
         await expect(links).toHaveCount(3);
         await expect(nav.locator('a.app-home-link')).toHaveCount(0);
         await expect(links.nth(0)).toHaveAttribute('href', '/play');
