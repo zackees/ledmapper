@@ -103,7 +103,7 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
         }
     });
 
-    test('plain LED drag within an already selected group moves only that LED', async ({ page }) => {
+    test('plain LED drag within an already selected group still moves the whole group', async ({ page }) => {
         await seedAndOpen(page);
         await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
 
@@ -116,24 +116,33 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
 
         const afterA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
         const afterB = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
-        expect(afterA[1]).not.toEqual(beforeA[1]);
-        expect(afterA[0]).toEqual(beforeA[0]);
-        expect(afterA[2]).toEqual(beforeA[2]);
-        expect(afterA[3]).toEqual(beforeA[3]);
+        const dx = afterA[1][0] - beforeA[1][0];
+        const dy = afterA[1][1] - beforeA[1][1];
+        expect(Math.abs(dx) > 0 || Math.abs(dy) > 0).toBe(true);
+        for (let i = 0; i < beforeA.length; i++) {
+            expect(afterA[i][0] - beforeA[i][0]).toBeCloseTo(dx, 6);
+            expect(afterA[i][1] - beforeA[i][1]).toBeCloseTo(dy, 6);
+        }
         expect(afterB).toEqual(beforeB);
 
         await page.keyboard.press('Control+z');
         expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(beforeA);
     });
 
-    test('double-click LED enters point-edit mode; Esc exits', async ({ page }) => {
+    test('double-click LED enters point-edit mode with a red outline; Esc restores blue group mode', async ({ page }) => {
         await seedAndOpen(page);
-        await page.evaluate(() => window.__shapeeditorDebug.enterPointEditMode(0));
+        await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
+        const blue = await page.evaluate(() => window.__shapeeditorDebug.getSelectionOutlineColor());
+        const pos = await page.evaluate(() => window.__shapeeditorDebug.getLedCanvasPos(0));
+        await page.mouse.dblclick(pos.clientX, pos.clientY);
         expect(await page.evaluate(() => window.__shapeeditorDebug.getPointEditMode())).toBe(0);
+        const red = await page.evaluate(() => window.__shapeeditorDebug.getSelectionOutlineColor());
+        expect(red).not.toBe(blue);
         const hint = await page.evaluate(() => window.__shapeeditorDebug.getHintText());
         expect(hint).toMatch(/Editing points/);
         await page.keyboard.press('Escape');
         expect(await page.evaluate(() => window.__shapeeditorDebug.getPointEditMode())).toBe(null);
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectionOutlineColor())).toBe(blue);
     });
 
     test('in point-edit mode, dragging an LED moves only that single LED', async ({ page }) => {
@@ -166,7 +175,7 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
         }
     });
 
-    test('Alt + drag moves a single LED without entering point-edit mode', async ({ page }) => {
+    test('Alt + drag cannot bypass point-edit mode', async ({ page }) => {
         await seedAndOpen(page);
         expect(await page.evaluate(() => window.__shapeeditorDebug.getPointEditMode())).toBe(null);
 
@@ -177,16 +186,16 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
         );
         expect(ok).toBe(true);
 
-        // Still not in point-edit mode
+        // Still not in point-edit mode, so it moves the whole group.
         expect(await page.evaluate(() => window.__shapeeditorDebug.getPointEditMode())).toBe(null);
 
         const afterA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
-
-        // Exactly one LED moved in strip A
-        let moved = 0;
-        for (let i = 0; i < beforeA.length; i++) {
-            if (Math.abs(afterA[i][0] - beforeA[i][0]) > 1e-6 || Math.abs(afterA[i][1] - beforeA[i][1]) > 1e-6) moved++;
+        const dx = afterA[0][0] - beforeA[0][0];
+        const dy = afterA[0][1] - beforeA[0][1];
+        expect(Math.abs(dx) > 0 || Math.abs(dy) > 0).toBe(true);
+        for (let i = 1; i < beforeA.length; i++) {
+            expect(afterA[i][0] - beforeA[i][0]).toBeCloseTo(dx, 6);
+            expect(afterA[i][1] - beforeA[i][1]).toBeCloseTo(dy, 6);
         }
-        expect(moved).toBe(1);
     });
 });

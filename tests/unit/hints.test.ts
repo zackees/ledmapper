@@ -17,10 +17,10 @@ test('idle (loaded, no selection) shows pan/zoom/select hint', () => {
     assert.match(t, /Ctrl\+V: paste/);
 });
 
-test('strip selected explains direct LED editing and group movement', () => {
+test('strip selected explains explicit point editing and group movement', () => {
     const t = hintTextFor({ empty: false, selectedStripName: 'strip1' });
-    assert.match(t, /Drag LED: move LED/);
-    assert.match(t, /drag strip line: move group/);
+    assert.match(t, /Drag LED or strip line: move group/);
+    assert.match(t, /double-click LED: edit points/);
     assert.match(t, /handles: scale\/rotate strip/);
     assert.match(t, /Del: remove strip/);
 });

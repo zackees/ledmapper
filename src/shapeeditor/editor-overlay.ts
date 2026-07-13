@@ -115,7 +115,9 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
         // Draw oriented bounding box outline
         if (this.gizmoHover === 'translate' || this.gizmoActive === 'translate') {
             this.overlayCtx.globalAlpha = this.gizmoActive === 'translate' ? 0.8 : 0.5;
-            this.overlayCtx.strokeStyle = gfxColors.accentBlue();
+            this.overlayCtx.strokeStyle = this.pointEditStripIdx === selectedObb.idx
+                ? gfxColors.accentRed()
+                : gfxColors.accentBlue();
         } else {
             this.overlayCtx.globalAlpha = 0.3;
             this.overlayCtx.strokeStyle = gfxColors.textMuted();

@@ -384,26 +384,24 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
                 this.setNeedsGeometryUpdate();
             }
 
-            this.selectedIdx = idx;
-            this.syncPointSelection(idx);
             this.highlightedEdgeIdx = -1;
-            this.setNeedsGeometryUpdate(); // color update for selection
-            this.dragStartCanvasX = cx;
-            this.dragStartCanvasY = cy;
-            this.dragStartScreenmapPt = [...this.nn(this.screenmap_pts[idx])] as [number, number];
-            this.dragStartRawPt = [...this.nn(this.rawPts[idx])] as [number, number];
-
-            // Alt quasimode = single-point move regardless of mode.
-            this.altQuasimode = e.altKey;
             const hitStripIdx = this.stripStore.findStripForIndex(idx);
             const inPointEdit = this.pointEditStripIdx !== null && this.pointEditStripIdx === hitStripIdx;
-            const isSelectedStrip = selectedStrip === hitStripIdx;
 
-            if (this.altQuasimode || inPointEdit || isSelectedStrip) {
-                // Single-point drag (existing behavior)
+            if (inPointEdit) {
+                this.selectedIdx = idx;
+                this.syncPointSelection(idx);
+                this.setNeedsGeometryUpdate(); // color update for selection
+                this.dragStartCanvasX = cx;
+                this.dragStartCanvasY = cy;
+                this.dragStartScreenmapPt = [...this.nn(this.screenmap_pts[idx])] as [number, number];
+                this.dragStartRawPt = [...this.nn(this.rawPts[idx])] as [number, number];
                 this.isDragging = true;
                 this._oc().style.cursor = 'grabbing';
             } else {
+                this.selectedIdx = -1;
+                this.selection.selectStrip(hitStripIdx);
+                this.setNeedsGeometryUpdate();
                 this._startStripDrag(hitStripIdx, cx, cy);
             }
             return;

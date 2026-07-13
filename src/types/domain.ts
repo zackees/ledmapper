@@ -371,6 +371,7 @@ export interface ShapeeditorDebugHooks {
     getStripLabels?: () => unknown;
     getSelectedStrip?: () => number | null;
     getStripNames?: () => string[];
+    getSelectionOutlineColor?: () => string | null;
     getLedCanvasPos?: (flatIdx: number) => { clientX: number; clientY: number; canvasX: number; canvasY: number } | null;
     getStripRotateHandlePos?: () => { anchorX: number; anchorY: number; handleX: number; handleY: number; centerX: number; centerY: number; clientAnchorX: number; clientAnchorY: number; clientHandleX: number; clientHandleY: number; clientCenterX: number; clientCenterY: number } | null;
     simulateLedDrag?: (flatIdx: number, dxClient: number, dyClient: number, opts?: Record<string, unknown> | null) => boolean;

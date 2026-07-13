@@ -10,6 +10,7 @@ import { stripStartEndLabels } from '../common';
 import { createLabelRenderer } from '../label-render';
 import { wireFileDropTarget, wireFileSource } from '../drag-drop';
 import { safeStorage } from '../services/storage';
+import { gfxColors } from '../ui/theme';
 import { errorDialog, getSwal } from '../ui/dialogs';
 import { getBackup, promoteToBackup } from '../screenmap-store';
 
@@ -153,6 +154,11 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
             : null),
         getSelectedStrip: () => this.selection.getStripIdx(),
         getStripNames: () => (this.stripInfo ? this.stripInfo.strips.map((s) => s.name) : []),
+        getSelectionOutlineColor: () => {
+            const selected = this._selectedStripObbCanvas();
+            if (!selected) return null;
+            return this.pointEditStripIdx === selected.idx ? gfxColors.accentRed() : gfxColors.accentBlue();
+        },
         selectStrip: (i: number) => { this.selection.selectStrip(i); },
         placePanel: (catalogId: string, worldX: number, worldY: number, opts: PanelOpts) => this._debugPlacePanel(catalogId, worldX, worldY, opts),
         getPlacingMode: () => (this.placingState ? this.placingState.entry.id : null),

@@ -54,7 +54,7 @@ export function hintTextFor(state: HintState | null | undefined) {
         return 'Right-click for menu • drop a .json to load • press I to insert a panel';
     }
     if (s.selectedStripName) {
-        return 'Drag LED: move LED • drag strip line: move group • Ctrl+drag: shape select • handles: scale/rotate strip • Del: remove strip';
+        return 'Drag LED or strip line: move group • double-click LED: edit points • Ctrl+drag: shape select • handles: scale/rotate strip • Del: remove strip';
     }
     return 'Drag canvas: pan • Ctrl+drag: shape select • R-drag: zoom • click LED: select strip • I: insert • Ctrl+V: paste';
 }
