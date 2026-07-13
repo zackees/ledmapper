@@ -19,6 +19,7 @@
     "test:gfx:parity": "npm run build:gfx && node scripts/check-gfx-parity.mjs",
     "prelint": "npm run build:gfx",
     "check:gfx-api": "node scripts/check-gfx-api.mjs",
+    "check:gfx-release": "node scripts/check-gfx-release.mjs",
     "preview": "vite preview",
     "lint": "eslint src/ tests/ --max-warnings 0 --cache --cache-location node_modules/.cache/eslint/ && node scripts/check-moviemaker-presets.mjs && node scripts/check-css-var-prefixes.mjs",
     "check:presets": "node scripts/check-moviemaker-presets.mjs",
