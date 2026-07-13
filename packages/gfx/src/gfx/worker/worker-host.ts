@@ -23,6 +23,7 @@ import type {
     GfxToWorker,
     WorkerToGfx,
 } from './protocol.js';
+import { GFX_CAPABILITIES, GFX_PROTOCOL_VERSION } from './protocol.js';
 
 const STATS_INTERVAL_MS = 250;
 const BLOOM_POLL_INTERVAL_MS = 100;
@@ -63,6 +64,10 @@ export function runGfxWorker(): void {
             const msg = ev.data;
             switch (msg.type) {
                 case 'init':
+                    if (msg.protocolVersion !== GFX_PROTOCOL_VERSION) {
+                        post({ type: 'error', code: 'protocol-mismatch', message: `Unsupported protocol ${String(msg.protocolVersion)}; expected ${String(GFX_PROTOCOL_VERSION)}` });
+                        return;
+                    }
                     if (core !== null) {
                         post({ type: 'error', message: 'init: already initialized' });
                         return;
@@ -89,7 +94,7 @@ export function runGfxWorker(): void {
                             post({ type: 'bloomStrength', value: v });
                         }
                     }, BLOOM_POLL_INTERVAL_MS);
-                    post({ type: 'ready' });
+                    post({ type: 'ready', protocolVersion: GFX_PROTOCOL_VERSION, capabilities: GFX_CAPABILITIES });
                     break;
                 case 'pushFrame':
                     if (core === null) return;

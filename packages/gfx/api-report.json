@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "entries": {
+    ".": ["createGfx", "createGfxCore", "createGfxFromFled", "createGfxInWorker", "createPlayer", "createFramePacer", "normalizeScreenmap", "wireBloomUi", "pushFramePayload"],
+    "./core": ["createGfxCore", "normalizeScreenmap", "createFramePacer", "parseRgbFrames", "hasFledMagic", "readVideoFps"],
+    "./fled": ["createGfxFromFled", "createPlayer", "parseRgbFrames", "hasFledMagic", "readVideoFps"],
+    "./worker": ["runGfxWorker", "GFX_PROTOCOL_VERSION", "GFX_CAPABILITIES"]
+  }
+}

@@ -217,6 +217,10 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
         canvas: opts.canvas,
         get screenmap(): Screenmap { return screenmap; },
         pushFrame(rgb: Uint8Array): void {
+            const expectedBytes = screenmap.points.length * 3;
+            if (rgb.byteLength !== expectedBytes) {
+                throw new RangeError(`pushFrame: expected ${String(expectedBytes)} RGB8 bytes for ${String(screenmap.points.length)} LEDs, got ${String(rgb.byteLength)}`);
+            }
             const now = nowMs();
             pushMeter.tick(now);
             lastFrame = rgb;
