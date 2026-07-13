@@ -4,6 +4,8 @@ export { normalizeScreenmap } from './gfx/screenmap.js';
 export { createFramePacer } from './gfx/frame-pacer.js';
 export { parseRgbFrames, hasFledMagic, readVideoFps } from './render/rgb-video.js';
 export { PixelFormat, bytesPerLed, isSupportedFormat, prependFledHeader } from './render/rgb-video.js';
+export { FledStreamError, streamFled } from './render/fled-stream.js';
+export type { FledStreamMetadata, FledStreamOptions, FledStreamResult } from './render/fled-stream.js';
 export { parse_screenmap_data_json, parseScreenmapMultiStrip, centerAndFitPoints, getStripColors, stripStartEndLabels } from './common.js';
 export { resolveLedDiameter, computeFitScale } from './bloom-utils.js';
 export { buildVideoChannelMap } from './moviemaker/transforms.js';
