@@ -56,10 +56,12 @@ export function embedFps(screenmapJson: string, fps: number): string {
     return screenmapJson;
 }
 
-export function createRecording({ getSwal, getScreenmapJson }: {
+export function createRecording({ getSwal, getScreenmapJson, onSaved }: {
     getSwal?: () => Promise<SwalInstance>;
     /** Returns the current screenmap JSON string, or null if none loaded. */
     getScreenmapJson: () => string | null;
+    /** Called after the freshly saved FLED is persisted for Movie Player. */
+    onSaved?: () => void;
 }) {
     let active = false;
     let capturing = false;
@@ -131,7 +133,7 @@ export function createRecording({ getSwal, getScreenmapJson }: {
             // the downloaded file; storage failure (quota, permission)
             // just means Movie Player won't auto-restore. Log so the
             // failure isn't completely silent. Issue #179.
-            saveVideo(fledFile).catch((error: unknown) => {
+            saveVideo(fledFile).then(() => onSaved?.()).catch((error: unknown) => {
                 log.error('save-to-indexeddb-failed', { error: String(error) });
             });
         }
