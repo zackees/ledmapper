@@ -306,6 +306,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
                 }
                 const handle = this._stripRotateHandlePos();
                 if (!handle) return;
+                this.stripRotateHandleSnapshot = { ...handle };
                 const [centerX, centerY] = this.canvasToScreenmapCoords(handle.centerX, handle.centerY);
                 const [rawX, rawY] = this.screenmapToRawCoords(centerX, centerY);
                 this.stripRotateCenterSm = { x: centerX, y: centerY };
@@ -988,6 +989,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this.stripRotateCenterRaw = null;
             this.stripRotateStartAngle = 0;
             this.stripRotateLastDeg = 0;
+            this.stripRotateHandleSnapshot = null;
         }
         if (this.isDragging) {
             this.isDragging = false;

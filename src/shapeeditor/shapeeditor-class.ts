@@ -174,6 +174,7 @@ export class ShapeEditor {
     declare stripRotateStartAngle: number;
     declare stripRotateLastDeg: number;
     declare stripRotateHover: boolean;
+    declare stripRotateHandleSnapshot: { idx: number; anchorX: number; anchorY: number; handleX: number; handleY: number; centerX: number; centerY: number } | null;
     declare altQuasimode: boolean;
     declare ctxMenu: HTMLElement | null;
     declare ctxMenuIdx: number;

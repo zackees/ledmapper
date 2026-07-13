@@ -835,6 +835,7 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
         this.stripRotateCenterRaw = null;
         this.stripRotateStartAngle = 0;
         this.stripRotateLastDeg = 0;
+        this.stripRotateHandleSnapshot = null;
     },
     _applyStripRotate(this: ShapeEditor, stripIdx: number, deltaRad: number, centerSm: { x: number; y: number }, centerRaw: { x: number; y: number }){
         if (!this.stripInfo || stripIdx < 0 || stripIdx >= this.stripInfo.strips.length) return;
