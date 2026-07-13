@@ -43,6 +43,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run test:gfx:package
+      - run: npm run test:gfx:parity
 
   unit:
     runs-on: ubuntu-latest

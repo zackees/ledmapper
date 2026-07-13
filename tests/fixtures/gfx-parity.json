@@ -1,0 +1,8 @@
+{
+  "layouts": [
+    { "name": "sparse-strip", "count": 8, "x": [0, 1, 2, 3, 4, 5, 6, 7], "y": [0, 0, 0, 0, 0, 0, 0, 0] },
+    { "name": "irregular-multistrip-probe", "count": 12, "strips": [{ "x": [0, 10, 25, 2, 18, 31], "y": [0, 4, 1, 12, 9, 16] }, { "x": [5, 12, 40, 3, 24, 45], "y": [25, 22, 28, 35, 31, 40] }] },
+    { "name": "dense-32x32", "count": 1024, "width": 32, "height": 32, "serpentine": true },
+    { "name": "quad-serpentine-64x64", "count": 4096, "width": 64, "height": 64, "serpentine": true }
+  ]
+}
