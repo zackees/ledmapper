@@ -71,6 +71,12 @@
     transition: all 280ms var(--lm-ease);
 }
 
+.tool-card--play { --lm-card-accent: var(--fastled-accent-amber); }
+.tool-card--create { --lm-card-accent: var(--fastled-accent-green); }
+.tool-card--record { --lm-card-accent: var(--fastled-accent-blue); }
+.tool-card--screenmap { --lm-card-accent: var(--fastled-accent-purple); }
+.tool-card--player { --lm-card-accent: var(--fastled-accent-cyan); }
+
 /* Subtle inner glow on hover */
 .tool-card::after {
     content: '';

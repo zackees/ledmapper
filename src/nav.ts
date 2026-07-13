@@ -5,10 +5,12 @@
 // and integration tests target them directly — but the words a user reads no
 // longer flip between "Demo/Video Maker" here and "Play/Record" in the shell.
 const tools = [
+    { name: 'Hub', href: '/hub/' },
     { name: 'Play', href: '/demo/' },
     { name: 'Create', href: '/shapeeditor/' },
     { name: 'Record', href: '/moviemaker/' },
-    { name: 'Player', href: '/movieplayer/' },
+    { name: 'Screenmap Maker', href: '/screenmap/' },
+    { name: 'Video Player', href: '/movieplayer/' },
 ];
 
 let navEl: HTMLElement | null = null;
@@ -24,7 +26,7 @@ export function initNav() {
 
     const brand = document.createElement('a');
     brand.className = 'nav-brand';
-    brand.href = '/';
+    brand.href = '/hub/';
     brand.textContent = 'FastLED Video Mapper';
     nav.appendChild(brand);
 
