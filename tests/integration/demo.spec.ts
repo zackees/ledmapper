@@ -3,7 +3,7 @@ import { test, expect } from './fixtures.ts';
 test.describe('Demo Page', () => {
     test('loads and shows title', async ({ page }) => {
         await page.goto('/demo/');
-        await expect(page.locator('h1')).toContainText('See your LEDs in motion');
+        await expect(page.locator('h1')).toContainText('Map video to your LEDs');
     });
 
     test('has play button', async ({ page }) => {

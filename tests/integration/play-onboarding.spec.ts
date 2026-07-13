@@ -44,17 +44,19 @@ const invalidFledCases = [
 
 test('Play introduces the sample and makes loading a FLED obvious', async ({ page }) => {
     await page.goto('/play');
-    await expect(page.getByRole('heading', { name: 'See your LEDs in motion' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Play your FLED' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Map video to your LEDs' })).toBeVisible();
+    await expect(page.getByText('FLED Video Player')).toBeVisible();
+    await expect(page.getByText('Turn any video into frames for your exact LED layout, save everything in a self-contained .fled file, and play it from a FastLED sketch.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open a .fled' })).toBeVisible();
     await expect(page.getByText('or drop a .fled file anywhere on this player')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Create a FLED' })).toHaveAttribute('href', '/record');
+    await expect(page.getByRole('link', { name: 'Map a video' })).toHaveAttribute('href', '/record');
     await expect(page.locator('#demo_media_status')).toContainText('Sample FLED');
 });
 
 test('visible CTA opens the FLED file picker', async ({ page }) => {
     await page.goto('/play');
     const chooser = page.waitForEvent('filechooser');
-    await page.getByRole('button', { name: 'Play your FLED' }).click();
+    await page.getByRole('button', { name: 'Open a .fled' }).click();
     await chooser;
 });
 
@@ -173,7 +175,7 @@ test('mobile onboarding stays above the preview and below navigation', async ({ 
         const box = element.getBoundingClientRect();
         return { x: box.x, y: box.y, width: box.width, height: box.height };
     });
-    const nav = await rect('.nav-bar');
+    const nav = await rect('#app-mode-bar');
     const intro = await rect('.demo-intro');
     const stage = await rect('.lm-canvas-wrapper');
     expect(intro.y).toBeGreaterThanOrEqual(nav.y + nav.height - 1);
