@@ -8,14 +8,14 @@
  * wires UI events to `gfx.setBloom` / `gfx.getBloomStrength`.
  */
 
-import { wireBloomControls } from '../render/bloom-ui';
+import { wireBloomControls } from '../render/bloom-ui.js';
 import {
     DEMO_AUTO_FLOOR,
     DEMO_AUTO_MAX_SPARSE,
     DEMO_BLOOM_MAX_STRENGTH,
     BLOOM_MIN_STRENGTH,
-} from '../bloom-utils';
-import type { Gfx } from './types';
+} from '../bloom-utils.js';
+import type { Gfx } from './types.js';
 
 export interface WireBloomUiConfig {
     gfx: Gfx;

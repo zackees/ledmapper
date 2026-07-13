@@ -21,15 +21,15 @@
  */
 
 import type { WebGLRenderer, Scene, Camera } from 'three';
-import { createBloomComposer, updateBloomIris } from './three-bloom';
+import { createBloomComposer, updateBloomIris } from './three-bloom.js';
 import {
     computeAutoBloomRange,
     bloomParamsForLedSize,
     computeDiameterHeadroom,
     computeIrisDiameterScale,
     BLOOM_MIN_STRENGTH,
-} from './bloom-utils';
-import type { BloomProfile, BloomRange } from './types/domain';
+} from './bloom-utils.js';
+import type { BloomProfile, BloomRange } from './types/domain.js';
 
 /** bloomParamsForLedSize overrides, fixed per tool. */
 export interface AutoBloomParamOverrides {

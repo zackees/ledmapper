@@ -6,9 +6,9 @@
  * of them into the package's internal `Screenmap`.
  */
 
-import { parse_screenmap_data_json, parseScreenmapMultiStrip, centerAndFitPoints } from '../common';
-import type { Screenmap } from './types';
-import type { ScreenmapJson, StripPoint } from '../types/domain';
+import { parse_screenmap_data_json, parseScreenmapMultiStrip, centerAndFitPoints } from '../common.js';
+import type { Screenmap } from './types.js';
+import type { ScreenmapJson, StripPoint } from '../types/domain.js';
 
 function isAlreadyNormalized(value: unknown): value is Screenmap {
     if (typeof value !== 'object' || value === null) return false;

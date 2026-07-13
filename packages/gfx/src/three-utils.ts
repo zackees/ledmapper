@@ -11,10 +11,10 @@ import {
     type Texture,
 } from 'three';
 
-import type { RendererContext, RendererContextWithOverlay, PointsMeshResult } from './types/domain';
-import { wireSliderReadout } from './ui/sliders';
-import { registerRenderer } from './debug-hooks';
-import { attachContextLossWatchdog, createRafHeartbeat } from './watchdogs';
+import type { RendererContext, RendererContextWithOverlay, PointsMeshResult } from './types/domain.js';
+import { wireSliderReadout } from './ui/sliders.js';
+import { registerRenderer } from './debug-hooks.js';
+import { attachContextLossWatchdog, createRafHeartbeat } from './watchdogs.js';
 
 /** Create a canvas-based circle texture for round points.
  *

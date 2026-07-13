@@ -2,8 +2,8 @@
  * Pure logic functions for the Video Maker, extracted for testability.
  */
 
-import { centerAndFitPoints } from '../common';
-import type { StripPoint } from '../types/domain';
+import { centerAndFitPoints } from '../common.js';
+import type { StripPoint } from '../types/domain.js';
 
 /**
  * Centers and scales points to fit within the given video dimensions.

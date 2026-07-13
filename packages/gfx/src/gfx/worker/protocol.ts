@@ -11,7 +11,7 @@
  * (worker-host.ts pulls in Three.js — heavy).
  */
 
-import type { BloomConfig, Screenmap } from '../types';
+import type { BloomConfig, Screenmap } from '../types.js';
 
 export interface InitMessage {
     type: 'init';

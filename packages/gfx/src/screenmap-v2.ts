@@ -32,7 +32,7 @@ import type {
     MultiStripParseResult,
     ParsedStrip,
     StripPoint,
-} from './types/domain';
+} from './types/domain.js';
 
 export type ScreenmapVersion = 1 | 2;
 

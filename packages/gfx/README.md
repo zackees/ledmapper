@@ -101,7 +101,12 @@ interface GfxWithPlayer extends Gfx {
 
 `Player` is play / pause / seek / speed / loop with `onTimeUpdate` / `onEnded` and an opt-in `mountControls(el)` for a default UI.
 
-## What's coming
+## Worker and secondary entry points
+
+The worker host is available from `@fastled/gfx/worker`; import `runGfxWorker`
+from a consumer-owned Dedicated Worker module. The package also provides
+`@fastled/gfx/core` for the DOM-free renderer and `@fastled/gfx/fled` for
+FLED parsing and headless playback.
 
 - `createGfxInWorker({ canvas, ... })` — same surface, runs in a Worker, OffscreenCanvas transferred from the main thread. Designed for FastLED's wasm pipeline. See [#157 §2](https://github.com/zackees/ledmapper/issues/157).
 - `mode: 'fast'` — WebGL 1.0 quad renderer ported from FastLED's `gfx=0` path.

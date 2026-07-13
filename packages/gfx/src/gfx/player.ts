@@ -16,8 +16,8 @@
  * playhead off-time.
  */
 
-import { setupToggleButton } from './controls/toggle-button';
-import type { Player, PlayerControlsOptions } from './types';
+import { setupToggleButton } from './controls/toggle-button.js';
+import type { Player, PlayerControlsOptions } from './types.js';
 
 export interface PlayerInit {
     frames: readonly Uint8Array[];

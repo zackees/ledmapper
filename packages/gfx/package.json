@@ -6,16 +6,41 @@
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "core": ["core.d.ts"],
+      "fled": ["fled.d.ts"],
+      "worker": ["worker.d.ts"]
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js"
+    },
+    "./fled": {
+      "types": "./dist/fled.d.ts",
+      "import": "./dist/fled.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "import": "./dist/worker.js"
     }
   },
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "core.js",
+    "core.d.ts",
+    "fled.js",
+    "fled.d.ts",
+    "worker.js",
+    "worker.d.ts"
   ],
   "sideEffects": false,
   "peerDependencies": {

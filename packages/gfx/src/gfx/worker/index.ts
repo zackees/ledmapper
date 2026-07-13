@@ -10,11 +10,11 @@
  * Issue #163 Phase 3c.
  */
 
-export { runGfxWorker } from './worker-host';
+export { runGfxWorker } from './worker-host.js';
 export type {
     GfxToWorker,
     WorkerToGfx,
     InitMessage,
     PushFrameMessage,
     StatsMessage,
-} from './protocol';
+} from './protocol.js';

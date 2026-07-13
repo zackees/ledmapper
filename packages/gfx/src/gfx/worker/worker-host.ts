@@ -17,12 +17,12 @@
  * back to the host. Issue #163 Phase 3c.
  */
 
-import { createGfxCore } from '../gfx-core-headless';
-import type { GfxCore } from '../gfx-core-headless';
+import { createGfxCore } from '../gfx-core-headless.js';
+import type { GfxCore } from '../gfx-core-headless.js';
 import type {
     GfxToWorker,
     WorkerToGfx,
-} from './protocol';
+} from './protocol.js';
 
 const STATS_INTERVAL_MS = 250;
 const BLOOM_POLL_INTERVAL_MS = 100;

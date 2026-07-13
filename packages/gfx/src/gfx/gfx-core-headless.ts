@@ -24,9 +24,9 @@ import {
     createRendererCore,
     rebuildPointsMesh,
     createAnimationLoop,
-} from '../three-utils';
-import { createAutoBloom } from '../auto-bloom';
-import { applyBloomGeometry } from '../render/bloom-geometry';
+} from '../three-utils.js';
+import { createAutoBloom } from '../auto-bloom.js';
+import { applyBloomGeometry } from '../render/bloom-geometry.js';
 import {
     BLOOM_RENDER_PX,
     DEMO_AUTO_FLOOR,
@@ -36,10 +36,10 @@ import {
     DEMO_BLOOM_RADIUS,
     DEMO_BLOOM_AREA_REF,
     IRIS_DIAMETER_GAIN,
-} from '../bloom-utils';
-import { normalizeScreenmap } from './screenmap';
-import { FpsMeter } from './fps';
-import type { BloomConfig, Screenmap } from './types';
+} from '../bloom-utils.js';
+import { normalizeScreenmap } from './screenmap.js';
+import { FpsMeter } from './fps.js';
+import type { BloomConfig, Screenmap } from './types.js';
 
 const INV_255 = 1 / 255;
 const DEFAULT_PANE_SIZE = 800;

@@ -4,9 +4,9 @@
  * the geometry or LED diameter changes; this is the single source of truth for
  * that bbox + spacing computation.
  */
-import type { AutoBloomGeometry } from '../auto-bloom';
-import { estimateLedSize } from '../moviemaker/transforms';
-import type { StripPoint } from '../types/domain';
+import type { AutoBloomGeometry } from '../auto-bloom.js';
+import { estimateLedSize } from '../moviemaker/transforms.js';
+import type { StripPoint } from '../types/domain.js';
 
 interface BloomGeometryTarget {
     setGeometry: (geometry: AutoBloomGeometry) => void;
