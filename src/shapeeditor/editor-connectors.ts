@@ -7,6 +7,7 @@ import { gfxColors, withAlpha } from "../ui/theme";
 import { notePinMutation } from "../screenmap-store";
 import { getPinColors } from "../common";
 import type { GizmoHandle } from "./shapeeditor-types";
+import { groupFocusOpacity } from "./selection-focus";
 
 export interface EditorConnectorsMethods {
     _commitComposite: (subActions: UndoAction[], crossPin: boolean, toastStripName: string, toastPin: string) => boolean;
@@ -250,6 +251,7 @@ export const editorConnectorsMethods: EditorConnectorsMethods & ThisType<ShapeEd
         }
         ctx.save();
         ctx.globalAlpha = 0.9;
+        const selectedStripIdx = this.selection.getStripIdx();
         ctx.strokeStyle = gfxColors.accentBlue();
         ctx.fillStyle = gfxColors.accentBlue();
         ctx.lineWidth = 1.5;
@@ -263,6 +265,8 @@ export const editorConnectorsMethods: EditorConnectorsMethods & ThisType<ShapeEd
             if (aLast >= pts.length || bFirst >= pts.length) continue;
             const [x1, y1] = this.nn(pts[aLast]);
             const [x2, y2] = this.nn(pts[bFirst]);
+            const connectorOpacity = Math.max(groupFocusOpacity(selectedStripIdx, s), groupFocusOpacity(selectedStripIdx, s + 1));
+            ctx.globalAlpha = 0.9 * connectorOpacity;
             if (this._pinOfStrip(a) !== this._pinOfStrip(b)) {
                 // Cross-pin boundary: no arrow — pin-tinted dot near the next
                 // strip's Start (§1.7).
