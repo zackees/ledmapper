@@ -68,6 +68,8 @@ export interface GfxBaseOptions {
     preserveDrawingBuffer?: boolean;
     /** Abort signal to dispose of the renderer + detach listeners. */
     signal?: AbortSignal;
+    /** Optional theme snapshot for worker-safe consumers. */
+    colors?: Readonly<Record<string, string>>;
 }
 
 export interface CreateGfxOptions extends GfxBaseOptions {

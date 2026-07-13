@@ -38,6 +38,8 @@ export interface InitMessage {
     /** Host device pixel ratio. Forwarded so the worker's pixel-ratio
      *  fallback (`1.0` when `window` is absent) doesn't drop fidelity. */
     devicePixelRatio: number;
+    /** CSS color snapshot captured on the main thread; workers have no DOM. */
+    colors?: Readonly<Record<string, string>>;
 }
 
 export interface PushFrameMessage {

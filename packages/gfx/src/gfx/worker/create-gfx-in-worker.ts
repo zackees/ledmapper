@@ -53,6 +53,8 @@ export interface CreateGfxInWorkerOptions {
     /** Override the main-thread DPR forwarded to the worker. Defaults
      *  to `window.devicePixelRatio`. */
     devicePixelRatio?: number;
+    /** CSS color snapshot for worker-safe rendering and downstream widgets. */
+    colors?: Readonly<Record<string, string>>;
     /** Reject the returned Promise if `ready` doesn't land in this many
      *  ms. Default 10000. */
     initTimeoutMs?: number;
@@ -150,6 +152,7 @@ export async function createGfxInWorker(opts: CreateGfxInWorkerOptions): Promise
         preserveDrawingBuffer: opts.preserveDrawingBuffer === true,
         devicePixelRatio: opts.devicePixelRatio
             ?? (typeof window !== 'undefined' ? window.devicePixelRatio : 1),
+        ...(opts.colors !== undefined ? { colors: opts.colors } : {}),
     };
     opts.worker.postMessage(initMsg, [offscreen]);
 
