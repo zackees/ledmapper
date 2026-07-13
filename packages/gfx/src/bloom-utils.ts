@@ -1,0 +1,289 @@
+/**
+ * Pure LED-size/bloom/iris math shared by the demo page and the moviemaker
+ * preview.
+ *
+ * Recipe copied from FastLED's graphics_manager_threejs.ts:
+ * - UnrealBloomPass with threshold 0, strength up to 16, radius 1.
+ * - An auto-bloom "iris": tracked brightness follows the frame's average LED
+ *   brightness (global light output) through FastLED's attack-decay filter
+ *   (attack_decay_filter_impl.h) — fast attack so the iris constricts
+ *   immediately on blowouts, ~10x slower decay so it dilates gradually in
+ *   dark scenes (mirrors human pupil dynamics, where dilation is several
+ *   times slower than constriction) — and bloom strength scales inversely
+ *   with it.
+ * - Bloom kernel proportioned to the rendered LED size: small sparse dots
+ *   keep a tight visible halo, large/dense dots don't white out the pane.
+ *
+ * Kept free of DOM/Three.js imports so node:test can load it directly.
+ */
+
+import type { BloomAutoRangeInput, BloomRange, BloomParams, FrameBrightnessResult } from './types/domain';
+
+export const BLOOM_MIN_STRENGTH = 0.5;
+export const BLOOM_MAX_STRENGTH = 16;
+export const BLOOM_RADIUS = 1;
+export const BLOOM_THRESHOLD = 0.0;
+
+export const IRIS_ATTACK_TAU = 0.08;
+// Reopen the iris ~10x slower than it constricts — the idiomatic auto-exposure
+// asymmetry, and close to human pupil dynamics (dilation much slower than
+// constriction). Fast attack protects against blowout; slow decay dilates
+// gradually in dark scenes.
+export const IRIS_DECAY_TAU = IRIS_ATTACK_TAU * 10;
+export const IRIS_MAX_DT = 0.25;
+
+export const AUTO_BLOOM_SPACING_REF = 0.10;
+
+// Tuned for the 400px preview pane (issue #49): the density envelope is an
+// outer guard; bloomParamsForLedSize stays the binding ceiling on dense maps.
+export const PREVIEW_AUTO_FLOOR       = 0.6;
+export const PREVIEW_AUTO_MAX_DENSE   = 4;
+export const PREVIEW_AUTO_MAX_SPARSE  = 6;
+
+// Demo full-open iris ceiling — matches the manually-validated sweet spot
+// (diameter 1, strength 36) so auto-bloom can reach the same look (issue #51).
+export const DEMO_BLOOM_MAX_STRENGTH  = 36;
+export const DEMO_AUTO_FLOOR          = 1.5;
+// Density envelope is a non-binding outer guard at the demo ceiling; the iris
+// and per-frame density factor still modulate strength within it.
+export const DEMO_AUTO_MAX_DENSE      = DEMO_BLOOM_MAX_STRENGTH;
+export const DEMO_AUTO_MAX_SPARSE     = DEMO_BLOOM_MAX_STRENGTH;
+
+// Large-dot regime taming (issue #53): at large LED diameters the demo's dots
+// already cover much of the panel, so the default radius-1.0 / wide-area kernel
+// produces halos that wash out the whole display. These demo-only overrides
+// halve the bloom radius and the area reference so the strength ceiling drops
+// off faster as dots grow, while leaving the diameter-1 sweet spot untouched.
+// Passed per-call to bloomParamsForLedSize so the preview pane keeps the shared
+// defaults.
+export const DEMO_BLOOM_RADIUS        = 0.5;
+export const DEMO_BLOOM_AREA_REF      = 0.0125;
+
+// Iris diameter modulation: on layouts whose rendered dots leave gaps between
+// neighbours, the auto-bloom iris also grows the dot diameter as the frame
+// brightens — like an aperture opening to admit more light (issue: sparse maps
+// open up). The growth is a continuous function of geometry, so a dense layout
+// (dots already filling the inter-LED spacing) self-rejects to ~no growth
+// without any special-casing. 0.8 = sparse dots grow up to 1.8x at full bright.
+export const IRIS_DIAMETER_GAIN = 0.8;
+
+export const LIT_EPSILON = 0.01;
+export const BLOOM_COVERAGE_REF = 0.02;
+export const BLOOM_AREA_REF = 0.025;
+export const BLOOM_RADIUS_MIN = 0.15;
+export const BLOOM_RESOLUTION_REF = 800;
+
+/**
+ * Canonical bloom render resolution: the backing-buffer dimension (in device
+ * pixels) the scene + bloom chain renders at, independent of
+ * window.devicePixelRatio. Fixing this makes the UnrealBloomPass mip pyramid see
+ * the same pixel count on Mac/Windows/Linux, so bloom output is identical across
+ * platforms and displays. Chosen >= typical on-screen sizes so the canvas
+ * downsamples (clean) rather than upsamples (soft).
+ *
+ * Power of two: UnrealBloomPass halves the render target at each mip level.
+ * 2048 → 1024 → 512 → 256 → 128 → 64 → 32 → 16 — exact integer halves the
+ * whole way down. The previous 2000 broke at level 4 (125 → 62, half-pixel
+ * loss) which softened the high-mip bloom on every frame. 2048 also aligns
+ * with the GPU's POT page size so the render target doesn't quietly cost
+ * more VRAM than its dimension suggests.
+ */
+export const BLOOM_RENDER_PX = 2048;
+
+export function computeFrameBrightness(rgbBytes: Uint8Array | number[]): FrameBrightnessResult {
+    const totalCount = Math.floor(rgbBytes.length / 3);
+    if (totalCount === 0) return { avgBrightness: 0, litCount: 0, totalCount: 0 };
+
+    let totalBri = 0;
+    let litCount = 0;
+    for (let i = 0; i < totalCount; i++) {
+        const i3 = i * 3;
+        const bri = ((rgbBytes[i3] ?? 0) + (rgbBytes[i3 + 1] ?? 0) + (rgbBytes[i3 + 2] ?? 0)) / (3 * 255);
+        totalBri += bri;
+        if (bri > LIT_EPSILON) litCount++;
+    }
+    return { avgBrightness: totalBri / totalCount, litCount, totalCount };
+}
+
+export function stepIrisAttackDecay(
+    currentBrightness: number,
+    avgBrightness: number,
+    dtSeconds: number,
+    {
+        attackTau = IRIS_ATTACK_TAU,
+        decayTau = IRIS_DECAY_TAU,
+        maxDt = IRIS_MAX_DT,
+    }: { attackTau?: number; decayTau?: number; maxDt?: number } = {},
+): number {
+    const dt = Math.min(Math.max(dtSeconds, 0), maxDt);
+    const tau = Math.abs(avgBrightness) > Math.abs(currentBrightness) ? attackTau : decayTau;
+    let next;
+    if (tau <= 0) {
+        next = avgBrightness;
+    } else {
+        next = avgBrightness + (currentBrightness - avgBrightness) * Math.exp(-dt / tau);
+    }
+    return Math.min(Math.max(next, 0), 1);
+}
+
+export function computeBloomStrength(
+    currentBrightness: number,
+    litCount: number,
+    totalCount: number,
+    { min = BLOOM_MIN_STRENGTH, max = BLOOM_MAX_STRENGTH, blowoutRisk = 1 }:
+        { min?: number; max?: number; blowoutRisk?: number } = {},
+): number {
+    const bri = Math.min(Math.max(currentBrightness, 0), 1);
+    const densityFactor = totalCount > 0
+        ? Math.min(Math.max(litCount / totalCount, 0), 1)
+        : 0;
+    // Fully brightness/density-modulated strength (the original iris formula).
+    const modulated = min + (max - min) * (1 - bri) * densityFactor;
+    // The iris only needs to constrict in proportion to how likely the frame
+    // is to wash out the panel. blowoutRisk is a geometry-derived scalar
+    // (bloomParamsForLedSize): small/sparse dots (risk→0) hold full bloom
+    // regardless of the frame; large/dense dots (risk→1) get full modulation.
+    const risk = Math.min(Math.max(blowoutRisk, 0), 1);
+    const strength = max - risk * (max - modulated);
+    return Math.min(Math.max(strength, min), max);
+}
+
+export function computeAutoBloomRange({
+    ledSpacing,
+    sceneExtent,
+    profile: {
+        floor    = PREVIEW_AUTO_FLOOR,
+        maxDense  = PREVIEW_AUTO_MAX_DENSE,
+        maxSparse = PREVIEW_AUTO_MAX_SPARSE,
+    } = {},
+}: BloomAutoRangeInput): BloomRange {
+    const extent = Math.max(sceneExtent, 1e-9);
+    const spacingFraction = ledSpacing / extent;
+    const D = 1 - Math.min(Math.max(spacingFraction / AUTO_BLOOM_SPACING_REF, 0), 1);
+    const rawMax = maxSparse + (maxDense - maxSparse) * D;
+    const autoMax = Math.max(rawMax, floor);
+    return {
+        min: Math.max(BLOOM_MIN_STRENGTH, floor * 0.5),
+        max: autoMax,
+    };
+}
+
+/**
+ * Geometric headroom for diameter growth, in [0, 1]. Compares the rendered dot
+ * size to the inter-LED spacing: 0 = dots already meet/overlap their neighbours
+ * (dense — no room to grow), 1 = dots are tiny relative to their spacing
+ * (sparse — lots of empty space to fill). This is the "geometry functor" that a
+ * dense map self-rejects through, so no sparse/dense branch is needed.
+ */
+export function computeDiameterHeadroom(
+    ledPx: number,
+    panePx: number,
+    ledSpacing: number,
+    sceneExtent: number,
+): number {
+    const extent = Math.max(sceneExtent, 1e-9);
+    const dotFraction = panePx > 0 ? ledPx / panePx : 0;
+    const spacingFraction = ledSpacing / extent;
+    if (!(spacingFraction > 0)) return 0;
+    const coverage = dotFraction / spacingFraction; // 1 = dots touch, >1 = overlap
+    return Math.min(Math.max(1 - coverage, 0), 1);
+}
+
+/**
+ * LED diameter multiplier (>= 1) for the current iris state. Grows with the
+ * smoothed frame brightness, scaled by the geometric headroom so dense layouts
+ * barely move while sparse ones open up.
+ */
+export function computeIrisDiameterScale(
+    headroom: number,
+    brightness: number,
+    gain = IRIS_DIAMETER_GAIN,
+): number {
+    const h = Math.min(Math.max(headroom, 0), 1);
+    const b = Math.min(Math.max(brightness, 0), 1);
+    return 1 + gain * h * b;
+}
+
+export function resolveLedDiameter(
+    strips: Record<string, unknown>[] | null | undefined,
+    fallback: number | null = null,
+): number | null {
+    let max = 0;
+    if (strips) {
+        for (const s of strips) {
+            if (typeof s.diameter === 'number' && Number.isFinite(s.diameter) && s.diameter > max) {
+                max = s.diameter;
+            }
+        }
+    }
+    if (max > 0) return max;
+    return (typeof fallback === 'number' && Number.isFinite(fallback) && fallback > 0) ? fallback : null;
+}
+
+export function computeFitScale(rawPts: number[][], fittedPts: number[][]): number {
+    const extent = (pts: number[][]) => {
+        let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+        for (const pt of pts) {
+            const x = pt[0] ?? 0;
+            const y = pt[1] ?? 0;
+            if (x < xmin) xmin = x;
+            if (x > xmax) xmax = x;
+            if (y < ymin) ymin = y;
+            if (y > ymax) ymax = y;
+        }
+        return Math.max(xmax - xmin, ymax - ymin);
+    };
+    if (rawPts.length < 2 || fittedPts.length < 2) return 1;
+    const rawExtent = extent(rawPts);
+    const fittedExtent = extent(fittedPts);
+    if (!(rawExtent > 0) || !(fittedExtent > 0)) return 1;
+    return fittedExtent / rawExtent;
+}
+
+export function bloomParamsForLedSize(
+    ledPx: number,
+    panePx: number,
+    ledCount: number,
+    {
+        bloomResolution = BLOOM_RESOLUTION_REF,
+        refCoverage = BLOOM_COVERAGE_REF,
+        refArea = BLOOM_AREA_REF,
+        refResolution = BLOOM_RESOLUTION_REF,
+        baseRadius = BLOOM_RADIUS,
+        minRadius = BLOOM_RADIUS_MIN,
+        baseMin = BLOOM_MIN_STRENGTH,
+        baseMax = BLOOM_MAX_STRENGTH,
+    }: {
+        bloomResolution?: number;
+        refCoverage?: number;
+        refArea?: number;
+        refResolution?: number;
+        baseRadius?: number;
+        minRadius?: number;
+        baseMin?: number;
+        baseMax?: number;
+    } = {},
+): BloomParams {
+    const linear = Math.min(Math.max(panePx > 0 ? ledPx / panePx : 0, 1e-4), 1);
+    const count = Math.max(Number.isFinite(ledCount) ? ledCount : 1, 1);
+    const area = Math.min(Math.max(count * linear * linear, 1e-6), 1);
+    const radius = Math.min(Math.max(baseRadius * (linear / refCoverage), minRadius), baseRadius);
+    const areaScale = Math.min(refArea / area, 1);
+    const perDotScale = Math.min((refCoverage * refCoverage) / (linear * linear), 1);
+    const resScale = refResolution > 0
+        ? Math.min(Math.max(bloomResolution, 1) / refResolution, 1)
+        : 1;
+    const strengthScale = areaScale * perDotScale * resScale;
+    // Coverage headroom drives how much the iris must modulate: when the lit
+    // dots and their halos occupy little of the panel (areaScale*perDotScale→1)
+    // there is no blow-out risk, so the iris can stay wide open; when they fill
+    // it (→0) the iris must fully constrict on bright frames. Resolution is a
+    // rendering detail, not a blow-out driver, so it is excluded here.
+    const blowoutRisk = Math.min(Math.max(1 - areaScale * perDotScale, 0), 1);
+    return {
+        radius,
+        minStrength: baseMin * strengthScale,
+        maxStrength: baseMax * strengthScale,
+        blowoutRisk,
+    };
+}
