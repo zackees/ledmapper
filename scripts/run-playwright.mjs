@@ -56,7 +56,7 @@ const hasCerts = existsSync(join(repoRoot, '.certs', 'cert.pem')) && existsSync(
 const protocol = hasCerts ? 'https' : 'http';
 
 // Cap unless the caller already passed their own --workers=N.
-const DEFAULT_WORKERS = 4;
+const DEFAULT_WORKERS = Number(process.env.PW_WORKERS) || 4;
 
 function checkServerUp() {
     return new Promise((resolve) => {
