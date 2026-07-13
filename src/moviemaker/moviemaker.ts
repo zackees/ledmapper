@@ -66,6 +66,9 @@ export function init(container: HTMLElement) {
     const dom_btn_change_layout = container.querySelector<HTMLButtonElement>('#btn_change_layout');
     const dom_btn_collapse_layout = container.querySelector<HTMLButtonElement>('#btn_collapse_layout');
     const dom_btn_unload_source = qe<HTMLButtonElement>('#btn_unload_source');
+    const dom_btn_change_video = qe<HTMLButtonElement>('#btn_change_video');
+    const dom_video_file_input = qe<HTMLInputElement>('#video_file_input');
+    const dom_video_source_menu = qe<HTMLElement>('#video_source_menu');
     const dom_btn_play_pause    = qe<HTMLButtonElement>('#btn_play_pause');
     const dom_video_progress    = qe<HTMLElement>('#video-progress');
     const dom_progress_track    = qe<HTMLElement>('#video-progress-track');
@@ -156,7 +159,9 @@ export function init(container: HTMLElement) {
     let target_rotate = 0, curr_rotate = 0;
     let target_translate: [number, number] = [0, 0], curr_translate: [number, number] = [0, 0];
     // Drag state: null when idle, or { kind: 'translate'|'zoom', pointerId, lastY }
-    let drag: { kind: 'translate' | 'zoom'; pointerId: number; lastY: number } | null = null;
+    let drag: { kind: 'translate' | 'zoom'; pointerId: number; lastY: number; startX: number; startY: number; moved: boolean } | null = null;
+    let suppressNextContextMenu = false;
+    let sourceMenuInvoker: HTMLElement | null = null;
 
     let frame_rate = 30;
     let nativeVideoWidth = 640, nativeVideoHeight = 480;
@@ -297,10 +302,18 @@ export function init(container: HTMLElement) {
     window.addEventListener('resize', fitCanvasDisplay, { signal });
 
     function setupForNewSource(nativeW: number, nativeH: number) {
+        const previousSize: [number, number] = [videoWidth, videoHeight];
+        const targetRatio: [number, number] = [target_translate[0] / previousSize[0], target_translate[1] / previousSize[1]];
+        const currentRatio: [number, number] = [curr_translate[0] / previousSize[0], curr_translate[1] / previousSize[1]];
+        const replacingSource = sourceActive;
         nativeVideoWidth = nativeW;
         nativeVideoHeight = nativeH;
 
         applyResolution(nativeW, nativeH);
+        if (replacingSource) {
+            target_translate = [targetRatio[0] * videoWidth, targetRatio[1] * videoHeight];
+            curr_translate = [currentRatio[0] * videoWidth, currentRatio[1] * videoHeight];
+        }
 
         sourceActive = true;
         updateElementStates();
@@ -625,31 +638,76 @@ export function init(container: HTMLElement) {
         });
     }, { signal });
 
-    // Video source: Load file
-    dom_btn_load_video.addEventListener('click', () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'video/*';
-        input.onchange = (e) => {
-            const file = (e.target as HTMLInputElement).files?.[0];
-            if (file) videoSource.loadVideoFile(file);
-        };
-        input.click();
+    function sourceActionsLocked() {
+        return recording.isActive || (mp4Recorder?.isActive ?? false) || offlineActive;
+    }
+
+    function syncSourceActionState() {
+        const locked = sourceActionsLocked();
+        dom_btn_change_video.disabled = locked;
+        dom_btn_unload_source.disabled = locked;
+        dom_sel_resolution.disabled = locked;
+        dom_sel_framerate.disabled = locked;
+        for (const item of dom_video_source_menu.querySelectorAll<HTMLButtonElement>('button')) item.disabled = locked;
+        if (locked) closeSourceMenu();
+    }
+
+    function openVideoChooser() {
+        if (sourceActionsLocked()) return;
+        dom_video_file_input.value = '';
+        dom_video_file_input.click();
+    }
+
+    function closeSourceMenu(restoreFocus = false) {
+        if (dom_video_source_menu.hidden) return;
+        dom_video_source_menu.hidden = true;
+        if (restoreFocus) sourceMenuInvoker?.focus();
+        sourceMenuInvoker = null;
+    }
+
+    function startWebcamSource() {
+        if (sourceActionsLocked()) return;
+        frame_rate = parseInt(dom_sel_framerate.value);
+        videoSource.startWebcam(dom_sel_resolution.value, frame_rate);
+    }
+
+    function unloadSource() {
+        if (sourceActionsLocked()) return;
+        closeSourceMenu();
+        videoSource.dispose();
+        sourceActive = false;
+        isScrubbing = false;
+        updateElementStates();
+        dom_video_progress.classList.remove('visible');
+        previewPanel.classList.remove('visible');
+        dom_preview_options.classList.remove('visible');
+        container.querySelector('#welcome-overlay')?.classList.remove('hidden');
+        container.querySelector('.canvas-toolbar')?.classList.remove('visible');
+        const canvasRow = container.querySelector<HTMLElement>('.canvas-row');
+        if (canvasRow) delete canvasRow.dataset.layout;
+    }
+
+    dom_btn_load_video.addEventListener('click', openVideoChooser, { signal });
+    dom_btn_change_video.addEventListener('click', openVideoChooser, { signal });
+    dom_video_file_input.addEventListener('change', () => {
+        const file = dom_video_file_input.files?.[0];
+        if (file && !sourceActionsLocked()) videoSource.loadVideoFile(file);
     }, { signal });
 
     // Video source: Webcam
     dom_btn_start_webcam.addEventListener('click', () => {
-        frame_rate = parseInt(dom_sel_framerate.value);
-        videoSource.startWebcam(dom_sel_resolution.value, frame_rate);
+        startWebcamSource();
     }, { signal });
 
     dom_sel_resolution.addEventListener('change', () => {
+        if (sourceActionsLocked()) return;
         if (videoSource.sourceType === 'webcam') {
             frame_rate = parseInt(dom_sel_framerate.value);
             videoSource.startWebcam(dom_sel_resolution.value, frame_rate);
         }
     }, { signal });
     dom_sel_framerate.addEventListener('change', () => {
+        if (sourceActionsLocked()) return;
         if (videoSource.sourceType === 'webcam') {
             frame_rate = parseInt(dom_sel_framerate.value);
             videoSource.startWebcam(dom_sel_resolution.value, frame_rate);
@@ -714,25 +772,7 @@ export function init(container: HTMLElement) {
     dom_progress_track.addEventListener('pointercancel', endScrub, { signal });
 
     // Unload source — return to welcome screen
-    dom_btn_unload_source.addEventListener('click', () => {
-        videoSource.dispose();
-        sourceActive = false;
-        isScrubbing = false;
-        updateElementStates();
-
-        dom_video_progress.classList.remove('visible');
-        previewPanel.classList.remove('visible');
-        dom_preview_options.classList.remove('visible');
-
-        const welcomeEl = container.querySelector('#welcome-overlay');
-        if (welcomeEl) welcomeEl.classList.remove('hidden');
-
-        const toolbar = container.querySelector('.canvas-toolbar');
-        if (toolbar) toolbar.classList.remove('visible');
-
-        const canvasRow = container.querySelector<HTMLElement>('.canvas-row');
-        if (canvasRow) delete canvasRow.dataset.layout;
-    }, { signal });
+    dom_btn_unload_source.addEventListener('click', unloadSource, { signal });
 
     // Screenmap upload
     /** Update the filename readout next to the styled upload button (issue #249). */
@@ -992,6 +1032,7 @@ export function init(container: HTMLElement) {
 
     async function runOfflineRecordPass(file: File): Promise<void> {
         offlineActive = true;
+        syncSourceActionState();
         offlineCancelRequested = false;
         dom_btn_toggle_record.value = 'Rendering…';
         dom_btn_toggle_record.classList.add('recording');
@@ -1040,6 +1081,7 @@ export function init(container: HTMLElement) {
             void errorDialog('Offline capture failed', String(error));
         } finally {
             offlineActive = false;
+            syncSourceActionState();
             offlineCancelRequested = false;
             dom_btn_toggle_record.value = 'Start Recording';
             dom_btn_toggle_record.classList.remove('recording');
@@ -1095,6 +1137,7 @@ export function init(container: HTMLElement) {
             mp4Recorder = null;
             dom_btn_toggle_record.value = 'Start Recording';
             dom_btn_toggle_record.classList.remove('recording');
+            syncSourceActionState();
             return;
         }
 
@@ -1130,6 +1173,7 @@ export function init(container: HTMLElement) {
         }
         dom_btn_toggle_record.value = 'Stop Recording';
         dom_btn_toggle_record.classList.add('recording');
+        syncSourceActionState();
     }, { signal });
 
     // Pointer-Events drag on overlay canvas.
@@ -1138,7 +1182,8 @@ export function init(container: HTMLElement) {
     // that occurred when the user released outside the canvas (issue #31).
     function cancelDrag() {
         if (!drag) return;
-        const { pointerId } = drag;
+        const { pointerId, kind, moved } = drag;
+        if (kind === 'zoom' && moved) suppressNextContextMenu = true;
         drag = null;
         try { overlayCanvas.releasePointerCapture(pointerId); } catch { /* already released */ }
     }
@@ -1146,10 +1191,10 @@ export function init(container: HTMLElement) {
     overlayCanvas.addEventListener('pointerdown', (e: PointerEvent) => {
         if (screenmap_pts.length === 0) return;
         if (e.button === 0) {
-            drag = { kind: 'translate', pointerId: e.pointerId, lastY: e.offsetY };
+            drag = { kind: 'translate', pointerId: e.pointerId, lastY: e.offsetY, startX: e.clientX, startY: e.clientY, moved: false };
             overlayCanvas.setPointerCapture(e.pointerId);
         } else if (e.button === 2) {
-            drag = { kind: 'zoom', pointerId: e.pointerId, lastY: e.offsetY };
+            drag = { kind: 'zoom', pointerId: e.pointerId, lastY: e.offsetY, startX: e.clientX, startY: e.clientY, moved: false };
             overlayCanvas.setPointerCapture(e.pointerId);
             e.preventDefault();
         }
@@ -1157,6 +1202,7 @@ export function init(container: HTMLElement) {
 
     overlayCanvas.addEventListener('pointermove', (e: PointerEvent) => {
         if (!drag || screenmap_pts.length === 0) return;
+        if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 4) drag.moved = true;
         if (drag.kind === 'translate') {
             target_translate[0] = e.offsetX;
             target_translate[1] = e.offsetY;
@@ -1173,7 +1219,46 @@ export function init(container: HTMLElement) {
     overlayCanvas.addEventListener('pointerup', cancelDrag, { signal });
     overlayCanvas.addEventListener('pointercancel', cancelDrag, { signal });
     overlayCanvas.addEventListener('lostpointercapture', cancelDrag, { signal });
-    overlayCanvas.addEventListener('contextmenu', (e: Event) => { e.preventDefault(); }, { signal });
+    function openSourceMenu(e: MouseEvent) {
+        if (suppressNextContextMenu) {
+            suppressNextContextMenu = false;
+            return;
+        }
+        syncSourceActionState();
+        sourceMenuInvoker = overlayCanvas;
+        dom_video_source_menu.hidden = false;
+        const rect = dom_video_source_menu.getBoundingClientRect();
+        dom_video_source_menu.style.left = `${String(Math.max(4, Math.min(e.clientX, innerWidth - rect.width - 4)))}px`;
+        dom_video_source_menu.style.top = `${String(Math.max(4, Math.min(e.clientY, innerHeight - rect.height - 4)))}px`;
+        dom_video_source_menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    }
+    overlayCanvas.addEventListener('contextmenu', (e: MouseEvent) => {
+        e.preventDefault();
+        openSourceMenu(e);
+    }, { signal });
+    dom_video_source_menu.addEventListener('click', (e: MouseEvent) => {
+        const action = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-source-action]')?.dataset.sourceAction;
+        if (!action || sourceActionsLocked()) return;
+        closeSourceMenu();
+        if (action === 'video') openVideoChooser();
+        else if (action === 'webcam') startWebcamSource();
+        else if (action === 'unload') unloadSource();
+    }, { signal });
+    document.addEventListener('pointerdown', (e: PointerEvent) => {
+        if (!dom_video_source_menu.hidden && !dom_video_source_menu.contains(e.target as Node) && e.target !== overlayCanvas) closeSourceMenu();
+    }, { signal });
+    document.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (dom_video_source_menu.hidden) return;
+        if (e.key === 'Escape') { e.preventDefault(); closeSourceMenu(true); return; }
+        const items = Array.from(dom_video_source_menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+        const current = Math.max(0, items.indexOf(document.activeElement as HTMLButtonElement));
+        let next: number | null = null;
+        if (e.key === 'ArrowDown') next = (current + 1) % items.length;
+        else if (e.key === 'ArrowUp') next = (current - 1 + items.length) % items.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = items.length - 1;
+        if (next !== null) { e.preventDefault(); items[next]?.focus(); }
+    }, { signal });
 
     // Safety net: cancel any in-progress drag on window blur or tab hide.
     window.addEventListener('blur', cancelDrag, { signal });
@@ -1285,6 +1370,7 @@ export function init(container: HTMLElement) {
             stripCount: screenmapStrips.length,
             sourceActive,
             sourceType: videoSource.sourceType,
+            sourceName: videoSource.sourceFile?.name ?? null,
             playing: videoSource.isPlaying,
             recordingActive: recording.isActive,
             recordFormat: dom_sel_record_format.value,
@@ -1449,6 +1535,7 @@ export function init(container: HTMLElement) {
     rafId = requestAnimationFrame(animationLoop);
 
     return function destroy() {
+        closeSourceMenu();
         unregisterDebugState('moviemaker');
         if (perfEnabled) delete window.__mmDebug;
         watchdogsDisposed = true;
