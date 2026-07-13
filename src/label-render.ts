@@ -17,6 +17,7 @@ interface LabelRenderItem {
     dotColor?: string;
     dotRadius?: number;
     priority?: number;
+    opacity?: number;
 }
 
 interface LabelRenderOptions {
@@ -58,16 +59,17 @@ export function createLabelRenderer(engineOptions: LabelLayoutOptions = {}) {
             const it = items[i];
             const p = placements[i];
             if (!it || !p) continue;
+            const opacity = it.opacity ?? 1;
 
             // 1. Anchor dot — always, even when the label is hidden.
-            ctx.globalAlpha = 1;
+            ctx.globalAlpha = opacity;
             ctx.fillStyle = it.dotColor ?? it.color;
             ctx.beginPath();
             ctx.arc(p.anchorX, p.anchorY, it.dotRadius ?? 3, 0, Math.PI * 2);
             ctx.fill();
 
             if (p.hidden) continue;
-            ctx.globalAlpha = p.demoted ? 0.5 : 1;
+            ctx.globalAlpha = (p.demoted ? 0.5 : 1) * opacity;
 
             // 2. Leader line from dot to the facing label-box edge midpoint.
             if (p.needsLeader) {
