@@ -448,6 +448,7 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
     return obb ? { idx, ...obb } : null;
 },
     _stripRotateHandlePos(this: ShapeEditor){
+    if (this.stripRotateActive && this.stripRotateHandleSnapshot) return this.stripRotateHandleSnapshot;
     const box = this._selectedStripObbCanvas();
     if (!box) return null;
     const armLen = 30;

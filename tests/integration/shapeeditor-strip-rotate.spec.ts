@@ -87,11 +87,13 @@ test.describe('Shapeeditor per-strip rotation', () => {
         // clockwise by 90 degrees around the handle's visible anchor.
         await page.mouse.move(handle.clientHandleX, handle.clientHandleY);
         await page.mouse.down();
+        const lockedHandle = await page.evaluate(() => window.__shapeeditorDebug.getStripRotateHandlePos());
         await page.mouse.move(
             handle.clientAnchorX + (handle.clientAnchorY - handle.clientHandleY),
             handle.clientAnchorY,
             { steps: 5 },
         );
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getStripRotateHandlePos())).toEqual(lockedHandle);
         await page.mouse.up();
 
         const afterA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));

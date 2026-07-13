@@ -448,6 +448,7 @@ registerDebugState('shapeeditor', {
         this.stripRotateStartAngle = 0;
         this.stripRotateLastDeg = 0;
         this.stripRotateHover = false;
+        this.stripRotateHandleSnapshot = null;
         this.altQuasimode = false;
         this.ctxMenu = null;
         this.ctxMenuIdx = -1;

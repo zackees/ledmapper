@@ -187,6 +187,7 @@ export const editorPointsMethods: EditorPointsMethods & ThisType<ShapeEditor> = 
         this.stripRotateStartAngle = 0;
         this.stripRotateLastDeg = 0;
         this.stripRotateHover = false;
+        this.stripRotateHandleSnapshot = null;
         this.altQuasimode = false;
         this.isDragging = false;
         this.isPanning = false;
