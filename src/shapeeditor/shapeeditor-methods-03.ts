@@ -706,10 +706,28 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
 
         // ── Mouse interaction ─────────────────────────────────────────────
 
-        self.overlayCanvas.addEventListener('mousedown', (...args: any[]) => (self.onMouseDown as any)(...args), { signal: self.signal });
-        self.overlayCanvas.addEventListener('mousemove', (...args: any[]) => (self.onMouseMove as any)(...args), { signal: self.signal });
-        self.overlayCanvas.addEventListener('mouseup', (...args: any[]) => (self.onMouseUp as any)(...args), { signal: self.signal });
-        self.overlayCanvas.addEventListener('mouseleave', (...args: any[]) => (self.onMouseLeave as any)(...args), { signal: self.signal });
+        // Pointer Events cover mouse, touch, and stylus with one interaction
+        // path. PointerEvent is structurally compatible with the existing
+        // handlers, which only consume MouseEvent coordinate/button fields.
+        if ('PointerEvent' in window) {
+            self.overlayCanvas.addEventListener('pointerdown', (e) => {
+                self.overlayCanvas.setPointerCapture(e.pointerId);
+                (self.onMouseDown as any)(e);
+            }, { signal: self.signal });
+            self.overlayCanvas.addEventListener('pointermove', (e) => (self.onMouseMove as any)(e), { signal: self.signal });
+            self.overlayCanvas.addEventListener('pointerup', (e) => {
+                if (self.overlayCanvas.hasPointerCapture(e.pointerId)) self.overlayCanvas.releasePointerCapture(e.pointerId);
+                (self.onMouseUp as any)(e);
+            }, { signal: self.signal });
+            self.overlayCanvas.addEventListener('pointercancel', (e) => (self.onMouseUp as any)(e), { signal: self.signal });
+            self.overlayCanvas.addEventListener('pointerleave', () => (self.onMouseLeave as any)(), { signal: self.signal });
+        } else {
+            self.overlayCanvas.addEventListener('mousedown', (...args: any[]) => (self.onMouseDown as any)(...args), { signal: self.signal });
+            self.overlayCanvas.addEventListener('mousemove', (...args: any[]) => (self.onMouseMove as any)(...args), { signal: self.signal });
+            self.overlayCanvas.addEventListener('mouseup', (...args: any[]) => (self.onMouseUp as any)(...args), { signal: self.signal });
+            self.overlayCanvas.addEventListener('mouseleave', (...args: any[]) => (self.onMouseLeave as any)(...args), { signal: self.signal });
+            self._wireTouchHandlers(self.signal);
+        }
         self.overlayCanvas.addEventListener('contextmenu', (...args: any[]) => (self.onContextMenu as any)(...args), { signal: self.signal });
         self.overlayCanvas.addEventListener('dblclick', (...args: any[]) => (self.onDoubleClick as any)(...args), { signal: self.signal });
         self.overlayCanvas.addEventListener('wheel', (e: WheelEvent) => {
@@ -717,8 +735,6 @@ ShapeEditor.prototype.initRenderer = function (this: ShapeEditor) {
             const zoomFactor = Math.pow(2, -e.deltaY / 3000);
             self.applyInteractiveZoom(self.camZoom * zoomFactor);
         }, { passive: false, signal: self.signal });
-
-        self._wireTouchHandlers(self.signal);
 
         self.infoDiv = document.createElement('div');
         self.infoDiv.className = 'shapeeditor-canvas-label shapeeditor-info-div';
