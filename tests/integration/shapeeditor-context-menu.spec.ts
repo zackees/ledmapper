@@ -133,7 +133,7 @@ test.describe('Shapeeditor context menu (mouse)', () => {
         await expect.poll(() => menuVisible(page), { timeout: 2000 }).toBe(true);
 
         // Dismissal is wired to window mousedown outside the menu
-        // (shapeeditor-methods-03.ts). The menu opened at the top-right
+        // (editor-points.ts). The menu opened at the top-right
         // click point — mousedown far away, bottom-left of the canvas
         // (above the hint strip, clear of the top-left panels' extent).
         const box = await page.locator('canvas').last().boundingBox();

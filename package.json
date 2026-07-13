@@ -5,7 +5,6 @@
   "workspaces": ["packages/*"],
   "sideEffects": [
     "./src/shapeeditor/shapeeditor-init.ts",
-    "./src/shapeeditor/shapeeditor-methods-*.ts",
     "**/*.css"
   ],
   "description": "FastLED Video Mapper - map video content to physical LED arrays",

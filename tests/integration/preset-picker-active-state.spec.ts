@@ -23,7 +23,7 @@ async function bgColor(locator) {
 // shapeeditor's file-ops row (which hosts the preset picker's chip mount) is
 // hidden on desktop pointer/hover devices — the same presets are reachable
 // there via a right-click context-menu submenu instead (see
-// shapeeditor-methods-04.ts / shapeeditor.css "Desktop: hide file-ops row").
+// editor-io.ts / shapeeditor.css "Desktop: hide file-ops row").
 // The chip picker itself is only shown for touch/coarse-pointer inputs, so
 // this needs its own hasTouch context rather than the shared mouse-driven
 // fixture, mirroring shapeeditor-touch.spec.ts.

@@ -2,194 +2,43 @@
 // ShapeEditor class skeleton (fields, constructor, start, destroy).
 
 import { type WebGLRenderer, type Scene, type OrthographicCamera, type BufferGeometry, type LineSegments, type Line, type Mesh, type Points, type BufferAttribute, type Texture, type PointsMaterial } from 'three';
-import type { StripEntry, StripSnapshot, StripInfo } from './strips-model';
-import type { PanelOpts } from './panel-catalog';
+import type { StripInfo } from './strips-model';
 
 import type { PointArrayWithDiameter } from '../common';
 import { type createLabelRenderer } from '../label-render';
-import type { SweetAlertResult } from 'sweetalert2';
 
-import type { BackupMeta } from '../screenmap-store';
 
 import { type StripStore } from './strips-model';
 import { type Selection } from './selection';
 import type { PresetPickerHandle } from '../ui/preset-picker';
 import type { DirectionArrowTransition, DirectionArrowTransitionPhase } from './direction-arrow-transition';
 
-import type { UndoAction, InsertDialogOpts, OBBox, GizmoDragStart, BgGizmoDragStart, BgImageBBox, GizmoHandle, RulerEntry, RulerDragStart, RulerDragHandle, ConnectorDrag, StartHandleDrag, PlacingState, PasteStateActive, StripDragPt, PresetEntry } from './shapeeditor-types';
+import type { UndoAction, OBBox, GizmoDragStart, BgGizmoDragStart, BgImageBBox, GizmoHandle, RulerEntry, RulerDragStart, RulerDragHandle, ConnectorDrag, StartHandleDrag, PlacingState, PasteStateActive, StripDragPt, PresetEntry } from './shapeeditor-types';
+import type { EditorCoreMethods } from './editor-core';
+import type { EditorTransformMethods } from './editor-transform';
+import type { EditorIoMethods } from './editor-io';
+import type { EditorPointsMethods } from './editor-points';
+import type { EditorHistoryMethods } from './editor-history';
+import type { EditorStripsMethods } from './editor-strips';
+import type { EditorConnectorsMethods } from './editor-connectors';
+import type { EditorRendererMethods } from './editor-renderer';
+import type { EditorHelpMethods } from './editor-help';
+import type { EditorBackgroundMethods } from './editor-background';
+import type { EditorRulersMethods } from './editor-rulers';
+import type { EditorOverlayMethods } from './editor-overlay';
+import type { EditorInteractionMethods } from './editor-interaction';
+import type { EditorPanelsMethods } from './editor-panels';
+import type { EditorPasteMethods } from './editor-paste';
 
+// Prototype bundles are composed into this class through the typed interface below.
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export class ShapeEditor {
-    declare qe: <T extends HTMLElement>(sel: string, _cast?: (e: Element) => T) => T;
-    declare nn: <T>(v: T | null | undefined, msg?: string) => T;
-    declare markDirty: () => void;
-    declare clearDirty: () => void;
-    declare _refreshSaveEnabled: () => void;
-    declare markDirtyAndGeometry: () => void;
-    declare resetTransforms: () => void;
-    declare saveAs: () => void;
-    declare _buildCurrentScreenmapJson: () => string;
-    declare _openInspectJsonDialog: () => Promise<void>;
-    declare clampScale: (v: number | string) => number;
-    declare writeScale: (txt: HTMLInputElement, val: number | string) => void;
-    declare clampRotate: (v: number | string) => number;
-    declare setRotate: (rawVal: number | string) => void;
-    declare clampTranslate: (v: number | string) => number;
-    declare setTranslate: (x: number | string, y: number | string) => void;
-    declare wireTransformUndo: (controlName: string, ...elements: HTMLInputElement[]) => void;
-    declare _relativeTime: (savedAt: number) => string;
-    declare _toast: (opts: Record<string, unknown>) => Promise<SweetAlertResult<unknown> | null>;
-    declare _toastInfo: (text: string) => Promise<SweetAlertResult<unknown> | null>;
-    declare _toastSuccess: (text: string) => Promise<SweetAlertResult<unknown> | null>;
-    declare _toastFreshDegenerate: (backupMeta: BackupMeta | null | undefined) => Promise<void>;
-    declare _toastSilentRestored: (restoredMeta: BackupMeta | null | undefined, degenerateJson: string | null) => Promise<void>;
-    declare _autoloadOnLaunch: () => boolean;
-    declare hslStringToRgb: (hslStr: string) => number[];
-    declare setNeedsGeometryUpdate: () => void;
-    declare setNeedsRender: () => void;
-    declare applyInteractiveZoom: (zoom: number) => boolean;
-    declare _oc: () => HTMLCanvasElement;
-    declare _octx: () => CanvasRenderingContext2D;
-    declare _scene: () => Scene;
-    declare _renderer: () => WebGLRenderer;
-    declare _camera: () => OrthographicCamera;
-    declare _si: () => StripInfo;
-    declare _tooltip: () => HTMLElement;
-    declare _outline: () => Line;
-    declare _infoDiv: () => HTMLElement;
-    declare _placeholderDiv: () => HTMLElement;
-    declare syncPointSelection: (idx: number) => void;
-    declare makeCtxBtn: (label: string, action: string, parent?: HTMLElement | null) => HTMLButtonElement;
-    declare makeCtxSeparator: () => HTMLDivElement;
-    declare getTransformValue: (control: string) => number;
-    declare setTransformValue: (control: string, value: number) => void;
-    declare pushUndo: (action: UndoAction) => void;
-    declare _persistMultiStrip: () => void;
-    declare _spliceArray: <T>(arr: T[], idx: number, count: number) => T[];
-    declare _removeStripPoints: (stripIdx: number) => { removedStrip: StripEntry & { points: [number, number][] }; removedScreenmap: PointArrayWithDiameter; removedRaw: [number, number][] };
-    declare _insertStripPoints:  (stripIdx: number, removed: ReturnType<ShapeEditor['_removeStripPoints']>) => void;
-    declare _reorderStripPoints: (fromIdx: number, toIdx: number) => void;
-    declare _pinOfStrip: (s: StripEntry) => string;
-    declare _withinPinIdx: (stripIdx: number) => number;
-    declare _nextFreePinId: () => string;
-    declare _defaultNewStripPin: () => string;
-    declare _applyRepin: (action: UndoAction) => void;
-    declare _revertRepin: (action: UndoAction) => void;
-    declare _applyPinOrder: (order: string[]) => void;
-    declare _applyPinRename: (fromId: string, toId: string) => void;
-    declare applyAction: (action: UndoAction) => void;
-    declare applyInverse: (action: UndoAction) => void;
-    declare isStripAction: (action: UndoAction | null | undefined) => boolean | null | undefined;
-    declare isPinMutationAction: (action: UndoAction | null | undefined) => boolean | null | undefined;
-    declare performUndo: () => void;
-    declare performRedo: () => void;
-    declare updateUndoRedoButtons: () => void;
-    declare _snapshotStripInfo: () => StripSnapshot | null;
-    declare _restoreStripInfo: (snap: StripSnapshot) => void;
-    declare _stripInfoOnDelete: (idx: number) => void;
-    declare _stripInfoOnInsert: (idx: number) => void;
-    declare deletePoint: (idx: number) => void;
-    declare insertPointAt: (insertIdx: number, screenmapPt: [number, number], rawPt: [number, number]) => void;
-    declare insertBetween: (edgeIdx: number) => void;
-    declare insertShiftForward: () => void;
-    declare insertShiftBack: () => void;
-    declare canvasToScreenmapCoords: (canvasX: number, canvasY: number) => [number, number];
-    declare screenmapToRawCoords: (sx: number, sy: number) => [number, number];
-    declare findNearestEdge: (canvasX: number, canvasY: number) => { idx: number; stripIdx: number; t: number; distSq: number } | null;
-    declare clearEditingState: () => void;
-    declare showContextMenu: (clientX: number, clientY: number, idx: number, edgeIdx: number, insideBBox?: boolean) => void;
-    declare hideContextMenu: () => void;
-    declare hslAccentForStrip: (s: number, total: number) => string;
-    declare _withinPinNeighbor: (stripIdx: number, dir: 1 | -1) => number;
-    declare renderStripsPanel: () => void;
-    declare renderBackupRow: () => void;
-    declare doRestoreBackupFromButton: () => void;
-    declare setEditorMode: (mode: string | null) => void;
-    declare renderSelectedStripRow: () => void;
-    declare _reverseStripInPlace: (stripIdx: number) => boolean;
-    declare doReverseStrip: (stripIdx: number) => void;
-    declare doSetVideoOffset: (stripIdx: number, rawValue: string | number) => void;
-    declare _maybeShowRepinToast: (stripName: string, newPin: string) => void;
-    declare doRepinStrip: (stripIdx: number, newPinRaw: string) => boolean;
-    declare doToggleVoLock: (stripIdx: number) => void;
-    declare doRenamePin: (oldId: string, newIdRaw: string) => boolean;
-    declare doRenamePinPrompt: (pinId: string) => Promise<void>;
-    declare doReorderPin: (pinId: string, toIdx: number) => boolean;
-    declare doAddPin: () => string | null;
-    declare _makeRepinAction: (stripIdx: number, newPin: string) => UndoAction;
-    declare _commitComposite: (subActions: UndoAction[], crossPin: boolean, toastStripName: string, toastPin: string) => boolean;
-    declare doConnectorRetarget: (upIdx: number, tgtIdx: number) => boolean;
-    declare doSplitPinAt: (downIdx: number) => boolean;
-    declare _moveDownstreamToPinPrompt: (downIdx: number) => Promise<void>;
-    declare _hideConnectorMenu: () => void;
-    declare _openConnectorMenu: (upIdx: number, downIdx: number, clientX: number, clientY: number) => void;
-    declare _hitChainArrowhead: (cx: number, cy: number) => GizmoHandle | null;
-    declare _hitStartHandle: (cx: number, cy: number, excludeIdx: number) => number | null;
-    declare _hitEndHandle: (cx: number, cy: number, excludeIdx: number) => number | null;
-    declare _hitConnectorBody: (cx: number, cy: number) => GizmoHandle | null;
-    declare _previewConnectorTarget: (upIdx: number, targetIdx: number | null) => void;
-    declare _cancelConnectorDrag: () => void;
-    declare doReorderStrip: (fromIdx: number, toIdx: number) => void;
-    declare doRenameStripPrompt: (stripIdx: number) => Promise<void>;
-    declare doDeleteStripPrompt: (stripIdx: number) => Promise<void>;
-    declare getCanvasSize: () => { width: number; height: number };
-    declare getFitSize: () => { width: number; height: number };
-    declare getCurrentTransform: () => { sX: number; sY: number; cosR: number; sinR: number; tx: number; ty: number };
-    declare canvasDeltaToScreenmapDelta: (dx: number, dy: number) => [number, number];
-    declare getCanvasCoords: (e: { clientX: number; clientY: number }) => [number, number];
-    declare initRenderer: () => void;
-    declare _currentHintState: () => { empty: boolean; placing: boolean; placingLabel: string; pasting: boolean; pastingCount: number; pointEditMode: boolean; pointEditStripName: string; selectedStripName: string | null; chainMode: boolean; reorderMode: boolean };
-    declare _updateHintStrip: () => void;
-    declare _openHelpOverlay: () => Promise<void>;
-    declare _maybeShowGestureNotice: () => void;
-    declare _maybeAutoOpenHelpOnLaunch: () => void;
-    declare buildGrid: (width: number, height: number) => void;
-    declare center_and_fit: (pts: [number, number][], canvasW: number, canvasH: number) => PointArrayWithDiameter;
-    declare load_screenmap_data: (text: string, persist?: boolean) => void;
-    declare loadScreenmapFile: (file: File | null | undefined) => void;
-    declare loadPresetsFromManifest: () => Promise<void>;
-    declare setBgControlsEnabled: (enabled: boolean) => void;
-    declare resetBgControls: () => void;
-    declare applyBgImageTransform: () => void;
-    declare clearBackgroundImage: () => void;
-    declare removeBackgroundImage: () => void;
-    declare showDeleteBgConfirm: () => void;
-    declare dismissDeleteBgConfirm: () => void;
-    declare loadBackgroundImage: (file: File) => void;
-    declare toCanvasCoords: (x: number, y: number) => [number, number];
-    declare positionRulerAboveBBox: () => void;
-    declare hitTestRuler: (cx: number, cy: number) => RulerDragHandle | null;
-    declare drawRuler: () => void;
-    declare _chainArrowCount: () => number;
-    declare _crossPinBadgeCount: () => number;
-    declare drawChainArrows: (pts: [number, number][]) => void;
-    declare _drawChainDragGhost: () => void;
-    declare drawOverlay: () => void;
-    declare fillCircle: (x: number, y: number, diameter: number, color: string) => void;
-    declare obbToCanvas: (bbox: { cx: number; cy: number; cos: number; sin: number }, lx: number, ly: number) => { x: number; y: number };
-    declare computeGizmoHandles: (bbox: { cx: number; cy: number; cos: number; sin: number; hw: number; hh: number } | null | undefined) => { hw: number; hh: number; corners: { tl: { x: number; y: number }; tr: { x: number; y: number }; bl: { x: number; y: number }; br: { x: number; y: number } }; edges: { top: { x: number; y: number }; bottom: { x: number; y: number }; left: { x: number; y: number }; right: { x: number; y: number } }; rotate: { x: number; y: number }; center: { x: number; y: number } } | null;
-    declare canvasToObbLocal: (bbox: { cx: number; cy: number; cos: number; sin: number } | null | undefined, canvasX: number, canvasY: number) => [number, number];
-    declare hitTestGizmo: (canvasX: number, canvasY: number) => string | null;
-    declare getCursorForGizmo: (handleId: string | null) => string;
-    declare drawGizmoHandles: () => void;
-    declare hitTestLED: (canvasX: number, canvasY: number) => number;
-    declare _startStripDrag: (stripIdx: number, canvasX: number, canvasY: number) => boolean;
-    declare hitTestBgGizmo: (canvasX: number, canvasY: number) => string | null;
-    declare drawBgGizmoHandles: () => void;
-    declare handleBgGizmoDrag: (cx: number, cy: number) => void;
-    declare startBgGizmoDrag: (hit: string, cx: number, cy: number) => void;
-    declare handleGizmoDrag: (cx: number, cy: number) => void;
-    declare commitGizmoDrag: () => void;
     // Drag preview (issue #111): during a gizmo drag the geometry buffer is
     // frozen at the values captured in `gizmoDragStart`; the live transform
     // delta is applied as a model matrix on the points mesh / outline, and a
     // matching ctx affine on the overlay. `_dragPreviewActive` tracks whether
     // we last applied that delta so animate() can reset on the way out.
     declare _dragPreviewActive: boolean;
-    declare _isGizmoDragPreview: () => boolean;
-    declare _computeDragDelta: () => { dtx: number; dty: number; dRotRad: number; dsX: number; dsY: number } | null;
-    declare _applyDragPreviewMatrices: () => void;
-    declare _resetMeshTransforms: () => void;
-    declare _drawGizmoPreviewOverlay: (pts: [number, number][]) => void;
     // Multi-LED marquee selection + group drag.
     declare multiSelectedIdxs: Set<number>;
     declare marqueeActive: boolean;
@@ -211,60 +60,6 @@ export class ShapeEditor {
     declare multiDragStartRaw: Map<number, [number, number]>;
     declare multiDragLastSdx: number;
     declare multiDragLastSdy: number;
-    declare _ledIdxsInCanvasRect: (c1x: number, c1y: number, c2x: number, c2y: number) => Set<number>;
-    declare _updateMarqueeSelection: () => void;
-    declare _commitMarquee: () => void;
-    declare _cancelMarquee: () => void;
-    declare _startMultiDrag: (cx: number, cy: number) => void;
-    declare _finalizeMultiDrag: () => void;
-    declare _drawMarqueeRect: () => void;
-    declare _applyMultiTranslate: (idxs: number[], sdx: number, sdy: number) => void;
-    declare onContextMenu: (e: MouseEvent) => void;
-    declare onMouseDown: (e: MouseEvent) => void;
-    declare onMouseMove: (e: MouseEvent) => void;
-    declare onMouseUp: (e: MouseEvent) => void;
-    declare _finalizeStripDrag: () => void;
-    declare _applyStripTranslate: (stripIdx: number, sdx: number, sdy: number) => void;
-    declare onDoubleClick: (e: MouseEvent) => void;
-    declare _clearLongPress: () => void;
-    declare _synth: (type: string, clientX: number, clientY: number, opts?: Record<string, unknown>) => void;
-    declare _cancelSingleTouchGesture: () => void;
-    declare _doLongPress: (canvasX: number, canvasY: number, clientX: number, clientY: number) => void;
-    declare _wireTouchHandlers: (signal: AbortSignal) => void;
-    declare onMouseLeave: () => void;
-    declare buildScreenmap: (transformedPts: [number, number][]) => void;
-    declare updateLabels: (transformedPts: [number, number][]) => void;
-    declare handleResize: () => void;
-    declare animate: () => void;
-    declare _readPanelOpts: () => PanelOpts;
-    declare _enterPlacing: (catalogId: string) => void;
-    declare _cancelPlacing: () => void;
-    declare _canvasToWorldPx: (cx: number, cy: number) => [number, number];
-    declare _gridSizePx: () => number;
-    declare _updateGhostFromCanvas: (cx: number, cy: number) => void;
-    declare _drawPlacingGhost: () => void;
-    declare _uniqueStripName: (base: string) => string;
-    declare _isEmptyScreenmap: () => boolean;
-    declare _initFreshScreenmapForPanel: () => void;
-    declare _commitPlacingAt: (cx: number, cy: number) => void;
-    declare _doPanelPlace: (action: UndoAction) => void;
-    declare _redoPanelPlace: (action: UndoAction) => void;
-    declare _undoPanelPlace: (action: UndoAction) => void;
-    declare _debugPlacePanel: (catalogId: string, worldX: number, worldY: number, opts: PanelOpts) => string | null;
-    declare _enterPasteFromText: (text: string) => boolean;
-    declare _cancelPaste: () => void;
-    declare _updatePasteGhostFromCanvas: (cx: number, cy: number) => void;
-    declare _drawPasteGhost: () => void;
-    declare _commitPasteAt: (cx: number, cy: number) => void;
-    declare _uniqueNameAgainst: (baseName: string, used: Set<string>) => string;
-    declare _doPasteStrips: (action: UndoAction) => void;
-    declare _undoPasteStrips: (action: UndoAction) => void;
-    declare _pasteFromClipboardAPI: () => Promise<void>;
-    declare _copySelectedStripToClipboard: () => void;
-    declare _openInsertDialog: () => Promise<string | null | undefined>;
-    declare _readInsertDialog: () => InsertDialogOpts;
-    declare _writeAccordionFromDialog: (opts: InsertDialogOpts) => void;
-    declare _submitInsertDialog: (opts: InsertDialogOpts) => string | null;
     declare qei: (sel: string) => HTMLInputElement;
     declare qeb: (sel: string) => HTMLButtonElement;
     declare mainEl: HTMLElement;
@@ -288,7 +83,6 @@ export class ShapeEditor {
     declare dom_btn_overlay_collapse: HTMLButtonElement;
     declare dom_btn_overlay_expand: HTMLButtonElement;
     declare overlayCollapsed: boolean;
-    declare _setOverlayCollapsed: (collapsed: boolean) => void;
     declare dom_btn_save: HTMLButtonElement;
     declare dom_btn_reset: HTMLButtonElement;
     declare dom_btn_undo: HTMLButtonElement;
@@ -370,13 +164,6 @@ export class ShapeEditor {
     declare stripSnapStartCenter: { x: number; y: number } | null;
     declare stripSnapEngagedX: number | null;
     declare stripSnapEngagedY: number | null;
-    declare _drawSnapGuides: () => void;
-    declare _drawStripRotateHandle: () => void;
-    declare _stripRotateHandlePos: () => { idx: number; anchorX: number; anchorY: number; handleX: number; handleY: number } | null;
-    declare _selectedStripBboxCanvas: () => { idx: number; minX: number; minY: number; maxX: number; maxY: number } | null;
-    declare hitTestStripRotateHandle: (canvasX: number, canvasY: number) => boolean;
-    declare _applyStripRotate: (stripIdx: number, deltaRad: number, centerSm: { x: number; y: number }, centerRaw: { x: number; y: number }) => void;
-    declare _finalizeStripRotate: () => void;
     // Per-strip (sub-group) rotation handle â€” independent of the
     // whole-screenmap rotation gizmo. Active only while the user is
     // dragging the strip's dedicated rotate handle.
@@ -467,10 +254,6 @@ export class ShapeEditor {
     declare ctxMenuRulerIdx: number;
     declare ctxMenuClickX: number;
     declare ctxMenuClickY: number;
-    declare _findRulerAtCanvasPoint: (cx: number, cy: number) => number;
-    declare _insertRulerAt: (worldX: number, worldY: number) => void;
-    declare _duplicateRuler: (idx: number) => void;
-    declare _deleteRuler: (idx: number) => void;
     declare RULER_HANDLE_R: number;
     declare LONG_PRESS_MS: number;
     declare LONG_PRESS_MOVE_TOL: number;
@@ -511,3 +294,22 @@ export class ShapeEditor {
     declare start: () => void;
     declare destroy: () => void;
 }
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
+export interface ShapeEditor extends
+    EditorCoreMethods,
+    EditorTransformMethods,
+    EditorIoMethods,
+    EditorPointsMethods,
+    EditorHistoryMethods,
+    EditorStripsMethods,
+    EditorConnectorsMethods,
+    EditorRendererMethods,
+    EditorHelpMethods,
+    EditorBackgroundMethods,
+    EditorRulersMethods,
+    EditorOverlayMethods,
+    EditorInteractionMethods,
+    EditorPanelsMethods,
+    EditorPasteMethods
+{}

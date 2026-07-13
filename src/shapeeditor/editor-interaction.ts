@@ -1,13 +1,34 @@
-// Produced by a one-time mechanical refactor of shapeeditor.ts (see PR description).
-// Prototype-installed methods (chunk 6/8).
-
-import { ShapeEditor } from './shapeeditor-class';
-import { computeStripSnapTargets } from './strip-snap-targets';
-import { rotatePointsAround } from './strip-rotate';
+// Named ShapeEditor method bundle: interaction.
+import type { ShapeEditor } from './shapeeditor-class';
+import { computeStripSnapTargets } from "./strip-snap-targets";
+import { rotatePointsAround } from "./strip-rotate";
 
 const STRIP_STROKE_HIT_PX = 10;
 
-ShapeEditor.prototype.onContextMenu = function (this: ShapeEditor, e: MouseEvent) {
+export interface EditorInteractionMethods {
+    _startStripDrag: (stripIdx: number, canvasX: number, canvasY: number) => boolean;
+    _ledIdxsInCanvasRect: (c1x: number, c1y: number, c2x: number, c2y: number) => Set<number>;
+    _updateMarqueeSelection: () => void;
+    _commitMarquee: () => void;
+    _cancelMarquee: () => void;
+    _startMultiDrag: (cx: number, cy: number) => void;
+    _finalizeMultiDrag: () => void;
+    _applyMultiTranslate: (idxs: number[], sdx: number, sdy: number) => void;
+    onContextMenu: (e: MouseEvent) => void;
+    onMouseDown: (e: MouseEvent) => void;
+    onMouseMove: (e: MouseEvent) => void;
+    onMouseUp: (e: MouseEvent) => void;
+    onDoubleClick: (e: MouseEvent) => void;
+    _clearLongPress: () => void;
+    _synth: (type: string, clientX: number, clientY: number, opts?: Record<string, unknown>) => void;
+    _cancelSingleTouchGesture: () => void;
+    _doLongPress: (canvasX: number, canvasY: number, clientX: number, clientY: number) => void;
+    _wireTouchHandlers: (signal: AbortSignal) => void;
+    onMouseLeave: () => void;
+}
+
+export const editorInteractionMethods: EditorInteractionMethods & ThisType<ShapeEditor> = {
+    onContextMenu(this: ShapeEditor, e: MouseEvent){
 
         e.preventDefault();
         // Cancel panel placement on right-click
@@ -66,9 +87,8 @@ ShapeEditor.prototype.onContextMenu = function (this: ShapeEditor, e: MouseEvent
             insideBBox = Math.abs(lx) <= this.ptsBBox.hw && Math.abs(ly) <= this.ptsBBox.hh;
         }
         this.showContextMenu(e.clientX, e.clientY, -1, -1, insideBBox);
-    };
-
-ShapeEditor.prototype._startStripDrag = function (this: ShapeEditor, stripIdx: number, canvasX: number, canvasY: number) {
+    },
+    _startStripDrag(this: ShapeEditor, stripIdx: number, canvasX: number, canvasY: number){
     if (!this.stripInfo || stripIdx < 0 || stripIdx >= this.stripInfo.strips.length) return false;
 
     const strip = this.stripInfo.strips[stripIdx];
@@ -107,9 +127,8 @@ ShapeEditor.prototype._startStripDrag = function (this: ShapeEditor, stripIdx: n
     this.stripSnapEngagedY = null;
     this._oc().style.cursor = 'grabbing';
     return true;
-};
-
-ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) {
+},
+    onMouseDown(this: ShapeEditor, e: MouseEvent){
 
         // Dismiss context menu on any click
         this.hideContextMenu();
@@ -407,9 +426,8 @@ ShapeEditor.prototype.onMouseDown = function (this: ShapeEditor, e: MouseEvent) 
         this.panStartCamX = this.camPanX;
         this.panStartCamY = this.camPanY;
         this._oc().style.cursor = 'move';
-    };
-
-ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) {
+    },
+    onMouseMove(this: ShapeEditor, e: MouseEvent){
 
         if (this.placingState) {
             const [cx, cy] = this.getCanvasCoords(e);
@@ -800,9 +818,8 @@ ShapeEditor.prototype.onMouseMove = function (this: ShapeEditor, e: MouseEvent) 
             this.tooltipLedIdx = -1;
             this._tooltip().style.opacity = '0';
         }
-    };
-
-ShapeEditor.prototype.onMouseUp = function (this: ShapeEditor, e: MouseEvent) {
+    },
+    onMouseUp(this: ShapeEditor, e: MouseEvent){
 
         if (e.button === 2) {
             this.rightButtonDown = false;
@@ -925,97 +942,8 @@ ShapeEditor.prototype.onMouseUp = function (this: ShapeEditor, e: MouseEvent) {
             this._oc().style.cursor = 'grab';
             return;
         }
-    };
-
-ShapeEditor.prototype._finalizeStripDrag = function (this: ShapeEditor) {
-
-        if (!this.stripDragActive) return;
-        const sdx = this.stripDragLastSdx;
-        const sdy = this.stripDragLastSdy;
-        if (sdx !== 0 || sdy !== 0) {
-            this.pushUndo({
-                type: 'strip-translate',
-                stripIdx: this.stripDragIdx,
-                sdx,
-                sdy,
-            });
-            this._persistMultiStrip();
-        }
-        this.stripDragActive = false;
-        this.stripDragIdx = -1;
-        this.stripDragStartScreenmap = null;
-        this.stripDragStartRaw = null;
-        this.stripSnapActive = false;
-        this.stripSnapXTargets = [];
-        this.stripSnapYTargets = [];
-        this.stripSnapStartCenter = null;
-        this.stripSnapEngagedX = null;
-        this.stripSnapEngagedY = null;
-        this.stripDragLastSdx = 0;
-        this.stripDragLastSdy = 0;
-    };
-
-ShapeEditor.prototype._applyStripTranslate = function (this: ShapeEditor, stripIdx: number, sdx: number, sdy: number) {
-
-        if (!this.stripInfo || stripIdx < 0 || stripIdx >= this.stripInfo.strips.length) return;
-        const strip = this.nn(this.stripInfo.strips[stripIdx]);
-        for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-            this.screenmap_pts[k] = [this.nn(this.screenmap_pts[k])[0] + sdx, this.nn(this.screenmap_pts[k])[1] + sdy];
-            this.rawPts[k] = [this.nn(this.rawPts[k])[0] + sdx / this.fitScale, this.nn(this.rawPts[k])[1] + sdy / this.fitScale];
-        }
-    };
-
-ShapeEditor.prototype._finalizeStripRotate = function (this: ShapeEditor) {
-        if (!this.stripRotateActive) return;
-        const deg = this.stripRotateLastDeg;
-        const stripIdx = this.stripRotateIdx;
-        const csm = this.stripRotateCenterSm;
-        const crw = this.stripRotateCenterRaw;
-        if (deg !== 0 && csm && crw && stripIdx >= 0) {
-            this.pushUndo({
-                type: 'strip-rotate',
-                stripIdx,
-                deltaDeg: deg,
-                centerSm: { x: csm.x, y: csm.y },
-                centerRaw: { x: crw.x, y: crw.y },
-            });
-            this._persistMultiStrip();
-        }
-        this.stripRotateActive = false;
-        this.stripRotateIdx = -1;
-        this.stripRotateStartScreenmap = null;
-        this.stripRotateStartRaw = null;
-        this.stripRotateCenterSm = null;
-        this.stripRotateCenterRaw = null;
-        this.stripRotateStartAngle = 0;
-        this.stripRotateLastDeg = 0;
-    };
-
-/**
- * Rotate the points of a single strip around its captured bbox center by
- * `deltaRad` (radians). Modifies both `screenmap_pts` and `rawPts` in place.
- * Used by `applyAction` / `applyInverse` for the `strip-rotate` undo type.
- */
-ShapeEditor.prototype._applyStripRotate = function (this: ShapeEditor, stripIdx: number, deltaRad: number, centerSm: { x: number; y: number }, centerRaw: { x: number; y: number }) {
-        if (!this.stripInfo || stripIdx < 0 || stripIdx >= this.stripInfo.strips.length) return;
-        const strip = this.nn(this.stripInfo.strips[stripIdx]);
-        const lo = strip.offset;
-        const hi = strip.offset + strip.count;
-        const sliceSm: [number, number][] = [];
-        const sliceRw: [number, number][] = [];
-        for (let k = lo; k < hi; k++) {
-            sliceSm.push([this.nn(this.screenmap_pts[k])[0], this.nn(this.screenmap_pts[k])[1]]);
-            sliceRw.push([this.nn(this.rawPts[k])[0], this.nn(this.rawPts[k])[1]]);
-        }
-        const rotatedSm = rotatePointsAround(sliceSm, centerSm.x, centerSm.y, deltaRad);
-        const rotatedRw = rotatePointsAround(sliceRw, centerRaw.x, centerRaw.y, deltaRad);
-        for (let k = lo; k < hi; k++) {
-            this.screenmap_pts[k] = rotatedSm[k - lo] ?? [0, 0] as [number, number];
-            this.rawPts[k] = rotatedRw[k - lo] ?? [0, 0] as [number, number];
-        }
-    };
-
-ShapeEditor.prototype.onDoubleClick = function (this: ShapeEditor, e: MouseEvent) {
+    },
+    onDoubleClick(this: ShapeEditor, e: MouseEvent){
 
         if (this.placingState) return;
         if (e.button !== 0) return;
@@ -1034,26 +962,23 @@ ShapeEditor.prototype.onDoubleClick = function (this: ShapeEditor, e: MouseEvent
         }
         this._updateHintStrip();
         this.setNeedsGeometryUpdate();
-    };
-
-ShapeEditor.prototype._clearLongPress = function (this: ShapeEditor) {
+    },
+    _clearLongPress(this: ShapeEditor){
 
         if (this.longPressTimer !== null) {
             clearTimeout(this.longPressTimer);
             this.longPressTimer = null;
         }
-    };
-
-ShapeEditor.prototype._synth = function (this: ShapeEditor, type: string, clientX: number, clientY: number, opts: Record<string, unknown> = {}) {
+    },
+    _synth(this: ShapeEditor, type: string, clientX: number, clientY: number, opts: Record<string, unknown> = {}){
 
         const init = { clientX, clientY, button: (typeof opts.button === 'number' ? opts.button : 0), bubbles: true };
         const evt = new MouseEvent(type, init);
         if (type === 'mousedown') this.onMouseDown(evt);
         else if (type === 'mousemove') this.onMouseMove(evt);
         else if (type === 'mouseup') this.onMouseUp(evt);
-    };
-
-ShapeEditor.prototype._cancelSingleTouchGesture = function (this: ShapeEditor) {
+    },
+    _cancelSingleTouchGesture(this: ShapeEditor){
 
         // Cancel any in-flight single-touch drag cleanly (no undo entry).
         if (this.stripDragActive) {
@@ -1096,9 +1021,8 @@ ShapeEditor.prototype._cancelSingleTouchGesture = function (this: ShapeEditor) {
             this.rulerDragStart = null;
         }
         this._oc().style.cursor = 'default';
-    };
-
-ShapeEditor.prototype._doLongPress = function (this: ShapeEditor, canvasX: number, canvasY: number, clientX: number, clientY: number) {
+    },
+    _doLongPress(this: ShapeEditor, canvasX: number, canvasY: number, clientX: number, clientY: number){
 
         // Cancel the pending single-touch synth gesture so it does not also
         // commit a drag.
@@ -1123,14 +1047,8 @@ ShapeEditor.prototype._doLongPress = function (this: ShapeEditor, canvasX: numbe
             this.showContextMenu(clientX || 0, clientY || 0, -1, -1, false);
         }
         this.touchMode = 'longpress-fired';
-    };
-
-// ── Marquee + multi-LED group drag ──────────────────────────────────────
-//
-// Walks `lastTransformedPts` once and projects each LED to canvas space
-// inline (instead of allocating a fresh canvas-coords array via map())
-// so the marquee stays cheap even on a 64x64 grid.
-ShapeEditor.prototype._ledIdxsInCanvasRect = function (this: ShapeEditor, c1x: number, c1y: number, c2x: number, c2y: number): Set<number> {
+    },
+    _ledIdxsInCanvasRect(this: ShapeEditor, c1x: number, c1y: number, c2x: number, c2y: number): Set<number>{
     const minX = Math.min(c1x, c2x);
     const maxX = Math.max(c1x, c2x);
     const minY = Math.min(c1y, c2y);
@@ -1150,9 +1068,8 @@ ShapeEditor.prototype._ledIdxsInCanvasRect = function (this: ShapeEditor, c1x: n
         if (cx >= minX && cx <= maxX && cy >= minY && cy <= maxY) out.add(i);
     }
     return out;
-};
-
-ShapeEditor.prototype._updateMarqueeSelection = function (this: ShapeEditor) {
+},
+    _updateMarqueeSelection(this: ShapeEditor){
     const hits = this._ledIdxsInCanvasRect(this.marqueeStartCx, this.marqueeStartCy, this.marqueeCurCx, this.marqueeCurCy);
     const base = this._marqueeBaseSelection;
     let next: Set<number>;
@@ -1169,25 +1086,22 @@ ShapeEditor.prototype._updateMarqueeSelection = function (this: ShapeEditor) {
         }
     }
     this.multiSelectedIdxs = next;
-};
-
-ShapeEditor.prototype._commitMarquee = function (this: ShapeEditor) {
+},
+    _commitMarquee(this: ShapeEditor){
     // Selection was updated eagerly during mousemove; just clear the drag state.
     this.marqueeActive = false;
     this._marqueeBaseSelection = new Set<number>();
     this.setNeedsGeometryUpdate();
-};
-
-ShapeEditor.prototype._cancelMarquee = function (this: ShapeEditor) {
+},
+    _cancelMarquee(this: ShapeEditor){
     if (!this.marqueeActive) return;
     // Restore the pre-drag selection.
     this.multiSelectedIdxs = new Set(this._marqueeBaseSelection);
     this.marqueeActive = false;
     this._marqueeBaseSelection = new Set<number>();
     this.setNeedsGeometryUpdate();
-};
-
-ShapeEditor.prototype._startMultiDrag = function (this: ShapeEditor, cx: number, cy: number) {
+},
+    _startMultiDrag(this: ShapeEditor, cx: number, cy: number){
     this.multiDragActive = true;
     this.multiDragStartCanvasX = cx;
     this.multiDragStartCanvasY = cy;
@@ -1203,9 +1117,8 @@ ShapeEditor.prototype._startMultiDrag = function (this: ShapeEditor, cx: number,
         this.multiDragStartRaw.set(i, [rw[0], rw[1]]);
     }
     this._oc().style.cursor = 'grabbing';
-};
-
-ShapeEditor.prototype._finalizeMultiDrag = function (this: ShapeEditor) {
+},
+    _finalizeMultiDrag(this: ShapeEditor){
     if (!this.multiDragActive) return;
     const sdx = this.multiDragLastSdx;
     const sdy = this.multiDragLastSdy;
@@ -1223,9 +1136,8 @@ ShapeEditor.prototype._finalizeMultiDrag = function (this: ShapeEditor) {
     this.multiDragStartRaw = new Map<number, [number, number]>();
     this.multiDragLastSdx = 0;
     this.multiDragLastSdy = 0;
-};
-
-ShapeEditor.prototype._applyMultiTranslate = function (this: ShapeEditor, idxs: number[], sdx: number, sdy: number) {
+},
+    _applyMultiTranslate(this: ShapeEditor, idxs: number[], sdx: number, sdy: number){
     for (const i of idxs) {
         const sm = this.screenmap_pts[i];
         const rw = this.rawPts[i];
@@ -1233,4 +1145,171 @@ ShapeEditor.prototype._applyMultiTranslate = function (this: ShapeEditor, idxs: 
         this.screenmap_pts[i] = [sm[0] + sdx, sm[1] + sdy];
         this.rawPts[i] = [rw[0] + sdx / this.fitScale, rw[1] + sdy / this.fitScale];
     }
-};
+},
+    _wireTouchHandlers(this: ShapeEditor, signal: AbortSignal){
+
+        this._oc().addEventListener('touchstart', (e: TouchEvent) => {
+            // Cancel scrolling/zooming on the page during canvas touches
+            e.preventDefault();
+            if (e.touches.length === 1) {
+                const t = this.nn(e.touches[0]);
+                this.touchMode = 'single';
+                this.touchStartClientX = t.clientX;
+                this.touchStartClientY = t.clientY;
+                const [cx, cy] = this.getCanvasCoords(t);
+                this.touchStartCanvasX = cx;
+                this.touchStartCanvasY = cy;
+                // Start long-press timer
+                this._clearLongPress();
+                this.longPressTimer = setTimeout(() => {
+                    this.longPressTimer = null;
+                    if (this.touchMode !== 'single') return;
+                    this._doLongPress(this.touchStartCanvasX, this.touchStartCanvasY, this.touchStartClientX, this.touchStartClientY);
+                }, this.LONG_PRESS_MS);
+                // Forward as a synthesized mousedown for the drag/select path
+                this._synth('mousedown', t.clientX, t.clientY);
+            } else if (e.touches.length >= 2) {
+                // Cancel any single-touch state cleanly
+                this._clearLongPress();
+                if (this.touchMode === 'single') {
+                    this._cancelSingleTouchGesture();
+                }
+                this.touchMode = 'multi';
+                const t0 = this.nn(e.touches[0]), t1 = this.nn(e.touches[1]);
+                this.multiStartCentroid = [(t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2];
+                const dxs = t0.clientX - t1.clientX;
+                const dys = t0.clientY - t1.clientY;
+                this.multiStartDist = Math.hypot(dxs, dys) || 1;
+                this.multiPanStartCamPanX = this.camPanX;
+                this.multiPanStartCamPanY = this.camPanY;
+                this.multiPinchStartZoom = this.camZoom;
+            }
+        }, { passive: false, signal });
+
+        this._oc().addEventListener('touchmove', (e: TouchEvent) => {
+            e.preventDefault();
+            if (this.touchMode === 'longpress-fired') return;
+            if (this.touchMode === 'single' && e.touches.length === 1) {
+                const t = this.nn(e.touches[0]);
+                const ddx = t.clientX - this.touchStartClientX;
+                const ddy = t.clientY - this.touchStartClientY;
+                if (Math.hypot(ddx, ddy) > this.LONG_PRESS_MOVE_TOL) this._clearLongPress();
+                this._synth('mousemove', t.clientX, t.clientY);
+                return;
+            }
+            if (this.touchMode === 'multi' && e.touches.length >= 2) {
+                const t0 = this.nn(e.touches[0]), t1 = this.nn(e.touches[1]);
+                const cx = (t0.clientX + t1.clientX) / 2;
+                const cy = (t0.clientY + t1.clientY) / 2;
+                const dx = cx - (this.multiStartCentroid?.[0] ?? 0);
+                const dy = cy - (this.multiStartCentroid?.[1] ?? 0);
+                // Pan: centroid delta in client px -> canvas px -> world px
+                const rect = this._oc().getBoundingClientRect();
+                const sx = this.canvasW / rect.width;
+                const sy = this.canvasH / rect.height;
+                this.camPanX = this.multiPanStartCamPanX + (dx * sx) / this.camZoom;
+                this.camPanY = this.multiPanStartCamPanY + (dy * sy) / this.camZoom;
+                // Pinch: distance ratio
+                const dxs = t0.clientX - t1.clientX;
+                const dys = t0.clientY - t1.clientY;
+                const dist = Math.hypot(dxs, dys) || 1;
+                const ratio = dist / this.multiStartDist;
+                this.applyInteractiveZoom(this.multiPinchStartZoom * ratio);
+                // A two-finger gesture also pans; render even when the pinch
+                // ratio is unchanged or the zoom is clamped at its limit.
+                this.setNeedsRender();
+            }
+        }, { passive: false, signal });
+
+        this._oc().addEventListener('touchend', (e: TouchEvent) => {
+            e.preventDefault();
+            this._clearLongPress();
+            if (this.touchMode === 'longpress-fired') {
+                // Discard the residual touch — drag was already cancelled.
+                if (e.touches.length === 0) {
+                    this.touchMode = 'idle';
+                }
+                return;
+            }
+            if (this.touchMode === 'single') {
+                // Forward as mouseup to commit / select
+                const t = e.changedTouches[0] ?? null;
+                if (t) {
+                    this._synth('mouseup', t.clientX, t.clientY);
+                }
+                this.touchMode = 'idle';
+                return;
+            }
+            if (this.touchMode === 'multi') {
+                if (e.touches.length === 0) {
+                    this.touchMode = 'idle';
+                } else if (e.touches.length === 1) {
+                    // Demote to single but don't restart drag — leave idle so
+                    // the user can lift their second finger without surprises.
+                    this.touchMode = 'idle';
+                }
+            }
+        }, { passive: false, signal });
+
+        this._oc().addEventListener('touchcancel', () => {
+            this._clearLongPress();
+            this._cancelSingleTouchGesture();
+            this.touchMode = 'idle';
+        }, { passive: true, signal });
+    },
+    onMouseLeave(this: ShapeEditor){
+
+        if (this.gizmoActive) {
+            this.commitGizmoDrag();
+            this.gizmoActive = null;
+            this.gizmoDragStart = null;
+        }
+        this.gizmoHover = null;
+        if (this.bgGizmoActive) {
+            this.bgGizmoActive = null;
+            this.bgGizmoDragStart = null;
+        }
+        this.bgGizmoHover = null;
+        if (this.isPanning) {
+            this.isPanning = false;
+        }
+        if (this.rightButtonDown) {
+            this.rightButtonDown = false;
+            this.rightClickMoved = false;
+        }
+        if (this.isDragging && this.selectedIdx >= 0) {
+            // Finalize drag on leave
+            const newScreenmapPt = [...this.nn(this.screenmap_pts[this.selectedIdx])];
+            const newRawPt = [...this.nn(this.rawPts[this.selectedIdx])];
+            if (newScreenmapPt[0] !== (this.dragStartScreenmapPt?.[0] ?? 0) ||
+                newScreenmapPt[1] !== (this.dragStartScreenmapPt?.[1] ?? 0)) {
+                this.pushUndo({
+                    type: 'move',
+                    idx: this.selectedIdx,
+                    oldScreenmapPt: this.dragStartScreenmapPt,
+                    newScreenmapPt,
+                    oldRawPt: this.dragStartRawPt,
+                    newRawPt,
+                });
+            }
+            this.isDragging = false;
+            this.altQuasimode = false;
+        }
+        if (this.stripDragActive) {
+            this._finalizeStripDrag();
+        }
+        if (this.marqueeActive) {
+            this._commitMarquee();
+        }
+        if (this.multiDragActive) {
+            this._finalizeMultiDrag();
+        }
+        // Drop a half-resolved Ctrl+mousedown without firing append
+        // (the cursor left the canvas — we can't tell click vs. drag).
+        this._pendingMarquee = null;
+        this.isHovering = false;
+        this.tooltipLedIdx = -1;
+        this._tooltip().style.opacity = '0';
+        this._oc().style.cursor = 'default';
+    },
+};`n
