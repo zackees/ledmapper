@@ -59,6 +59,7 @@ export function createVideoSource({
     // capture pass (#257) demuxes this directly with WebCodecs instead of
     // racing the playing <video> element.
     let sourceFile: File | null = null;
+    let sourceGeneration = 0;
 
     function stopWebcam() {
         if (webcamStream) {
@@ -68,12 +69,17 @@ export function createVideoSource({
         videoPlayer.srcObject = null;
     }
 
+    function clearVideoFile() {
+        if (videoPlayer.src.startsWith('blob:')) URL.revokeObjectURL(videoPlayer.src);
+        videoPlayer.removeAttribute('src');
+        sourceFile = null;
+    }
+
     function loadVideoFile(file: File | null | undefined) {
         if (!file) return;
+        sourceGeneration++;
         stopWebcam();
-        if (videoPlayer.src.startsWith('blob:')) {
-            URL.revokeObjectURL(videoPlayer.src);
-        }
+        clearVideoFile();
         const url = URL.createObjectURL(file);
         videoPlayer.src = url;
         videoPlayer.onloadedmetadata = () => {
@@ -85,7 +91,7 @@ export function createVideoSource({
     }
 
     function startWebcam(resolutionStr: string, frameRate: number) {
-        stopWebcam();
+        const generation = ++sourceGeneration;
         // Feature-check before touching the API. `navigator.mediaDevices`
         // is undefined in privacy-restricted contexts (cross-origin iframe
         // without `allow="camera"`) and on insecure-context pages. #183.
@@ -102,6 +108,14 @@ export function createVideoSource({
             audio: false,
         };
         void navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+            if (generation !== sourceGeneration) {
+                stream.getTracks().forEach(track => { track.stop(); });
+                return;
+            }
+            // Keep the current source alive while permission/device startup is
+            // pending. Only replace it after the new stream is ready.
+            stopWebcam();
+            clearVideoFile();
             webcamStream = stream;
             videoPlayer.srcObject = stream;
             void videoPlayer.play();
@@ -134,12 +148,12 @@ export function createVideoSource({
     }
 
     function dispose() {
+        sourceGeneration++;
         stopWebcam();
-        if (videoPlayer.src.startsWith('blob:')) {
-            URL.revokeObjectURL(videoPlayer.src);
-        }
-        videoPlayer.src = '';
+        clearVideoFile();
         videoPlayer.srcObject = null;
+        sourceType = null;
+        isPlaying = false;
         // Drop the on-load closure so it doesn't keep references to
         // the tool's state alive across navigation. Issue #180.
         videoPlayer.onloadedmetadata = null;

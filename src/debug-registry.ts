@@ -26,6 +26,7 @@ export interface MoviemakerDebugState {
     stripCount: number;
     sourceActive: boolean;
     sourceType: string | null;
+    sourceName: string | null;
     playing: boolean;
     recordingActive: boolean;
     recordFormat: string;

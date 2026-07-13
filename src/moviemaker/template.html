@@ -175,6 +175,7 @@
                     <button type="button" id="btn_change_layout" class="btn-change-layout" aria-haspopup="dialog" aria-expanded="false">Change layout</button>
                 </div>
                 <div class="canvas-toolbar">
+                    <input id="video_file_input" type="file" accept="video/*" hidden>
                     <input type="button" id="btn_toggle_record" value="Start Recording" disabled>
                     <select id="sel_record_format" class="toolbar-select" title="Recording output format">
                         <option value="fled" selected>.fled (LED data)</option>
@@ -200,6 +201,7 @@
                     <label class="toolbar-checkbox"><input type="checkbox" id="chk_show_leds" checked> Show LEDs</label>
                     <label class="toolbar-checkbox" title="Show per-strip Start/End labels"><input type="checkbox" id="chk_show_labels"> Labels</label>
                     <div class="toolbar-separator"></div>
+                    <button id="btn_change_video" type="button" class="btn-change-video">Change Video…</button>
                     <button id="btn_unload_source" type="button" class="btn-unload" title="Unload video source" aria-label="Unload video source">&#10005;</button>
                 </div>
                 <div id="video-progress" class="video-progress-bar">
@@ -214,7 +216,12 @@
                 <div class="canvas-with-preview flex gap-3 items-start">
                     <div class="canvas-wrapper relative leading-none">
                         <canvas id="renderCanvas"></canvas>
-                        <canvas id="overlayCanvas"></canvas>
+                        <canvas id="overlayCanvas" tabindex="0" aria-label="Video mapping canvas"></canvas>
+                        <div id="video_source_menu" class="video-source-menu" role="menu" aria-label="Video source options" hidden>
+                            <button type="button" role="menuitem" data-source-action="video">Change Video…</button>
+                            <button type="button" role="menuitem" data-source-action="webcam">Use Webcam</button>
+                            <button type="button" role="menuitem" data-source-action="unload" class="video-source-menu-danger">Unload Source</button>
+                        </div>
                     </div>
                     <div class="preview-column flex flex-col gap-2">
                         <div id="previewPanel"></div>
