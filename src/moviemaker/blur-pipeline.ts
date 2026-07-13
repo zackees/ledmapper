@@ -39,7 +39,7 @@ import { attachContextLossWatchdog } from '../watchdogs';
  * @param {{ blurRadius: number, sigma: number }} opts.initialUniforms
  * @returns {Object} Pipeline API
  */
-export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { canvas?: HTMLCanvasElement; videoPlayer?: HTMLVideoElement; initialUniforms?: { blurRadius: number; sigma: number } }) {
+export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { canvas?: HTMLCanvasElement | OffscreenCanvas; videoPlayer?: HTMLVideoElement; initialUniforms?: { blurRadius: number; sigma: number } }) {
     const scene = new Scene();
     const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const renderer = new WebGLRenderer({ canvas, antialias: false });
@@ -152,7 +152,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
      * @param {number} h - Video height
      */
     function setupForResolution(w: number, h: number) {
-        renderer.setSize(w, h);
+        renderer.setSize(w, h, 'style' in renderer.domElement);
 
         if (blurTarget) blurTarget.dispose();
         blurTarget = new WebGLRenderTarget(w, h, {
@@ -167,12 +167,13 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         });
 
         if (videoTexture) videoTexture.dispose();
-        if (!videoPlayer) throw new Error('videoPlayer is required for setupForResolution');
-        videoTexture = new VideoTexture(videoPlayer);
-        const vt = videoTexture;
-        vt.minFilter = LinearFilter;
-        vt.magFilter = LinearFilter;
-        blurUniforms.tDiffuse.value = vt;
+        if (videoPlayer) {
+            videoTexture = new VideoTexture(videoPlayer);
+            const vt = videoTexture;
+            vt.minFilter = LinearFilter;
+            vt.magFilter = LinearFilter;
+            blurUniforms.tDiffuse.value = vt;
+        }
         blurUniforms.resolution.value.set(w, h);
 
         const aspect = w / h;

@@ -67,6 +67,7 @@ export default defineConfig({
       };
     }
   }],
+  worker: { format: 'es' },
   server: {
     port: 8080,
     // No auto-open: agents start this server far more often than humans

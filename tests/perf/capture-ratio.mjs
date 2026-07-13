@@ -33,9 +33,11 @@ function makeFixture(name, rate, seconds) {
     return { file, frames: rate * seconds, fps: rate, seconds };
 }
 
-function fledInfo(buf, ledCount) {
+function fledInfo(buf) {
     const jsonLen = buf.readUInt32LE(8);
     const meta = JSON.parse(buf.subarray(12, 12 + jsonLen).toString('utf-8'));
+    const ledCount = Object.values(meta.map ?? {}).reduce((sum, strip) => sum + (Array.isArray(strip.x) ? strip.x.length : 0), 0);
+    if (!Number.isInteger(ledCount) || ledCount <= 0) throw new Error('FLED metadata has no LED count');
     return { frames: (buf.length - 12 - jsonLen) / (ledCount * 3), fps: meta.video?.fps };
 }
 
@@ -80,7 +82,7 @@ async function offlineScenario(fixture, throttle, label) {
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     const file = path.join(OUT, `${label}.fled`);
     await download.saveAs(file);
-    const info = fledInfo(fs.readFileSync(file), 256);
+    const info = fledInfo(fs.readFileSync(file));
     check(label,
         info.frames === fixture.frames && info.fps === fixture.fps,
         `frames=${info.frames}/${fixture.frames} fps=${info.fps} elapsed=${elapsed}ms (${Math.round((fixture.seconds * 1000 / elapsed) * 10) / 10}x realtime)`);
