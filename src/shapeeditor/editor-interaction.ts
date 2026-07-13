@@ -397,8 +397,9 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this.altQuasimode = e.altKey;
             const hitStripIdx = this.stripStore.findStripForIndex(idx);
             const inPointEdit = this.pointEditStripIdx !== null && this.pointEditStripIdx === hitStripIdx;
+            const isSelectedStrip = selectedStrip === hitStripIdx;
 
-            if (this.altQuasimode || inPointEdit) {
+            if (this.altQuasimode || inPointEdit || isSelectedStrip) {
                 // Single-point drag (existing behavior)
                 this.isDragging = true;
                 this._oc().style.cursor = 'grabbing';
