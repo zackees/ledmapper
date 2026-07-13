@@ -12,8 +12,10 @@
   "scripts": {
     "dev": "vite",
     "dev:agent": "node scripts/dev-server.mjs",
+    "prebuild": "npm run build:gfx",
     "build": "vite build",
     "build:gfx": "cd packages/gfx && vite build && tsc -p tsconfig.json",
+    "prelint": "npm run build:gfx",
     "check:gfx-api": "node scripts/check-gfx-api.mjs",
     "preview": "vite preview",
     "lint": "eslint src/ tests/ --max-warnings 0 --cache --cache-location node_modules/.cache/eslint/ && node scripts/check-moviemaker-presets.mjs && node scripts/check-css-var-prefixes.mjs",
