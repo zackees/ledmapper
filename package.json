@@ -17,6 +17,7 @@
     "build:gfx": "cd packages/gfx && vite build && tsc -p tsconfig.json",
     "test:gfx:package": "npm run build:gfx && node scripts/test-gfx-package.mjs",
     "test:gfx:parity": "npm run build:gfx && node scripts/check-gfx-parity.mjs",
+    "test:gfx:fastled-adapter": "npm run build:gfx && node scripts/test-fastled-adapter.mjs",
     "prelint": "npm run build:gfx",
     "check:gfx-api": "node scripts/check-gfx-api.mjs",
     "check:gfx-release": "node scripts/check-gfx-release.mjs",
