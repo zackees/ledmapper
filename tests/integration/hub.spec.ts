@@ -9,7 +9,9 @@ test.describe('Hub Page', () => {
     test('has all tool cards', async ({ page }) => {
         await page.goto('/hub/');
         const cards = page.locator('.tool-card');
-        await expect(cards).toHaveCount(3);
+        await expect(cards).toHaveCount(5);
+        await expect(page.locator('.tool-card[href="/screenmap/"]')).toBeVisible();
+        await expect(page.locator('.tool-card[href="/movieplayer/"]')).toBeVisible();
     });
 
     test('has navigation bar', async ({ page }) => {
@@ -19,7 +21,7 @@ test.describe('Hub Page', () => {
 
     test('tool card links navigate correctly', async ({ page }) => {
         await page.goto('/hub/');
-        const playLink = page.locator('.tool-card', { hasText: 'Play' });
+        const playLink = page.locator('.tool-card[href="/play"]');
         await playLink.click();
         await expect(page).toHaveURL(/\/play\/?$/);
     });
