@@ -5,9 +5,11 @@ test.describe('app shell mode navigation', () => {
         await page.goto('/play');
 
         const nav = page.locator('#app-mode-bar');
-        const links = nav.locator('a.app-mode-link');
+        const links = nav.locator('a.app-mode-link[data-mode]');
+        const hubLink = nav.locator('a.app-home-link');
         await expect(nav).toBeVisible();
         await expect(links).toHaveCount(3);
+        await expect(hubLink).toHaveAttribute('href', '/hub/');
         await expect(links.nth(0)).toHaveAttribute('href', '/play');
         await expect(links.nth(1)).toHaveAttribute('href', '/create');
         await expect(links.nth(2)).toHaveAttribute('href', '/record');
@@ -36,6 +38,7 @@ test.describe('app shell mode navigation', () => {
         await links.nth(1).click();
         await expect(page).toHaveURL(/\/create$/);
         await expect(page.locator('#app-content')).toHaveAttribute('data-tool', 'shapeeditor');
+        await page.waitForFunction(() => window.__lmDebug?.shapeeditor?.getState().totalPoints !== undefined);
         await expect(page.locator('#app-mode-bar')).toHaveAttribute('data-instance', 'preserved');
         await expect(page.locator('a.app-mode-link[href="/create"]')).toHaveAttribute('aria-current', 'page');
         await expect(page.locator('a.app-mode-link[href="/play"]')).not.toHaveAttribute('aria-current', 'page');
@@ -53,6 +56,12 @@ test.describe('app shell mode navigation', () => {
         await expect(page).toHaveURL(/\/play$/);
         await expect(page.locator('#app-mode-bar')).toHaveAttribute('data-instance', 'preserved');
         await expect(page.locator('a.app-mode-link[href="/play"]')).toHaveAttribute('aria-current', 'page');
+
+        await links.nth(2).click();
+        await expect(page).toHaveURL(/\/record$/);
+        await expect(page.locator('#app-content')).toHaveAttribute('data-tool', 'moviemaker');
+        await page.waitForFunction(() => (window.__lmDebug?.moviemaker?.getState().ledCount ?? 0) > 0);
+        await expect(page.locator('a.app-mode-link[href="/record"]')).toHaveAttribute('aria-current', 'page');
     });
 
     test('fits three equal touch targets at 320px', async ({ page }) => {
@@ -61,7 +70,7 @@ test.describe('app shell mode navigation', () => {
         await expect(page.locator('a.app-mode-link[href="/record"]')).toHaveAttribute('aria-current', 'page');
 
         const metrics = await page.locator('#app-mode-bar').evaluate((nav) => {
-            const boxes = Array.from(nav.querySelectorAll<HTMLElement>('a.app-mode-link'))
+            const boxes = Array.from(nav.querySelectorAll<HTMLElement>('a.app-mode-link[data-mode]'))
                 .map((el) => el.getBoundingClientRect());
             return {
                 clientWidth: nav.clientWidth,
