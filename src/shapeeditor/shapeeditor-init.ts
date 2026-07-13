@@ -80,9 +80,11 @@ this.mainEl.classList.add('shapeeditor-main');
         this._setOverlayCollapsed(this.overlayCollapsed);
         this.dom_btn_overlay_collapse.addEventListener('click', () => {
             this._setOverlayCollapsed(true);
+            this.dom_btn_overlay_expand.focus();
         }, { signal: this.signal });
         this.dom_btn_overlay_expand.addEventListener('click', () => {
             this._setOverlayCollapsed(false);
+            this.dom_btn_overlay_collapse.focus();
         }, { signal: this.signal });
         this.dom_btn_save = this.qeb('#btn_save_as');
         this.dom_btn_reset = this.qeb('#btn_reset');
