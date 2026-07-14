@@ -791,7 +791,8 @@
 @media (max-width: 600px), (pointer: coarse) {
     .app-content.shapeeditor-root {
         height: 100%;
-        overflow: hidden;
+        overflow-x: hidden;
+        overflow-y: auto;
     }
 
     .shapeeditor-header {

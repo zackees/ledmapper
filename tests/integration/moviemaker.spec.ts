@@ -81,10 +81,10 @@ test.describe('Video Maker', () => {
 
     test('screenmap presets are gated until a source is loaded', async ({ page }) => {
         await page.goto('/moviemaker/');
-        // The Screenmap presets group is dimmed/non-interactive and the gate
-        // hint is visible before any source is loaded.
-        const group = page.locator('.preset-picker-mount').locator('xpath=ancestor::*[contains(@class,"control-group")][1]');
-        await expect(group).toHaveClass(/disabled/);
+        // The picker is parked off-screen and has no visible trigger before
+        // a source loads; the no-source gate hint explains why.
+        await expect(page.locator('#screenmap_expanded_panel')).toHaveClass(/screenmap-offscreen/);
+        await expect(page.locator('#btn_change_layout')).toBeHidden();
         await expect(page.locator('#screenmap_gate_hint')).not.toHaveClass(/hidden/);
     });
 });
