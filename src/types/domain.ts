@@ -339,6 +339,11 @@ export interface SpaHistory {
     onPopView: (handler: (view: string | null, data: unknown) => void) => () => void;
     /** Preserve the mounted tool shell for route changes within that shell. */
     onRoutePath: (handler: (path: string) => void) => () => void;
+    /**
+     * Register the active tool's synchronous navigation guard. Return `false`
+     * to keep the current route. The returned function removes that guard.
+     */
+    blockNavigation: (handler: (nextPath: string) => boolean) => () => void;
 }
 
 // ---------------------------------------------------------------------------

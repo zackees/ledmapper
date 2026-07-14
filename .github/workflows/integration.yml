@@ -53,7 +53,7 @@ jobs:
       - run: npm run build
 
       - name: Run mobile safety matrix
-        run: npx playwright test mobile-safety-matrix --project=mobile-chromium --project=mobile-webkit
+        run: npx playwright test mobile-safety --project=mobile-chromium --project=mobile-webkit
 
   test:
     # Only run on labeled PRs (or manual dispatch). The `synchronize` trigger
