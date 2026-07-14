@@ -6,12 +6,15 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 
-import { wireFilePicker } from '../../src/drag-drop';
+import { resetAndOpenFilePicker, wireFilePicker } from '../../src/drag-drop';
 
 interface MockListener { type: string; fn: () => void }
 
 class MockInput {
     public files: { 0?: File } & { readonly length: number };
+    public value = '';
+    public clickCount = 0;
+    public valuesAtClick: string[] = [];
     private listeners: MockListener[] = [];
     constructor(files: File[]) {
         this.files = Object.assign(files as unknown as { length: number }, { length: files.length });
@@ -26,6 +29,10 @@ class MockInput {
     }
     setFiles(files: File[]) {
         this.files = Object.assign(files as unknown as { length: number }, { length: files.length });
+    }
+    click() {
+        this.clickCount++;
+        this.valuesAtClick.push(this.value);
     }
 }
 
@@ -82,5 +89,29 @@ describe('wireFilePicker', () => {
             onFile: () => { calls++; },
         });
         assert.equal(calls, 0);
+    });
+});
+
+describe('resetAndOpenFilePicker', () => {
+    test('clears a stale selection before opening the picker', () => {
+        const input = new MockInput([]);
+        input.value = 'C:\\fakepath\\map.json';
+
+        resetAndOpenFilePicker(input as unknown as HTMLInputElement);
+
+        assert.equal(input.value, '');
+        assert.equal(input.clickCount, 1);
+        assert.deepEqual(input.valuesAtClick, ['']);
+    });
+
+    test('can reopen the same input repeatedly', () => {
+        const input = new MockInput([]);
+
+        resetAndOpenFilePicker(input as unknown as HTMLInputElement);
+        input.value = 'C:\\fakepath\\map.json';
+        resetAndOpenFilePicker(input as unknown as HTMLInputElement);
+
+        assert.equal(input.clickCount, 2);
+        assert.deepEqual(input.valuesAtClick, ['', '']);
     });
 });

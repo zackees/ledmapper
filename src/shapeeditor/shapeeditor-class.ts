@@ -66,6 +66,7 @@ export class ShapeEditor {
     declare mainEl: HTMLElement;
     declare dom_btn_new: HTMLButtonElement;
     declare dom_btn_upload_screenmap: HTMLInputElement;
+    declare dom_btn_load_screenmap: HTMLButtonElement;
     declare dom_sel_preset_mount: HTMLElement;
     declare presetPicker: PresetPickerHandle | null;
     declare dom_txt_scale: HTMLInputElement;

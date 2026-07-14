@@ -8,7 +8,7 @@ import type { PanelOpts } from './panel-catalog';
 import { stripStartEndLabels } from '../common';
 
 import { createLabelRenderer } from '../label-render';
-import { wireFileDropTarget, wireFileSource } from '../drag-drop';
+import { resetAndOpenFilePicker, wireFileDropTarget, wireFileSource } from '../drag-drop';
 import { safeStorage } from '../services/storage';
 import { gfxColors } from '../ui/theme';
 import { errorDialog, getSwal } from '../ui/dialogs';
@@ -35,6 +35,7 @@ this.container.classList.add('shapeeditor-root');
 this.mainEl.classList.add('shapeeditor-main');
         this.dom_btn_new = this.qeb('#btn_new');
         this.dom_btn_upload_screenmap = this.qei('#btn_upload_screenmap');
+        this.dom_btn_load_screenmap = this.qeb('#btn_load_screenmap');
         this.dom_sel_preset_mount = this.qe<HTMLElement>('#sel_preset_mount');
         this.presetPicker = null;
         this.dom_txt_scale = this.qei('#txt_scale');
@@ -101,6 +102,9 @@ this.mainEl.classList.add('shapeeditor-main');
         this.dom_btn_remove_image = this.qeb('#btn_remove_image');
         this.ac = new AbortController();
         this.signal = this.ac.signal;
+        this.dom_btn_load_screenmap.addEventListener('click', () => {
+            resetAndOpenFilePicker(this.dom_btn_upload_screenmap);
+        }, { signal: this.signal });
         // Mobile canvas-first chrome (issue #412). The existing controls and
         // transform panel are reused as bottom sheets so desktop behavior and
         // every established control binding stay intact.

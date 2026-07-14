@@ -57,6 +57,12 @@ export function fileHasExtension(file: File, extensions: string[]): boolean {
     return extensions.some((extension: string) => name.endsWith(extension));
 }
 
+/** Open a file input after clearing its current selection. */
+export function resetAndOpenFilePicker(input: HTMLInputElement): void {
+    input.value = '';
+    input.click();
+}
+
 /**
  * Wire an `<input type="file">` so each user-picked file is forwarded to
  * `onFile`. Replaces the repeated three-liner:

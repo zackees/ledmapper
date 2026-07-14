@@ -15,6 +15,12 @@ test.describe('mobile Create', () => {
             await page.setViewportSize(viewport);
             await page.goto('/create', { waitUntil: 'domcontentloaded' });
             await expect(page.locator('.shapeeditor-overlay-canvas')).toBeVisible();
+            await expect(page.locator('#btn_load_screenmap')).toBeVisible();
+            const headerMetrics = await page.locator('.shapeeditor-header').evaluate((element) => ({
+                clientWidth: element.clientWidth,
+                scrollWidth: element.scrollWidth,
+            }));
+            expect(headerMetrics.scrollWidth).toBeLessThanOrEqual(headerMetrics.clientWidth + 1);
 
             const main = page.locator('#main');
             const mainBox = await main.boundingBox();

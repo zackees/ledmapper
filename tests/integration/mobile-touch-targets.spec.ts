@@ -51,6 +51,7 @@ test.describe('shared coarse-pointer touch targets', () => {
         await expect(page.locator('.shapeeditor-overlay-canvas')).toBeVisible();
         await expectTouchTargets(page, [
             { label: 'Create navigation', selector: '.app-mode-link[data-mode="create"]' },
+            { label: 'Load screenmap action', selector: '#btn_load_screenmap' },
             { label: 'Map action', selector: '#btn_mobile_map' },
             { label: 'Tools action', selector: '#btn_mobile_tools' },
             { label: 'Help action', selector: '#btn_mobile_help' },
