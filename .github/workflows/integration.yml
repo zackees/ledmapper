@@ -16,6 +16,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  mobile-safety:
+    # Keep the supported mobile matrix isolated from the legacy desktop
+    # shards so its Chromium/WebKit result is explicit and actionable.
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'integration')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium webkit --with-deps
+
+      - name: Install Playwright system deps (when browsers are cached)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium webkit
+
+      - run: npm run build
+
+      - name: Run mobile safety matrix
+        run: npx playwright test mobile-safety-matrix --project=mobile-chromium --project=mobile-webkit
+
   test:
     # Only run on labeled PRs (or manual dispatch). The `synchronize` trigger
     # re-runs when new commits land on a PR that already has the label.
@@ -44,20 +83,20 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
 
       - name: Install Playwright browsers
         if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium --with-deps
+        run: npx playwright install chromium webkit --with-deps
 
       - name: Install Playwright system deps (when browsers are cached)
         if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: npx playwright install-deps chromium webkit
 
       - run: npm run build
 
       - name: Run integration tests (shard ${{ matrix.shard }}/8)
-        run: npx playwright test --shard=${{ matrix.shard }}/8
+        run: npx playwright test --project=chromium --shard=${{ matrix.shard }}/8
 
       - name: Upload Playwright report
         if: failure()

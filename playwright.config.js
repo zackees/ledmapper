@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 import { resolve } from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -61,7 +61,27 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: 'mobile-safety-matrix.spec.ts',
       use: { browserName: 'chromium' },
+    },
+    {
+      name: 'mobile-chromium',
+      testMatch: 'mobile-safety-matrix.spec.ts',
+      use: {
+        ...devices['Pixel 5'],
+        browserName: 'chromium',
+        launchOptions: { args: [...ciArgs, ...gpuArgs] },
+      },
+    },
+    {
+      name: 'mobile-webkit',
+      testMatch: 'mobile-safety-matrix.spec.ts',
+      use: {
+        ...devices['iPhone 13'],
+        browserName: 'webkit',
+        // Chromium command-line switches are invalid for WebKit.
+        launchOptions: { args: [] },
+      },
     },
   ],
   webServer: {
