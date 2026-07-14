@@ -9,3 +9,10 @@
 A web-based tool suite for mapping video content to physical LED arrays (WS2812/APA102).
 
 **Live site:** [www.ledmapper.com](https://www.ledmapper.com)
+
+## Mobile support
+
+Ledmapper supports current stable iOS Safari and Android Chrome on phone-sized
+viewports in portrait and landscape. See the
+[mobile validation guide](docs/mobile-validation.md) for the automated matrix,
+physical-device release checklist, and evidence template.
