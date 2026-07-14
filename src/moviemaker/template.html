@@ -1,4 +1,4 @@
-<div class="app-layout flex flex-col flex-1 min-h-0 overflow-hidden">
+<div class="app-layout source-setup flex flex-col flex-1 min-h-0 overflow-hidden" data-phase="setup">
     <aside id="sidebar">
         <div class="sidebar-scroll">
             <div id="hidden-video-controls" style="display:none">
@@ -144,19 +144,20 @@
 
         <main class="canvas-area drop-zone flex-1 flex justify-center items-center p-6 relative min-w-0 bg-lm-bg">
             <div id="welcome-overlay">
-                <div class="welcome-content">
-                    <h2 class="welcome-title">Video Maker</h2>
-                    <p class="welcome-sub">Choose a video source to start mapping LEDs</p>
-                    <div class="flex gap-4 justify-center mb-5">
+                <div class="welcome-content" role="region" aria-label="Choose a video source">
+                    <p class="welcome-step">Start here</p>
+                    <h2 class="welcome-title">Choose a video source</h2>
+                    <p class="welcome-sub">Load a file or connect your camera. Your layout and effects appear next.</p>
+                    <div class="record-source-actions">
                         <button type="button" class="source-card" data-trigger="btn_load_video">
-                            <div class="text-5xl leading-none">&#9654;</div>
-                            <span class="text-lg font-medium text-lm-text">Load Video</span>
-                            <span class="text-sm text-lm-text-muted">Upload a video file from your device</span>
+                            <span class="record-source-icon" aria-hidden="true">&#9654;</span>
+                            <span class="record-source-title">Load Video</span>
+                            <span class="record-source-copy">Upload a video file from your device</span>
                         </button>
                         <button type="button" class="source-card" data-trigger="btn_start_webcam">
-                            <div class="text-5xl leading-none">&#127909;</div>
-                            <span class="text-lg font-medium text-lm-text">Use Webcam</span>
-                            <span class="text-sm text-lm-text-muted">Capture live from your camera</span>
+                            <span class="record-source-icon" aria-hidden="true">&#127909;</span>
+                            <span class="record-source-title">Use Webcam</span>
+                            <span class="record-source-copy">Capture live from your camera</span>
                         </button>
                     </div>
                 </div>

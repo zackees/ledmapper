@@ -50,7 +50,7 @@ export function createVideoSource({
     videoPlayer: HTMLVideoElement;
     parseResolution: (res: string) => { width: number; height: number };
     onSourceReady: (width: number, height: number, sourceType: string) => void;
-    onError: (msg: string) => void;
+    onError: (msg: string, sourceType?: 'video' | 'webcam') => void;
 }) {
     let webcamStream: MediaStream | null = null;
     let sourceType: string | null = null;
@@ -70,6 +70,8 @@ export function createVideoSource({
     }
 
     function clearVideoFile() {
+        videoPlayer.onloadedmetadata = null;
+        videoPlayer.onerror = null;
         if (videoPlayer.src.startsWith('blob:')) URL.revokeObjectURL(videoPlayer.src);
         videoPlayer.removeAttribute('src');
         sourceFile = null;
@@ -77,16 +79,26 @@ export function createVideoSource({
 
     function loadVideoFile(file: File | null | undefined) {
         if (!file) return;
-        sourceGeneration++;
+        const generation = ++sourceGeneration;
         stopWebcam();
         clearVideoFile();
         const url = URL.createObjectURL(file);
         videoPlayer.src = url;
         videoPlayer.onloadedmetadata = () => {
+            if (generation !== sourceGeneration) return;
+            videoPlayer.onerror = null;
             sourceType = 'video';
             isPlaying = false;
             sourceFile = file;
             onSourceReady(videoPlayer.videoWidth, videoPlayer.videoHeight, 'video');
+        };
+        videoPlayer.onerror = () => {
+            if (generation !== sourceGeneration) return;
+            log.error('video-load-error', { file: file.name });
+            clearVideoFile();
+            sourceType = null;
+            isPlaying = false;
+            onError('This video could not be loaded. Try another MP4 or WebM file.', 'video');
         };
     }
 
@@ -99,7 +111,7 @@ export function createVideoSource({
         // types are optimistic — `in` check is honest about the runtime
         // reality.)
         if (!('mediaDevices' in navigator) || typeof navigator.mediaDevices.getUserMedia !== 'function') {
-            onError('Webcam not available in this browser context. Try uploading a video file instead.');
+            onError('Webcam not available in this browser context. Try uploading a video file instead.', 'webcam');
             return;
         }
         const res = parseResolution(resolutionStr);
@@ -126,7 +138,7 @@ export function createVideoSource({
             onSourceReady(settings.width ?? res.width, settings.height ?? res.height, 'webcam');
         }).catch((err: unknown) => {
             log.error('webcam-error', { error: err instanceof Error ? err.message : String(err) });
-            onError(describeWebcamError(err));
+            onError(describeWebcamError(err), 'webcam');
         });
     }
 
@@ -157,6 +169,7 @@ export function createVideoSource({
         // Drop the on-load closure so it doesn't keep references to
         // the tool's state alive across navigation. Issue #180.
         videoPlayer.onloadedmetadata = null;
+        videoPlayer.onerror = null;
     }
 
     return {

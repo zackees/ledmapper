@@ -57,6 +57,7 @@ export function init(container: HTMLElement) {
     const dom_preset_mount = container.querySelector<HTMLElement>('.preset-picker-mount');
     const dom_screenmap_group = dom_preset_mount?.closest('.control-group');
     const dom_source_hint = container.querySelector('#screenmap_gate_hint');
+    const dom_app_layout = qe<HTMLElement>('.app-layout');
     // Screenmap band collapse (issue #248): compact summary row + "Change
     // layout" affordance shown once a layout is active, expandable back to
     // the full picker.
@@ -194,9 +195,14 @@ export function init(container: HTMLElement) {
             fpsEstimator.reset();
             lastPresentedFrames = null;
         },
-        onError(message: string) {
-            log.info('source-error', { message });
-            void errorDialog('Webcam Error', message);
+        onError(message: string, sourceType = 'webcam') {
+            log.info('source-error', { message, sourceType });
+            // A failed file decode leaves no usable source (including when
+            // replacing an existing file), so return to the recoverable
+            // setup state before presenting the error. Webcam replacement
+            // errors intentionally keep the current source alive.
+            if (sourceType === 'video') unloadSource();
+            void errorDialog(sourceType === 'video' ? 'Video Error' : 'Webcam Error', message);
         },
     });
 
@@ -359,6 +365,8 @@ export function init(container: HTMLElement) {
     }
 
     function updateElementStates() {
+        dom_app_layout.classList.toggle('source-setup', !sourceActive);
+        dom_app_layout.dataset.phase = sourceActive ? 'workspace' : 'setup';
         const sliders = [
             dom_rng_rotation, dom_rng_brightness, dom_rng_gamma,
             dom_rng_blur, dom_rng_blur_sigma, dom_rng_zoom

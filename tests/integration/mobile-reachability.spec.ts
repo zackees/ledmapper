@@ -67,9 +67,15 @@ for (const viewport of VIEWPORTS) {
                 };
             });
             expect(scrollContract.overflowY).toMatch(/^(auto|scroll)$/);
-            expect(scrollContract.scrollHeight).toBeGreaterThan(scrollContract.clientHeight);
+            expect(scrollContract.scrollHeight).toBeGreaterThanOrEqual(scrollContract.clientHeight);
 
-            await swipeUp(page);
+            // Progressive mobile layouts may fit every required control in
+            // the viewport (Create's canvas-first state and Record's compact
+            // source setup). Scroll only when content actually overflows;
+            // otherwise direct reachability is the stronger assertion.
+            if (scrollContract.scrollHeight > scrollContract.clientHeight) {
+                await swipeUp(page);
+            }
             await page.locator(route.target).first().scrollIntoViewIfNeeded();
 
             const targetBox = await page.locator(route.target).first().boundingBox();

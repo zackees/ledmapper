@@ -874,6 +874,15 @@
     padding: 0 24px;
 }
 
+.welcome-step {
+    margin: 0 0 6px;
+    color: var(--color-lm-accent);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
 .welcome-title {
     font-size: 1.4rem;
     font-weight: 400;
@@ -887,6 +896,24 @@
     color: var(--color-lm-text-muted);
     margin: 0 0 28px 0;
     line-height: 1.5;
+}
+
+.record-source-actions {
+    @apply flex justify-center gap-4;
+    margin-bottom: 20px;
+}
+
+.record-source-icon {
+    font-size: 3rem;
+    line-height: 1;
+}
+
+.record-source-title {
+    @apply text-lg font-medium text-lm-text;
+}
+
+.record-source-copy {
+    @apply text-sm text-lm-text-muted;
 }
 
 .welcome-status {
@@ -1105,5 +1132,93 @@
     .canvas-row[data-layout="portrait"] .canvas-area,
     .canvas-row[data-layout="landscape"] .canvas-area {
         min-height: 590px;
+    }
+}
+
+/* Source-first mobile flow (#413). The app shell remains the sole touch
+   scroll owner established by #411; no-source content contributes one flat
+   setup surface instead of putting disabled effects before the first action. */
+@media (max-width: 600px), (pointer: coarse) {
+    .app-layout.source-setup {
+        flex: none;
+        min-height: 100%;
+        overflow: visible;
+    }
+
+    .app-layout.source-setup #sidebar,
+    .app-layout.source-setup #canvas-controls {
+        display: none;
+    }
+
+    .app-layout.source-setup .canvas-row,
+    .app-layout.source-setup .canvas-row[data-layout="portrait"],
+    .app-layout.source-setup .canvas-row[data-layout="landscape"] {
+        min-height: calc(100svh - 47px);
+    }
+
+    .app-layout.source-setup .canvas-area,
+    .app-layout.source-setup .canvas-row[data-layout="portrait"] .canvas-area,
+    .app-layout.source-setup .canvas-row[data-layout="landscape"] .canvas-area {
+        min-height: calc(100svh - 47px);
+        padding: 12px;
+    }
+
+    .app-layout.source-setup .welcome-content {
+        max-width: 680px;
+        padding: 12px 16px;
+    }
+
+    .app-layout.source-setup .welcome-sub {
+        margin-bottom: 16px;
+    }
+
+    .app-layout.source-setup .record-source-actions {
+        gap: 12px;
+        margin-bottom: 0;
+    }
+
+    .app-layout.source-setup .source-card {
+        display: grid;
+        width: min(280px, calc(50% - 6px));
+        min-width: 0;
+        min-height: 112px;
+        grid-template-columns: 42px minmax(0, 1fr);
+        grid-template-rows: auto auto;
+        align-items: center;
+        gap: 2px 12px;
+        padding: 14px 16px;
+        text-align: left;
+    }
+
+    .app-layout.source-setup .record-source-icon {
+        grid-row: 1 / 3;
+        font-size: 2rem;
+        text-align: center;
+    }
+
+    .app-layout.source-setup .record-source-title,
+    .app-layout.source-setup .record-source-copy {
+        min-width: 0;
+    }
+}
+
+@media (max-width: 600px) {
+    .app-layout.source-setup .record-source-actions {
+        flex-direction: column;
+    }
+
+    .app-layout.source-setup .source-card {
+        width: min(320px, 100%);
+        align-self: center;
+    }
+}
+
+@media (orientation: landscape) and (max-height: 430px) {
+    .app-layout.source-setup .record-source-actions {
+        flex-direction: row;
+    }
+
+    .app-layout.source-setup .source-card {
+        width: min(280px, calc(50% - 6px));
     }
 }
