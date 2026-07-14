@@ -61,12 +61,12 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: 'mobile-safety-matrix.spec.ts',
+      testIgnore: ['mobile-safety-matrix.spec.ts', 'mobile-safety-lifecycle.spec.ts'],
       use: { browserName: 'chromium' },
     },
     {
       name: 'mobile-chromium',
-      testMatch: 'mobile-safety-matrix.spec.ts',
+      testMatch: ['mobile-safety-matrix.spec.ts', 'mobile-safety-lifecycle.spec.ts'],
       use: {
         ...devices['Pixel 5'],
         browserName: 'chromium',
@@ -75,7 +75,7 @@ export default defineConfig({
     },
     {
       name: 'mobile-webkit',
-      testMatch: 'mobile-safety-matrix.spec.ts',
+      testMatch: ['mobile-safety-matrix.spec.ts', 'mobile-safety-lifecycle.spec.ts'],
       use: {
         ...devices['iPhone 13'],
         browserName: 'webkit',

@@ -1,5 +1,5 @@
 import { errorDialog, fireDialog, getSwal } from '../ui/dialogs';
-import type { ParsedStrip, MultiStripParseResult } from '../types/domain';
+import type { ParsedStrip, MultiStripParseResult, SpaHistory } from '../types/domain';
 import { parseScreenmapMultiStrip } from '../common';
 import { wireFileDropTarget, wireFileSource, fileHasExtension } from '../drag-drop';
 import { saveScreenmap, savePresetScreenmap, getPresetSelection, getScreenmap } from '../screenmap-store';
@@ -39,7 +39,7 @@ function qeFrom(root: ParentNode, sel: string): Element {
     return el;
 }
 
-export function init(container: HTMLElement) {
+export function init(container: HTMLElement, nav?: SpaHistory) {
     container.innerHTML = templateHtml;
 
     // ── DOM refs ────────────────────────────────────────────────────────────────
@@ -1268,6 +1268,22 @@ export function init(container: HTMLElement) {
         syncSourceActionState();
     }, { signal });
 
+    function captureInProgress(): boolean {
+        return offlineActive || recording.isActive || (mp4Recorder?.isActive ?? false);
+    }
+
+    const unblockNavigation = nav?.blockNavigation(() => {
+        if (!captureInProgress()) return true;
+        const leave = window.confirm('A recording is still in progress. Leaving Record now will discard it. Leave anyway?');
+        log.info(leave ? 'recording-navigation-discarded' : 'recording-navigation-cancelled');
+        return leave;
+    });
+
+    window.addEventListener('beforeunload', (event: BeforeUnloadEvent) => {
+        if (!captureInProgress()) return;
+        event.preventDefault();
+    }, { signal });
+
     // Pointer-Events drag on overlay canvas.
     // Using setPointerCapture so pointerup fires even when the pointer is
     // released outside the element — fixes the stale isDraggingRight state
@@ -1635,6 +1651,11 @@ export function init(container: HTMLElement) {
     rafId = requestAnimationFrame(animationLoop);
 
     return function destroy() {
+        unblockNavigation?.();
+        offlineCancelRequested = true;
+        offlineWorkerCancel?.();
+        mp4Recorder?.cancel();
+        mp4Recorder = null;
         closeSourceMenu();
         unregisterDebugState('moviemaker');
         if (perfEnabled) delete window.__mmDebug;

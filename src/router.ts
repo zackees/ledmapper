@@ -113,6 +113,8 @@ export function createRouter(appEl: HTMLElement) {
     let currentPath = window.location.pathname;
     let popViewHandler: ((view: string | null, data: unknown) => void) | null = null;
     let routePathHandler: ((path: string) => void) | null = null;
+    let navigationGuard: ((nextPath: string) => boolean) | null = null;
+    let currentLocation = window.location.pathname + window.location.search + window.location.hash;
     const toolCssLink = document.getElementById('tool-css') as HTMLLinkElement | null;
 
     // We restore scroll explicitly (top on tool change) rather than letting the
@@ -216,7 +218,9 @@ export function createRouter(appEl: HTMLElement) {
         const url = new URL(path, window.location.origin);
         const target = canonicalPath(url.pathname);
         if (target === currentPath) return;
+        if (!navigationAllowed(target)) return;
         history.pushState({ p: target } satisfies HistoryState, '', target + url.search + url.hash);
+        currentLocation = target + url.search + url.hash;
         const staysInCurrentTool = routePathHandler !== null
             && resolveTool(target) !== null
             && resolveTool(target) === resolveTool(currentPath);
@@ -249,6 +253,23 @@ export function createRouter(appEl: HTMLElement) {
         return () => { if (routePathHandler === handler) routePathHandler = null; };
     }
 
+    function navigationAllowed(nextPath: string): boolean {
+        if (!navigationGuard) return true;
+        try {
+            const allowed = navigationGuard(nextPath);
+            if (!allowed) log.info('navigation-blocked', { from: currentPath, to: nextPath });
+            return allowed;
+        } catch (error) {
+            log.error('navigation-guard-error', { error: error instanceof Error ? error.message : String(error) });
+            return false;
+        }
+    }
+
+    function blockNavigation(handler: (nextPath: string) => boolean): () => void {
+        navigationGuard = handler;
+        return () => { if (navigationGuard === handler) navigationGuard = null; };
+    }
+
     const spaHistory: SpaHistory = {
         navigate,
         pushView,
@@ -256,6 +277,7 @@ export function createRouter(appEl: HTMLElement) {
         back: () => { history.back(); },
         onPopView,
         onRoutePath,
+        blockNavigation,
     };
 
     // Handle back/forward buttons.
@@ -267,10 +289,15 @@ export function createRouter(appEl: HTMLElement) {
         }
         const state = e.state as HistoryState | null;
         if (canonical !== currentPath) {
+            if (!navigationAllowed(canonical)) {
+                history.pushState({ p: currentPath } satisfies HistoryState, '', currentLocation);
+                return;
+            }
             const staysInCurrentTool = routePathHandler !== null
                 && resolveTool(path) !== null
                 && resolveTool(path) === resolveTool(currentPath);
             currentPath = canonical;
+            currentLocation = canonical + window.location.search + window.location.hash;
             if (staysInCurrentTool && routePathHandler) {
                 log.info('navigate', { path: canonical, shellPreserved: true, history: 'pop' });
                 updateActiveLink(canonical);
@@ -323,6 +350,7 @@ export function createRouter(appEl: HTMLElement) {
         ...spaHistory,
         start() {
             currentPath = canonicalPath(window.location.pathname);
+            currentLocation = currentPath + window.location.search + window.location.hash;
             // Seed the initial entry with state so the first Back/Forward has a
             // well-formed state object to read.
             history.replaceState(

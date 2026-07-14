@@ -75,6 +75,8 @@ export interface CanvasRecorder {
     toggle: () => boolean;
     start: () => boolean;
     stop: () => void;
+    /** Stop encoding and release tracks without downloading partial output. */
+    cancel: () => void;
     /**
      * Blit the source canvas into the capture canvas for the current frame.
      * Call once per render frame, immediately after drawing, while recording.
@@ -210,6 +212,23 @@ export function createCanvasRecorder({
         }
     }
 
+    function cancel(): void {
+        active = false;
+        const localRecorder = recorder;
+        const localStream = stream;
+        recorder = null;
+        stream = null;
+        chunks = [];
+        if (localRecorder) {
+            localRecorder.ondataavailable = null;
+            localRecorder.onstop = null;
+            try {
+                if (localRecorder.state !== 'inactive') localRecorder.stop();
+            } catch { /* recorder already stopped */ }
+        }
+        localStream?.getTracks().forEach((track) => { track.stop(); });
+    }
+
     function toggle(): boolean {
         if (active) { stop(); return false; }
         return start();
@@ -219,6 +238,7 @@ export function createCanvasRecorder({
         toggle,
         start,
         stop,
+        cancel,
         captureFrame,
         get isActive() { return active; },
         get isSupported() { return supported; },
