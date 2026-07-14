@@ -70,10 +70,15 @@ test.describe('Screenmap overlay collapse bar', () => {
     test('has a usable in-viewport touch target on narrow screens', async ({ page }) => {
         await page.setViewportSize({ width: 320, height: 568 });
         await prepareOverlay(page);
-        await page.locator('#btn_overlay_collapse').click();
 
-        const bar = page.locator('#btn_overlay_expand');
-        const box = await bar.boundingBox();
+        const toolsButton = page.locator('#btn_mobile_tools');
+        await expect(toolsButton).toBeVisible();
+        await toolsButton.click();
+        await expect(page.locator('#btn_overlay_collapse')).toBeVisible();
+        await page.locator('#btn_overlay_collapse').click();
+        await expect(page.locator('#transform-overlay')).toBeHidden();
+
+        const box = await toolsButton.boundingBox();
         expect(box).not.toBeNull();
         expect(box!.height).toBeGreaterThanOrEqual(44);
         expect(box!.x + box!.width).toBeLessThanOrEqual(320);

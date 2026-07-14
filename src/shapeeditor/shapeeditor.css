@@ -19,6 +19,13 @@
     position: relative;
 }
 
+.mobile-sheet-heading,
+.mobile-tools-sheet-heading,
+.mobile-editor-actions,
+.mobile-canvas-gesture-hint {
+    display: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    ScreenMap Design — Layout Overrides
    ═══════════════════════════════════════════════════════════════ */
@@ -776,5 +783,264 @@
     .shapeeditor-main {
         flex: 0 0 max(220px, 55svh);
         min-height: 220px;
+    }
+}
+
+/* Canvas-first phone workspace. Width catches responsive desktop emulation;
+   coarse-pointer catches real phones after rotation beyond 600 CSS pixels. */
+@media (max-width: 600px), (pointer: coarse) {
+    .app-content.shapeeditor-root {
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .shapeeditor-header {
+        position: relative;
+        flex: none;
+        padding: 8px 10px;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    .shapeeditor-header-row {
+        gap: 8px;
+    }
+
+    .shapeeditor-header-title {
+        min-width: 0;
+    }
+
+    .shapeeditor-header h1 {
+        font-size: 1rem;
+        line-height: 1.1;
+    }
+
+    .shapeeditor-header-actions {
+        gap: 5px;
+    }
+
+    .shapeeditor-header-actions button {
+        padding: 6px 9px;
+        white-space: nowrap;
+    }
+
+    .shapeeditor-header-actions #btn_reset {
+        display: none;
+    }
+
+    .shapeeditor-main {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    #hint_strip {
+        display: none;
+    }
+
+    .mobile-canvas-gesture-hint {
+        display: block;
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        z-index: 40;
+        max-width: calc(100% - 24px);
+        margin: 0;
+        padding: 5px 9px;
+        transform: translateX(-50%);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: var(--radius-lm-pill);
+        background: rgba(10, 10, 10, 0.72);
+        color: var(--color-lm-text-secondary);
+        font-size: 0.7rem;
+        line-height: 1.25;
+        text-align: center;
+        white-space: nowrap;
+        pointer-events: none;
+        backdrop-filter: blur(8px);
+    }
+
+    .mobile-editor-actions {
+        display: flex;
+        position: absolute;
+        left: 50%;
+        bottom: calc(12px + env(safe-area-inset-bottom));
+        z-index: 950;
+        gap: 6px;
+        padding: 5px;
+        transform: translateX(-50%);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: var(--radius-lm-pill);
+        background: rgba(17, 17, 17, 0.88);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.42);
+        backdrop-filter: blur(12px);
+    }
+
+    .mobile-editor-action {
+        min-width: 68px;
+        min-height: 44px;
+        padding: 8px 12px;
+        background: transparent;
+        border: 1px solid var(--color-lm-border);
+        color: var(--color-lm-text);
+        box-shadow: none;
+    }
+
+    .mobile-editor-action[aria-expanded="true"] {
+        background: var(--color-lm-accent);
+        border-color: var(--color-lm-accent);
+    }
+
+    .shapeeditor-info-div {
+        bottom: calc(76px + env(safe-area-inset-bottom));
+        font-size: 12px;
+    }
+
+    .shapeeditor-info-hint {
+        display: none;
+    }
+
+    #controls,
+    .transform-overlay {
+        display: none;
+        position: fixed;
+        top: auto;
+        left: max(8px, env(safe-area-inset-left));
+        right: max(8px, env(safe-area-inset-right));
+        bottom: calc(8px + env(safe-area-inset-bottom));
+        z-index: 1400;
+        width: auto;
+        max-width: none;
+        max-height: min(62dvh, calc(100dvh - 88px));
+        margin: 0;
+        padding: 10px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        border: 1px solid var(--color-lm-border-hover);
+        border-radius: 14px;
+        background: rgba(17, 17, 17, 0.97);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.65);
+        opacity: 1;
+        overscroll-behavior: contain;
+        touch-action: pan-y;
+        backdrop-filter: blur(18px);
+    }
+
+    #controls.mobile-sheet-open,
+    .transform-overlay.mobile-sheet-open {
+        display: block;
+    }
+
+    .mobile-sheet-heading,
+    .mobile-tools-sheet-heading {
+        display: flex;
+        position: sticky;
+        top: -10px;
+        z-index: 2;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: -10px -10px 10px;
+        padding: 10px;
+        border-bottom: 1px solid var(--color-lm-border);
+        background: rgba(17, 17, 17, 0.98);
+    }
+
+    .mobile-sheet-heading > div,
+    .mobile-tools-sheet-heading > div {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+    }
+
+    .mobile-sheet-heading span,
+    .mobile-tools-sheet-heading span {
+        color: var(--color-lm-text-muted);
+        font-size: 0.72rem;
+    }
+
+    .mobile-sheet-close,
+    .mobile-tools-reset {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 6px 10px;
+        flex: none;
+    }
+
+    .file-ops-row {
+        display: flex;
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    #screenmap_drop_target,
+    #image_drop_target {
+        width: 100%;
+        box-sizing: border-box;
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    #controls .preset-picker[data-mode="inline"] {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    #controls .preset-picker-tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 3px;
+    }
+
+    #controls .preset-picker-panel {
+        max-height: 168px;
+        overflow-y: auto;
+    }
+
+    .transform-overlay .overlay-expand-btn {
+        display: none;
+    }
+
+    .transform-overlay .overlay-collapse-btn {
+        top: 11px;
+        right: 11px;
+        width: 44px;
+        height: 44px;
+        z-index: 3;
+    }
+
+    .mobile-tools-sheet-heading {
+        padding-right: 58px;
+    }
+
+    .transform-overlay.mobile-sheet-open.collapsed #overlay_content {
+        display: block;
+    }
+
+    #overlay_content {
+        min-width: 0;
+    }
+
+    .transform-row {
+        gap: 8px;
+    }
+
+    .transform-row label {
+        min-height: 36px;
+    }
+}
+
+@media (max-height: 430px) and (pointer: coarse) {
+    .shapeeditor-header-title {
+        display: none;
+    }
+
+    #controls,
+    .transform-overlay {
+        max-height: min(52dvh, calc(100dvh - 148px));
+    }
+
+    .mobile-canvas-gesture-hint {
+        top: 4px;
     }
 }
