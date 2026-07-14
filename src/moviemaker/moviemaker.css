@@ -1049,3 +1049,61 @@
         font-size: 0.85rem;
     }
 }
+
+@media (pointer: coarse) {
+    /* Break out of the desktop's nested hidden-overflow panes. The app shell
+       is the sole mobile scroll owner, so every setup panel and source action
+       contributes to one continuous, touch-scrollable document. */
+    .app-layout {
+        flex: none;
+        min-height: 100%;
+        overflow: visible;
+    }
+
+    .canvas-row,
+    .canvas-row[data-layout="portrait"],
+    .canvas-row[data-layout="landscape"] {
+        flex: none;
+        min-height: max(420px, calc(100svh - 48px));
+        overflow: visible;
+    }
+
+    #canvas-controls,
+    .canvas-row[data-layout="portrait"] #canvas-controls,
+    .canvas-row[data-layout="landscape"] #canvas-controls {
+        max-height: none;
+        overflow: visible;
+    }
+
+    .canvas-area,
+    .canvas-row[data-layout="portrait"] .canvas-area,
+    .canvas-row[data-layout="landscape"] .canvas-area {
+        flex: none;
+        width: 100%;
+        min-height: 320px;
+    }
+
+    .welcome-content {
+        width: 100%;
+        max-width: none;
+        box-sizing: border-box;
+    }
+
+    .welcome-content > .flex {
+        flex-wrap: wrap;
+    }
+
+    .welcome-content .source-card {
+        width: min(260px, calc(100% - 48px));
+        min-width: min(260px, calc(100% - 48px));
+        padding-inline: 24px;
+    }
+}
+
+@media (pointer: coarse) and (max-width: 600px) {
+    .canvas-area,
+    .canvas-row[data-layout="portrait"] .canvas-area,
+    .canvas-row[data-layout="landscape"] .canvas-area {
+        min-height: 590px;
+    }
+}

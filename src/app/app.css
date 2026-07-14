@@ -16,6 +16,8 @@
     z-index: 100;
     min-height: 44px;
     padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
     background: rgba(15, 15, 15, 0.92);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
@@ -107,5 +109,19 @@
         min-width: 0;
         min-height: 48px;
         padding: 0 6px;
+    }
+}
+
+/* Phones and other coarse-pointer devices use the shell content slot as the
+   single vertical scroll owner. Desktop tools keep their bounded panes, while
+   mobile routes may grow naturally beneath the persistent mode bar. */
+@media (pointer: coarse) {
+    .app-content {
+        overflow-x: hidden;
+        overflow-y: auto;
+        padding-bottom: env(safe-area-inset-bottom);
+        overscroll-behavior-y: contain;
+        touch-action: pan-y;
+        -webkit-overflow-scrolling: touch;
     }
 }
