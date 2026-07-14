@@ -26,6 +26,10 @@
     display: none;
 }
 
+.create-load-button {
+    @apply py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    ScreenMap Design — Layout Overrides
    ═══════════════════════════════════════════════════════════════ */
@@ -823,6 +827,11 @@
     .shapeeditor-header-actions button {
         padding: 6px 9px;
         white-space: nowrap;
+    }
+
+    .shapeeditor-header-actions .create-load-button {
+        min-width: 44px;
+        min-height: 44px;
     }
 
     .shapeeditor-header-actions #btn_reset {
