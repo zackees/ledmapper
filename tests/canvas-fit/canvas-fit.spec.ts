@@ -164,11 +164,21 @@ for (const route of ROUTES) {
     for (const vp of VIEWPORTS) {
         test(`${route} @ ${vp.label}`, async ({ page }) => {
             await page.setViewportSize({ width: vp.width, height: vp.height });
-            await page.goto(route);
-            await page.waitForLoadState('networkidle');
+            await page.goto(route, { waitUntil: 'domcontentloaded' });
+            if (route === '/play') {
+                await expect(page.locator('.lm-canvas-wrapper')).toBeAttached();
+            }
             // Two RAFs of settle time: layout reflow + canvas pipeline.
             await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => { r(); }))));
             await page.waitForTimeout(800);
+
+            // On phone widths the onboarding and player intentionally form a
+            // scrollable journey. Validate strict canvas fit after bringing
+            // the player surface into view; mobile-reachability.spec.ts
+            // separately proves that a native touch swipe can reach it.
+            if (route === '/play' && vp.width <= 430) {
+                await page.locator('.lm-canvas-wrapper').scrollIntoViewIfNeeded();
+            }
 
             const r = await capture(page, route, vp);
 

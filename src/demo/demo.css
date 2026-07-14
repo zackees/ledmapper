@@ -317,3 +317,13 @@ select {
         align-self: flex-end;
     }
 }
+
+@media (pointer: coarse) {
+    /* A rotated phone can be wide but very short. Bind the player to the
+       visual viewport height so the whole interaction surface can be brought
+       onscreen, rather than creating a square as tall as the phone is wide. */
+    .demo-stage {
+        width: min(100%, max(220px, calc(100svh - 72px)));
+        justify-self: center;
+    }
+}

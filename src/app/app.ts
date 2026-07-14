@@ -98,6 +98,10 @@ export function init(container: HTMLElement, nav?: SpaHistory): () => void {
         currentMode = mode;
         updateModeBar(mode);
         document.title = modeTitles[mode];
+        // #app-content is the mobile scroll owner. A same-shell mode change
+        // must start at the new route's first action instead of inheriting the
+        // previous mode's scroll offset.
+        contentEl.scrollTo({ top: 0, left: 0 });
         contentEl.innerHTML = '';
         // Stamp the content slot with the hosted tool's data-tool name so
         // the tool's CSS (gated on `[data-tool="<name>"]`) applies. The

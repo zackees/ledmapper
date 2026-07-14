@@ -758,3 +758,23 @@
         font-size: 0.85rem;
     }
 }
+
+@media (pointer: coarse) {
+    /* The app shell owns mobile scrolling. Give the editor a real block size
+       instead of shrinking it into the few pixels left after setup controls;
+       the combined setup + editor then contributes to #app-content's scroll
+       range in either phone orientation. */
+    .app-content.shapeeditor-root {
+        height: 100%;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+        touch-action: pan-y;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .shapeeditor-main {
+        flex: 0 0 max(220px, 55svh);
+        min-height: 220px;
+    }
+}
