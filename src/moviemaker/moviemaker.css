@@ -143,6 +143,10 @@
     @apply flex;
 }
 
+.record-primary-dock {
+    display: contents;
+}
+
 .toolbar-separator {
     @apply shrink-0;
     width: 1px;
@@ -1220,5 +1224,157 @@
 
     .app-layout.source-setup .source-card {
         width: min(280px, calc(50% - 6px));
+    }
+}
+
+/* Loaded mobile workspace (#414). Keep recording primary and persistent,
+   stack the visual outputs, and expose secondary controls through the app
+   shell's vertical scroll without introducing horizontal movement. */
+@media (max-width: 600px), (pointer: coarse) {
+    .app-layout:not(.source-setup) {
+        width: 100%;
+        max-width: 100%;
+        padding-bottom: calc(72px + env(safe-area-inset-bottom));
+        overflow-x: clip;
+    }
+
+    .app-layout:not(.source-setup) .canvas-row,
+    .app-layout:not(.source-setup) .canvas-row[data-layout="portrait"],
+    .app-layout:not(.source-setup) .canvas-row[data-layout="landscape"] {
+        width: 100%;
+        max-width: 100%;
+        align-items: stretch;
+    }
+
+    .app-layout:not(.source-setup) .canvas-area,
+    .app-layout:not(.source-setup) .canvas-row[data-layout="portrait"] .canvas-area,
+    .app-layout:not(.source-setup) .canvas-row[data-layout="landscape"] .canvas-area {
+        order: -1;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        padding: 10px;
+        overflow-x: clip;
+    }
+
+    .app-layout:not(.source-setup) #canvas-controls,
+    .app-layout:not(.source-setup) .canvas-row[data-layout="portrait"] #canvas-controls,
+    .app-layout:not(.source-setup) .canvas-row[data-layout="landscape"] #canvas-controls {
+        order: 1;
+        width: 100%;
+        max-width: 100%;
+        overflow: visible;
+    }
+
+    .app-layout:not(.source-setup) #canvas-container,
+    .app-layout:not(.source-setup) .canvas-with-preview,
+    .app-layout:not(.source-setup) .preview-column {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .app-layout:not(.source-setup) .screenmap-collapsed-row {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        flex-wrap: wrap;
+    }
+
+    .app-layout:not(.source-setup) .canvas-toolbar.visible {
+        display: flex;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        overflow-x: clip;
+        border-radius: var(--radius-lm);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    .app-layout:not(.source-setup) .record-primary-dock {
+        display: flex;
+        position: fixed;
+        right: max(8px, env(safe-area-inset-right));
+        bottom: max(8px, env(safe-area-inset-bottom));
+        left: max(8px, env(safe-area-inset-left));
+        z-index: 1000;
+        justify-content: center;
+        padding: 6px;
+        pointer-events: none;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: var(--radius-lm-pill);
+        background: rgba(10, 10, 10, 0.92);
+        box-shadow: 0 10px 36px rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+    }
+
+    .app-layout:not(.source-setup) #btn_toggle_record {
+        width: min(320px, 100%);
+        min-height: 48px;
+        pointer-events: auto;
+        font-size: 0.9rem;
+    }
+
+    .app-layout:not(.source-setup) .toolbar-separator {
+        display: none;
+    }
+
+    .app-layout:not(.source-setup) .toolbar-select {
+        min-width: 0;
+        flex: 1 1 140px;
+        min-height: 44px;
+    }
+
+    .app-layout:not(.source-setup) .toolbar-checkbox {
+        min-height: 44px;
+        flex: 1 1 120px;
+    }
+
+    .app-layout:not(.source-setup) .btn-change-video,
+    .app-layout:not(.source-setup) .btn-unload {
+        min-height: 44px;
+        flex: 1 1 auto;
+    }
+
+    .app-layout:not(.source-setup) .video-progress-bar {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    .app-layout:not(.source-setup) .canvas-with-preview {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .app-layout:not(.source-setup) .canvas-wrapper {
+        max-width: 100%;
+    }
+
+    .app-layout:not(.source-setup) .preview-column {
+        align-items: center;
+    }
+
+    .app-layout:not(.source-setup) #previewPanel {
+        width: min(400px, 100%);
+        height: auto;
+        aspect-ratio: 1;
+    }
+
+    .app-layout:not(.source-setup) #previewPanel canvas {
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    .app-layout:not(.source-setup) .preview-options {
+        width: min(400px, 100%);
+    }
+
+    .app-layout:not(.source-setup) ~ .help-fab {
+        bottom: calc(84px + env(safe-area-inset-bottom));
     }
 }
