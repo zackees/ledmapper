@@ -71,6 +71,8 @@
 :root {
     --lm-dur: 200ms;
     --lm-ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --lm-touch-target: 44px;
+    --lm-touch-gap: 8px;
 }
 
 /* ── Base ───────────────────────────────────────────────────── */
@@ -144,6 +146,60 @@ a:hover {
 }
 
 /* ── Buttons ────────────────────────────────────────────────── */
+
+/* Coarse-pointer hit targets. Keep visual glyphs compact while giving every
+   common control family a shared 44px interaction region. Tool styles still
+   own color and shape; these primitives establish minimum geometry only. */
+.lm-touch-target {
+    min-inline-size: var(--lm-touch-target);
+    min-block-size: var(--lm-touch-target);
+}
+
+@media (pointer: coarse) {
+    #app :where(
+        button,
+        input[type="button"],
+        input[type="submit"],
+        input[type="reset"],
+        select,
+        summary,
+        [role="button"],
+        .lm-touch-target,
+        .app-brand,
+        .app-mode-link,
+        .btn-upload-file,
+        .btn-edit-screenmap,
+        .demo-intro-actions a
+    ) {
+        min-inline-size: var(--lm-touch-target);
+        min-block-size: var(--lm-touch-target);
+    }
+
+    #app :where(
+        input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+        textarea
+    ) {
+        min-inline-size: var(--lm-touch-target);
+        min-block-size: var(--lm-touch-target);
+    }
+
+    #app :where(
+        .checkbox-row,
+        .checkbox-inline,
+        .lm-touch-choice,
+        label:has(input[type="checkbox"]),
+        label:has(input[type="radio"])
+    ) {
+        display: inline-flex;
+        align-items: center;
+        min-block-size: var(--lm-touch-target);
+        column-gap: var(--lm-touch-gap);
+    }
+
+    #app :where(.button-row, .control-row, .lm-touch-group) {
+        column-gap: var(--lm-touch-gap);
+    }
+}
 
 button,
 input[type="button"] {
