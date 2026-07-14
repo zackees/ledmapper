@@ -101,6 +101,61 @@ this.mainEl.classList.add('shapeeditor-main');
         this.dom_btn_remove_image = this.qeb('#btn_remove_image');
         this.ac = new AbortController();
         this.signal = this.ac.signal;
+        // Mobile canvas-first chrome (issue #412). The existing controls and
+        // transform panel are reused as bottom sheets so desktop behavior and
+        // every established control binding stay intact.
+        {
+            const mapSheet = this.qe<HTMLElement>('#controls');
+            const mapButton = this.qeb('#btn_mobile_map');
+            const mapCloseButton = this.qeb('#btn_mobile_map_close');
+            const toolsButton = this.qeb('#btn_mobile_tools');
+            const helpButton = this.qeb('#btn_mobile_help');
+            const mobileResetButton = this.qeb('#btn_mobile_reset');
+            const helpTarget = this.qeb('#hint_strip_help');
+
+            const setMapOpen = (open: boolean) => {
+                mapSheet.classList.toggle('mobile-sheet-open', open);
+                mapButton.setAttribute('aria-expanded', String(open));
+                if (open) mapCloseButton.focus();
+                else mapButton.focus();
+            };
+            const setToolsOpen = (open: boolean) => {
+                this.dom_transform_overlay.classList.toggle('mobile-sheet-open', open);
+                toolsButton.setAttribute('aria-expanded', String(open));
+                if (open) {
+                    this._setOverlayCollapsed(false);
+                    this.dom_btn_overlay_collapse.focus();
+                } else {
+                    toolsButton.focus();
+                }
+            };
+
+            mapButton.addEventListener('click', () => {
+                setToolsOpen(false);
+                setMapOpen(true);
+            }, { signal: this.signal });
+            mapCloseButton.addEventListener('click', () => { setMapOpen(false); }, { signal: this.signal });
+            toolsButton.addEventListener('click', () => {
+                setMapOpen(false);
+                setToolsOpen(true);
+            }, { signal: this.signal });
+            this.dom_btn_overlay_collapse.addEventListener('click', () => { setToolsOpen(false); }, { signal: this.signal });
+            helpButton.addEventListener('click', () => { helpTarget.click(); }, { signal: this.signal });
+            mobileResetButton.addEventListener('click', () => { this.dom_btn_reset.click(); }, { signal: this.signal });
+            mapSheet.addEventListener('click', (event) => {
+                const target = event.target instanceof Element ? event.target : null;
+                if (target?.closest('.preset-btn') || target?.closest('#btn_new')) {
+                    setMapOpen(false);
+                }
+            }, { signal: this.signal });
+            this.dom_btn_upload_screenmap.addEventListener('change', () => { setMapOpen(false); }, { signal: this.signal });
+            this.dom_btn_upload_image.addEventListener('change', () => { setMapOpen(false); }, { signal: this.signal });
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape') return;
+                if (mapSheet.classList.contains('mobile-sheet-open')) setMapOpen(false);
+                if (this.dom_transform_overlay.classList.contains('mobile-sheet-open')) setToolsOpen(false);
+            }, { signal: this.signal });
+        }
 for (const el of [this.dom_txt_scale, this.dom_txt_scale_x, this.dom_txt_scale_y,
         this.dom_txt_rotate, this.dom_txt_translate_x, this.dom_txt_translate_y, this.dom_txt_diameter]) {
         el.addEventListener('input', () => { this.markDirtyAndGeometry(); }, { signal: this.signal });

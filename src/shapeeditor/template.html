@@ -1,16 +1,24 @@
-<div class="sticky top-0 bg-[rgba(17,17,17,0.9)] backdrop-blur-[12px] border-b border-lm-border px-4 py-2.5 z-[1000]">
-    <div class="flex items-center justify-between">
-        <div>
+<div class="shapeeditor-header sticky top-0 bg-[rgba(17,17,17,0.9)] backdrop-blur-[12px] border-b border-lm-border px-4 py-2.5 z-[1000]">
+    <div class="shapeeditor-header-row flex items-center justify-between">
+        <div class="shapeeditor-header-title">
             <h1 class="mb-0">ScreenMap Design</h1>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="shapeeditor-header-actions flex items-center gap-2">
             <button id="btn_undo" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Undo (Ctrl+Z)">Undo</button>
             <button id="btn_redo" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Redo (Ctrl+Shift+Z)">Redo</button>
             <button id="btn_reset" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled>Reset</button>
             <button id="btn_save_as" class="btn-save py-1 px-3.5 bg-lm-accent text-white border-none rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled>Save As…</button>
         </div>
     </div>
-    <div id="controls" class="flex flex-col gap-2">
+</div>
+<div id="controls" class="flex flex-col gap-2">
+        <div class="mobile-sheet-heading">
+            <div>
+                <strong>Choose a map</strong>
+                <span>Start fresh, use a preset, or import your own layout.</span>
+            </div>
+            <button id="btn_mobile_map_close" type="button" class="mobile-sheet-close" aria-label="Close map chooser">&times;</button>
+        </div>
         <div class="file-ops-row flex flex-wrap items-center gap-3">
             <button id="btn_new" class="py-1.5 px-4 bg-lm-surface-1 text-lm-text border border-lm-border rounded-lm cursor-pointer text-sm font-medium" title="Create empty screenmap">New</button>
             <div id="screenmap_drop_target" class="drop-zone flex items-center gap-3 py-1.5 px-3 bg-lm-surface-1 border border-lm-border rounded-lm">
@@ -25,14 +33,26 @@
             </div>
         </div>
     </div>
-</div>
 <main id="main">
     <!-- Canvas target -->
     <div id="hint_strip" class="hint-strip" role="status" aria-live="polite">
         <span id="hint_strip_text" class="hint-strip-text"></span>
         <button id="hint_strip_help" type="button" class="hint-strip-help" title="Keyboard help (?, F1)">? Help</button>
     </div>
+    <p class="mobile-canvas-gesture-hint">Drag to pan <span aria-hidden="true">&middot;</span> Pinch to zoom <span aria-hidden="true">&middot;</span> Long-press an LED to edit</p>
+    <div class="mobile-editor-actions" aria-label="Create mobile tools">
+        <button id="btn_mobile_map" type="button" class="mobile-editor-action" aria-controls="controls" aria-expanded="false" aria-haspopup="dialog">Map</button>
+        <button id="btn_mobile_tools" type="button" class="mobile-editor-action" aria-controls="transform-overlay" aria-expanded="false" aria-haspopup="dialog">Tools</button>
+        <button id="btn_mobile_help" type="button" class="mobile-editor-action">Help</button>
+    </div>
     <div id="transform-overlay" class="transform-overlay">
+        <div class="mobile-tools-sheet-heading">
+            <div>
+                <strong>Editor tools</strong>
+                <span>Transform the map, add panels, and manage strips.</span>
+            </div>
+            <button id="btn_mobile_reset" type="button" class="mobile-tools-reset">Reset</button>
+        </div>
         <button id="btn_overlay_collapse" type="button"
             class="overlay-collapse-btn"
             title="Collapse Screenmap panel"

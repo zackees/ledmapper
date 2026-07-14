@@ -51,6 +51,11 @@ touchTest.describe('Preset picker active-chip visibility (#247) — shapeeditor'
         await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
         await page.waitForFunction(() => !!window.__shapeeditorDebug, null, { timeout: 10000 });
 
+        // The canvas-first touch layout keeps presets behind the Map chooser.
+        const mapButton = page.locator('#btn_mobile_map');
+        await expect(mapButton).toBeVisible();
+        await mapButton.click();
+
         const mount = page.locator('#sel_preset_mount');
         const shapesTabInit = mount.locator('.preset-picker-tab[data-category="shapes"]');
         await expect(shapesTabInit).toBeVisible({ timeout: 10000 });
@@ -61,6 +66,12 @@ touchTest.describe('Preset picker active-chip visibility (#247) — shapeeditor'
         const restingChip = mount.locator('.preset-btn[data-preset-file="piano_grand.json"]');
         await expect(activeChip).toBeVisible();
         await activeChip.click();
+
+        // Selecting a preset returns to the canvas; reopen the chooser to
+        // verify its active-preset and category indicators.
+        await expect(mount).toBeHidden();
+        await mapButton.click();
+        await expect(activeChip).toBeVisible();
 
         await expect(activeChip).toHaveClass(/active-preset/);
         await expect(restingChip).not.toHaveClass(/active-preset/);
