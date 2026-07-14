@@ -177,7 +177,9 @@
                 </div>
                 <div class="canvas-toolbar">
                     <input id="video_file_input" type="file" accept="video/*" hidden>
-                    <input type="button" id="btn_toggle_record" value="Start Recording" disabled>
+                    <div class="record-primary-dock">
+                        <input type="button" id="btn_toggle_record" value="Start Recording" disabled>
+                    </div>
                     <select id="sel_record_format" class="toolbar-select" title="Recording output format">
                         <option value="fled" selected>.fled (LED data)</option>
                         <option value="mp4">.mp4 (social)</option>
