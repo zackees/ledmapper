@@ -375,6 +375,9 @@ export interface ShapeeditorDebugHooks {
     getStripCount?: () => number;
     getStripLabels?: () => unknown;
     getSelectedStrip?: () => number | null;
+    getSelectedStrips?: () => number[];
+    getPrimarySelectedStrip?: () => number | null;
+    selectStrips?: (indices: number[]) => void;
     getStripNames?: () => string[];
     getSelectionOutlineColor?: () => string | null;
     getLedCanvasPos?: (flatIdx: number) => { clientX: number; clientY: number; canvasX: number; canvasY: number } | null;

@@ -11,8 +11,8 @@ const ownerFiles = readdirSync(shapeeditorDir).filter((name) => /^editor-.*\.ts$
 const ownerSources = ownerFiles.map((name) => readFileSync(path.join(shapeeditorDir, name), 'utf8'));
 const manifestEntries = ownerSources.flatMap((source, ownerIndex) => [...source.matchAll(/^\s{4}(?:async\s+)?([A-Za-z_][A-Za-z0-9_]*)[^\n]*\(this: ShapeEditor/gm)].map((match) => ({ owner: ownerFiles[ownerIndex], name: match[1] })));
 
-test('ShapeEditor method manifest has one owner for every baseline method plus strip rotation controls', () => {
-    assert.equal(manifestEntries.length, 235);
+test('ShapeEditor method manifest has one owner for every baseline method plus group selection controls', () => {
+    assert.equal(manifestEntries.length, 237);
     assert.equal(new Set(manifestEntries.map(({ name }) => name)).size, manifestEntries.length);
 });
 

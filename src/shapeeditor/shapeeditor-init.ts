@@ -212,6 +212,8 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
             ? this.stripInfo.strips.map((s, i) => stripStartEndLabels(s, i))
             : null),
         getSelectedStrip: () => this.selection.getStripIdx(),
+        getSelectedStrips: () => [...this.selection.getSelectedStripIdxs()],
+        getPrimarySelectedStrip: () => this.selection.getPrimaryStripIdx(),
         getStripNames: () => (this.stripInfo ? this.stripInfo.strips.map((s) => s.name) : []),
         getSelectionOutlineColor: () => {
             const selected = this._selectedStripObbCanvas();
@@ -219,6 +221,11 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
             return this.pointEditStripIdx === selected.idx ? gfxColors.accentRed() : gfxColors.accentBlue();
         },
         selectStrip: (i: number) => { this.selection.selectStrip(i); this.setNeedsGeometryUpdate(); },
+        selectStrips: (indices: number[]) => {
+            this.selection.selectOnlyStrip(null);
+            for (const idx of indices) this.selection.addStrip(idx);
+            this.setNeedsGeometryUpdate();
+        },
         placePanel: (catalogId: string, worldX: number, worldY: number, opts: PanelOpts) => this._debugPlacePanel(catalogId, worldX, worldY, opts),
         getPlacingMode: () => (this.placingState ? this.placingState.entry.id : null),
         cancelPlacing: () => { this._cancelPlacing(); },
@@ -534,6 +541,13 @@ registerDebugState('shapeeditor', {
         this.pointEditStripIdx = null;
         this.stripDragActive = false;
         this.stripDragIdx = -1;
+        this.stripDragIdxs = [];
+        this.stripDragPointIdxs = [];
+        this.stripDragStartScreenmapByIdx = new Map();
+        this.stripDragStartRawByIdx = new Map();
+        this.pendingGroupGesture = null;
+        this.groupMarqueeActive = false;
+        this.groupMarqueeBaseSelection = new Set();
         this.stripDragStartScreenmap = null;
         this.stripDragStartRaw = null;
         this.stripDragLastSdx = 0;
@@ -544,6 +558,8 @@ registerDebugState('shapeeditor', {
         this.stripSnapEngagement = { mode: 'none' };
         this.stripRotateActive = false;
         this.stripRotateIdx = -1;
+        this.stripRotateIdxs = [];
+        this.stripRotatePointIdxs = [];
         this.stripRotateStartScreenmap = null;
         this.stripRotateStartRaw = null;
         this.stripRotateCenterSm = null;
@@ -677,7 +693,8 @@ this.dom_btn_redo.addEventListener('click', () => { this.performRedo(); }, { sig
             const row = tgt?.closest('.strip-row');
             if (row) {
                 const idx = parseInt((row as HTMLElement).dataset.stripIdx ?? '', 10);
-                this.selection.selectStrip(idx);
+                if (e.shiftKey) this.selection.toggleStrip(idx);
+                else this.selection.selectOnlyStrip(idx);
             }
         })(); }, { signal: this.signal });
 

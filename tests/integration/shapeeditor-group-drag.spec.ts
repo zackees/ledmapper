@@ -40,7 +40,7 @@ async function seedAndOpen(page) {
         makeTwoStripMap(),
         JSON.stringify({ savedAt: Date.now(), source: 'save', ledCount: 7, stripCount: 2 }),
     ]);
-    await page.goto('/shapeeditor/');
+    await page.goto('/create');
     await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
     await page.waitForFunction(() => !!window.__shapeeditorDebug, null, { timeout: 10000 });
     await expect.poll(
@@ -96,7 +96,7 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
 
     test.afterEach(async ({ page }) => { await cleanup(page); });
 
-    test('plain LED drag moves the whole strip; other strip untouched; Ctrl+Z restores', async ({ page }) => {
+    test('first drag selects only; a later drag moves the whole strip; Ctrl+Z restores', async ({ page }) => {
         await seedAndOpen(page);
 
         const beforeA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
@@ -104,11 +104,17 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
         expect(beforeA.length).toBe(4);
         expect(beforeB.length).toBe(3);
 
-        // Drag stripA's first LED (flatIdx = 0) by +30,+20 client px
+        // The first gesture may cover the same distance but is selection-only.
         const ok = await page.evaluate(() =>
             window.__shapeeditorDebug.simulateLedDrag(0, 30, 20, {})
         );
         expect(ok).toBe(true);
+
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(beforeA);
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips())).toEqual([0]);
+
+        // Now that strip A is selected, the same gesture translates it.
+        expect(await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(0, 30, 20, {}))).toBe(true);
 
         const afterA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
         const afterB = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
@@ -252,6 +258,7 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
         expect(await page.evaluate(() => window.__shapeeditorDebug.getPointEditMode())).toBe(null);
 
         const beforeA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
+        await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
 
         const ok = await page.evaluate(() =>
             window.__shapeeditorDebug.simulateLedDrag(0, 20, 10, { altKey: true })

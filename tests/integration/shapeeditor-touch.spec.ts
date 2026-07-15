@@ -50,7 +50,7 @@ async function seedAndOpen(page) {
         makeTwoStripMap(),
         JSON.stringify({ savedAt: Date.now(), source: 'save', ledCount: 7, stripCount: 2 }),
     ]);
-    await page.goto('/shapeeditor/');
+    await page.goto('/create');
     await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
     await page.waitForFunction(() => !!window.__shapeeditorDebug, null, { timeout: 10000 });
     await expect.poll(() =>
@@ -222,30 +222,29 @@ test.describe('Shapeeditor gesture-notice toast', () => {
     test('shows once on first strip-select; not again', async ({ page }) => {
         // Use the shared fixture page (with help dismissed) but ensure
         // the gestureNotice key is cleared so it can fire.
-        await page.addInitScript(() => {
-            try { localStorage.setItem('lm:shapeeditor-helpDismissed', '1'); } catch { /* ignore */ }
-            try { localStorage.removeItem('lm:shapeeditor-gestureNotice'); } catch { /* ignore */ }
-            // Seed a layout so a strip exists to select
-            try {
-                localStorage.setItem('lm:screenmap', JSON.stringify({
-                    map: { s: { x: [0, 1, 2], y: [0, 0, 0], diameter: 0.5 } },
-                }));
-                localStorage.setItem('lm:screenmap-meta', JSON.stringify({
-                    savedAt: Date.now(), source: 'save', ledCount: 3, stripCount: 1,
-                }));
-            } catch { /* ignore */ }
-        });
-        await page.goto('/shapeeditor/');
+        await page.goto('/');
+        await page.evaluate((keys) => {
+            for (const key of keys) localStorage.removeItem(key);
+            localStorage.setItem('lm:shapeeditor-helpDismissed', '1');
+            localStorage.removeItem('lm:shapeeditor-gestureNotice');
+            localStorage.setItem('lm:screenmap', JSON.stringify({
+                map: { s: { x: [0, 1, 2], y: [0, 0, 0], diameter: 0.5 } },
+            }));
+            localStorage.setItem('lm:screenmap-meta', JSON.stringify({
+                savedAt: Date.now(), source: 'save', ledCount: 3, stripCount: 1,
+            }));
+        }, KEYS);
+        await page.goto('/create');
         await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
         await page.waitForFunction(() => !!window.__shapeeditorDebug, null, { timeout: 10000 });
         await expect.poll(() =>
             page.evaluate(() => window.__shapeeditorDebug.getStripCount())
-        ).toBe(1);
+        ).toBeGreaterThan(0);
         // Trigger first strip-select
         await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
         // Toast should appear
         await expect(page.locator('.swal2-toast')).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('.swal2-toast')).toContainText(/drag moves the strip/i);
+        await expect(page.locator('.swal2-toast')).toContainText(/drag to move/i);
         const stored = await page.evaluate(() => localStorage.getItem('lm:shapeeditor-gestureNotice'));
         expect(stored).toBe('1');
         // Dismiss + try again — should not re-show

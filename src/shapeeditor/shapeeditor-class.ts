@@ -155,6 +155,13 @@ export class ShapeEditor {
     declare pointEditStripIdx: number | null;
     declare stripDragActive: boolean;
     declare stripDragIdx: number;
+    declare stripDragIdxs: number[];
+    declare stripDragPointIdxs: number[];
+    declare stripDragStartScreenmapByIdx: Map<number, [number, number]>;
+    declare stripDragStartRawByIdx: Map<number, [number, number]>;
+    declare pendingGroupGesture: { kind: 'select-only' | 'translate'; stripIdx: number; cx: number; cy: number } | null;
+    declare groupMarqueeActive: boolean;
+    declare groupMarqueeBaseSelection: Set<number>;
     declare stripDragStartScreenmap: StripDragPt[] | null;
     declare stripDragStartRaw: StripDragPt[] | null;
     declare stripDragLastSdx: number;
@@ -168,6 +175,8 @@ export class ShapeEditor {
     // dragging the strip's dedicated rotate handle.
     declare stripRotateActive: boolean;
     declare stripRotateIdx: number;
+    declare stripRotateIdxs: number[];
+    declare stripRotatePointIdxs: number[];
     declare stripRotateStartScreenmap: [number, number][] | null;
     declare stripRotateStartRaw: [number, number][] | null;
     declare stripRotateCenterSm: { x: number; y: number } | null;

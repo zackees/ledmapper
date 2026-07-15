@@ -12,17 +12,17 @@ test('idle (loaded, no selection) shows pan/zoom/select hint', () => {
     const t = hintTextFor({ empty: false, selectedStripName: null });
     assert.match(t, /Drag canvas: pan/);
     assert.match(t, /R-drag: zoom/);
-    assert.match(t, /click LED: select strip/);
+    assert.match(t, /click group: select/);
     assert.match(t, /I: insert/);
-    assert.match(t, /Ctrl\+V: paste/);
+    assert.match(t, /Ctrl\+drag: group marquee/);
 });
 
 test('strip selected explains explicit point editing and group movement', () => {
     const t = hintTextFor({ empty: false, selectedStripName: 'strip1' });
-    assert.match(t, /Drag LED or strip line: move group/);
+    assert.match(t, /Drag selected group: move/);
+    assert.match(t, /Shift\+click: add\/remove group/);
     assert.match(t, /double-click LED: edit points/);
-    assert.match(t, /handles: scale\/rotate strip/);
-    assert.match(t, /Del: remove strip/);
+    assert.match(t, /rotate handle: rotate selection/);
 });
 
 test('point-edit mode shows strip name and Esc-to-exit', () => {

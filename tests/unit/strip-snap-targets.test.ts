@@ -85,6 +85,18 @@ describe('typed legacy and advanced target generation', () => {
         assert.ok(!targetValues(targets, 'x').includes(10));
     });
 
+    test('excludes every selected group from aggregate snapping', () => {
+        const strips = [{ offset: 0, count: 1 }, { offset: 1, count: 1 }, { offset: 2, count: 1 }];
+        const targets = computeStripSnapTargets({
+            strips,
+            excludedStripIdxs: new Set([0, 1]),
+            points: [[0, 0], [10, 0], [50, 0]],
+        });
+        assert.ok(targetValues(targets, 'x').includes(50));
+        assert.ok(!targetValues(targets, 'x').includes(0));
+        assert.ok(!targetValues(targets, 'x').includes(10));
+    });
+
     test('infers inter-strip pitch and preserves band filtering', () => {
         const strips: SnapStripRef[] = [
             { offset: 0, count: 2 }, { offset: 2, count: 2 },
