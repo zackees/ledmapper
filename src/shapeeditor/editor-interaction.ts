@@ -18,7 +18,6 @@ const STRIP_STROKE_HIT_PX = 10;
 export interface EditorInteractionMethods {
     _clearStripSnapState: () => void;
     _resolveCoarseStripHit: (canvasX: number, canvasY: number) => { stripIdx: number; edgeIdx: number } | null;
-    _isEmptyRightPanTarget: (canvasX: number, canvasY: number) => boolean;
     _startStripDrag: (stripIdx: number, canvasX: number, canvasY: number) => boolean;
     _ledIdxsInCanvasRect: (c1x: number, c1y: number, c2x: number, c2y: number) => Set<number>;
     _updateMarqueeSelection: () => void;
@@ -61,20 +60,6 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         if (!edge || edge.distSq > STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) return null;
         return { stripIdx: edge.stripIdx, edgeIdx: edge.idx };
     },
-    _isEmptyRightPanTarget(this: ShapeEditor, canvasX: number, canvasY: number): boolean{
-        if (this._resolveCoarseStripHit(canvasX, canvasY)) return false;
-        if (this.hitTestStripRotateHandle(canvasX, canvasY)) return false;
-        if (this.hitTestRuler(canvasX, canvasY)) return false;
-        if (this.hitTestGizmo(canvasX, canvasY)) return false;
-        if (this.bgImageMesh && this.hitTestBgGizmo(canvasX, canvasY)) return false;
-        if (this.editorMode === 'chain') {
-            if (this._hitConnectorBody(canvasX, canvasY)) return false;
-            if (this._hitChainArrowhead(canvasX, canvasY)) return false;
-            if (this._hitStartHandle(canvasX, canvasY, -1) !== null) return false;
-            if (this._hitEndHandle(canvasX, canvasY, -1) !== null) return false;
-        }
-        return true;
-    },
     onContextMenu(this: ShapeEditor, e: MouseEvent){
 
         e.preventDefault();
@@ -87,7 +72,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this._cancelPaste();
             return;
         }
-        // A right-button translation owns the gesture and suppresses context.
+        // A right-button pan owns the gesture and suppresses context.
         const wasMoved = this.rightClickMoved;
         this.rightClickMoved = false;
         if (wasMoved) return;
@@ -255,39 +240,14 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this.rightClickMoved = false;
             this.rightStartClientX = e.clientX;
             this.rightStartClientY = e.clientY;
-            this.pendingRightPan = null;
-            if (this.editorMode === 'select' && this.pointEditStripIdx === null) {
-                const hit = this._resolveCoarseStripHit(cx, cy);
-                if (hit) {
-                    this.groupGestureSelectionSnapshot = new Set(this.selection.getSelectedStripIdxs());
-                    this.selectedIdx = -1;
-                    this.highlightedEdgeIdx = hit.edgeIdx;
-                    if (this.selection.isStripSelected(hit.stripIdx)) {
-                        this.pendingGroupGesture = {
-                            kind: 'translate', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 2,
-                            marqueeMode: 'replace', toggleOnClick: false, freeTranslate: false,
-                        };
-                    } else {
-                        this.selection.selectOnlyStrip(hit.stripIdx);
-                        this.pendingGroupGesture = {
-                            kind: 'select-only', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 2,
-                            marqueeMode: 'replace', toggleOnClick: false, freeTranslate: false,
-                        };
-                    }
-                    this.setNeedsGeometryUpdate();
-                    this._oc().style.cursor = 'grab';
-                }
-            }
-            if (!this.pendingGroupGesture && this._isEmptyRightPanTarget(cx, cy)) {
-                this.pendingRightPan = {
-                    canvasX: cx,
-                    canvasY: cy,
-                    clientX: e.clientX,
-                    clientY: e.clientY,
-                    camPanX: this.camPanX,
-                    camPanY: this.camPanY,
-                };
-            }
+            this.pendingRightPan = {
+                canvasX: cx,
+                canvasY: cy,
+                clientX: e.clientX,
+                clientY: e.clientY,
+                camPanX: this.camPanX,
+                camPanY: this.camPanY,
+            };
             return;
         }
 
@@ -424,20 +384,19 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             }
         }
 
-        // Shift + left drag on a selected group is an explicit translation
-        // gesture. Let that direct-manipulation target win if a LED happens to
-        // overlap one of the screenmap-wide gizmo handles after fitting.
+        // Shift + left drag on any group is an explicit free-translation
+        // gesture. Let that direct-manipulation target win if the coarse strip
+        // target overlaps one of the screenmap-wide gizmo handles after fitting.
         // The selected group's own rotation handle was already checked above.
         const shiftTranslateHit = e.shiftKey
             && this.editorMode === 'select'
             && this.pointEditStripIdx === null
             ? this._resolveCoarseStripHit(cx, cy)
             : null;
-        const shiftTranslatesSelectedGroup = shiftTranslateHit !== null
-            && this.selection.isStripSelected(shiftTranslateHit.stripIdx);
+        const shiftTranslatesGroup = shiftTranslateHit !== null;
 
         // Priority 1: Gizmo handle (corner/edge/rotation)
-        const gizmoHit = shiftTranslatesSelectedGroup ? null : this.hitTestGizmo(cx, cy);
+        const gizmoHit = shiftTranslatesGroup ? null : this.hitTestGizmo(cx, cy);
         if (gizmoHit && gizmoHit !== 'translate') {
             this.gizmoActive = gizmoHit;
             const handles = this.computeGizmoHandles(this.ptsBBox);
@@ -511,32 +470,21 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
                 if (hit) {
                     this.selectedIdx = -1;
                     this.highlightedEdgeIdx = hit.edgeIdx;
-                    if (e.shiftKey && selected) {
+                    if (e.shiftKey) {
+                        if (!selected) this.selection.addStrip(hit.stripIdx);
                         this.pendingGroupGesture = {
                             kind: 'translate', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
-                            marqueeMode: mode, toggleOnClick: true, freeTranslate: true,
+                            marqueeMode: mode, toggleOnClick: selected, freeTranslate: true,
                         };
-                    } else if (e.shiftKey) {
-                        this.selection.addStrip(hit.stripIdx);
-                        this.pendingGroupGesture = {
-                            kind: 'select-only', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
-                            marqueeMode: mode, toggleOnClick: false, freeTranslate: true,
-                        };
-                    } else if (selected) {
-                        this.pendingGroupGesture = {
-                            kind: 'marquee', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
-                            marqueeMode: 'replace', toggleOnClick: false, freeTranslate: false,
-                        };
-                        this.groupMarqueeBaseSelection = base;
                     } else {
-                        this.selection.selectOnlyStrip(hit.stripIdx);
+                        if (!selected) this.selection.selectOnlyStrip(hit.stripIdx);
                         this.pendingGroupGesture = {
-                            kind: 'select-only', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
+                            kind: 'translate', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
                             marqueeMode: 'replace', toggleOnClick: false, freeTranslate: false,
                         };
                     }
                     this.setNeedsGeometryUpdate();
-                    this._oc().style.cursor = selected && !e.shiftKey ? 'crosshair' : 'grab';
+                    this._oc().style.cursor = 'grab';
                     return;
                 }
 
@@ -679,9 +627,9 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         // Track shift key for rotation snapping
         this.shiftHeld = e.shiftKey;
 
-        // Right drag translates selected groups or pans from an explicitly
-        // classified empty target. A stationary right click stays eligible
-        // for the context menu until it crosses the shared CSS-pixel threshold.
+        // Right drag always pans the camera. A stationary right click stays
+        // eligible for its target-specific context menu until it crosses the
+        // shared CSS-pixel threshold.
         if (this.rightButtonDown) {
             const dx = e.clientX - this.rightStartClientX;
             const dy = e.clientY - this.rightStartClientY;
@@ -697,7 +645,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
                 this.panStartCamX = pending.camPanX;
                 this.panStartCamY = pending.camPanY;
                 this._oc().style.cursor = 'grabbing';
-            } else if (!this.pendingGroupGesture && !this.stripDragActive && !this.isPanning) return;
+            } else if (!this.isPanning) return;
         }
 
         // Chain-mode connector drag (arrowhead → new downstream target)
@@ -996,12 +944,11 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             && this.pointEditStripIdx === null
             ? this._resolveCoarseStripHit(cx, cy)
             : null;
-        const shiftHoversSelectedGroup = shiftTranslateHover !== null
-            && this.selection.isStripSelected(shiftTranslateHover.stripIdx);
+        const shiftHoversGroup = shiftTranslateHover !== null;
 
         // Gizmo hover detection
         const prevGizmoHover = this.gizmoHover;
-        this.gizmoHover = shiftHoversSelectedGroup ? null : this.hitTestGizmo(cx, cy);
+        this.gizmoHover = shiftHoversGroup ? null : this.hitTestGizmo(cx, cy);
         if (this.gizmoHover !== prevGizmoHover) this.setNeedsRender();
         const hoveringMapOrGizmo = pointerInScreenmapObb || !!this.gizmoHover;
         if (this.isHovering !== hoveringMapOrGizmo) {
@@ -1021,7 +968,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         // Ruler hover takes top cursor priority
         if (rulerHoverHit) return;
 
-        if (shiftHoversSelectedGroup) {
+        if (shiftHoversGroup) {
             this._oc().style.cursor = 'grab';
             this.tooltipLedIdx = -1;
             this._tooltip().style.opacity = '0';

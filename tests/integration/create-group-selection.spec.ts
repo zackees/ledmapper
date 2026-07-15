@@ -10,7 +10,14 @@ function map() {
     } });
 }
 
-async function open(page: Page, width = 1280, height = 720) {
+function gizmoOverlapMap() {
+    return JSON.stringify({ map: {
+        stripA: { x: [0, 160], y: [0, 0], diameter: 0.5 },
+        stripB: { x: [60, 100], y: [120, 120], diameter: 0.5 },
+    } });
+}
+
+async function open(page: Page, width = 1280, height = 720, screenmap = map()) {
     await page.setViewportSize({ width, height });
     await page.goto('/');
     await page.evaluate((json) => {
@@ -18,7 +25,7 @@ async function open(page: Page, width = 1280, height = 720) {
         localStorage.setItem('lm:screenmap-meta', JSON.stringify({ savedAt: Date.now(), source: 'save', ledCount: 10, stripCount: 3 }));
         localStorage.setItem('lm:shapeeditor-helpDismissed', '1');
         localStorage.removeItem('shapeeditor.overlayCollapsed');
-    }, map());
+    }, screenmap);
     await page.goto('/create');
     await page.waitForFunction(() => !!window.__shapeeditorDebug);
     await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getLedCanvasPos(0) !== null)).toBe(true);
@@ -288,7 +295,7 @@ test('real left click selects and plain left drag performs group marquee without
     expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).toEqual(beforePan);
 });
 
-test('right drag translates selected groups without zooming', async ({ page }) => {
+test('left drag translates selected groups without zooming', async ({ page }) => {
     await open(page);
     const a = await led(page, 0);
     await page.mouse.click(a.clientX, a.clientY);
@@ -297,9 +304,9 @@ test('right drag translates selected groups without zooming', async ({ page }) =
     const undoBefore = await page.evaluate(() => window.__shapeeditorDebug.getUndoStack().length);
     await resetScreenmapWriteProbe(page);
 
-    await drag(page, a, 36, 18, 'right');
-    const afterRight = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
-    expect(afterRight).not.toEqual(before);
+    await drag(page, a, 36, 18);
+    const afterLeft = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
+    expect(afterLeft).not.toEqual(before);
     expect(await page.evaluate(() => window.__shapeeditorDebug.getCamZoom())).toBe(beforeZoom);
     expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack().length)).toBe(undoBefore + 1);
     expect(await screenmapWriteCount(page)).toBe(1);
@@ -309,8 +316,65 @@ test('right drag translates selected groups without zooming', async ({ page }) =
     await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0)
         .map((point: number[]) => point.map((value: number) => Math.round(value * 1e6) / 1e6)))).toEqual(roundedBefore);
     await page.keyboard.press('Control+Shift+z');
-    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(afterRight);
+    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(afterLeft);
     await page.keyboard.press('Control+z');
+});
+
+test('left drag on an unselected group selects and translates it in the same gesture', async ({ page }) => {
+    await open(page);
+    const b = await led(page, 4);
+    const before = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+    const undoBefore = await page.evaluate(() => window.__shapeeditorDebug.getUndoStack().length);
+    await resetScreenmapWriteProbe(page);
+
+    await page.mouse.move(b.clientX, b.clientY);
+    await page.mouse.down();
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips())).toEqual([1]);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getPointerGestureState())).toMatchObject({
+        pending: { kind: 'translate', stripIdx: 1, freeTranslate: false },
+        stripDragActive: false,
+    });
+    await page.mouse.move(b.clientX + 30, b.clientY + 12, { steps: 4 });
+    await page.mouse.up();
+
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1))).not.toEqual(before);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips())).toEqual([1]);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack().length)).toBe(undoBefore + 1);
+    expect(await screenmapWriteCount(page)).toBe(1);
+});
+
+test('right drag over a selected group pans without translating it', async ({ page }) => {
+    await open(page);
+    const a = await led(page, 0);
+    await page.mouse.click(a.clientX, a.clientY);
+    const before = await page.evaluate(() => ({
+        pan: window.__shapeeditorDebug.getCamPan(),
+        zoom: window.__shapeeditorDebug.getCamZoom(),
+        selected: window.__shapeeditorDebug.getSelectedStrips(),
+        points: window.__shapeeditorDebug.getStripPoints(0),
+        undo: window.__shapeeditorDebug.getUndoStack(),
+        dirty: window.__lmDebug.shapeeditor.getState().dirty,
+    }));
+    await resetScreenmapWriteProbe(page);
+
+    await drag(page, a, 36, 18, 'right');
+
+    const after = await page.evaluate(() => ({
+        pan: window.__shapeeditorDebug.getCamPan(),
+        zoom: window.__shapeeditorDebug.getCamZoom(),
+        selected: window.__shapeeditorDebug.getSelectedStrips(),
+        points: window.__shapeeditorDebug.getStripPoints(0),
+        undo: window.__shapeeditorDebug.getUndoStack(),
+        dirty: window.__lmDebug.shapeeditor.getState().dirty,
+    }));
+    expect(after.pan).not.toEqual(before.pan);
+    expect(after.zoom).toBe(before.zoom);
+    expect(after.selected).toEqual(before.selected);
+    expect(after.points).toEqual(before.points);
+    expect(after.undo).toEqual(before.undo);
+    expect(after.dirty).toBe(before.dirty);
+    expect(await screenmapWriteCount(page)).toBe(0);
+    await expect(page.locator('.shapeeditor-ctx-menu')).toBeHidden();
 });
 
 test('Shift-left drag is free translation for a selected group', async ({ page }) => {
@@ -337,19 +401,67 @@ test('Shift-left drag is free translation for a selected group', async ({ page }
     expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).not.toEqual(before);
 });
 
-test('selection modifiers toggle groups and an unselected right drag remains selection-only', async ({ page }) => {
+test('Shift-left drag on an unselected group adds it and freely translates the resulting selection', async ({ page }) => {
     await open(page);
     const a = await led(page, 0);
     const b = await led(page, 4);
+    await page.mouse.click(a.clientX, a.clientY);
+    const beforeA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
     const beforeB = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
-    const undoBefore = await page.evaluate(() => window.__shapeeditorDebug.getUndoStack().length);
-    const dirtyBefore = await page.evaluate(() => window.__lmDebug.shapeeditor.getState().dirty);
-    await resetScreenmapWriteProbe(page);
 
-    await drag(page, b, 30, 12, 'right');
-    expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1))).toEqual(beforeB);
-    expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips())).toEqual([1]);
+    await page.keyboard.down('Shift');
+    await page.mouse.move(b.clientX, b.clientY);
+    await page.mouse.down();
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips())).toEqual([0, 1]);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getPointerGestureState())).toMatchObject({
+        pending: { kind: 'translate', stripIdx: 1, freeTranslate: true },
+    });
+    await page.mouse.move(b.clientX + 24, b.clientY - 16, { steps: 4 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
 
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).not.toEqual(beforeA);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1))).not.toEqual(beforeB);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips())).toEqual([0, 1]);
+});
+
+test('Shift-left drag prioritizes an unselected group over an overlapping global gizmo handle', async ({ page }) => {
+    await open(page, 1280, 720, gizmoOverlapMap());
+    const a0 = await led(page, 0);
+    const a1 = await led(page, 1);
+    const b = await led(page, 2);
+    await page.mouse.click(b.clientX, b.clientY);
+    const beforeA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
+    const beforeB = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+    // The screenmap-wide top-edge gizmo sits 20 canvas pixels above strip A.
+    // Halfway between them is inside both the 14px gizmo target and the 10px
+    // coarse strip target, so this exercises the actual priority ambiguity.
+    const overlap = {
+        clientX: (a0.clientX + a1.clientX) / 2,
+        clientY: a0.clientY - 10,
+    };
+    await expectCanvasTarget(page, overlap);
+
+    await page.keyboard.down('Shift');
+    await page.mouse.move(overlap.clientX, overlap.clientY);
+    await page.mouse.down();
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips().sort((a, b) => a - b))).toEqual([0, 1]);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getPointerGestureState())).toMatchObject({
+        pending: { kind: 'translate', stripIdx: 0, freeTranslate: true },
+    });
+    await page.mouse.move(overlap.clientX + 24, overlap.clientY + 16, { steps: 4 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).not.toEqual(beforeA);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1))).not.toEqual(beforeB);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips().sort((a, b) => a - b))).toEqual([0, 1]);
+});
+
+test('selection modifiers toggle groups and stationary right click opens context', async ({ page }) => {
+    await open(page);
+    const a = await led(page, 0);
+    const b = await led(page, 4);
     await page.mouse.click(b.clientX, b.clientY, { button: 'right' });
     await expect(page.locator('.shapeeditor-ctx-menu')).toBeVisible();
     await page.keyboard.press('Escape');
@@ -374,12 +486,9 @@ test('selection modifiers toggle groups and an unselected right drag remains sel
     await drag(page, { clientX: maxX, clientY: maxY }, minX - maxX, minY - maxY);
     await page.keyboard.up('Control');
     expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips())).toEqual([0, 1]);
-    expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack().length)).toBe(undoBefore);
-    expect(await page.evaluate(() => window.__lmDebug.shapeeditor.getState().dirty)).toBe(dirtyBefore);
-    expect(await screenmapWriteCount(page)).toBe(0);
 });
 
-test('translation starts only after more than 3 CSS pixels and stationary right click opens context', async ({ page }) => {
+test('left translation starts only after more than 3 CSS pixels', async ({ page }) => {
     // Fractional grid sizing makes canvas units differ from CSS pixels. The
     // threshold must still be measured in browser client coordinates.
     await open(page, 1279);
@@ -389,19 +498,18 @@ test('translation starts only after more than 3 CSS pixels and stationary right 
     const undoBefore = await page.evaluate(() => window.__shapeeditorDebug.getUndoStack().length);
     await resetScreenmapWriteProbe(page);
 
-    await drag(page, a, 3, 0, 'right');
+    await drag(page, a, 3, 0);
     expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(before);
     expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack().length)).toBe(undoBefore);
     expect(await screenmapWriteCount(page)).toBe(0);
-    await expect(page.locator('.shapeeditor-ctx-menu')).toBeVisible();
-    await page.keyboard.press('Escape');
+    await expect(page.locator('.shapeeditor-ctx-menu')).toBeHidden();
 
     await page.mouse.move(a.clientX, a.clientY);
-    await page.mouse.down({ button: 'right' });
+    await page.mouse.down();
     await page.mouse.move(a.clientX + 4, a.clientY);
     expect(await page.evaluate(() => window.__shapeeditorDebug.getInteractionState().stripDragActive)).toBe(true);
     await page.keyboard.press('Escape');
-    await page.mouse.up({ button: 'right' });
+    await page.mouse.up();
     expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(before);
     expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack().length)).toBe(undoBefore);
     expect(await screenmapWriteCount(page)).toBe(0);
@@ -424,7 +532,7 @@ test('Escape, pointercancel, and lost capture restore active translation without
             }, { once: true });
         });
         await page.mouse.move(a.clientX, a.clientY);
-        await page.mouse.down({ button: 'right' });
+        await page.mouse.down();
         await page.mouse.move(a.clientX + 30, a.clientY + 16, { steps: 3 });
         expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).not.toEqual(before);
     };
@@ -436,7 +544,7 @@ test('Escape, pointercancel, and lost capture restore active translation without
 
     await beginTranslation();
     await page.keyboard.press('Escape');
-    await page.mouse.up({ button: 'right' });
+    await page.mouse.up();
     await expectRestored();
 
     await beginTranslation();
@@ -449,7 +557,7 @@ test('Escape, pointercancel, and lost capture restore active translation without
             bubbles: true,
         }));
     });
-    await page.mouse.up({ button: 'right' });
+    await page.mouse.up();
     await expectRestored();
 
     await beginTranslation();
@@ -458,7 +566,7 @@ test('Escape, pointercancel, and lost capture restore active translation without
         const canvas = document.querySelector<HTMLCanvasElement>('.shapeeditor-overlay-canvas');
         if (canvas && target.__activeTestPointerId !== undefined) canvas.releasePointerCapture(target.__activeTestPointerId);
     });
-    await page.mouse.up({ button: 'right' });
+    await page.mouse.up();
     await expectRestored();
 });
 
@@ -540,7 +648,7 @@ test('right-dragging empty canvas pans in Select, Chain, and Reorder modes', asy
     }
 });
 
-test('selected rotation handles and Chain connectors are not empty right-pan targets', async ({ page }) => {
+test('right-pan starts over selected rotation handles and Chain connectors', async ({ page }) => {
     await open(page);
     const a = await led(page, 0);
     await page.mouse.click(a.clientX, a.clientY);
@@ -550,8 +658,10 @@ test('selected rotation handles and Chain connectors are not empty right-pan tar
     const rotationTarget = { clientX: rotation!.clientHandleX, clientY: rotation!.clientHandleY };
     await expectCanvasTarget(page, rotationTarget);
     const beforeRotationPan = await page.evaluate(() => window.__shapeeditorDebug.getCamPan());
+    const beforeRotationPoints = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
     await drag(page, rotationTarget, 16, 8, 'right');
-    expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).toEqual(beforeRotationPan);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).not.toEqual(beforeRotationPan);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(beforeRotationPoints);
 
     await page.evaluate(() => { window.__shapeeditorDebug.setMode('chain'); });
     await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getChainGeom().connectors.length)).toBeGreaterThan(0);
@@ -571,7 +681,7 @@ test('selected rotation handles and Chain connectors are not empty right-pan tar
     await expectCanvasTarget(page, connectorTarget!);
     const beforeConnectorPan = await page.evaluate(() => window.__shapeeditorDebug.getCamPan());
     await drag(page, connectorTarget!, 16, 8, 'right');
-    expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).toEqual(beforeConnectorPan);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).not.toEqual(beforeConnectorPan);
 });
 
 test('Escape, pointercancel, and lost capture restore right-pan; capture permits an outside release', async ({ page }) => {

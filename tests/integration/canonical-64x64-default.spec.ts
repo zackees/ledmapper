@@ -91,7 +91,7 @@ test('editing the canonical preset becomes Custom and reselecting restores canon
     await page.goto('/create');
     await page.waitForFunction(() => window.__lmDebug?.shapeeditor?.getState().totalPoints === 4096);
     await page.evaluate(() => window.__shapeeditorDebug?.selectStrip?.(0));
-    await page.evaluate(() => window.__shapeeditorDebug?.simulateLedDrag?.(0, 20, 0, { button: 2 }));
+    await page.evaluate(() => window.__shapeeditorDebug?.simulateLedDrag?.(0, 20, 0));
     await expect.poll(() => page.evaluate(() => localStorage.getItem('lm:screenmap-preset'))).toBeNull();
 
     await page.goto('/record?perfdebug=1');
