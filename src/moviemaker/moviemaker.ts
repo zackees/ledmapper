@@ -4,7 +4,7 @@ import { parseScreenmapMultiStrip } from '../common';
 import { wireFileDropTarget, wireFileSource, fileHasExtension } from '../drag-drop';
 import { saveScreenmap, savePresetScreenmap, getPresetSelection, getScreenmap } from '../screenmap-store';
 import { analyzeCanonical64x64Divergence, CANONICAL_64X64_PRESET, getDefaultPresetFile, isCanonical64x64Geometry } from '../canonical-screenmap';
-import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension, buildVideoChannelMap } from './transforms';
+import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension, buildVideoChannelMap, mapClientPointToCanvasBacking } from './transforms';
 import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
 import { loadPresetText } from '../preset-loader';
 import screenmapManifest from 'virtual:screenmap-presets';
@@ -162,8 +162,15 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
     let target_zoom = 1, curr_zoom = 1;
     let target_rotate = 0, curr_rotate = 0;
     let target_translate: [number, number] = [0, 0], curr_translate: [number, number] = [0, 0];
+    // Cache translate mapping geometry at pointerdown so pointermove never
+    // forces synchronous layout (same drag-jank rule as the scrubber below).
+    interface TranslateMapping {
+        backingWidth: number;
+        backingHeight: number;
+        rect: { left: number; top: number; width: number; height: number };
+    }
     // Drag state: null when idle, or { kind: 'translate'|'zoom', pointerId, lastY }
-    let drag: { kind: 'translate' | 'zoom'; pointerId: number; lastY: number; startX: number; startY: number; moved: boolean } | null = null;
+    let drag: { kind: 'translate' | 'zoom'; pointerId: number; lastY: number; startX: number; startY: number; moved: boolean; translateMapping: TranslateMapping | null } | null = null;
     let suppressNextContextMenu = false;
     let sourceMenuInvoker: HTMLElement | null = null;
 
@@ -1299,10 +1306,19 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
     overlayCanvas.addEventListener('pointerdown', (e: PointerEvent) => {
         if (screenmap_pts.length === 0) return;
         if (e.button === 0) {
-            drag = { kind: 'translate', pointerId: e.pointerId, lastY: e.offsetY, startX: e.clientX, startY: e.clientY, moved: false };
+            const rect = overlayCanvas.getBoundingClientRect();
+            drag = {
+                kind: 'translate', pointerId: e.pointerId, lastY: e.offsetY,
+                startX: e.clientX, startY: e.clientY, moved: false,
+                translateMapping: {
+                    backingWidth: overlayCanvas.width,
+                    backingHeight: overlayCanvas.height,
+                    rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+                },
+            };
             overlayCanvas.setPointerCapture(e.pointerId);
         } else if (e.button === 2) {
-            drag = { kind: 'zoom', pointerId: e.pointerId, lastY: e.offsetY, startX: e.clientX, startY: e.clientY, moved: false };
+            drag = { kind: 'zoom', pointerId: e.pointerId, lastY: e.offsetY, startX: e.clientX, startY: e.clientY, moved: false, translateMapping: null };
             overlayCanvas.setPointerCapture(e.pointerId);
             e.preventDefault();
         }
@@ -1312,8 +1328,19 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
         if (!drag || screenmap_pts.length === 0) return;
         if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 4) drag.moved = true;
         if (drag.kind === 'translate') {
-            target_translate[0] = e.offsetX;
-            target_translate[1] = e.offsetY;
+            const mapping = drag.translateMapping;
+            if (!mapping) return;
+            const point = mapClientPointToCanvasBacking(
+                e.clientX,
+                e.clientY,
+                mapping.backingWidth,
+                mapping.backingHeight,
+                mapping.rect,
+            );
+            if (!point) return;
+            const [x, y] = point;
+            target_translate[0] = x;
+            target_translate[1] = y;
         } else {
             const dy = e.offsetY - drag.lastY;
             target_zoom -= dy * 0.01;
@@ -1505,6 +1532,7 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
             rotate: curr_rotate,
             zoom: curr_zoom,
             translate: [curr_translate[0], curr_translate[1]],
+            targetTranslate: [target_translate[0], target_translate[1]],
             videoWidth,
             videoHeight,
             sample: lastSample ? Array.from(lastSample.rgbPts) : null,

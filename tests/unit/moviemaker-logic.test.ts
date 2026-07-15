@@ -12,6 +12,7 @@ import {
     estimateLedSize,
     overlayLedRadius,
     scaleToMaxDimension,
+    mapClientPointToCanvasBacking,
 } from '../../src/moviemaker/transforms';
 
 describe('transformToCenter', () => {
@@ -352,6 +353,55 @@ describe('scaleToMaxDimension', () => {
 
     it('handles negative maxDim as native', () => {
         assert.deepStrictEqual(scaleToMaxDimension(640, 480, -1), { width: 640, height: 480 });
+    });
+});
+
+describe('mapClientPointToCanvasBacking', () => {
+    it('preserves coordinates when display and backing sizes match', () => {
+        assert.deepStrictEqual(
+            mapClientPointToCanvasBacking(640, 818, 720, 1280, { left: 100, top: 50, width: 720, height: 1280 }),
+            [540, 768],
+        );
+    });
+
+    it('maps a downscaled portrait Native canvas into backing pixels', () => {
+        assert.deepStrictEqual(
+            mapClientPointToCanvasBacking(761.5, 673.90625, 720, 1280, { left: 439, top: 214.90625, width: 430, height: 765 }),
+            [540, 768],
+        );
+    });
+
+    it('maps an upscaled 480p display into its smaller backing store', () => {
+        assert.deepStrictEqual(
+            mapClientPointToCanvasBacking(761.5, 673.90625, 270, 480, { left: 439, top: 214.90625, width: 430, height: 765 }),
+            [202.5, 288],
+        );
+    });
+
+    it('maps a scaled landscape canvas with a non-zero page offset', () => {
+        assert.deepStrictEqual(
+            mapClientPointToCanvasBacking(820, 370, 1920, 1080, { left: 100, top: 100, width: 960, height: 540 }),
+            [1440, 540],
+        );
+    });
+
+    it('rejects a collapsed display box instead of mixing coordinate spaces', () => {
+        assert.strictEqual(
+            mapClientPointToCanvasBacking(400, 300, 720, 1280, { left: 100, top: 50, width: 0, height: 765 }),
+            null,
+        );
+        assert.strictEqual(
+            mapClientPointToCanvasBacking(400, 300, 720, 1280, { left: 100, top: 50, width: 430, height: 0 }),
+            null,
+        );
+        assert.strictEqual(
+            mapClientPointToCanvasBacking(400, 300, 0, 1280, { left: 100, top: 50, width: 430, height: 765 }),
+            null,
+        );
+        assert.strictEqual(
+            mapClientPointToCanvasBacking(400, 300, 720, 0, { left: 100, top: 50, width: 430, height: 765 }),
+            null,
+        );
     });
 });
 
