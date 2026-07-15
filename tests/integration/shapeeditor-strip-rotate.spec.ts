@@ -34,7 +34,7 @@ async function seedAndOpen(page) {
         makeTwoStripMap(),
         JSON.stringify({ savedAt: Date.now(), source: 'save', ledCount: 8, stripCount: 2 }),
     ]);
-    await page.goto('/shapeeditor/');
+    await page.goto('/create');
     await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
     await page.waitForFunction(() => !!window.__shapeeditorDebug, null, { timeout: 10000 });
     await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripCount())).toBe(2);
@@ -56,10 +56,23 @@ async function openStripsPanel(page) {
     }
 }
 
+async function nextAnimationFrame(page) {
+    await page.evaluate(() => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => { resolve(); });
+    }));
+}
+
+function angleDifference(a: number, b: number): number {
+    let delta = a - b;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    while (delta < -Math.PI) delta += Math.PI * 2;
+    return delta;
+}
+
 test.describe('Shapeeditor per-strip rotation', () => {
     test.afterEach(async ({ page }) => { await cleanup(page); });
 
-    test('real pointer drag rotates the selected strip around its visible bbox center; stripB is untouched; Ctrl+Z restores', async ({ page }) => {
+    test('real pointer drag animates the OBB handle; stripB is untouched; Ctrl+Z restores', async ({ page }) => {
         await seedAndOpen(page);
         const beforeA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
         const beforeB = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
@@ -72,8 +85,12 @@ test.describe('Shapeeditor per-strip rotation', () => {
         await openStripsPanel(page);
         await expect(page.locator('#strips_selected_row')).toBeVisible();
         await expect.poll(
-            () => page.evaluate(() => window.__shapeeditorDebug.getStripRotateHandlePos()),
+            () => page.evaluate(() => {
+                return window.__shapeeditorDebug.getStripRotateVisualState?.()?.handle ?? null;
+            }),
         ).not.toBeNull();
+        const initialVisual = await page.evaluate(() => window.__shapeeditorDebug.getStripRotateVisualState?.());
+        if (!initialVisual?.handle || !initialVisual.obb) throw new Error('Selected strip rotation visual did not render');
         const handle = await page.evaluate(() => window.__shapeeditorDebug.getStripRotateHandlePos());
         if (!handle) throw new Error('Selected strip rotation handle did not render');
         const visual = await page.evaluate(() => [0, 1, 2, 3, 4].map((i) => window.__shapeeditorDebug.getLedCanvasPos(i)));
@@ -84,17 +101,71 @@ test.describe('Shapeeditor per-strip rotation', () => {
         expect(handle.clientHandleY).toBeLessThan(minY);
 
         // Real browser PointerEvents, not a synthetic debug event. Rotate
-        // clockwise by 90 degrees around the handle's visible anchor.
+        // clockwise by 90 degrees around the OBB center while sampling every
+        // rendered frame. The old regression asserted the handle stayed fixed;
+        // this test must fail against that implementation.
         await page.mouse.move(handle.clientHandleX, handle.clientHandleY);
         await page.mouse.down();
-        const lockedHandle = await page.evaluate(() => window.__shapeeditorDebug.getStripRotateHandlePos());
-        await page.mouse.move(
-            handle.clientAnchorX + (handle.clientAnchorY - handle.clientHandleY),
-            handle.clientAnchorY,
-            { steps: 5 },
+        const startAngle = Math.atan2(
+            handle.clientHandleY - handle.clientCenterY,
+            handle.clientHandleX - handle.clientCenterX,
         );
-        expect(await page.evaluate(() => window.__shapeeditorDebug.getStripRotateHandlePos())).toEqual(lockedHandle);
+        const startRadius = Math.hypot(
+            handle.clientHandleX - handle.clientCenterX,
+            handle.clientHandleY - handle.clientCenterY,
+        );
+        const downVisual = await page.evaluate(() => window.__shapeeditorDebug.getStripRotateVisualState?.());
+        expect(downVisual?.active).toBe(true);
+        let previousRevision = downVisual?.drawRevision ?? initialVisual.drawRevision;
+        let previousHandle = handle;
+        for (const expectedDeg of [15, 30, 45, 60, 75, 90]) {
+            const targetAngle = startAngle + expectedDeg * Math.PI / 180;
+            const targetX = handle.clientCenterX + startRadius * Math.cos(targetAngle);
+            const targetY = handle.clientCenterY + startRadius * Math.sin(targetAngle);
+            await page.mouse.move(targetX, targetY);
+            await nextAnimationFrame(page);
+            await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripRotateVisualState?.()?.drawRevision ?? 0))
+                .toBeGreaterThan(previousRevision);
+            const visual = await page.evaluate(() => window.__shapeeditorDebug.getStripRotateVisualState?.());
+            if (!visual?.handle || !visual.obb) throw new Error(`Missing rendered rotation visual at ${String(expectedDeg)} degrees`);
+            expect(visual.active).toBe(true);
+            expect(visual.deltaDeg).toBe(expectedDeg);
+            const actualAngle = Math.atan2(
+                visual.handle.clientHandleY - visual.handle.clientCenterY,
+                visual.handle.clientHandleX - visual.handle.clientCenterX,
+            );
+            expect(Math.abs(angleDifference(actualAngle, targetAngle))).toBeLessThan(0.03);
+            const radius = Math.hypot(
+                visual.handle.clientHandleX - visual.handle.clientCenterX,
+                visual.handle.clientHandleY - visual.handle.clientCenterY,
+            );
+            expect(radius).toBeCloseTo(startRadius, 0);
+            const arm = Math.hypot(
+                visual.handle.handleX - visual.handle.anchorX,
+                visual.handle.handleY - visual.handle.anchorY,
+            );
+            expect(arm).toBeCloseTo(30, 3);
+            expect(Math.hypot(
+                visual.handle.clientHandleX - previousHandle.clientHandleX,
+                visual.handle.clientHandleY - previousHandle.clientHandleY,
+            )).toBeGreaterThan(2);
+            expect(visual.obb.cx).toBeCloseTo(initialVisual.obb.cx, 3);
+            expect(visual.obb.cy).toBeCloseTo(initialVisual.obb.cy, 3);
+            expect(visual.obb.hw).toBeCloseTo(initialVisual.obb.hw, 3);
+            expect(visual.obb.hh).toBeCloseTo(initialVisual.obb.hh, 3);
+            previousRevision = visual.drawRevision;
+            previousHandle = visual.handle;
+        }
+        const finalActiveVisual = await page.evaluate(() => window.__shapeeditorDebug.getStripRotateVisualState?.());
         await page.mouse.up();
+        await nextAnimationFrame(page);
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripRotateVisualState?.()?.drawRevision ?? 0))
+            .toBeGreaterThan(finalActiveVisual?.drawRevision ?? previousRevision);
+        const finalVisual = await page.evaluate(() => window.__shapeeditorDebug.getStripRotateVisualState?.());
+        expect(finalVisual?.active).toBe(false);
+        expect(finalVisual?.handle).not.toBeNull();
+        expect(finalVisual?.handle?.handleX).toBeCloseTo(finalActiveVisual?.handle?.handleX ?? 0, 0);
+        expect(finalVisual?.handle?.handleY).toBeCloseTo(finalActiveVisual?.handle?.handleY ?? 0, 0);
 
         const afterA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
         const afterB = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));

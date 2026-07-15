@@ -218,7 +218,7 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
             if (!selected) return null;
             return this.pointEditStripIdx === selected.idx ? gfxColors.accentRed() : gfxColors.accentBlue();
         },
-        selectStrip: (i: number) => { this.selection.selectStrip(i); },
+        selectStrip: (i: number) => { this.selection.selectStrip(i); this.setNeedsGeometryUpdate(); },
         placePanel: (catalogId: string, worldX: number, worldY: number, opts: PanelOpts) => this._debugPlacePanel(catalogId, worldX, worldY, opts),
         getPlacingMode: () => (this.placingState ? this.placingState.entry.id : null),
         cancelPlacing: () => { this._cancelPlacing(); },
@@ -284,12 +284,50 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
                 anchorY: handle.anchorY,
                 handleX: handle.handleX,
                 handleY: handle.handleY,
+                centerX: handle.centerX,
+                centerY: handle.centerY,
                 clientAnchorX: anchor.x,
                 clientAnchorY: anchor.y,
                 clientHandleX: button.x,
                 clientHandleY: button.y,
                 clientCenterX: center.x,
                 clientCenterY: center.y,
+            };
+        },
+        getStripRotateVisualState: () => {
+            const visual = this.stripRotateLastDrawnVisual;
+            if (!this.overlayCanvas || !visual) {
+                return {
+                    active: this.stripRotateActive,
+                    deltaDeg: this.stripRotateLastDeg,
+                    drawRevision: this.stripRotateDrawRevision,
+                    obb: visual?.obb ?? null,
+                    handle: null,
+                };
+            }
+            const rect = this.overlayCanvas.getBoundingClientRect();
+            const toClient = (canvasX: number, canvasY: number) => ({
+                x: rect.left + (canvasX / this.canvasW) * rect.width,
+                y: rect.top + (canvasY / this.canvasH) * rect.height,
+            });
+            const h = visual.handle;
+            const anchor = toClient(h.anchorX, h.anchorY);
+            const button = toClient(h.handleX, h.handleY);
+            const center = toClient(h.centerX, h.centerY);
+            return {
+                active: this.stripRotateActive,
+                deltaDeg: this.stripRotateLastDeg,
+                drawRevision: this.stripRotateDrawRevision,
+                obb: { ...visual.obb },
+                handle: {
+                    ...h,
+                    clientAnchorX: anchor.x,
+                    clientAnchorY: anchor.y,
+                    clientHandleX: button.x,
+                    clientHandleY: button.y,
+                    clientCenterX: center.x,
+                    clientCenterY: center.y,
+                },
             };
         },
         // Paste flow hooks (Phase 3)
@@ -513,7 +551,9 @@ registerDebugState('shapeeditor', {
         this.stripRotateStartAngle = 0;
         this.stripRotateLastDeg = 0;
         this.stripRotateHover = false;
-        this.stripRotateHandleSnapshot = null;
+        this.stripRotateObbSnapshot = null;
+        this.stripRotateDrawRevision = 0;
+        this.stripRotateLastDrawnVisual = null;
         this.altQuasimode = false;
         this.ctxMenu = null;
         this.ctxMenuIdx = -1;

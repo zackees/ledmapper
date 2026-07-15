@@ -17,6 +17,15 @@ export interface OrientedBox {
     hh: number;
 }
 
+export interface RotationHandlePosition {
+    anchorX: number;
+    anchorY: number;
+    handleX: number;
+    handleY: number;
+}
+
+export const ROTATION_HANDLE_ARM_LENGTH = 30;
+
 const EPSILON = 1e-9;
 
 function cross(a: Pt, b: Pt, c: Pt): number {
@@ -102,6 +111,31 @@ export function minimumAreaObb(points: readonly Pt[]): OrientedBox | null {
         }
     }
     return best;
+}
+
+/** Rotate an OBB's directed axes around its unchanged center. */
+export function rotateOrientedBox(box: OrientedBox, deltaRad: number): OrientedBox {
+    const cosDelta = Math.cos(deltaRad);
+    const sinDelta = Math.sin(deltaRad);
+    return {
+        ...box,
+        cos: box.cos * cosDelta - box.sin * sinDelta,
+        sin: box.sin * cosDelta + box.cos * sinDelta,
+    };
+}
+
+/** Derive the selected-strip rotation handle from one OBB representation. */
+export function rotationHandleFromObb(box: OrientedBox, armLength = ROTATION_HANDLE_ARM_LENGTH): RotationHandlePosition {
+    const normalX = box.sin;
+    const normalY = -box.cos;
+    const anchorX = box.cx + normalX * box.hh;
+    const anchorY = box.cy + normalY * box.hh;
+    return {
+        anchorX,
+        anchorY,
+        handleX: anchorX + normalX * armLength,
+        handleY: anchorY + normalY * armLength,
+    };
 }
 
 /** Axis-aligned bounding-box center of a list of points. Returns null if empty. */

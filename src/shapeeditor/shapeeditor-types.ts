@@ -23,6 +23,9 @@ interface InsertDialogOpts {
 /** An oriented bounding box in canvas space. */
 interface OBBox { cx: number; cy: number; hw: number; hh: number; cos: number; sin: number; }
 
+/** Directed OBB captured at the start of a per-strip rotation gesture. */
+interface StripRotateObbSnapshot extends OBBox { idx: number; }
+
 /** Gizmo drag-start snapshot. */
 interface GizmoDragStart { scale: number; scaleX: number; scaleY: number; rotate: number; translateX: number; translateY: number; canvasX: number; canvasY: number; bboxCenter: { x: number; y: number } | null; }
 
@@ -64,6 +67,7 @@ export type {
     UndoAction,
     InsertDialogOpts,
     OBBox,
+    StripRotateObbSnapshot,
     GizmoDragStart,
     BgGizmoDragStart,
     BgImageBBox,
