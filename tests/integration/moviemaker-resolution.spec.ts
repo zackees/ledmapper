@@ -173,6 +173,49 @@ test.describe('Moviemaker Resolution Control @gpu', () => {
         expect(b?.r.bottom ?? Infinity).toBeLessThanOrEqual(vh);
     });
 
+    test('Native left-drag maps the displayed pointer into backing-store coordinates (#441)', async ({ page }) => {
+        test.setTimeout(45_000);
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await mockWebcam(page);
+        await page.addInitScript(() => {
+            MediaStreamTrack.prototype.getSettings = function getSettings(this: MediaStreamTrack): MediaTrackSettings {
+                return { width: 720, height: 1280 };
+            };
+        });
+        await page.goto('/record?perfdebug=1');
+        await page.locator('[data-trigger="btn_start_webcam"]').click();
+        await waitForSourceActive(page);
+        await expect.poll(() => page.evaluate(() => window.__lmDebug?.moviemaker?.getState().screenmapValid)).toBe(true);
+        await page.locator('#sel_max_resolution').selectOption('0');
+
+        const overlay = page.locator<HTMLCanvasElement>('#overlayCanvas');
+        await expect.poll(() => overlay.evaluate((canvas) => ({ width: canvas.width, height: canvas.height })))
+            .toEqual({ width: 720, height: 1280 });
+        const box = await overlay.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.width).toBeLessThan(720);
+        expect(box!.height).toBeLessThan(1280);
+
+        const targetRatio = { x: 0.75, y: 0.60 };
+        const targetClient = {
+            x: box!.x + box!.width * targetRatio.x,
+            y: box!.y + box!.height * targetRatio.y,
+        };
+        await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(targetClient.x, targetClient.y, { steps: 5 });
+        await page.mouse.up();
+
+        const expected = { x: 720 * targetRatio.x, y: 1280 * targetRatio.y };
+        const targetTranslate = await page.evaluate(() => {
+            const state = window.__mmDebug?.getState?.() as { targetTranslate?: [number, number] } | undefined;
+            return state?.targetTranslate ?? null;
+        });
+        expect(targetTranslate).not.toBeNull();
+        expect(Math.abs(targetTranslate![0] - expected.x)).toBeLessThan(0.01);
+        expect(Math.abs(targetTranslate![1] - expected.y)).toBeLessThan(0.01);
+    });
+
     test('default 480p limits large video canvas', async ({ page }) => {
         test.setTimeout(60000);
         await page.goto('/moviemaker/');

@@ -5,6 +5,33 @@
 import { centerAndFitPoints } from '../common';
 import type { StripPoint } from '../types/domain';
 
+export interface CanvasDisplayRect {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+}
+
+/**
+ * Map a browser client-space pointer into a canvas backing-store coordinate.
+ * Canvas CSS sizing is independent of its width/height attributes, so pointer
+ * offsets cannot be used directly when the displayed box is scaled.
+ */
+export function mapClientPointToCanvasBacking(
+    clientX: number,
+    clientY: number,
+    backingWidth: number,
+    backingHeight: number,
+    rect: CanvasDisplayRect,
+): [number, number] | null {
+    if (backingWidth <= 0 || backingHeight <= 0 || rect.width <= 0 || rect.height <= 0) return null;
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const scaleX = backingWidth / rect.width;
+    const scaleY = backingHeight / rect.height;
+    return [localX * scaleX, localY * scaleY];
+}
+
 /**
  * Centers and scales points to fit within the given video dimensions.
  * Points are centered around origin (0,0) so that rotation works correctly.
