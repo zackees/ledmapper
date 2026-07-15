@@ -4,8 +4,9 @@ import { safeStorage } from "../services/storage";
 import { getStripColors, stripStartEndLabels } from "../common";
 import { gfxColors, withAlpha } from "../ui/theme";
 import { computeDirectionArrowPlacements, directionArrowAnchorsFromPlacements, projectDirectionArrowAnchors } from "./direction-arrows";
-import { minimumAreaObb, rotateOrientedBox, rotationHandleFromObb, type RotationHandlePosition } from "./strip-rotate";
+import { rotateOrientedBox, rotationHandleFromObb, type RotationHandlePosition } from "./strip-rotate";
 import { groupFocusOpacity } from "./selection-focus";
+import { aggregateSelectionObb, selectedStripObbs } from './group-selection';
 
 export interface EditorOverlayMethods {
     drawOverlay: () => void;
@@ -236,7 +237,7 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
             this.overlayCtx.globalAlpha = pathAlpha;
             this.overlayCtx.lineWidth = 2;
             const hasMultiStrip = this.stripInfo && this.stripInfo.strips.length > 1;
-            const selectedStripIdx = this.selection.getStripIdx();
+            const selectedStripIdx = this.selection.getSelectedStripIdxs();
             const stripColors = hasMultiStrip ? getStripColors(this._si().strips.length) : null;
             // Build a set of boundary indices (last point of each non-empty strip) to skip
             // cross-strip lines, plus a precomputed index→strip lookup table.
@@ -368,7 +369,7 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
                 const endIdx = st.offset + st.count - 1;
                 if (startIdx < 0 || endIdx >= pts.length) continue;
                 const labels = stripStartEndLabels(st, s);
-                const opacity = groupFocusOpacity(this.selection.getStripIdx(), s);
+                const opacity = groupFocusOpacity(this.selection.getSelectedStripIdxs(), s);
                 labelItems.push({ id: `start:${String(s)}`, text: labels.start, anchorX: this.nn(pts[startIdx])[0], anchorY: this.nn(pts[startIdx])[1], color: START_COLOR, dotRadius: 4, opacity });
                 if (labels.end !== null) {
                     labelItems.push({ id: `end:${String(s)}`, text: labels.end, anchorX: this.nn(pts[endIdx])[0], anchorY: this.nn(pts[endIdx])[1], color: END_COLOR, dotRadius: 4, opacity });
@@ -396,6 +397,26 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
         // geometry so the affordance stays attached during pan and zoom.
         const selectedObb = this._selectedStripObbCanvas();
         if (selectedObb) {
+            const selectedIdxs = [...this.selection.getSelectedStripIdxs()];
+            if (selectedIdxs.length > 1 && this.stripInfo) {
+                const canvasPoints = this.lastTransformedPts.map((point) => this.toCanvasCoords(point[0], point[1]));
+                for (const individual of selectedStripObbs(this.stripInfo.strips, canvasPoints, selectedIdxs)) {
+                    const { cx, cy, cos, sin, hw, hh } = individual.obb;
+                    const corner = (u: number, v: number) => ({ x: cx + u * cos - v * sin, y: cy + u * sin + v * cos });
+                    const corners = [corner(-hw, -hh), corner(hw, -hh), corner(hw, hh), corner(-hw, hh)];
+                    this.overlayCtx.globalAlpha = 0.45;
+                    this.overlayCtx.strokeStyle = gfxColors.accentBlue();
+                    this.overlayCtx.lineWidth = 1;
+                    this.overlayCtx.setLineDash([3, 3]);
+                    this.overlayCtx.beginPath();
+                    const firstCorner = corners[0] ?? { x: cx, y: cy };
+                    this.overlayCtx.moveTo(firstCorner.x, firstCorner.y);
+                    for (const point of corners.slice(1)) this.overlayCtx.lineTo(point.x, point.y);
+                    this.overlayCtx.closePath();
+                    this.overlayCtx.stroke();
+                }
+                this.overlayCtx.setLineDash([]);
+            }
             const { cx, cy, cos, sin, hw, hh } = selectedObb;
             const corner = (u: number, v: number) => ({ x: cx + u * cos - v * sin, y: cy + u * sin + v * cos });
             const corners = [corner(-hw, -hh), corner(hw, -hh), corner(hw, hh), corner(-hw, hh)];
@@ -513,7 +534,7 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
         this._octx().fill();
     },
     _drawMarqueeRect(this: ShapeEditor){
-    if (!this.marqueeActive || !this.overlayCtx) return;
+    if ((!this.marqueeActive && !this.groupMarqueeActive) || !this.overlayCtx) return;
     const ctx = this.overlayCtx;
     const x = Math.min(this.marqueeStartCx, this.marqueeCurCx);
     const y = Math.min(this.marqueeStartCy, this.marqueeCurCy);
@@ -532,26 +553,18 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
     ctx.restore();
 },
     _selectedStripObbCanvas(this: ShapeEditor){
-        const idx = this.selection.getStripIdx();
-        if (idx === null || !this.stripInfo || idx >= this.stripInfo.strips.length) return null;
-        if (this.stripRotateActive && this.stripRotateObbSnapshot?.idx === idx) {
+        const idxs = [...this.selection.getSelectedStripIdxs()];
+        const idx = this.selection.getPrimaryStripIdx();
+        if (idx === null || !this.stripInfo || idxs.length === 0) return null;
+        if (this.stripRotateActive && this.stripRotateObbSnapshot) {
             const rotated = rotateOrientedBox(
                 this.stripRotateObbSnapshot,
                 this.stripRotateLastDeg * Math.PI / 180,
             );
             return { ...rotated, idx };
         }
-        const st = this.nn(this.stripInfo.strips[idx]);
-    if (st.count <= 0) return null;
-    const lo = Math.max(0, st.offset);
-    const hi = Math.min(this.lastTransformedPts.length, st.offset + st.count);
-    const canvasPts: [number, number][] = [];
-    for (let i = lo; i < hi; i++) {
-        const [worldX, worldY] = this.nn(this.lastTransformedPts[i]);
-        const [px, py] = this.toCanvasCoords(worldX, worldY);
-        canvasPts.push([px, py]);
-    }
-        const obb = minimumAreaObb(canvasPts);
+        const canvasPts = this.lastTransformedPts.map((point) => this.toCanvasCoords(point[0], point[1]));
+        const obb = aggregateSelectionObb(this.stripInfo.strips, canvasPts, idxs);
         return obb ? { idx, ...obb } : null;
     },
     _stripRotateVisualGeometry(this: ShapeEditor){

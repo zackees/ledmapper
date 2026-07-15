@@ -17,7 +17,11 @@ test.describe('Shapeeditor pins panel (issue #24)', () => {
     });
 
     async function loadMulti(page) {
-        await page.goto('/shapeeditor/');
+        await page.goto('/');
+        await page.evaluate(() => {
+            for (const key of ['lm:screenmap', 'lm:screenmap-preset', 'lm:screenmap-meta', 'lm:screenmap-backup', 'lm:screenmap-backup-meta']) localStorage.removeItem(key);
+        });
+        await page.goto('/create');
         const fileInput = page.locator('#btn_upload_screenmap');
         await fileInput.setInputFiles(MULTI_SCREENMAP_PATH);
         await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
@@ -25,6 +29,11 @@ test.describe('Shapeeditor pins panel (issue #24)', () => {
             () => page.evaluate(() => window.__shapeeditorDebug.getStripCount()),
             { timeout: 10000 },
         ).toBe(2);
+        // This regression suite exercises a single-pin starting state even
+        // though the generic multi-strip fixture preserves distinct pin IDs.
+        await page.evaluate(() => window.__shapeeditorDebug.repinStrip(1, 'pin1'));
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripPins()))
+            .toEqual(['pin1', 'pin1']);
         await page.locator('#strips_panel').evaluate((el) => { el.open = true; });
     }
 

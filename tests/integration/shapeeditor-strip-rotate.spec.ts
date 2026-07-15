@@ -211,4 +211,23 @@ test.describe('Shapeeditor per-strip rotation', () => {
         }, before)).toBe(true);
     });
 
+    test('rotation controls rotate a multi-group selection about one aggregate center', async ({ page }) => {
+        await seedAndOpen(page);
+        const beforeA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
+        const beforeB = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+        await page.evaluate(() => window.__shapeeditorDebug.selectStrips?.([0, 1]));
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips?.())).toEqual([0, 1]);
+        await openStripsPanel(page);
+        await page.locator('#strips_rotate_right').click();
+        const afterA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
+        const afterB = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
+        expect(afterA).not.toEqual(beforeA);
+        expect(afterB).not.toEqual(beforeB);
+        const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+        expect(dist(afterA[0], afterB[0])).toBeCloseTo(dist(beforeA[0], beforeB[0]), 6);
+        await page.keyboard.press('Control+z');
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(beforeA);
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1))).toEqual(beforeB);
+    });
+
 });

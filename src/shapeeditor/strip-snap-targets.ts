@@ -85,7 +85,10 @@ export interface SnapDocumentTransform {
 
 export interface StripSnapTargetInput {
     strips: readonly SnapStripRef[];
-    draggedIdx: number;
+    /** Every moving group is excluded so a selection can never snap to itself. */
+    excludedStripIdxs?: ReadonlySet<number>;
+    /** Compatibility input retained for legacy callers. */
+    draggedIdx?: number;
     points: readonly ([number, number] | null | undefined)[];
     rulers?: readonly SnapRulerRef[];
     toleranceWorld?: number;
@@ -315,6 +318,7 @@ function dedupeAxisTargets(targets: MutableAxisTarget[]): AxisSnapTarget[] {
 
 /** Build all legacy and advanced targets once at drag start. */
 export function computeStripSnapTargets(input: StripSnapTargetInput): StripSnapTargetSet {
+    const excluded = input.excludedStripIdxs ?? (typeof input.draggedIdx === 'number' && input.draggedIdx >= 0 ? new Set([input.draggedIdx]) : new Set<number>());
     const x: MutableAxisTarget[] = [];
     const y: MutableAxisTarget[] = [];
     const rulerBodies: RulerBodySnapTarget[] = [];
@@ -342,7 +346,7 @@ export function computeStripSnapTargets(input: StripSnapTargetInput): StripSnapT
     };
 
     for (let stripIdx = 0; stripIdx < input.strips.length; stripIdx++) {
-        if (stripIdx === input.draggedIdx) continue;
+        if (excluded.has(stripIdx)) continue;
         const strip = input.strips[stripIdx];
         if (!strip || strip.count <= 0) continue;
         const points = stripPoints(strip, input.points);
@@ -368,9 +372,9 @@ export function computeStripSnapTargets(input: StripSnapTargetInput): StripSnapT
         }
     }
 
-    const draggedPoints = input.draggedIdx >= 0 && input.draggedIdx < input.strips.length
-        ? stripPoints(input.strips[input.draggedIdx] ?? { offset: 0, count: 0 }, input.points)
-        : [];
+    const draggedPoints = [...excluded].flatMap((stripIdx) => stripIdx >= 0 && stripIdx < input.strips.length
+        ? stripPoints(input.strips[stripIdx] ?? { offset: 0, count: 0 }, input.points)
+        : []);
     const draggedGeometry = computeStripSnapGeometry(draggedPoints);
     const draggedCenter = draggedGeometry?.centroid ?? { x: 0, y: 0 };
 

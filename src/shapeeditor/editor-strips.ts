@@ -296,7 +296,8 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
         this.dom_strips_panel.style.display = '';
         this.dom_strips_list.classList.toggle('chain-mode', this.editorMode === 'chain');
         this.dom_strips_list.classList.toggle('reorder-mode', this.editorMode === 'reorder');
-        const selStripIdx = this.selection.getStripIdx();
+        const selStripIdx = this.selection.getPrimaryStripIdx();
+        const selectedStripIdxs = this.selection.getSelectedStripIdxs();
         const total = strips.length;
 
         // Group strip indices under pins in first-appearance order (§1.1).
@@ -311,7 +312,7 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
         const buildStripRow = (i: number) => {
             const s = this.nn(strips[i]);
             const row = document.createElement('div');
-            row.className = 'strip-row' + (i === selStripIdx ? ' active' : '');
+            row.className = 'strip-row' + (selectedStripIdxs.has(i) ? ' active' : '') + (i === selStripIdx ? ' primary' : '');
             row.dataset.stripIdx = String(i);
             row.dataset.pinId = this._pinOfStrip(s);
 
@@ -476,6 +477,7 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
 
         const strips = this.stripStore.getStrips();
         const sIdx = this.selection.getStripIdx();
+        const selectedCount = this.selection.getSelectedStripIdxs().size;
         if (sIdx === null || sIdx < 0 || sIdx >= strips.length) {
             this.dom_strips_selected_row.style.display = 'none';
             return;
@@ -483,7 +485,8 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
         const s = this.nn(strips[sIdx]);
         const pin = this._pinOfStrip(s);
         this.dom_strips_selected_row.style.display = '';
-        this.dom_strips_selected_label.textContent = `Selected: ${s.name} (${pin})`;
+        this.dom_strips_selected_label.textContent = selectedCount > 1 ? `${String(selectedCount)} groups selected` : `Selected: ${s.name} (${pin})`;
+        this.dom_strips_move_pin.disabled = selectedCount !== 1;
         this.dom_strips_move_pin.innerHTML = '';
         const placeholder = document.createElement('option');
         placeholder.value = '';
@@ -763,8 +766,8 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
         const sdy = this.stripDragLastSdy;
         if (sdx !== 0 || sdy !== 0) {
             this.pushUndo({
-                type: 'strip-translate',
-                stripIdx: this.stripDragIdx,
+                type: 'group-selection-translate',
+                stripIdxs: [...this.stripDragIdxs],
                 sdx,
                 sdy,
             });
@@ -772,6 +775,10 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
         }
         this.stripDragActive = false;
         this.stripDragIdx = -1;
+        this.stripDragIdxs = [];
+        this.stripDragPointIdxs = [];
+        this.stripDragStartScreenmapByIdx.clear();
+        this.stripDragStartRawByIdx.clear();
         this.stripDragStartScreenmap = null;
         this.stripDragStartRaw = null;
         this._clearStripSnapState();
@@ -788,21 +795,20 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
         }
     },
     doRotateSelectedStripByDegrees(this: ShapeEditor, degrees: number){
-        const stripIdx = this.selection.getStripIdx();
+        const stripIdx = this.selection.getPrimaryStripIdx();
+        const stripIdxs = [...this.selection.getSelectedStripIdxs()];
         const deltaDeg = Math.round(degrees);
-        if (stripIdx === null || !isFinite(deltaDeg) || deltaDeg === 0 || !this.stripInfo) return false;
-        const strip = this.stripInfo.strips[stripIdx];
-        if (!strip || strip.count <= 0) return false;
+        if (stripIdx === null || stripIdxs.length === 0 || !isFinite(deltaDeg) || deltaDeg === 0 || !this.stripInfo) return false;
         const handle = this._stripRotateHandlePos();
         if (!handle) return false;
         const [smX, smY] = this.canvasToScreenmapCoords(handle.centerX, handle.centerY);
         const [rawX, rawY] = this.screenmapToRawCoords(smX, smY);
         const centerSm = { x: smX, y: smY };
         const centerRaw = { x: rawX, y: rawY };
-        this._applyStripRotate(stripIdx, deltaDeg * Math.PI / 180, centerSm, centerRaw);
+        for (const idx of stripIdxs) this._applyStripRotate(idx, deltaDeg * Math.PI / 180, centerSm, centerRaw);
         this.pushUndo({
-            type: 'strip-rotate',
-            stripIdx,
+            type: 'group-selection-rotate',
+            stripIdxs,
             deltaDeg,
             centerSm,
             centerRaw,
@@ -814,13 +820,13 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
     _finalizeStripRotate(this: ShapeEditor){
         if (!this.stripRotateActive) return;
         const deg = this.stripRotateLastDeg;
-        const stripIdx = this.stripRotateIdx;
+        const stripIdxs = [...this.stripRotateIdxs];
         const csm = this.stripRotateCenterSm;
         const crw = this.stripRotateCenterRaw;
-        if (deg !== 0 && csm && crw && stripIdx >= 0) {
+        if (deg !== 0 && csm && crw && stripIdxs.length > 0) {
             this.pushUndo({
-                type: 'strip-rotate',
-                stripIdx,
+                type: 'group-selection-rotate',
+                stripIdxs,
                 deltaDeg: deg,
                 centerSm: { x: csm.x, y: csm.y },
                 centerRaw: { x: crw.x, y: crw.y },
@@ -829,6 +835,8 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
         }
         this.stripRotateActive = false;
         this.stripRotateIdx = -1;
+        this.stripRotateIdxs = [];
+        this.stripRotatePointIdxs = [];
         this.stripRotateStartScreenmap = null;
         this.stripRotateStartRaw = null;
         this.stripRotateCenterSm = null;

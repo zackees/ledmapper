@@ -10,6 +10,7 @@ import {
     type SnapDocumentTransform,
 } from "./strip-snap-targets";
 import { rotatePointsAround } from "./strip-rotate";
+import { flatPointIndicesForStrips, stripsIntersectingCanvasRect } from "./group-selection";
 import { safeStorage } from "../services/storage";
 
 const STRIP_STROKE_HIT_PX = 10;
@@ -19,6 +20,7 @@ export interface EditorInteractionMethods {
     _startStripDrag: (stripIdx: number, canvasX: number, canvasY: number) => boolean;
     _ledIdxsInCanvasRect: (c1x: number, c1y: number, c2x: number, c2y: number) => Set<number>;
     _updateMarqueeSelection: () => void;
+    _updateGroupMarqueeSelection: () => void;
     _commitMarquee: () => void;
     _cancelMarquee: () => void;
     _startMultiDrag: (cx: number, cy: number) => void;
@@ -28,6 +30,7 @@ export interface EditorInteractionMethods {
     onMouseDown: (e: MouseEvent) => void;
     onMouseMove: (e: MouseEvent) => void;
     onMouseUp: (e: MouseEvent) => void;
+    onPointerCancel: () => void;
     onDoubleClick: (e: MouseEvent) => void;
     _clearLongPress: () => void;
     _synth: (type: string, clientX: number, clientY: number, opts?: Record<string, unknown>) => void;
@@ -106,18 +109,28 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
     },
     _startStripDrag(this: ShapeEditor, stripIdx: number, canvasX: number, canvasY: number){
     if (!this.stripInfo || stripIdx < 0 || stripIdx >= this.stripInfo.strips.length) return false;
-
-    const strip = this.stripInfo.strips[stripIdx];
-    if (!strip) return false;
+    const selected = this.selection.getSelectedStripIdxs();
+    const stripCount = this.stripInfo.strips.length;
+    const stripIdxs = selected.has(stripIdx) ? [...selected].filter((idx) => idx >= 0 && idx < stripCount) : [stripIdx];
+    const pointIdxs = flatPointIndicesForStrips(this.stripInfo.strips, stripIdxs);
+    if (pointIdxs.length === 0) return false;
     this.dragStartCanvasX = canvasX;
     this.dragStartCanvasY = canvasY;
     this.stripDragActive = true;
     this.stripDragIdx = stripIdx;
+    this.stripDragIdxs = stripIdxs;
+    this.stripDragPointIdxs = pointIdxs;
+    this.stripDragStartScreenmapByIdx = new Map();
+    this.stripDragStartRawByIdx = new Map();
     this.stripDragStartScreenmap = [];
     this.stripDragStartRaw = [];
-    for (let k = strip.offset; k < strip.offset + strip.count; k++) {
-        this.stripDragStartScreenmap.push([this.nn(this.screenmap_pts[k])[0], this.nn(this.screenmap_pts[k])[1]]);
-        this.stripDragStartRaw.push([this.nn(this.rawPts[k])[0], this.nn(this.rawPts[k])[1]]);
+    for (const k of pointIdxs) {
+        const sm: [number, number] = [this.nn(this.screenmap_pts[k])[0], this.nn(this.screenmap_pts[k])[1]];
+        const rw: [number, number] = [this.nn(this.rawPts[k])[0], this.nn(this.rawPts[k])[1]];
+        this.stripDragStartScreenmap.push(sm);
+        this.stripDragStartRaw.push(rw);
+        this.stripDragStartScreenmapByIdx.set(k, sm);
+        this.stripDragStartRawByIdx.set(k, rw);
     }
     this.stripDragLastSdx = 0;
     this.stripDragLastSdy = 0;
@@ -134,11 +147,11 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
     this.stripSnapTransform = snapTransform;
     const renderedPoints = this.screenmap_pts.map((point) => transformPointForSnap(point, snapTransform));
     this.stripSnapStartGeometry = computeStripSnapGeometry(
-        renderedPoints.slice(strip.offset, strip.offset + strip.count),
+        pointIdxs.map((idx) => renderedPoints[idx] ?? [0, 0]),
     );
     this.stripSnapTargets = computeStripSnapTargets({
         strips: this.stripInfo.strips,
-        draggedIdx: stripIdx,
+        excludedStripIdxs: new Set(stripIdxs),
         points: renderedPoints,
         rulers: this.rulers,
         toleranceWorld: this.camZoom > 0 ? this.snapBackPx / this.camZoom : this.snapBackPx,
@@ -237,7 +250,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             : -1;
 
         // Shift+Left-click on empty area: insert a new point between two existing points
-        if (e.shiftKey && this.screenmap_pts.length >= 2 && hitLedForModCheck < 0) {
+        if (this.pointEditStripIdx !== null && e.shiftKey && this.screenmap_pts.length >= 2 && hitLedForModCheck < 0) {
             const edge = this.findNearestEdge(cx, cy);
             if (edge && edge.distSq <= STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) {
                 const { idx, t }: { idx: number; t: number } = edge;
@@ -261,7 +274,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         // Ctrl+Left-mousedown on empty area: ambiguous — could be a click
         // ("append point") or a drag ("marquee select"). Stash the intent and
         // resolve in mousemove / mouseup once we know whether the user moved.
-        if ((e.ctrlKey || e.metaKey) && this.screenmap_pts.length > 0 && hitLedForModCheck < 0) {
+        if (this.pointEditStripIdx !== null && (e.ctrlKey || e.metaKey) && this.screenmap_pts.length > 0 && hitLedForModCheck < 0) {
             this._pendingMarquee = {
                 cx, cy,
                 mode: e.shiftKey ? 'add' : 'replace',
@@ -297,12 +310,16 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         if (stripRotateHit) {
             const idx = this.selection.getStripIdx();
             if (idx !== null && this.stripInfo && idx < this.stripInfo.strips.length) {
-                const strip = this.nn(this.stripInfo.strips[idx]);
+                const stripIdxs = [...this.selection.getSelectedStripIdxs()];
+                const pointIdxs = flatPointIndicesForStrips(this.stripInfo.strips, stripIdxs);
+                if (pointIdxs.length === 0) return;
                 this.stripRotateActive = true;
                 this.stripRotateIdx = idx;
+                this.stripRotateIdxs = stripIdxs;
+                this.stripRotatePointIdxs = pointIdxs;
                 this.stripRotateStartScreenmap = [];
                 this.stripRotateStartRaw = [];
-                for (let k = strip.offset; k < strip.offset + strip.count; k++) {
+                for (const k of pointIdxs) {
                     const sm = this.nn(this.screenmap_pts[k]);
                     const rw = this.nn(this.rawPts[k]);
                     this.stripRotateStartScreenmap.push([sm[0], sm[1]]);
@@ -344,6 +361,40 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             };
             this._oc().style.cursor = gizmoHit === 'rotate' ? 'grabbing' : this.getCursorForGizmo(gizmoHit);
             return;
+        }
+
+        // Coarse mode owns group selection. Point editing below deliberately
+        // keeps its older per-LED gestures isolated from this path.
+        if (this.pointEditStripIdx === null) {
+            const candidates = this.hitTestLEDCandidates(cx, cy);
+            const candidateStrips = [...new Set(candidates.map((candidate) => candidate.stripIdx))];
+            const primary = this.selection.getPrimaryStripIdx();
+            const hitStripIdx = candidateStrips.find((idx) => this.selection.isStripSelected(idx))
+                ?? (primary !== null && candidateStrips.includes(primary) ? primary : candidateStrips[candidateStrips.length - 1]);
+            const edge = hitStripIdx === undefined && this.screenmap_pts.length >= 2 ? this.findNearestEdge(cx, cy) : null;
+            const resolvedStrip = hitStripIdx ?? (edge && edge.distSq <= STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX ? edge.stripIdx : undefined);
+            if (resolvedStrip !== undefined && resolvedStrip >= 0) {
+                this.selectedIdx = -1;
+                this.highlightedEdgeIdx = edge?.idx ?? -1;
+                if (e.shiftKey) {
+                    this.selection.toggleStrip(resolvedStrip);
+                    this.pendingGroupGesture = { kind: 'select-only', stripIdx: resolvedStrip, cx, cy };
+                } else if (this.selection.isStripSelected(resolvedStrip)) {
+                    this.pendingGroupGesture = { kind: 'translate', stripIdx: resolvedStrip, cx, cy };
+                } else {
+                    this.selection.selectOnlyStrip(resolvedStrip);
+                    this.pendingGroupGesture = { kind: 'select-only', stripIdx: resolvedStrip, cx, cy };
+                }
+                this.setNeedsGeometryUpdate();
+                this._oc().style.cursor = 'grab';
+                return;
+            }
+            if (e.ctrlKey || e.metaKey) {
+                this.pendingGroupGesture = { kind: 'select-only', stripIdx: -1, cx, cy };
+                this.groupMarqueeBaseSelection = e.shiftKey ? new Set(this.selection.getSelectedStripIdxs()) : new Set();
+                this._oc().style.cursor = 'crosshair';
+                return;
+            }
         }
 
         // Priority 2: LED point hit test
@@ -560,13 +611,13 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             // points are deterministic and undo-friendly).
             if (!e.shiftKey) deltaDeg = Math.round(deltaDeg);
             const deltaRad = deltaDeg * Math.PI / 180;
-            const strip = this.nn(this.stripInfo.strips[this.stripRotateIdx]);
             const csm = this.stripRotateCenterSm;
             const crw = this.stripRotateCenterRaw;
             const rotatedSm = rotatePointsAround(this.stripRotateStartScreenmap, csm.x, csm.y, deltaRad);
             const rotatedRw = rotatePointsAround(this.stripRotateStartRaw, crw.x, crw.y, deltaRad);
-            for (let k = 0; k < strip.count; k++) {
-                const base = strip.offset + k;
+            for (let k = 0; k < this.stripRotatePointIdxs.length; k++) {
+                const base = this.stripRotatePointIdxs[k] ?? -1;
+                if (base < 0) continue;
                 this.screenmap_pts[base] = rotatedSm[k] ?? [0, 0] as [number, number];
                 this.rawPts[base] = rotatedRw[k] ?? [0, 0] as [number, number];
             }
@@ -584,6 +635,43 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         // Background image gizmo drag in progress
         if (this.bgGizmoActive) {
             this.handleBgGizmoDrag(cx, cy);
+            return;
+        }
+
+        // A selection gesture is intentionally two-stage: a first gesture on
+        // an unselected group never promotes into movement. A later gesture
+        // on an existing selection promotes only after the normal threshold.
+        if (this.pendingGroupGesture) {
+            const pending = this.pendingGroupGesture;
+            const dx = cx - pending.cx;
+            const dy = cy - pending.cy;
+            if (dx * dx + dy * dy > 9) {
+                if (pending.stripIdx >= 0 && pending.kind === 'translate') {
+                    this.pendingGroupGesture = null;
+                    this._startStripDrag(pending.stripIdx, pending.cx, pending.cy);
+                } else if (pending.stripIdx < 0) {
+                    this.pendingGroupGesture = null;
+                    this.groupMarqueeActive = true;
+                    this.marqueeStartCx = pending.cx;
+                    this.marqueeStartCy = pending.cy;
+                    this.marqueeCurCx = cx;
+                    this.marqueeCurCy = cy;
+                    this._updateGroupMarqueeSelection();
+                    this.setNeedsGeometryUpdate();
+                    return;
+                } else {
+                    // Selection-only gesturing stays selection-only for its
+                    // whole pointer lifetime, even after a large drag.
+                    return;
+                }
+            } else return;
+        }
+
+        if (this.groupMarqueeActive) {
+            this.marqueeCurCx = cx;
+            this.marqueeCurCy = cy;
+            this._updateGroupMarqueeSelection();
+            this.setNeedsGeometryUpdate();
             return;
         }
 
@@ -695,11 +783,9 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             );
             const sdx = localDelta.x;
             const sdy = localDelta.y;
-            const strip = this.nn(this.stripInfo.strips[this.stripDragIdx]);
-            for (let k = 0; k < strip.count; k++) {
-                const base = strip.offset + k;
-                const startSm = this.stripDragStartScreenmap ? (this.stripDragStartScreenmap[k] ?? [0, 0] as [number, number]) : [0, 0] as [number, number];
-                const startRw = this.stripDragStartRaw ? (this.stripDragStartRaw[k] ?? [0, 0] as [number, number]) : [0, 0] as [number, number];
+            for (const base of this.stripDragPointIdxs) {
+                const startSm = this.stripDragStartScreenmapByIdx.get(base) ?? [0, 0] as [number, number];
+                const startRw = this.stripDragStartRawByIdx.get(base) ?? [0, 0] as [number, number];
                 this.screenmap_pts[base] = [
                     startSm[0] + sdx,
                     startSm[1] + sdy,
@@ -889,6 +975,20 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             return;
         }
 
+        if (this.pendingGroupGesture) {
+            this.pendingGroupGesture = null;
+            this._oc().style.cursor = 'default';
+            return;
+        }
+
+        if (this.groupMarqueeActive) {
+            this.groupMarqueeActive = false;
+            this.groupMarqueeBaseSelection = new Set();
+            this._oc().style.cursor = 'default';
+            this.setNeedsGeometryUpdate();
+            return;
+        }
+
         // Ctrl+mousedown that never crossed the marquee threshold reverts to
         // the original ctrl+click "append point at click location" behavior.
         if (this._pendingMarquee) {
@@ -990,8 +1090,18 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
 
         // Cancel any in-flight single-touch drag cleanly (no undo entry).
         if (this.stripDragActive) {
+            for (const idx of this.stripDragPointIdxs) {
+                const sm = this.stripDragStartScreenmapByIdx.get(idx);
+                const rw = this.stripDragStartRawByIdx.get(idx);
+                if (sm) this.screenmap_pts[idx] = [...sm];
+                if (rw) this.rawPts[idx] = [...rw];
+            }
             this.stripDragActive = false;
             this.stripDragIdx = -1;
+            this.stripDragIdxs = [];
+            this.stripDragPointIdxs = [];
+            this.stripDragStartScreenmapByIdx.clear();
+            this.stripDragStartRawByIdx.clear();
             this.stripDragStartScreenmap = null;
             this.stripDragStartRaw = null;
             this._clearStripSnapState();
@@ -999,8 +1109,18 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this.stripDragLastSdy = 0;
         }
         if (this.stripRotateActive) {
+            for (let i = 0; i < this.stripRotatePointIdxs.length; i++) {
+                const idx = this.stripRotatePointIdxs[i] ?? -1;
+                if (idx < 0) continue;
+                const sm = this.stripRotateStartScreenmap?.[i];
+                const rw = this.stripRotateStartRaw?.[i];
+                if (sm) this.screenmap_pts[idx] = [...sm];
+                if (rw) this.rawPts[idx] = [...rw];
+            }
             this.stripRotateActive = false;
             this.stripRotateIdx = -1;
+            this.stripRotateIdxs = [];
+            this.stripRotatePointIdxs = [];
             this.stripRotateStartScreenmap = null;
             this.stripRotateStartRaw = null;
             this.stripRotateCenterSm = null;
@@ -1025,6 +1145,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this.rulerDragStart = null;
         }
         this._oc().style.cursor = 'default';
+        this.setNeedsGeometryUpdate();
     },
     _doLongPress(this: ShapeEditor, canvasX: number, canvasY: number, clientX: number, clientY: number){
 
@@ -1090,6 +1211,15 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         }
     }
     this.multiSelectedIdxs = next;
+},
+    _updateGroupMarqueeSelection(this: ShapeEditor){
+    if (!this.stripInfo) return;
+    const canvasPoints = this.lastTransformedPts.map((point) => this.toCanvasCoords(point[0], point[1]));
+    const hits = stripsIntersectingCanvasRect(this.stripInfo.strips, canvasPoints, this.marqueeStartCx, this.marqueeStartCy, this.marqueeCurCx, this.marqueeCurCy);
+    const next = new Set(this.groupMarqueeBaseSelection);
+    for (const idx of hits) next.add(idx);
+    this.selection.selectOnlyStrip(null);
+    for (const idx of next) this.selection.addStrip(idx);
 },
     _commitMarquee(this: ShapeEditor){
     // Selection was updated eagerly during mousemove; just clear the drag state.
@@ -1261,6 +1391,12 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this.touchMode = 'idle';
         }, { passive: true, signal });
     },
+    onPointerCancel(this: ShapeEditor){
+        this.pendingGroupGesture = null;
+        this.groupMarqueeActive = false;
+        this.groupMarqueeBaseSelection = new Set();
+        this._cancelSingleTouchGesture();
+    },
     onMouseLeave(this: ShapeEditor){
 
         if (this.gizmoActive) {
@@ -1299,9 +1435,8 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this.isDragging = false;
             this.altQuasimode = false;
         }
-        if (this.stripDragActive) {
-            this._finalizeStripDrag();
-        }
+        // Pointer capture owns active gestures. Leaving the canvas must not
+        // commit or cancel a captured transform; pointerup/cancel decides it.
         if (this.marqueeActive) {
             this._commitMarquee();
         }

@@ -2,109 +2,68 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Selection } from '../../src/shapeeditor/selection';
 
-describe('Selection — basic API', () => {
-    it('starts empty', () => {
+describe('Selection', () => {
+    it('starts empty and exposes primary compatibility', () => {
         const sel = new Selection();
-        assert.strictEqual(sel.getPointIdx(), null);
-        assert.strictEqual(sel.getStripIdx(), null);
-        assert.strictEqual(sel.hasSelection(), false);
+        assert.equal(sel.getPointIdx(), null);
+        assert.equal(sel.getStripIdx(), null);
+        assert.deepEqual([...sel.getSelectedStripIdxs()], []);
+        assert.equal(sel.hasSelection(), false);
     });
 
-    it('selectPoint sets point and (when given) strip', () => {
+    it('selecting a point collapses group selection to its owner', () => {
         const sel = new Selection();
-        sel.selectPoint(3, 1);
-        assert.strictEqual(sel.getPointIdx(), 3);
-        assert.strictEqual(sel.getStripIdx(), 1);
-        assert.strictEqual(sel.hasSelection(), true);
+        sel.addStrip(1); sel.addStrip(2);
+        sel.selectPoint(3, 0);
+        assert.equal(sel.getPointIdx(), 3);
+        assert.deepEqual([...sel.getSelectedStripIdxs()], [0]);
+        assert.equal(sel.getPrimaryStripIdx(), 0);
     });
 
-    it('selectStrip clears point selection', () => {
+    it('select only, add, toggle, clear, and primary order work', () => {
         const sel = new Selection();
-        sel.selectPoint(3, 1);
-        sel.selectStrip(2);
-        assert.strictEqual(sel.getPointIdx(), null);
-        assert.strictEqual(sel.getStripIdx(), 2);
+        sel.selectOnlyStrip(2); sel.addStrip(0); sel.addStrip(1);
+        assert.deepEqual([...sel.getSelectedStripIdxs()], [2, 0, 1]);
+        assert.equal(sel.getPrimaryStripIdx(), 1);
+        const exposed = sel.getSelectedStripIdxs() as Set<number>;
+        exposed.clear();
+        assert.deepEqual([...sel.getSelectedStripIdxs()], [2, 0, 1]);
+        sel.toggleStrip(1);
+        assert.deepEqual([...sel.getSelectedStripIdxs()], [2, 0]);
+        assert.equal(sel.getPrimaryStripIdx(), 0);
+        sel.toggleStrip(3);
+        assert.equal(sel.getPrimaryStripIdx(), 3);
+        sel.clearStrips();
+        assert.deepEqual([...sel.getSelectedStripIdxs()], []);
     });
 
-    it('clear resets both', () => {
-        const sel = new Selection();
-        sel.selectPoint(3, 1);
-        sel.clear();
-        assert.strictEqual(sel.getPointIdx(), null);
-        assert.strictEqual(sel.getStripIdx(), null);
-    });
-});
-
-describe('Selection — onChange', () => {
-    it('fires on real changes only', () => {
+    it('emits once for real public changes and not for no-ops', () => {
         const sel = new Selection();
         let count = 0;
         sel.setOnChange(() => count++);
-        sel.selectPoint(1, 0);
-        assert.strictEqual(count, 1);
-        sel.selectPoint(1, 0); // no-op
-        assert.strictEqual(count, 1);
-        sel.selectStrip(2);
-        assert.strictEqual(count, 2);
-        sel.clear();
-        assert.strictEqual(count, 3);
-        sel.clear(); // no-op
-        assert.strictEqual(count, 3);
-    });
-});
-
-describe('Selection — point splice tracking', () => {
-    it('onPointInsert shifts selection forward when at-or-after insert', () => {
-        const sel = new Selection();
-        sel.selectPoint(5, 0);
-        sel.onPointInsert(3);
-        assert.strictEqual(sel.getPointIdx(), 6);
-        sel.onPointInsert(7); // after selection => no shift
-        assert.strictEqual(sel.getPointIdx(), 6);
+        sel.selectOnlyStrip(1); sel.selectOnlyStrip(1); sel.addStrip(1);
+        sel.addStrip(2); sel.toggleStrip(2); sel.clear(); sel.clear();
+        assert.equal(count, 4);
     });
 
-    it('onPointDelete clears selection when the selected point is removed', () => {
+    it('tracks point insertion and deletion', () => {
         const sel = new Selection();
-        sel.selectPoint(4, 0);
-        sel.onPointDelete(4);
-        assert.strictEqual(sel.getPointIdx(), null);
-        assert.strictEqual(sel.getStripIdx(), 0);
+        sel.selectPoint(5, 0); sel.onPointInsert(3);
+        assert.equal(sel.getPointIdx(), 6);
+        sel.onPointDelete(6);
+        assert.equal(sel.getPointIdx(), null);
+        assert.equal(sel.getStripIdx(), 0);
     });
 
-    it('onPointDelete shifts selection back when deletion is before it', () => {
+    it('remaps every selected strip on remove and reorder', () => {
         const sel = new Selection();
-        sel.selectPoint(4, 0);
-        sel.onPointDelete(1);
-        assert.strictEqual(sel.getPointIdx(), 3);
-    });
-});
-
-describe('Selection — strip mutation tracking', () => {
-    it('onStripRemove clears when the selected strip is removed', () => {
-        const sel = new Selection();
-        sel.selectStrip(2);
+        sel.addStrip(0); sel.addStrip(2); sel.addStrip(4);
         sel.onStripRemove(2);
-        assert.strictEqual(sel.getStripIdx(), null);
-    });
-
-    it('onStripRemove shifts back when removal is before selection', () => {
-        const sel = new Selection();
-        sel.selectStrip(2);
-        sel.onStripRemove(0);
-        assert.strictEqual(sel.getStripIdx(), 1);
-    });
-
-    it('onStripReorder follows the moved strip', () => {
-        const sel = new Selection();
-        sel.selectStrip(0);
-        sel.onStripReorder(0, 2); // a → end
-        assert.strictEqual(sel.getStripIdx(), 2);
-    });
-
-    it('onStripReorder shifts neighbors when something moves across them', () => {
-        const sel = new Selection();
-        sel.selectStrip(1);
-        sel.onStripReorder(0, 2); // moving a past b: b shifts left
-        assert.strictEqual(sel.getStripIdx(), 0);
+        assert.deepEqual([...sel.getSelectedStripIdxs()], [0, 3]);
+        sel.onStripReorder(3, 1);
+        assert.deepEqual([...sel.getSelectedStripIdxs()], [0, 1]);
+        assert.equal(sel.getPrimaryStripIdx(), 1);
+        sel.onStripRemove(1); sel.onStripRemove(0);
+        assert.equal(sel.getPrimaryStripIdx(), null);
     });
 });

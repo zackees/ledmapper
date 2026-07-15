@@ -221,7 +221,7 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
                 if (overlayCanvas.hasPointerCapture(e.pointerId)) overlayCanvas.releasePointerCapture(e.pointerId);
                 this.onMouseUp(e);
             }, { signal: this.signal });
-            overlayCanvas.addEventListener('pointercancel', (e: PointerEvent) => { this.onMouseUp(e); }, { signal: this.signal });
+            overlayCanvas.addEventListener('pointercancel', () => { this.onPointerCancel(); }, { signal: this.signal });
             overlayCanvas.addEventListener('pointerleave', () => { this.onMouseLeave(); }, { signal: this.signal });
         } else {
             overlayCanvas.addEventListener('mousedown', (e: MouseEvent) => { this.onMouseDown(e); }, { signal: this.signal });
@@ -418,13 +418,13 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
                 // Per-strip coloring (dim non-selected strips when one is selected)
                 const stripColors = getStripColors(this._si().strips.length);
                 const stripRgbs = stripColors.map(this.hslStringToRgb);
-                const selStrip = this.selection.getStripIdx();
+                const selectedStrips = this.selection.getSelectedStripIdxs();
                 const dim = 0.35;
                 for (let s = 0; s < this._si().strips.length; s++) {
                     const strip = this.nn(this._si().strips[s]);
                     const rgb = this.nn(stripRgbs[s]);
                     let sr = this.nn(rgb[0]), sg = this.nn(rgb[1]), sb = this.nn(rgb[2]);
-                    if (selStrip !== null && s !== selStrip) {
+                    if (selectedStrips.size > 0 && !selectedStrips.has(s)) {
                         sr *= dim; sg *= dim; sb *= dim;
                     }
                     for (let i = strip.offset; i < strip.offset + strip.count && i < count; i++) {

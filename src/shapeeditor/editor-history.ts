@@ -77,6 +77,8 @@ export const editorHistoryMethods: EditorHistoryMethods & ThisType<ShapeEditor> 
             });
         } else if (action.type === 'strip-translate') {
             this._applyStripTranslate(a.stripIdx as number, a.sdx as number, a.sdy as number);
+        } else if (action.type === 'group-selection-translate') {
+            for (const idx of a.stripIdxs as number[]) this._applyStripTranslate(idx, a.sdx as number, a.sdy as number);
         } else if (action.type === 'multi-translate') {
             this._applyMultiTranslate(a.idxs as number[], a.sdx as number, a.sdy as number);
         } else if (action.type === 'strip-rotate') {
@@ -87,6 +89,9 @@ export const editorHistoryMethods: EditorHistoryMethods & ThisType<ShapeEditor> 
                 a.centerSm as { x: number; y: number },
                 a.centerRaw as { x: number; y: number },
             );
+        } else if (action.type === 'group-selection-rotate') {
+            const deg = a.deltaDeg as number;
+            for (const idx of a.stripIdxs as number[]) this._applyStripRotate(idx, deg * Math.PI / 180, a.centerSm as { x: number; y: number }, a.centerRaw as { x: number; y: number });
         } else if (action.type === 'paste-strips') {
             this._doPasteStrips(action);
         } else if (action.type === 'restore-backup') {
@@ -152,6 +157,8 @@ export const editorHistoryMethods: EditorHistoryMethods & ThisType<ShapeEditor> 
             });
         } else if (action.type === 'strip-translate') {
             this._applyStripTranslate(a.stripIdx as number, -(a.sdx as number), -(a.sdy as number));
+        } else if (action.type === 'group-selection-translate') {
+            for (const idx of a.stripIdxs as number[]) this._applyStripTranslate(idx, -(a.sdx as number), -(a.sdy as number));
         } else if (action.type === 'multi-translate') {
             this._applyMultiTranslate(a.idxs as number[], -(a.sdx as number), -(a.sdy as number));
         } else if (action.type === 'strip-rotate') {
@@ -162,6 +169,9 @@ export const editorHistoryMethods: EditorHistoryMethods & ThisType<ShapeEditor> 
                 a.centerSm as { x: number; y: number },
                 a.centerRaw as { x: number; y: number },
             );
+        } else if (action.type === 'group-selection-rotate') {
+            const deg = a.deltaDeg as number;
+            for (const idx of a.stripIdxs as number[]) this._applyStripRotate(idx, -deg * Math.PI / 180, a.centerSm as { x: number; y: number }, a.centerRaw as { x: number; y: number });
         } else if (action.type === 'paste-strips') {
             this._undoPasteStrips(action);
         } else if (action.type === 'restore-backup') {
@@ -195,7 +205,9 @@ export const editorHistoryMethods: EditorHistoryMethods & ThisType<ShapeEditor> 
             || action.type === 'pin-rename'
             || action.type === 'vo-override-toggle'
             || action.type === 'strip-translate'
+            || action.type === 'group-selection-translate'
             || action.type === 'strip-rotate'
+            || action.type === 'group-selection-rotate'
             || action.type === 'paste-strips'
         );
     },

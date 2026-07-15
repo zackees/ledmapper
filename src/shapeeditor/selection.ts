@@ -1,122 +1,86 @@
-/**
- * Selection — small reactive store for the ScreenMap editor's
- * point and strip selection. Used by shapeeditor.js to drive
- * inspector UI updates and dirty flags.
- */
+/** Reactive point and group selection store. The last selected group is primary. */
 export class Selection {
     _pointIdx: number | null = null;
-    _stripIdx: number | null = null;
+    _stripIdxs = new Set<number>();
     _onChange: (() => void) | null = null;
 
-    constructor() {
-        this._pointIdx = null;
-        this._stripIdx = null;
-        this._onChange = null;
-    }
-
-    /** Register a callback fired after any change. */
-    setOnChange(fn: (() => void) | null | undefined) {
-        this._onChange = typeof fn === 'function' ? fn : null;
-    }
-
+    setOnChange(fn: (() => void) | null | undefined) { this._onChange = typeof fn === 'function' ? fn : null; }
     getPointIdx() { return this._pointIdx; }
-    getStripIdx() { return this._stripIdx; }
-
-    /** True when either a point or strip is selected. */
-    hasSelection() {
-        return this._pointIdx !== null || this._stripIdx !== null;
+    /** Compatibility alias for consumers that explicitly need the primary group. */
+    getStripIdx() { return this.getPrimaryStripIdx(); }
+    getPrimaryStripIdx(): number | null {
+        let primary: number | null = null;
+        for (const idx of this._stripIdxs) primary = idx;
+        return primary;
     }
+    /** Defensive snapshot, never the mutable backing set. */
+    getSelectedStripIdxs(): ReadonlySet<number> { return new Set(this._stripIdxs); }
+    isStripSelected(stripIdx: number): boolean { return this._stripIdxs.has(stripIdx); }
+    hasSelection() { return this._pointIdx !== null || this._stripIdxs.size > 0; }
 
-    /**
-     * Select a point. `stripIdx` may be supplied to set both at once
-     * (used when clicking an LED — selecting the point also selects
-     * its owning strip). Pass `null` to clear the point.
-     */
+    /** Selecting a point always collapses group selection to its owning group. */
     selectPoint(pointIdx: number | null, stripIdx: number | null) {
-        const newPoint = (typeof pointIdx === 'number' && pointIdx >= 0) ? pointIdx : null;
-        const newStrip = (typeof stripIdx === 'number' && stripIdx >= 0) ? stripIdx : this._stripIdx;
-        if (newPoint === this._pointIdx && newStrip === this._stripIdx) return;
-        this._pointIdx = newPoint;
-        this._stripIdx = newStrip;
+        const nextPoint = typeof pointIdx === 'number' && pointIdx >= 0 ? pointIdx : null;
+        const nextStrip = typeof stripIdx === 'number' && stripIdx >= 0 ? stripIdx : this.getPrimaryStripIdx();
+        const sameGroups = this._stripIdxs.size === (nextStrip === null ? 0 : 1) && this.getPrimaryStripIdx() === nextStrip;
+        if (nextPoint === this._pointIdx && sameGroups) return;
+        this._pointIdx = nextPoint;
+        this._stripIdxs = nextStrip === null ? new Set() : new Set([nextStrip]);
         this._emit();
     }
 
-    /** Select a strip; clears point selection. */
-    selectStrip(stripIdx: number | null) {
-        const newStrip = (typeof stripIdx === 'number' && stripIdx >= 0) ? stripIdx : null;
-        if (newStrip === this._stripIdx && this._pointIdx === null) return;
-        this._stripIdx = newStrip;
+    selectStrip(stripIdx: number | null) { this.selectOnlyStrip(stripIdx); }
+    selectOnlyStrip(stripIdx: number | null) {
+        const next = typeof stripIdx === 'number' && stripIdx >= 0 ? stripIdx : null;
+        if (this._pointIdx === null && this._stripIdxs.size === (next === null ? 0 : 1) && this.getPrimaryStripIdx() === next) return;
+        this._pointIdx = null;
+        this._stripIdxs = next === null ? new Set() : new Set([next]);
+        this._emit();
+    }
+    addStrip(stripIdx: number) {
+        if (!Number.isInteger(stripIdx) || stripIdx < 0) return;
+        if (this.getPrimaryStripIdx() === stripIdx && this._pointIdx === null) return;
+        this._stripIdxs.delete(stripIdx);
+        this._stripIdxs.add(stripIdx);
         this._pointIdx = null;
         this._emit();
     }
-
-    /** Clear all selection. */
-    clear() {
-        if (this._pointIdx === null && this._stripIdx === null) return;
+    toggleStrip(stripIdx: number) {
+        if (!Number.isInteger(stripIdx) || stripIdx < 0) return;
+        if (this._stripIdxs.has(stripIdx)) this._stripIdxs.delete(stripIdx); else this._stripIdxs.add(stripIdx);
         this._pointIdx = null;
-        this._stripIdx = null;
         this._emit();
     }
+    clearStrips() { this.selectOnlyStrip(null); }
+    clear() { this.selectOnlyStrip(null); }
 
-    /**
-     * Adjust selection after a point is inserted at `idx`. Mirrors
-     * Array.prototype.splice semantics for the selected index.
-     */
     onPointInsert(idx: number) {
-        if (this._pointIdx !== null && this._pointIdx >= idx) {
-            this._pointIdx++;
-            this._emit();
-        }
+        if (this._pointIdx !== null && this._pointIdx >= idx) { this._pointIdx++; this._emit(); }
     }
-
-    /**
-     * Adjust selection after a point at `idx` is deleted. If the
-     * selected point was removed, selection is cleared (but the
-     * stripIdx is kept).
-     */
     onPointDelete(idx: number) {
         if (this._pointIdx === null) return;
-        if (this._pointIdx === idx) {
-            this._pointIdx = null;
-            this._emit();
-        } else if (this._pointIdx > idx) {
-            this._pointIdx--;
-            this._emit();
-        }
+        if (this._pointIdx === idx) this._pointIdx = null;
+        else if (this._pointIdx > idx) this._pointIdx--;
+        else return;
+        this._emit();
     }
-
-    /**
-     * Adjust strip selection after `removeStrip(stripIdx)`. If the
-     * removed strip was selected, clears strip selection.
-     */
     onStripRemove(stripIdx: number) {
-        if (this._stripIdx === null) return;
-        if (this._stripIdx === stripIdx) {
-            this._stripIdx = null;
-            this._pointIdx = null;
-            this._emit();
-        } else if (this._stripIdx > stripIdx) {
-            this._stripIdx--;
-            this._emit();
-        }
+        if (this._stripIdxs.size === 0) return;
+        const next = new Set<number>();
+        for (const idx of this._stripIdxs) if (idx !== stripIdx) next.add(idx > stripIdx ? idx - 1 : idx);
+        if (next.size === this._stripIdxs.size) return;
+        this._stripIdxs = next;
+        if (next.size === 0) this._pointIdx = null;
+        this._emit();
     }
-
-    /**
-     * Adjust strip selection after `reorderStrip(fromIdx, toIdx)`.
-     */
     onStripReorder(fromIdx: number, toIdx: number) {
-        if (this._stripIdx === null) return;
-        let s = this._stripIdx;
-        if (s === fromIdx) s = toIdx;
-        else if (fromIdx < s && s <= toIdx) s--;
-        else if (toIdx <= s && s < fromIdx) s++;
-        if (s !== this._stripIdx) {
-            this._stripIdx = s;
-            this._emit();
-        }
+        if (this._stripIdxs.size === 0 || fromIdx === toIdx) return;
+        const remap = (idx: number) => idx === fromIdx ? toIdx : fromIdx < idx && idx <= toIdx ? idx - 1 : toIdx <= idx && idx < fromIdx ? idx + 1 : idx;
+        const before = [...this._stripIdxs];
+        const next = new Set(before.map(remap));
+        if (before.every((idx, i) => idx === [...next][i])) return;
+        this._stripIdxs = next;
+        this._emit();
     }
-
-    _emit() {
-        if (this._onChange) this._onChange();
-    }
+    _emit() { this._onChange?.(); }
 }
