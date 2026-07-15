@@ -13,7 +13,7 @@ import { type Selection } from './selection';
 import type { PresetPickerHandle } from '../ui/preset-picker';
 import type { DirectionArrowTransition, DirectionArrowTransitionPhase } from './direction-arrow-transition';
 
-import type { UndoAction, OBBox, GizmoDragStart, BgGizmoDragStart, BgImageBBox, GizmoHandle, RulerEntry, RulerDragStart, RulerDragHandle, ConnectorDrag, StartHandleDrag, PlacingState, PasteStateActive, StripDragPt, PresetEntry } from './shapeeditor-types';
+import type { UndoAction, OBBox, StripRotateObbSnapshot, GizmoDragStart, BgGizmoDragStart, BgImageBBox, GizmoHandle, RulerEntry, RulerDragStart, RulerDragHandle, ConnectorDrag, StartHandleDrag, PlacingState, PasteStateActive, StripDragPt, PresetEntry } from './shapeeditor-types';
 import type { EditorCoreMethods } from './editor-core';
 import type { EditorTransformMethods } from './editor-transform';
 import type { EditorIoMethods } from './editor-io';
@@ -175,7 +175,12 @@ export class ShapeEditor {
     declare stripRotateStartAngle: number;
     declare stripRotateLastDeg: number;
     declare stripRotateHover: boolean;
-    declare stripRotateHandleSnapshot: { idx: number; anchorX: number; anchorY: number; handleX: number; handleY: number; centerX: number; centerY: number } | null;
+    declare stripRotateObbSnapshot: StripRotateObbSnapshot | null;
+    declare stripRotateDrawRevision: number;
+    declare stripRotateLastDrawnVisual: {
+        obb: StripRotateObbSnapshot;
+        handle: { anchorX: number; anchorY: number; handleX: number; handleY: number; centerX: number; centerY: number };
+    } | null;
     declare altQuasimode: boolean;
     declare ctxMenu: HTMLElement | null;
     declare ctxMenuIdx: number;

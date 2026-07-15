@@ -271,8 +271,12 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             return;
         }
 
+        // The visible rotation handle wins when its 44px hit target overlaps
+        // the auto-positioned ruler above the same group's OBB.
+        const stripRotateHit = this.hitTestStripRotateHandle(cx, cy);
+
         // Priority 0: Ruler handle / body
-        const rulerHit = this.hitTestRuler(cx, cy);
+        const rulerHit = stripRotateHit ? null : this.hitTestRuler(cx, cy);
         if (rulerHit) {
             const ruler = this.rulers[rulerHit.idx];
             if (ruler) {
@@ -290,7 +294,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         // Priority 0.5: Per-strip rotation handle (only when a strip is
         // selected). Checked before the global gizmo so a strip near the
         // top of the screenmap's bbox still gets its own handle hit.
-        if (this.hitTestStripRotateHandle(cx, cy)) {
+        if (stripRotateHit) {
             const idx = this.selection.getStripIdx();
             if (idx !== null && this.stripInfo && idx < this.stripInfo.strips.length) {
                 const strip = this.nn(this.stripInfo.strips[idx]);
@@ -304,14 +308,15 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
                     this.stripRotateStartScreenmap.push([sm[0], sm[1]]);
                     this.stripRotateStartRaw.push([rw[0], rw[1]]);
                 }
+                const obb = this._selectedStripObbCanvas();
                 const handle = this._stripRotateHandlePos();
-                if (!handle) return;
-                this.stripRotateHandleSnapshot = { ...handle };
-                const [centerX, centerY] = this.canvasToScreenmapCoords(handle.centerX, handle.centerY);
+                if (!obb || !handle) return;
+                this.stripRotateObbSnapshot = { ...obb };
+                const [centerX, centerY] = this.canvasToScreenmapCoords(obb.cx, obb.cy);
                 const [rawX, rawY] = this.screenmapToRawCoords(centerX, centerY);
                 this.stripRotateCenterSm = { x: centerX, y: centerY };
                 this.stripRotateCenterRaw = { x: rawX, y: rawY };
-                this.stripRotateStartAngle = Math.atan2(cy - handle.centerY, cx - handle.centerX);
+                this.stripRotateStartAngle = Math.atan2(cy - obb.cy, cx - obb.cx);
                 this.stripRotateLastDeg = 0;
                 if (!e.shiftKey && safeStorage.get('shapeeditor.freeRotateHintSeen') !== '1') {
                     safeStorage.set('shapeeditor.freeRotateHintSeen', '1');
@@ -546,11 +551,11 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         if (this.stripRotateActive && this.stripRotateIdx >= 0 && this.stripInfo
             && this.stripRotateStartScreenmap && this.stripRotateStartRaw
             && this.stripRotateCenterSm && this.stripRotateCenterRaw) {
-            const handle = this._stripRotateHandlePos();
-            if (!handle) return;
-            const curAngle = Math.atan2(cy - handle.centerY, cx - handle.centerX);
+            const snapshot = this.stripRotateObbSnapshot;
+            if (!snapshot) return;
+            const curAngle = Math.atan2(cy - snapshot.cy, cx - snapshot.cx);
             let deltaDeg = (curAngle - this.stripRotateStartAngle) * 180 / Math.PI;
-            // Shift snaps to 15° increments, matching the global gizmo
+            // Pointer rotation uses integer-degree steps; Shift enables free-form rotation.
             // (rotation always uses INTEGER degree steps so the resulting
             // points are deterministic and undo-friendly).
             if (!e.shiftKey) deltaDeg = Math.round(deltaDeg);
@@ -1002,7 +1007,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this.stripRotateCenterRaw = null;
             this.stripRotateStartAngle = 0;
             this.stripRotateLastDeg = 0;
-            this.stripRotateHandleSnapshot = null;
+            this.stripRotateObbSnapshot = null;
         }
         if (this.isDragging) {
             this.isDragging = false;

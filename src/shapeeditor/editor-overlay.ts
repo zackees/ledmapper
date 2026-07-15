@@ -4,7 +4,7 @@ import { safeStorage } from "../services/storage";
 import { getStripColors, stripStartEndLabels } from "../common";
 import { gfxColors, withAlpha } from "../ui/theme";
 import { computeDirectionArrowPlacements, directionArrowAnchorsFromPlacements, projectDirectionArrowAnchors } from "./direction-arrows";
-import { minimumAreaObb } from "./strip-rotate";
+import { minimumAreaObb, rotateOrientedBox, rotationHandleFromObb, type RotationHandlePosition } from "./strip-rotate";
 import { groupFocusOpacity } from "./selection-focus";
 
 export interface EditorOverlayMethods {
@@ -14,6 +14,7 @@ export interface EditorOverlayMethods {
     _setOverlayCollapsed: (collapsed: boolean) => void;
     _drawSnapGuides: () => void;
     _drawStripRotateHandle: () => void;
+    _stripRotateVisualGeometry: () => { obb: SelectedStripObb; handle: RotationHandlePosition & { centerX: number; centerY: number } } | null;
     _stripRotateHandlePos: () => { idx: number; anchorX: number; anchorY: number; handleX: number; handleY: number; centerX: number; centerY: number } | null;
     _selectedStripObbCanvas: () => { idx: number; cx: number; cy: number; cos: number; sin: number; hw: number; hh: number } | null;
     hitTestStripRotateHandle: (canvasX: number, canvasY: number) => boolean;
@@ -531,9 +532,16 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
     ctx.restore();
 },
     _selectedStripObbCanvas(this: ShapeEditor){
-    const idx = this.selection.getStripIdx();
-    if (idx === null || !this.stripInfo || idx >= this.stripInfo.strips.length) return null;
-    const st = this.nn(this.stripInfo.strips[idx]);
+        const idx = this.selection.getStripIdx();
+        if (idx === null || !this.stripInfo || idx >= this.stripInfo.strips.length) return null;
+        if (this.stripRotateActive && this.stripRotateObbSnapshot?.idx === idx) {
+            const rotated = rotateOrientedBox(
+                this.stripRotateObbSnapshot,
+                this.stripRotateLastDeg * Math.PI / 180,
+            );
+            return { ...rotated, idx };
+        }
+        const st = this.nn(this.stripInfo.strips[idx]);
     if (st.count <= 0) return null;
     const lo = Math.max(0, st.offset);
     const hi = Math.min(this.lastTransformedPts.length, st.offset + st.count);
@@ -543,27 +551,19 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
         const [px, py] = this.toCanvasCoords(worldX, worldY);
         canvasPts.push([px, py]);
     }
-    const obb = minimumAreaObb(canvasPts);
-    return obb ? { idx, ...obb } : null;
-},
+        const obb = minimumAreaObb(canvasPts);
+        return obb ? { idx, ...obb } : null;
+    },
+    _stripRotateVisualGeometry(this: ShapeEditor){
+        const box = this._selectedStripObbCanvas();
+        if (!box) return null;
+        const handle = rotationHandleFromObb(box);
+        return { obb: box, handle: { ...handle, centerX: box.cx, centerY: box.cy } };
+    },
     _stripRotateHandlePos(this: ShapeEditor){
-    if (this.stripRotateActive && this.stripRotateHandleSnapshot) return this.stripRotateHandleSnapshot;
-    const box = this._selectedStripObbCanvas();
-    if (!box) return null;
-    const armLen = 30;
-    const normalX = box.sin;
-    const normalY = -box.cos;
-    const anchorX = box.cx + normalX * box.hh;
-    const anchorY = box.cy + normalY * box.hh;
-    return {
-        idx: box.idx,
-        anchorX,
-        anchorY,
-        handleX: anchorX + normalX * armLen,
-        handleY: anchorY + normalY * armLen,
-        centerX: box.cx,
-        centerY: box.cy,
-    };
+    const visual = this._stripRotateVisualGeometry();
+    if (!visual) return null;
+    return { idx: visual.obb.idx, ...visual.handle };
 },
     hitTestStripRotateHandle(this: ShapeEditor, canvasX: number, canvasY: number): boolean{
     const h = this._stripRotateHandlePos();
@@ -572,8 +572,14 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
 },
     _drawStripRotateHandle(this: ShapeEditor){
     if (!this.overlayCtx) return;
-    const h = this._stripRotateHandlePos();
-    if (!h) return;
+    const visual = this._stripRotateVisualGeometry();
+    if (!visual) {
+        this.stripRotateLastDrawnVisual = null;
+        return;
+    }
+    const h = { idx: visual.obb.idx, ...visual.handle };
+    this.stripRotateLastDrawnVisual = { obb: { ...visual.obb }, handle: { ...h } };
+    this.stripRotateDrawRevision++;
     const ctx = this.overlayCtx;
     const isActive = this.stripRotateActive || this.stripRotateHover;
     const color = isActive ? gfxColors.accentPurpleHover() : gfxColors.accentPurple(); // tailwind purple-400 / purple-500

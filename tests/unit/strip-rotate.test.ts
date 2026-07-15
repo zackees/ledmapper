@@ -6,7 +6,7 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 
-import { bboxCenter, minimumAreaObb, rotatePointsAround, type Pt } from '../../src/shapeeditor/strip-rotate';
+import { bboxCenter, minimumAreaObb, rotateOrientedBox, rotatePointsAround, rotationHandleFromObb, type Pt } from '../../src/shapeeditor/strip-rotate';
 
 function approx(a: number, b: number, eps = 1e-9): boolean {
     return Math.abs(a - b) < eps;
@@ -107,5 +107,37 @@ describe('rotatePointsAround', () => {
     test('handles empty input', () => {
         const out = rotatePointsAround([], 0, 0, Math.PI / 4);
         assert.deepEqual(out, []);
+    });
+});
+
+describe('live rotation handle geometry', () => {
+    test('rotates the directed OBB axes while preserving center and extents', () => {
+        const input = { cx: 12, cy: -4, cos: Math.cos(0.37), sin: Math.sin(0.37), hw: 20, hh: 3 };
+        const output = rotateOrientedBox(input, Math.PI / 2);
+        assert.ok(approx(output.cx, input.cx));
+        assert.ok(approx(output.cy, input.cy));
+        assert.ok(approx(output.hw, input.hw));
+        assert.ok(approx(output.hh, input.hh));
+        assert.ok(approx(output.cos, Math.cos(0.37 + Math.PI / 2)));
+        assert.ok(approx(output.sin, Math.sin(0.37 + Math.PI / 2)));
+        assert.ok(approx(Math.hypot(output.cos, output.sin), 1));
+        assert.deepEqual(input, { cx: 12, cy: -4, cos: Math.cos(0.37), sin: Math.sin(0.37), hw: 20, hh: 3 });
+    });
+
+    test('keeps the handle attached to the OBB at a fixed arm length', () => {
+        const box = { cx: 12, cy: -4, cos: 1, sin: 0, hw: 20, hh: 3 };
+        const start = rotationHandleFromObb(box);
+        const rotated = rotationHandleFromObb(rotateOrientedBox(box, Math.PI / 2));
+        assert.ok(approx(Math.hypot(start.anchorX - box.cx, start.anchorY - box.cy), box.hh));
+        assert.ok(approx(Math.hypot(start.handleX - start.anchorX, start.handleY - start.anchorY), 30));
+        assert.ok(approx(Math.hypot(rotated.handleX - rotated.anchorX, rotated.handleY - rotated.anchorY), 30));
+        assert.ok(approx(rotated.handleX - box.cx, -(start.handleY - box.cy)));
+        assert.ok(approx(rotated.handleY - box.cy, start.handleX - box.cx));
+    });
+
+    test('handles a degenerate OBB without producing non-finite coordinates', () => {
+        const handle = rotationHandleFromObb({ cx: 2, cy: 3, cos: 1, sin: 0, hw: 0, hh: 0 });
+        for (const value of Object.values(handle)) assert.ok(Number.isFinite(value));
+        assert.ok(approx(Math.hypot(handle.handleX - handle.anchorX, handle.handleY - handle.anchorY), 30));
     });
 });
