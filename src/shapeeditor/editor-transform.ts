@@ -131,16 +131,20 @@ export const editorTransformMethods: EditorTransformMethods & ThisType<ShapeEdit
     },
     getCanvasSize(this: ShapeEditor){
 
+        const viewport = this.wrapper;
         return {
-            width: this.mainEl.clientWidth || Math.floor(window.innerWidth),
-            height: this.mainEl.clientHeight || Math.floor(window.innerHeight * 0.6),
+            width: viewport && viewport.clientWidth > 0 ? viewport.clientWidth
+                : (this.mainEl.clientWidth > 0 ? this.mainEl.clientWidth : Math.floor(window.innerWidth)),
+            height: viewport && viewport.clientHeight > 0 ? viewport.clientHeight
+                : (this.mainEl.clientHeight > 0 ? this.mainEl.clientHeight : Math.floor(window.innerHeight * 0.6)),
         };
     },
     getFitSize(this: ShapeEditor){
 
+        const { width, height } = this.getCanvasSize();
         return {
-            width: Math.floor(window.innerWidth * 0.45),
-            height: Math.floor(window.innerHeight * 0.4),
+            width: Math.max(1, Math.floor(width * 0.86)),
+            height: Math.max(1, Math.floor(height * 0.78)),
         };
     },
     getCurrentTransform(this: ShapeEditor): { sX: number; sY: number; cosR: number; sinR: number; tx: number; ty: number }{

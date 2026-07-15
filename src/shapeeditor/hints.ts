@@ -20,6 +20,6 @@ export function hintTextFor(state: HintState | null | undefined) {
     if (s.reorderMode) return 'Reorder: ▲/▼ move strips within a pin · drag grip across pins to repin · Esc/[Reorder]: exit';
     if (s.pointEditMode) return `Editing points in "${s.pointEditStripName ?? ''}" · drag LED: move single · Shift+click edge: insert · Esc: exit`;
     if (s.empty) return 'Right-click for menu · drop a .json to load · press I to insert a panel';
-    if (s.selectedStripName) return 'Drag selected group: move · Shift+click: add/remove group · Ctrl+drag: group marquee · double-click LED: edit points · rotate handle: rotate selection';
-    return 'Drag canvas: pan · R-drag: zoom · click group: select · Ctrl+drag: group marquee · double-click LED: edit points · I: insert';
+    if (s.selectedStripName) return 'R-drag / Shift+drag selected group: move · Shift+click: add/remove group · L-drag: group marquee · double-click LED: edit points · rotate handle: rotate selection';
+    return 'L-drag: group marquee · Space+drag: pan · wheel: zoom · click group: select · double-click LED: edit points · I: insert';
 }

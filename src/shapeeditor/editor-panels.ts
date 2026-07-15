@@ -50,7 +50,7 @@ export const editorPanelsMethods: EditorPanelsMethods & ThisType<ShapeEditor> = 
         // chain/reorder mode up front so the placed strip is immediately
         // selectable and draggable instead of inheriting a stale mode that
         // deliberately suppresses LED hit-testing.
-        if (this.editorMode) this.setEditorMode(null);
+        if (this.editorMode !== 'select') this.setEditorMode('select');
         const opts = this._readPanelOpts();
         const localPts = generatePanelPoints(entry, opts);
         this.placingState = { entry, opts, localPts, ghostWorld: null };

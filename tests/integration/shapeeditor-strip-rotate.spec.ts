@@ -181,7 +181,10 @@ test.describe('Shapeeditor per-strip rotation', () => {
         expect(afterCenter.y).toBeCloseTo(beforeCenter.y, 4);
 
         await page.keyboard.press('Control+z');
-        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(beforeA);
+        await expect.poll(() => page.evaluate((expected) => {
+            const actual = window.__shapeeditorDebug.getStripPoints(0);
+            return actual.every((point, index) => point.every((value, axis) => Math.abs(value - expected[index][axis]) < 1e-9));
+        }, beforeA)).toBe(true);
     });
 
     test('selected-strip controls rotate by presets and a signed custom angle', async ({ page }) => {

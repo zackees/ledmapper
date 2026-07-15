@@ -155,7 +155,8 @@ test.describe('Shapeeditor autosave + backup restore', () => {
 
         // Mutate NON-pin state: drag strip1 — triggers autosave through the
         // same buildScreenmapMultiStripJson path that used to drop `pin`.
-        await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(0, 40, 40));
+        await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
+        await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(0, 40, 40, { button: 2 }));
         await expect.poll(async () => {
             const stored = await page.evaluate(() => localStorage.getItem('lm:screenmap'));
             const parsed = JSON.parse(stored);

@@ -16,6 +16,10 @@ export interface EditorRendererMethods {
 export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor> = {
     initRenderer(this: ShapeEditor){
 
+        this.wrapper = document.createElement('div');
+        this.wrapper.className = 'shapeeditor-canvas-viewport';
+        this.mainEl.appendChild(this.wrapper);
+
         const { width, height } = this.getCanvasSize();
         this.canvasW = width;
         this.canvasH = height;
@@ -30,11 +34,6 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
         const hw = width / 2, hh = height / 2;
         this.camera = new OrthographicCamera(-hw, hw, -hh, hh, -1, 1);
         this.camera.position.z = 1;
-
-        this.wrapper = document.createElement('div');
-        this.wrapper.style.position = 'absolute';
-        this.wrapper.style.inset = '0';
-        this.mainEl.appendChild(this.wrapper);
 
         this.renderer.domElement.className = 'shapeeditor-three-canvas';
         this.wrapper.appendChild(this.renderer.domElement);
@@ -212,17 +211,41 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
         // consume these events without an unsafe cast.
         const overlayCanvas = this._oc();
         if ('PointerEvent' in window) {
+            let activePointerId: number | null = null;
             overlayCanvas.addEventListener('pointerdown', (e: PointerEvent) => {
-                overlayCanvas.setPointerCapture(e.pointerId);
+                // Touch is handled by the existing TouchEvent path below. Letting
+                // both paths see the same contact would start every gesture twice.
+                if (e.pointerType === 'touch') return;
                 this.onMouseDown(e);
+                activePointerId = e.pointerId;
+                overlayCanvas.setPointerCapture(e.pointerId);
             }, { signal: this.signal });
-            overlayCanvas.addEventListener('pointermove', (e: PointerEvent) => { this.onMouseMove(e); }, { signal: this.signal });
+            overlayCanvas.addEventListener('pointermove', (e: PointerEvent) => {
+                if (e.pointerType === 'touch') return;
+                this.onMouseMove(e);
+            }, { signal: this.signal });
             overlayCanvas.addEventListener('pointerup', (e: PointerEvent) => {
-                if (overlayCanvas.hasPointerCapture(e.pointerId)) overlayCanvas.releasePointerCapture(e.pointerId);
+                if (e.pointerType === 'touch' || activePointerId !== e.pointerId) return;
+                // Commit before releasing capture. releasePointerCapture emits
+                // lostpointercapture, which is only cancellation when unexpected.
                 this.onMouseUp(e);
+                if (activePointerId === e.pointerId) activePointerId = null;
+                if (overlayCanvas.hasPointerCapture(e.pointerId)) overlayCanvas.releasePointerCapture(e.pointerId);
             }, { signal: this.signal });
-            overlayCanvas.addEventListener('pointercancel', () => { this.onPointerCancel(); }, { signal: this.signal });
-            overlayCanvas.addEventListener('pointerleave', () => { this.onMouseLeave(); }, { signal: this.signal });
+            overlayCanvas.addEventListener('pointercancel', (e: PointerEvent) => {
+                if (e.pointerType === 'touch' || activePointerId !== e.pointerId) return;
+                activePointerId = null;
+                this.onPointerCancel();
+            }, { signal: this.signal });
+            overlayCanvas.addEventListener('lostpointercapture', (e: PointerEvent) => {
+                if (activePointerId !== e.pointerId) return;
+                activePointerId = null;
+                this.onPointerCancel();
+            }, { signal: this.signal });
+            overlayCanvas.addEventListener('pointerleave', (e: PointerEvent) => {
+                if (e.pointerType === 'touch') return;
+                this.onMouseLeave();
+            }, { signal: this.signal });
         } else {
             overlayCanvas.addEventListener('mousedown', (e: MouseEvent) => { this.onMouseDown(e); }, { signal: this.signal });
             overlayCanvas.addEventListener('mousemove', (e: MouseEvent) => { this.onMouseMove(e); }, { signal: this.signal });

@@ -17,6 +17,7 @@ const STRIP_STROKE_HIT_PX = 10;
 
 export interface EditorInteractionMethods {
     _clearStripSnapState: () => void;
+    _resolveCoarseStripHit: (canvasX: number, canvasY: number) => { stripIdx: number; edgeIdx: number } | null;
     _startStripDrag: (stripIdx: number, canvasX: number, canvasY: number) => boolean;
     _ledIdxsInCanvasRect: (c1x: number, c1y: number, c2x: number, c2y: number) => Set<number>;
     _updateMarqueeSelection: () => void;
@@ -47,6 +48,18 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         this.stripSnapTargets = emptyStripSnapTargetSet();
         this.stripSnapEngagement = { mode: 'none' };
     },
+    _resolveCoarseStripHit(this: ShapeEditor, canvasX: number, canvasY: number){
+        const candidates = this.hitTestLEDCandidates(canvasX, canvasY);
+        const candidateStrips = [...new Set(candidates.map((candidate) => candidate.stripIdx))];
+        const primary = this.selection.getPrimaryStripIdx();
+        const hitStripIdx = candidateStrips.find((idx) => this.selection.isStripSelected(idx))
+            ?? (primary !== null && candidateStrips.includes(primary) ? primary : candidateStrips[candidateStrips.length - 1]);
+        if (hitStripIdx !== undefined && hitStripIdx >= 0) return { stripIdx: hitStripIdx, edgeIdx: -1 };
+        if (this.screenmap_pts.length < 2) return null;
+        const edge = this.findNearestEdge(canvasX, canvasY);
+        if (!edge || edge.distSq > STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) return null;
+        return { stripIdx: edge.stripIdx, edgeIdx: edge.idx };
+    },
     onContextMenu(this: ShapeEditor, e: MouseEvent){
 
         e.preventDefault();
@@ -59,7 +72,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this._cancelPaste();
             return;
         }
-        // If right-click was used for zoom dragging, skip the context menu
+        // A right-button translation owns the gesture and suppresses context.
         const wasMoved = this.rightClickMoved;
         this.rightClickMoved = false;
         if (wasMoved) return;
@@ -200,18 +213,53 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
 
         if (this.screenmap_pts.length === 0 && !this.bgImageMesh) return;
 
+        const [cx, cy] = this.getCanvasCoords(e);
+
+        // Camera movement is an explicit quasimode. It takes priority over
+        // selection so Space+left and middle drag work from any canvas point.
+        if (e.button === 1 || (e.button === 0 && this.spacePanHeld)) {
+            e.preventDefault();
+            this.isPanning = true;
+            this.panStartX = cx;
+            this.panStartY = cy;
+            this.panStartCamX = this.camPanX;
+            this.panStartCamY = this.camPanY;
+            this._oc().style.cursor = 'move';
+            return;
+        }
+
         if (e.button === 2) {
-            // Right-click: start potential zoom drag
+            e.preventDefault();
             this.rightButtonDown = true;
             this.rightClickMoved = false;
-            const [, cy] = this.getCanvasCoords(e);
-            this.zoomStartY = cy;
-            this.zoomStartLevel = this.camZoom;
+            this.rightStartClientX = e.clientX;
+            this.rightStartClientY = e.clientY;
+            if (this.editorMode === 'select' && this.pointEditStripIdx === null) {
+                const hit = this._resolveCoarseStripHit(cx, cy);
+                if (hit) {
+                    this.groupGestureSelectionSnapshot = new Set(this.selection.getSelectedStripIdxs());
+                    this.selectedIdx = -1;
+                    this.highlightedEdgeIdx = hit.edgeIdx;
+                    if (this.selection.isStripSelected(hit.stripIdx)) {
+                        this.pendingGroupGesture = {
+                            kind: 'translate', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 2,
+                            marqueeMode: 'replace', toggleOnClick: false, freeTranslate: false,
+                        };
+                    } else {
+                        this.selection.selectOnlyStrip(hit.stripIdx);
+                        this.pendingGroupGesture = {
+                            kind: 'select-only', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 2,
+                            marqueeMode: 'replace', toggleOnClick: false, freeTranslate: false,
+                        };
+                    }
+                    this.setNeedsGeometryUpdate();
+                    this._oc().style.cursor = 'grab';
+                }
+            }
             return;
         }
 
         if (e.button !== 0) return;
-        const [cx, cy] = this.getCanvasCoords(e);
 
         // Chain mode: arrowhead / Start-handle drags only; LED hit-test and
         // group-drag are suppressed (issue #24 §1.7). Everything else pans.
@@ -363,36 +411,99 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             return;
         }
 
-        // Coarse mode owns group selection. Point editing below deliberately
-        // keeps its older per-LED gestures isolated from this path.
-        if (this.pointEditStripIdx === null) {
-            const candidates = this.hitTestLEDCandidates(cx, cy);
-            const candidateStrips = [...new Set(candidates.map((candidate) => candidate.stripIdx))];
-            const primary = this.selection.getPrimaryStripIdx();
-            const hitStripIdx = candidateStrips.find((idx) => this.selection.isStripSelected(idx))
-                ?? (primary !== null && candidateStrips.includes(primary) ? primary : candidateStrips[candidateStrips.length - 1]);
-            const edge = hitStripIdx === undefined && this.screenmap_pts.length >= 2 ? this.findNearestEdge(cx, cy) : null;
-            const resolvedStrip = hitStripIdx ?? (edge && edge.distSq <= STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX ? edge.stripIdx : undefined);
-            if (resolvedStrip !== undefined && resolvedStrip >= 0) {
-                this.selectedIdx = -1;
-                this.highlightedEdgeIdx = edge?.idx ?? -1;
-                if (e.shiftKey) {
-                    this.selection.toggleStrip(resolvedStrip);
-                    this.pendingGroupGesture = { kind: 'select-only', stripIdx: resolvedStrip, cx, cy };
-                } else if (this.selection.isStripSelected(resolvedStrip)) {
-                    this.pendingGroupGesture = { kind: 'translate', stripIdx: resolvedStrip, cx, cy };
-                } else {
-                    this.selection.selectOnlyStrip(resolvedStrip);
-                    this.pendingGroupGesture = { kind: 'select-only', stripIdx: resolvedStrip, cx, cy };
+        // Select mode owns coarse group gestures. Point editing and touch keep
+        // their established direct-manipulation paths isolated below.
+        if (this.editorMode === 'select' && this.pointEditStripIdx === null) {
+            const hit = this._resolveCoarseStripHit(cx, cy);
+            if (this.touchMode === 'single') {
+                if (hit) {
+                    this.groupGestureSelectionSnapshot = new Set(this.selection.getSelectedStripIdxs());
+                    this.selectedIdx = -1;
+                    this.highlightedEdgeIdx = hit.edgeIdx;
+                    if (this.selection.isStripSelected(hit.stripIdx)) {
+                        this.pendingGroupGesture = {
+                            kind: 'translate', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
+                            marqueeMode: 'replace', toggleOnClick: false, freeTranslate: false,
+                        };
+                    } else {
+                        this.selection.selectOnlyStrip(hit.stripIdx);
+                        this.pendingGroupGesture = {
+                            kind: 'select-only', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
+                            marqueeMode: 'replace', toggleOnClick: false, freeTranslate: false,
+                        };
+                    }
+                    this.setNeedsGeometryUpdate();
+                    this._oc().style.cursor = 'grab';
+                    return;
                 }
-                this.setNeedsGeometryUpdate();
-                this._oc().style.cursor = 'grab';
-                return;
-            }
-            if (e.ctrlKey || e.metaKey) {
-                this.pendingGroupGesture = { kind: 'select-only', stripIdx: -1, cx, cy };
-                this.groupMarqueeBaseSelection = e.shiftKey ? new Set(this.selection.getSelectedStripIdxs()) : new Set();
+            } else {
+                const selected = hit ? this.selection.isStripSelected(hit.stripIdx) : false;
+                const mode = (e.ctrlKey || e.metaKey) ? 'toggle' : (e.shiftKey ? 'add' : 'replace');
+                const base = new Set(this.selection.getSelectedStripIdxs());
+
+                // Preserve direct manipulation of an empty-area background
+                // image handle; group targets above still win overlaps.
+                if (!hit && this.bgImageMesh) {
+                    const bgHit = this.hitTestBgGizmo(cx, cy);
+                    if (bgHit) {
+                        this.startBgGizmoDrag(bgHit, cx, cy);
+                        this._oc().style.cursor = bgHit === 'translate' ? 'move' : this.getCursorForGizmo(bgHit);
+                        return;
+                    }
+                }
+
+                this.groupGestureSelectionSnapshot = base;
+
+                if (e.ctrlKey || e.metaKey) {
+                    this.pendingGroupGesture = {
+                        kind: 'marquee', stripIdx: hit?.stripIdx ?? -1, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
+                        marqueeMode: 'toggle', toggleOnClick: Boolean(hit), freeTranslate: false,
+                    };
+                    this.groupMarqueeBaseSelection = base;
+                    this._oc().style.cursor = 'crosshair';
+                    return;
+                }
+
+                if (hit) {
+                    this.selectedIdx = -1;
+                    this.highlightedEdgeIdx = hit.edgeIdx;
+                    if (e.shiftKey && selected) {
+                        this.pendingGroupGesture = {
+                            kind: 'translate', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
+                            marqueeMode: mode, toggleOnClick: true, freeTranslate: true,
+                        };
+                    } else if (e.shiftKey) {
+                        this.selection.addStrip(hit.stripIdx);
+                        this.pendingGroupGesture = {
+                            kind: 'select-only', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
+                            marqueeMode: mode, toggleOnClick: false, freeTranslate: true,
+                        };
+                    } else if (selected) {
+                        this.pendingGroupGesture = {
+                            kind: 'marquee', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
+                            marqueeMode: 'replace', toggleOnClick: false, freeTranslate: false,
+                        };
+                        this.groupMarqueeBaseSelection = base;
+                    } else {
+                        this.selection.selectOnlyStrip(hit.stripIdx);
+                        this.pendingGroupGesture = {
+                            kind: 'select-only', stripIdx: hit.stripIdx, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
+                            marqueeMode: 'replace', toggleOnClick: false, freeTranslate: false,
+                        };
+                    }
+                    this.setNeedsGeometryUpdate();
+                    this._oc().style.cursor = selected && !e.shiftKey ? 'crosshair' : 'grab';
+                    return;
+                }
+
+                this.pendingGroupGesture = {
+                    kind: 'marquee', stripIdx: -1, cx, cy, clientX: e.clientX, clientY: e.clientY, button: 0,
+                    marqueeMode: mode, toggleOnClick: false, freeTranslate: false,
+                };
+                this.groupMarqueeBaseSelection = base;
+                if (mode === 'replace') this.selection.clear();
                 this._oc().style.cursor = 'crosshair';
+                this.setNeedsGeometryUpdate();
                 return;
             }
         }
@@ -478,10 +589,6 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         }
         if (this.highlightedEdgeIdx >= 0) { this.highlightedEdgeIdx = -1; this.setNeedsRender(); }
 
-        // Marquee select is gated behind Ctrl+drag (handled by the
-        // _pendingMarquee branch above). Plain left-drag keeps its
-        // original behavior: pan on empty canvas.
-
         // Priority 4: Background image gizmo (mouse is outside screenmap bbox)
         if (this.bgImageMesh) {
             const bgHit = this.hitTestBgGizmo(cx, cy);
@@ -528,15 +635,13 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         // Track shift key for rotation snapping
         this.shiftHeld = e.shiftKey;
 
-        // Right-click drag: zoom
+        // Right drag translates selected groups; an empty/right click remains
+        // eligible for the context menu until it crosses the drag threshold.
         if (this.rightButtonDown) {
-            const dy = cy - this.zoomStartY;
-            if (Math.abs(dy) > 3) this.rightClickMoved = true;
-            if (this.rightClickMoved) {
-                this.applyInteractiveZoom(this.zoomStartLevel * Math.pow(2, -dy / 200));
-                this._oc().style.cursor = 'ns-resize';
-            }
-            return;
+            const dx = e.clientX - this.rightStartClientX;
+            const dy = e.clientY - this.rightStartClientY;
+            if (dx * dx + dy * dy > 9) this.rightClickMoved = true;
+            if (!this.pendingGroupGesture && !this.stripDragActive) return;
         }
 
         // Chain-mode connector drag (arrowhead → new downstream target)
@@ -638,20 +743,20 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             return;
         }
 
-        // A selection gesture is intentionally two-stage: a first gesture on
-        // an unselected group never promotes into movement. A later gesture
-        // on an existing selection promotes only after the normal threshold.
+        // Resolve click-vs-drag only after the shared three-CSS-pixel threshold.
         if (this.pendingGroupGesture) {
             const pending = this.pendingGroupGesture;
-            const dx = cx - pending.cx;
-            const dy = cy - pending.cy;
+            const dx = e.clientX - pending.clientX;
+            const dy = e.clientY - pending.clientY;
             if (dx * dx + dy * dy > 9) {
-                if (pending.stripIdx >= 0 && pending.kind === 'translate') {
+                if (pending.kind === 'translate' && pending.stripIdx >= 0) {
                     this.pendingGroupGesture = null;
+                    this.stripDragFreeTranslate = pending.freeTranslate;
                     this._startStripDrag(pending.stripIdx, pending.cx, pending.cy);
-                } else if (pending.stripIdx < 0) {
+                } else if (pending.kind === 'marquee') {
                     this.pendingGroupGesture = null;
                     this.groupMarqueeActive = true;
+                    this.groupMarqueeMode = pending.marqueeMode;
                     this.marqueeStartCx = pending.cx;
                     this.marqueeStartCy = pending.cy;
                     this.marqueeCurCx = cx;
@@ -659,11 +764,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
                     this._updateGroupMarqueeSelection();
                     this.setNeedsGeometryUpdate();
                     return;
-                } else {
-                    // Selection-only gesturing stays selection-only for its
-                    // whole pointer lifetime, even after a large drag.
-                    return;
-                }
+                } else return; // Selection-only remains inert for this pointer.
             } else return;
         }
 
@@ -770,7 +871,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
                 camZoom,
                 tolerancePx: this.snapBackPx,
                 snapEnabled: this.snapBackEnabled,
-                shiftBypass: e.shiftKey,
+                shiftBypass: this.stripDragFreeTranslate,
             });
             const previousEngagement = JSON.stringify(this.stripSnapEngagement);
             this.stripSnapEngagement = snapResult.engagement;
@@ -909,8 +1010,6 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         if (e.button === 2) {
             this.rightButtonDown = false;
             // rightClickMoved is consumed by onContextMenu
-            this._oc().style.cursor = 'default';
-            return;
         }
 
         // Chain-mode drags: commit on a valid drop target, else cancel.
@@ -976,7 +1075,13 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         }
 
         if (this.pendingGroupGesture) {
+            const pending = this.pendingGroupGesture;
             this.pendingGroupGesture = null;
+            if (pending.toggleOnClick && pending.stripIdx >= 0) {
+                this.selection.toggleStrip(pending.stripIdx);
+                this.setNeedsGeometryUpdate();
+            }
+            this.groupGestureSelectionSnapshot = null;
             this._oc().style.cursor = 'default';
             return;
         }
@@ -984,6 +1089,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         if (this.groupMarqueeActive) {
             this.groupMarqueeActive = false;
             this.groupMarqueeBaseSelection = new Set();
+            this.groupGestureSelectionSnapshot = null;
             this._oc().style.cursor = 'default';
             this.setNeedsGeometryUpdate();
             return;
@@ -1089,6 +1195,20 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
     _cancelSingleTouchGesture(this: ShapeEditor){
 
         // Cancel any in-flight single-touch drag cleanly (no undo entry).
+        const suppressPendingContextMenu = this.rightButtonDown;
+        if (this.connectorDrag || this.startHandleDrag) this._cancelConnectorDrag();
+        if (this.groupGestureSelectionSnapshot) {
+            this.selection.selectOnlyStrip(null);
+            for (const idx of this.groupGestureSelectionSnapshot) this.selection.addStrip(idx);
+        }
+        if (this.marqueeActive) this._cancelMarquee();
+        this._pendingMarquee = null;
+        this.pendingGroupGesture = null;
+        this.groupMarqueeActive = false;
+        this.groupMarqueeBaseSelection = new Set();
+        this.groupGestureSelectionSnapshot = null;
+        this.rightButtonDown = false;
+        this.rightClickMoved = suppressPendingContextMenu;
         if (this.stripDragActive) {
             for (const idx of this.stripDragPointIdxs) {
                 const sm = this.stripDragStartScreenmapByIdx.get(idx);
@@ -1107,6 +1227,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this._clearStripSnapState();
             this.stripDragLastSdx = 0;
             this.stripDragLastSdy = 0;
+            this.stripDragFreeTranslate = false;
         }
         if (this.stripRotateActive) {
             for (let i = 0; i < this.stripRotatePointIdxs.length; i++) {
@@ -1129,20 +1250,60 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this.stripRotateLastDeg = 0;
             this.stripRotateObbSnapshot = null;
         }
+        if (this.multiDragActive) {
+            for (const [idx, point] of this.multiDragStartScreenmap) this.screenmap_pts[idx] = [...point];
+            for (const [idx, point] of this.multiDragStartRaw) this.rawPts[idx] = [...point];
+            this.multiDragActive = false;
+            this.multiDragStartScreenmap = new Map();
+            this.multiDragStartRaw = new Map();
+            this.multiDragLastSdx = 0;
+            this.multiDragLastSdy = 0;
+        }
         if (this.isDragging) {
+            if (this.selectedIdx >= 0) {
+                if (this.dragStartScreenmapPt) this.screenmap_pts[this.selectedIdx] = [...this.dragStartScreenmapPt];
+                if (this.dragStartRawPt) this.rawPts[this.selectedIdx] = [...this.dragStartRawPt];
+            }
             this.isDragging = false;
             this.altQuasimode = false;
         }
         if (this.isPanning) {
+            this.camPanX = this.panStartCamX;
+            this.camPanY = this.panStartCamY;
             this.isPanning = false;
         }
         if (this.gizmoActive) {
+            const ds = this.gizmoDragStart;
+            if (ds) {
+                this.writeScale(this.dom_txt_scale, ds.scale);
+                this.writeScale(this.dom_txt_scale_x, ds.scaleX);
+                this.writeScale(this.dom_txt_scale_y, ds.scaleY);
+                this.dom_txt_rotate.value = String(ds.rotate);
+                this.dom_txt_translate_x.value = String(ds.translateX);
+                this.dom_txt_translate_y.value = String(ds.translateY);
+            }
             this.gizmoActive = null;
             this.gizmoDragStart = null;
         }
         if (this.rulerDrag) {
+            const ds = this.rulerDragStart;
+            const ruler = ds ? this.rulers[this.rulerDrag.idx] : null;
+            if (ruler && ds) {
+                ruler.ax = ds.ax; ruler.ay = ds.ay;
+                ruler.bx = ds.bx; ruler.by = ds.by;
+            }
             this.rulerDrag = null;
             this.rulerDragStart = null;
+        }
+        if (this.bgGizmoActive && this.bgGizmoDragStart) {
+            const ds = this.bgGizmoDragStart;
+            this.dom_txt_image_scale.value = String(ds.scale);
+            this.dom_txt_image_rotate.value = String(ds.rotate);
+            this.dom_txt_image_tx.value = String(ds.tx);
+            this.dom_txt_image_ty.value = String(ds.ty);
+            this.applyBgImageTransform();
+            this.bgGizmoActive = null;
+            this.bgGizmoDragStart = null;
         }
         this._oc().style.cursor = 'default';
         this.setNeedsGeometryUpdate();
@@ -1216,8 +1377,19 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
     if (!this.stripInfo) return;
     const canvasPoints = this.lastTransformedPts.map((point) => this.toCanvasCoords(point[0], point[1]));
     const hits = stripsIntersectingCanvasRect(this.stripInfo.strips, canvasPoints, this.marqueeStartCx, this.marqueeStartCy, this.marqueeCurCx, this.marqueeCurCy);
-    const next = new Set(this.groupMarqueeBaseSelection);
-    for (const idx of hits) next.add(idx);
+    let next: Set<number>;
+    if (this.groupMarqueeMode === 'replace') {
+        next = hits;
+    } else if (this.groupMarqueeMode === 'add') {
+        next = new Set(this.groupMarqueeBaseSelection);
+        for (const idx of hits) next.add(idx);
+    } else {
+        next = new Set(this.groupMarqueeBaseSelection);
+        for (const idx of hits) {
+            if (next.has(idx)) next.delete(idx);
+            else next.add(idx);
+        }
+    }
     this.selection.selectOnlyStrip(null);
     for (const idx of next) this.selection.addStrip(idx);
 },
@@ -1392,9 +1564,6 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         }, { passive: true, signal });
     },
     onPointerCancel(this: ShapeEditor){
-        this.pendingGroupGesture = null;
-        this.groupMarqueeActive = false;
-        this.groupMarqueeBaseSelection = new Set();
         this._cancelSingleTouchGesture();
     },
     onMouseLeave(this: ShapeEditor){

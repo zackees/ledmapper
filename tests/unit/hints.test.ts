@@ -8,18 +8,18 @@ test('empty state shows discoverability nudge for right-click and I', () => {
     assert.match(t, /press I to insert a panel/);
 });
 
-test('idle (loaded, no selection) shows pan/zoom/select hint', () => {
+test('idle editor explains Select-mode marquee, navigation, group selection, and insert', () => {
     const t = hintTextFor({ empty: false, selectedStripName: null });
-    assert.match(t, /Drag canvas: pan/);
-    assert.match(t, /R-drag: zoom/);
+    assert.match(t, /L-drag: group marquee/);
+    assert.match(t, /Space\+drag: pan/);
+    assert.match(t, /wheel: zoom/);
     assert.match(t, /click group: select/);
     assert.match(t, /I: insert/);
-    assert.match(t, /Ctrl\+drag: group marquee/);
 });
 
 test('strip selected explains explicit point editing and group movement', () => {
     const t = hintTextFor({ empty: false, selectedStripName: 'strip1' });
-    assert.match(t, /Drag selected group: move/);
+    assert.match(t, /R-drag|Shift\+drag/);
     assert.match(t, /Shift\+click: add\/remove group/);
     assert.match(t, /double-click LED: edit points/);
     assert.match(t, /rotate handle: rotate selection/);

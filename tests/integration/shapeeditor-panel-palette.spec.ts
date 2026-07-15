@@ -29,24 +29,22 @@ test.describe('Shapeeditor panel palette', () => {
         ).toBe(0);
     }
 
-    function dragSegmentMidpoint(page, firstIdx, secondIdx, dx = 40, dy = 25) {
-        return page.evaluate(([aIdx, bIdx, moveX, moveY]) => {
+    async function dragSegmentMidpoint(page, firstIdx, secondIdx, dx = 40, dy = 25) {
+        const start = await page.evaluate(([aIdx, bIdx]) => {
             const a = window.__shapeeditorDebug.getLedCanvasPos(aIdx);
             const b = window.__shapeeditorDebug.getLedCanvasPos(bIdx);
-            const canvases = document.querySelectorAll('canvas');
-            const overlay = canvases.item(canvases.length - 1);
-            if (!a || !b || !(overlay instanceof HTMLCanvasElement)) return null;
+            if (!a || !b) return null;
             const x = (a.clientX + b.clientX) / 2;
             const y = (a.clientY + b.clientY) / 2;
             const endpointDistance = Math.hypot(a.clientX - x, a.clientY - y);
-            const event = (type, clientX, clientY) => new MouseEvent(type, {
-                clientX, clientY, button: 0, bubbles: true,
-            });
-            overlay.dispatchEvent(event('mousedown', x, y));
-            overlay.dispatchEvent(event('mousemove', x + moveX, y + moveY));
-            overlay.dispatchEvent(event('mouseup', x + moveX, y + moveY));
-            return { endpointDistance };
-        }, [firstIdx, secondIdx, dx, dy]);
+            return { x, y, endpointDistance };
+        }, [firstIdx, secondIdx]);
+        if (!start) return null;
+        await page.mouse.move(start.x, start.y);
+        await page.mouse.down({ button: 'right' });
+        await page.mouse.move(start.x + dx, start.y + dy, { steps: 4 });
+        await page.mouse.up({ button: 'right' });
+        return { endpointDistance: start.endpointDistance };
     }
 
     test('panel palette is visible with catalog buttons', async ({ page }) => {
@@ -140,7 +138,7 @@ test.describe('Shapeeditor panel palette', () => {
         await page.locator('#panel_catalog_buttons [data-catalog-id="ring-24"]').click();
 
         // Panel placement and chain rewiring are mutually exclusive canvas modes.
-        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getMode())).toBe(null);
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getMode())).toBe('select');
 
         const overlay = page.locator('canvas').last();
         const box = await overlay.boundingBox();
@@ -149,7 +147,7 @@ test.describe('Shapeeditor panel palette', () => {
         await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripCount())).toBe(2);
 
         const before = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
-        const moved = await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(64, 30, 20, {}));
+        const moved = await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(64, 30, 20, { button: 2 }));
         expect(moved).toBe(true);
         const after = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
         expect(after[0][0]).not.toBeCloseTo(before[0][0], 6);
@@ -205,6 +203,10 @@ test.describe('Shapeeditor panel palette', () => {
         // deterministic LED tie-breaking rather than the stroke resolver.
         expect(topmostDrag.endpointDistance).toBeLessThan(10);
         expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(originalLower);
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1))).toEqual(originalUpper);
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips())).toEqual([1]);
+
+        await dragSegmentMidpoint(page, 0, 1);
         expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1))).not.toEqual(originalUpper);
 
         await page.keyboard.press('Control+z');

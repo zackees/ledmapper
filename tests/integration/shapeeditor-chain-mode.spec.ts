@@ -13,7 +13,7 @@ test.describe('Shapeeditor chain/reorder canvas modes (issue #24, Phase 3)', () 
     });
 
     async function freshEditor(page) {
-        await page.goto('/shapeeditor/');
+        await page.goto('/create');
         await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10000 });
         await page.waitForFunction(() => !!window.__shapeeditorDebug, null, { timeout: 10000 });
         await page.locator('#btn_new').evaluate((el) => el.click());
@@ -54,7 +54,7 @@ test.describe('Shapeeditor chain/reorder canvas modes (issue #24, Phase 3)', () 
         await expect(page.locator('.canvas-dim')).toHaveCount(1);
 
         await page.keyboard.press('Escape');
-        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getMode())).toBe(null);
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getMode())).toBe('select');
         await expect(reorderBtn).toHaveAttribute('aria-pressed', 'false');
         await expect(page.locator('.canvas-dim')).toHaveCount(0);
 
@@ -62,7 +62,7 @@ test.describe('Shapeeditor chain/reorder canvas modes (issue #24, Phase 3)', () 
         await chainBtn.click();
         await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getMode())).toBe('chain');
         await chainBtn.click();
-        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getMode())).toBe(null);
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getMode())).toBe('select');
     });
 
     test('Reorder mode move arrows reorder within pin; undo restores', async ({ page }) => {
@@ -148,9 +148,59 @@ test.describe('Shapeeditor chain/reorder canvas modes (issue #24, Phase 3)', () 
 
         // Outside Chain mode the same drag moves the strip (control case).
         await page.evaluate(() => window.__shapeeditorDebug.setMode(null));
-        await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(0, 60, 60));
+        await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
+        await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(0, 60, 60, { button: 2 }));
         const moved = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
         expect(moved).not.toEqual(before);
+    });
+
+    test('unexpected pointer capture loss cancels an active connector drag', async ({ page }) => {
+        await freshEditor(page);
+        await placeThree(page);
+        await page.locator('#strips_btn_chain').click();
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getChainGeom().connectors.length)).toBe(2);
+        const undoBefore = await page.evaluate(() => window.__shapeeditorDebug.getUndoStack().length);
+        const namesBefore = await page.evaluate(() => window.__shapeeditorDebug.getStripNames());
+
+        const arrow = await page.evaluate(() => {
+            const canvas = document.querySelector<HTMLCanvasElement>('.shapeeditor-overlay-canvas');
+            const connector = window.__shapeeditorDebug.getChainGeom().connectors[0];
+            if (!canvas || !connector) throw new Error('chain connector canvas geometry unavailable');
+            const rect = canvas.getBoundingClientRect();
+            const canvasWidth = canvas.width / window.devicePixelRatio;
+            const canvasHeight = canvas.height / window.devicePixelRatio;
+            return {
+                clientX: rect.left + connector.x2 / canvasWidth * rect.width,
+                clientY: rect.top + connector.y2 / canvasHeight * rect.height,
+            };
+        });
+        expect(await page.evaluate(({ clientX, clientY }) => (
+            document.elementFromPoint(clientX, clientY)?.classList.contains('shapeeditor-overlay-canvas') ?? false
+        ), arrow)).toBe(true);
+        await page.evaluate(() => {
+            const target = window as typeof window & { __chainPointerId?: number };
+            document.querySelector('.shapeeditor-overlay-canvas')?.addEventListener('pointerdown', (event) => {
+                target.__chainPointerId = (event as PointerEvent).pointerId;
+            }, { once: true });
+        });
+
+        await page.mouse.move(arrow.clientX, arrow.clientY);
+        await page.mouse.down();
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getInteractionState().connectorDragActive)).toBe(true);
+        await page.evaluate(() => {
+            const target = window as typeof window & { __chainPointerId?: number };
+            const canvas = document.querySelector<HTMLCanvasElement>('.shapeeditor-overlay-canvas');
+            if (canvas && target.__chainPointerId !== undefined) {
+                canvas.dispatchEvent(new PointerEvent('lostpointercapture', {
+                    pointerId: target.__chainPointerId,
+                    pointerType: 'mouse',
+                }));
+            }
+        });
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getInteractionState().connectorDragActive)).toBe(false);
+        await page.mouse.up();
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack().length)).toBe(undoBefore);
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getStripNames())).toEqual(namesBefore);
     });
 
     test('right-click on a canvas connector opens the menu; Split pin here splits', async ({ page }) => {

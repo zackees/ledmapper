@@ -23,13 +23,14 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
                     <div>
                         <h3 class="help-overlay-h3">Mouse</h3>
                         <ul class="help-overlay-ul">
-                            <li>Drag canvas: pan</li>
-                            <li>R-drag: zoom</li>
+                            <li>Left drag: select groups with a marquee</li>
+                            <li>Space + left drag or middle drag: pan</li>
+                            <li>Wheel: zoom</li>
                             <li>Click LED: select its strip</li>
-                            <li>Drag LED or strip line: move whole strip</li>
+                            <li>Right drag selected group: move with snapping</li>
+                            <li>Shift + left drag selected group: move freely</li>
                             <li>Double-click LED: enter point-edit, then drag one LED</li>
                             <li>Double-click LED: enter point-edit</li>
-                            <li>Drag inside box: move selection</li>
                             <li>Corner/edge/rotate handles: scale &amp; rotate layout</li>
                             <li>Shift + click edge: insert between</li>
                             <li>Ctrl + click: extend (append LED)</li>
@@ -42,6 +43,8 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
                         <h3 class="help-overlay-h3">Keyboard</h3>
                         <ul class="help-overlay-ul">
                             <li><b>I</b> — Insert panel</li>
+                            <li><b>V</b> — Select mode</li>
+                            <li><b>Space</b> — Hold to pan with left drag</li>
                             <li><b>Ctrl+V</b> — Paste screenmap</li>
                             <li><b>?</b> / <b>F1</b> — This help</li>
                             <li><b>Ctrl+Z</b> / <b>Ctrl+Y</b> — Undo / Redo</li>
@@ -120,7 +123,7 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
         if (safeStorage.get('lm:shapeeditor-helpDismissed') !== '1') return;
         this._gestureNoticeShown = true;
         safeStorage.set('lm:shapeeditor-gestureNotice', '1');
-        void this._toastInfo('Selected group: drag to move it • double-click an LED to edit points');
+        void this._toastInfo('Selected group: right-drag or Shift+drag to move • double-click an LED to edit points');
     },
     _maybeAutoOpenHelpOnLaunch(this: ShapeEditor){
 
@@ -133,7 +136,7 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
         // "? Help" button in the hint strip.
         setTimeout(() => {
             if (this.signal.aborted) return;
-            void this._toastInfo('Click an LED to select · drag to move · press ? for all shortcuts');
+            void this._toastInfo('Click a group to select · left-drag to marquee · press ? for all shortcuts');
         }, 400);
     },
     _currentHintState(this: ShapeEditor){
