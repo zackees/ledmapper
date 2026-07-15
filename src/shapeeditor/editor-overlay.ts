@@ -105,14 +105,10 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
     _setOverlayCollapsed(this: ShapeEditor, collapsed: boolean): void{
     this.overlayCollapsed = collapsed;
     this.dom_transform_overlay.classList.toggle('collapsed', collapsed);
-    this.mainEl.classList.toggle('tools-collapsed', collapsed);
     const expanded = collapsed ? 'false' : 'true';
     this.dom_btn_overlay_collapse.setAttribute('aria-expanded', expanded);
     this.dom_btn_overlay_expand.setAttribute('aria-expanded', expanded);
     safeStorage.set('shapeeditor.overlayCollapsed', collapsed ? '1' : '0');
-    requestAnimationFrame(() => {
-        if (!this.signal.aborted) this.handleResize();
-    });
 },
     drawOverlay(this: ShapeEditor){
 

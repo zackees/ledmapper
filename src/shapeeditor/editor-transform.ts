@@ -3,6 +3,14 @@ import type { ShapeEditor } from './shapeeditor-class';
 import { gfxColors } from "../ui/theme";
 import type { GizmoHandle } from "./shapeeditor-types";
 
+interface FitViewport {
+    width: number;
+    height: number;
+    centerOffsetX: number;
+    centerOffsetY: number;
+    excludedLeft: number;
+}
+
 export interface EditorTransformMethods {
     resetTransforms: () => void;
     clampScale: (v: number | string) => number;
@@ -16,6 +24,7 @@ export interface EditorTransformMethods {
     getTransformValue: (control: string) => number;
     setTransformValue: (control: string, value: number) => void;
     getCanvasSize: () => { width: number; height: number };
+    getFitViewport: () => FitViewport;
     getFitSize: () => { width: number; height: number };
     getCurrentTransform: () => { sX: number; sY: number; cosR: number; sinR: number; tx: number; ty: number };
     canvasDeltaToScreenmapDelta: (dx: number, dy: number) => [number, number];
@@ -141,10 +150,41 @@ export const editorTransformMethods: EditorTransformMethods & ThisType<ShapeEdit
     },
     getFitSize(this: ShapeEditor){
 
+        const { width, height } = this.getFitViewport();
+        return { width, height };
+    },
+    getFitViewport(this: ShapeEditor): FitViewport{
+
         const { width, height } = this.getCanvasSize();
+        let excludedLeft = 0;
+        const overlay = this.dom_transform_overlay;
+        const canvasViewport = this.wrapper;
+        if (overlay.isConnected && canvasViewport?.isConnected) {
+            const style = getComputedStyle(overlay);
+            // Mobile reuses this element as a fixed modal sheet. Only the
+            // desktop absolute overlay participates in initial fit exclusion.
+            if (style.position === 'absolute' && style.display !== 'none') {
+                const canvasRect = canvasViewport.getBoundingClientRect();
+                const overlayRect = overlay.getBoundingClientRect();
+                const overlapsCanvas = overlayRect.right > canvasRect.left
+                    && overlayRect.left < canvasRect.right
+                    && overlayRect.bottom > canvasRect.top
+                    && overlayRect.top < canvasRect.bottom;
+                if (overlapsCanvas && canvasRect.width > 0) {
+                    const canvasUnitsPerCssPixel = width / canvasRect.width;
+                    const overlayRight = (overlayRect.right - canvasRect.left) * canvasUnitsPerCssPixel;
+                    const gutter = 12 * canvasUnitsPerCssPixel;
+                    excludedLeft = Math.max(0, Math.min(width - 1, overlayRight + gutter));
+                }
+            }
+        }
+        const usableWidth = Math.max(1, width - excludedLeft);
         return {
-            width: Math.max(1, Math.floor(width * 0.86)),
+            width: Math.max(1, Math.floor(usableWidth * 0.86)),
             height: Math.max(1, Math.floor(height * 0.78)),
+            centerOffsetX: excludedLeft / 2,
+            centerOffsetY: 0,
+            excludedLeft,
         };
     },
     getCurrentTransform(this: ShapeEditor): { sX: number; sY: number; cosR: number; sinR: number; tx: number; ty: number }{

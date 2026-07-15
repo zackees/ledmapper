@@ -10,8 +10,8 @@ function map() {
     } });
 }
 
-async function open(page: Page, width = 1280) {
-    await page.setViewportSize({ width, height: 720 });
+async function open(page: Page, width = 1280, height = 720) {
+    await page.setViewportSize({ width, height });
     await page.goto('/');
     await page.evaluate((json) => {
         localStorage.setItem('lm:screenmap', json);
@@ -22,6 +22,14 @@ async function open(page: Page, width = 1280) {
     await page.goto('/create');
     await page.waitForFunction(() => !!window.__shapeeditorDebug);
     await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getLedCanvasPos(0) !== null)).toBe(true);
+}
+
+async function openEmpty(page: Page, width = 1280, height = 720) {
+    await open(page, width, height);
+    // New is intentionally hidden in the desktop header flow; invoke its real
+    // click handler so the rest of the first-panel flow uses visible controls.
+    await page.locator('#btn_new').evaluate((element: HTMLElement) => { element.click(); });
+    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripCount())).toBe(0);
 }
 
 async function led(page: Page, index: number) {
@@ -77,7 +85,7 @@ test.afterEach(async ({ page }) => {
     } catch { /* page may already be closed */ }
 });
 
-test('Select is the default explicit editor mode and desktop tools do not cover the canvas', async ({ page }) => {
+test('Select is default and desktop tools float over a full-width stable canvas without hiding fitted controls', async ({ page }) => {
     await open(page);
     const select = page.locator('#strips_btn_select');
     await expect(select).toBeVisible();
@@ -86,25 +94,136 @@ test('Select is the default explicit editor mode and desktop tools do not cover 
 
     const panel = await page.locator('#transform-overlay').boundingBox();
     const canvas = await page.locator('.shapeeditor-overlay-canvas').boundingBox();
+    const workspace = await page.locator('.shapeeditor-main').boundingBox();
     expect(panel).not.toBeNull();
     expect(canvas).not.toBeNull();
+    expect(workspace).not.toBeNull();
+    expect(canvas!.x).toBeCloseTo(workspace!.x, 0);
+    expect(canvas!.y).toBeCloseTo(workspace!.y, 0);
+    expect(canvas!.width).toBeCloseTo(workspace!.width, 0);
+    expect(canvas!.height).toBeCloseTo(workspace!.height, 0);
     const intersects = panel!.x < canvas!.x + canvas!.width
         && panel!.x + panel!.width > canvas!.x
         && panel!.y < canvas!.y + canvas!.height
         && panel!.y + panel!.height > canvas!.y;
-    expect(intersects).toBe(false);
-    await led(page, 0);
-    await led(page, 4);
-    await led(page, 8);
+    expect(intersects).toBe(true);
+
+    await expect.poll(() => page.locator('#transform-overlay').evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity)))
+        .toBeLessThan(1);
+    await page.locator('#transform-overlay').hover();
+    await expect.poll(() => page.locator('#transform-overlay').evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity)))
+        .toBe(1);
+    await page.mouse.move(canvas!.x + canvas!.width - 10, canvas!.y + canvas!.height - 10);
+    await page.locator('#btn_overlay_collapse').focus();
+    await expect.poll(() => page.locator('#transform-overlay').evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity)))
+        .toBe(1);
+
+    const fittedPositions = await Promise.all(Array.from({ length: 10 }, (_, idx) => led(page, idx)));
+    for (const pos of fittedPositions) {
+        const covered = pos.clientX >= panel!.x && pos.clientX <= panel!.x + panel!.width
+            && pos.clientY >= panel!.y && pos.clientY <= panel!.y + panel!.height;
+        expect(covered, 'initially fitted LED must stay outside the tools overlay').toBe(false);
+    }
+
+    await page.mouse.click(fittedPositions[0]!.clientX, fittedPositions[0]!.clientY);
+    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripRotateVisualState?.()?.handle ?? null)).not.toBeNull();
+    const rotateHandle = await page.evaluate(() => {
+        const canvasElement = document.querySelector<HTMLCanvasElement>('.shapeeditor-overlay-canvas');
+        const handle = window.__shapeeditorDebug.getStripRotateVisualState?.()?.handle;
+        if (!canvasElement || !handle) return null;
+        const rect = canvasElement.getBoundingClientRect();
+        return {
+            clientX: rect.left + handle.handleX / (canvasElement.width / devicePixelRatio) * rect.width,
+            clientY: rect.top + handle.handleY / (canvasElement.height / devicePixelRatio) * rect.height,
+        };
+    });
+    expect(rotateHandle).not.toBeNull();
+    const handleCovered = rotateHandle!.clientX >= panel!.x && rotateHandle!.clientX <= panel!.x + panel!.width
+        && rotateHandle!.clientY >= panel!.y && rotateHandle!.clientY <= panel!.y + panel!.height;
+    expect(handleCovered, 'initial rotation handle must stay outside the tools overlay').toBe(false);
+    await expectCanvasTarget(page, rotateHandle!);
 
     const pointsBefore = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
+    const cameraBefore = await page.evaluate(() => ({
+        pan: window.__shapeeditorDebug.getCamPan(),
+        zoom: window.__shapeeditorDebug.getCamZoom(),
+    }));
     await page.locator('#btn_overlay_collapse').click();
-    await expect.poll(async () => (await page.locator('.shapeeditor-overlay-canvas').boundingBox())?.width ?? 0)
-        .toBeGreaterThan(canvas!.width);
+    const collapsedCanvas = await page.locator('.shapeeditor-overlay-canvas').boundingBox();
+    expect(collapsedCanvas).not.toBeNull();
+    expect(collapsedCanvas!.x).toBeCloseTo(canvas!.x, 0);
+    expect(collapsedCanvas!.y).toBeCloseTo(canvas!.y, 0);
+    expect(collapsedCanvas!.width).toBeCloseTo(canvas!.width, 0);
+    expect(collapsedCanvas!.height).toBeCloseTo(canvas!.height, 0);
+    const collapsedPositions = await Promise.all(Array.from({ length: 10 }, (_, idx) => led(page, idx)));
+    for (let idx = 0; idx < fittedPositions.length; idx++) {
+        expect(collapsedPositions[idx]!.clientX).toBeCloseTo(fittedPositions[idx]!.clientX, 0);
+        expect(collapsedPositions[idx]!.clientY).toBeCloseTo(fittedPositions[idx]!.clientY, 0);
+    }
     await page.locator('#btn_overlay_expand').click();
-    await expect.poll(async () => (await page.locator('.shapeeditor-overlay-canvas').boundingBox())?.width ?? 0)
-        .toBeLessThan(canvas!.width + 5);
+    const expandedCanvas = await page.locator('.shapeeditor-overlay-canvas').boundingBox();
+    expect(expandedCanvas).not.toBeNull();
+    expect(expandedCanvas!.x).toBeCloseTo(canvas!.x, 0);
+    expect(expandedCanvas!.y).toBeCloseTo(canvas!.y, 0);
+    expect(expandedCanvas!.width).toBeCloseTo(canvas!.width, 0);
+    expect(expandedCanvas!.height).toBeCloseTo(canvas!.height, 0);
+    const expandedPositions = await Promise.all(Array.from({ length: 10 }, (_, idx) => led(page, idx)));
+    for (let idx = 0; idx < fittedPositions.length; idx++) {
+        expect(expandedPositions[idx]!.clientX).toBeCloseTo(fittedPositions[idx]!.clientX, 0);
+        expect(expandedPositions[idx]!.clientY).toBeCloseTo(fittedPositions[idx]!.clientY, 0);
+    }
     expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(pointsBefore);
+    expect(await page.evaluate(() => ({
+        pan: window.__shapeeditorDebug.getCamPan(),
+        zoom: window.__shapeeditorDebug.getCamZoom(),
+    }))).toEqual(cameraBefore);
+});
+
+test('overlay-aware initial fit remains unobstructed at a compact desktop viewport', async ({ page }) => {
+    await open(page, 1024, 768);
+    const panel = await page.locator('#transform-overlay').boundingBox();
+    expect(panel).not.toBeNull();
+    const fittedPositions = await Promise.all(Array.from({ length: 10 }, (_, idx) => led(page, idx)));
+    for (const pos of fittedPositions) {
+        const covered = pos.clientX >= panel!.x && pos.clientX <= panel!.x + panel!.width
+            && pos.clientY >= panel!.y && pos.clientY <= panel!.y + panel!.height;
+        expect(covered).toBe(false);
+    }
+});
+
+test('the first panel created through visible controls stays in the usable canvas beside the overlay', async ({ page }) => {
+    await openEmpty(page);
+    await page.locator('#panel_palette').evaluate((element: HTMLDetailsElement) => { element.open = true; });
+    const ringButton = page.locator('#panel_catalog_buttons [data-catalog-id="ring-16"]');
+    await ringButton.scrollIntoViewIfNeeded();
+    await ringButton.click();
+    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getPlacingMode())).toBe('ring-16');
+
+    const panel = await page.locator('#transform-overlay').boundingBox();
+    const canvas = await page.locator('.shapeeditor-overlay-canvas').boundingBox();
+    expect(panel).not.toBeNull();
+    expect(canvas).not.toBeNull();
+    const placement = {
+        clientX: Math.min(canvas!.x + canvas!.width - 120, panel!.x + panel!.width + 180),
+        clientY: canvas!.y + canvas!.height * 0.55,
+    };
+    await expectCanvasTarget(page, placement);
+    await page.mouse.click(placement.clientX, placement.clientY);
+    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripCount())).toBe(1);
+
+    const positions = await Promise.all(Array.from({ length: 16 }, (_, idx) => led(page, idx)));
+    for (const pos of positions) {
+        const covered = pos.clientX >= panel!.x && pos.clientX <= panel!.x + panel!.width
+            && pos.clientY >= panel!.y && pos.clientY <= panel!.y + panel!.height;
+        expect(covered, 'newly created LED must stay outside the tools overlay').toBe(false);
+    }
+    const rotation = await page.evaluate(() => window.__shapeeditorDebug.getStripRotateVisualState?.()?.handle ?? null);
+    expect(rotation).not.toBeNull();
+    const rotationTarget = { clientX: rotation!.clientHandleX, clientY: rotation!.clientHandleY };
+    const handleCovered = rotationTarget.clientX >= panel!.x && rotationTarget.clientX <= panel!.x + panel!.width
+        && rotationTarget.clientY >= panel!.y && rotationTarget.clientY <= panel!.y + panel!.height;
+    expect(handleCovered, 'newly created rotation handle must stay outside the tools overlay').toBe(false);
+    await expectCanvasTarget(page, rotationTarget);
 });
 
 test('real left click selects and plain left drag performs group marquee without panning', async ({ page }) => {
@@ -125,7 +244,7 @@ test('real left click selects and plain left drag performs group marquee without
     expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).toEqual(beforePan);
 });
 
-test('right drag translates selected groups without zooming and Shift-left drag is free translation', async ({ page }) => {
+test('right drag translates selected groups without zooming', async ({ page }) => {
     await open(page);
     const a = await led(page, 0);
     await page.mouse.click(a.clientX, a.clientY);
@@ -148,10 +267,28 @@ test('right drag translates selected groups without zooming and Shift-left drag 
     await page.keyboard.press('Control+Shift+z');
     await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(afterRight);
     await page.keyboard.press('Control+z');
+});
 
+test('Shift-left drag is free translation for a selected group', async ({ page }) => {
+    await open(page);
     const refreshed = await led(page, 0);
+    await page.mouse.click(refreshed.clientX, refreshed.clientY);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips())).toEqual([0]);
+    const before = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
     await page.keyboard.down('Shift');
-    await drag(page, refreshed, 24, -16);
+    await expectCanvasTarget(page, refreshed);
+    await expectCanvasTarget(page, { clientX: refreshed.clientX + 24, clientY: refreshed.clientY - 16 });
+    await page.mouse.move(refreshed.clientX, refreshed.clientY);
+    await expect(page.locator('.shapeeditor-overlay-canvas')).toHaveCSS('cursor', 'grab');
+    await page.mouse.down();
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getPointerGestureState())).toMatchObject({
+        pending: { kind: 'translate', freeTranslate: true },
+        stripDragActive: false,
+    });
+    await page.mouse.move(refreshed.clientX + 24, refreshed.clientY - 16, { steps: 4 });
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getInteractionState().stripDragActive)).toBe(true);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).not.toEqual(before);
+    await page.mouse.up();
     await page.keyboard.up('Shift');
     expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).not.toEqual(before);
 });

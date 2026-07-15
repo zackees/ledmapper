@@ -392,8 +392,20 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             }
         }
 
+        // Shift + left drag on a selected group is an explicit translation
+        // gesture. Let that direct-manipulation target win if a LED happens to
+        // overlap one of the screenmap-wide gizmo handles after fitting.
+        // The selected group's own rotation handle was already checked above.
+        const shiftTranslateHit = e.shiftKey
+            && this.editorMode === 'select'
+            && this.pointEditStripIdx === null
+            ? this._resolveCoarseStripHit(cx, cy)
+            : null;
+        const shiftTranslatesSelectedGroup = shiftTranslateHit !== null
+            && this.selection.isStripSelected(shiftTranslateHit.stripIdx);
+
         // Priority 1: Gizmo handle (corner/edge/rotation)
-        const gizmoHit = this.hitTestGizmo(cx, cy);
+        const gizmoHit = shiftTranslatesSelectedGroup ? null : this.hitTestGizmo(cx, cy);
         if (gizmoHit && gizmoHit !== 'translate') {
             this.gizmoActive = gizmoHit;
             const handles = this.computeGizmoHandles(this.ptsBBox);
@@ -414,7 +426,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         // Select mode owns coarse group gestures. Point editing and touch keep
         // their established direct-manipulation paths isolated below.
         if (this.editorMode === 'select' && this.pointEditStripIdx === null) {
-            const hit = this._resolveCoarseStripHit(cx, cy);
+            const hit = shiftTranslateHit ?? this._resolveCoarseStripHit(cx, cy);
             if (this.touchMode === 'single') {
                 if (hit) {
                     this.groupGestureSelectionSnapshot = new Set(this.selection.getSelectedStripIdxs());
@@ -935,9 +947,17 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             return;
         }
 
+        const shiftTranslateHover = e.shiftKey
+            && this.editorMode === 'select'
+            && this.pointEditStripIdx === null
+            ? this._resolveCoarseStripHit(cx, cy)
+            : null;
+        const shiftHoversSelectedGroup = shiftTranslateHover !== null
+            && this.selection.isStripSelected(shiftTranslateHover.stripIdx);
+
         // Gizmo hover detection
         const prevGizmoHover = this.gizmoHover;
-        this.gizmoHover = this.hitTestGizmo(cx, cy);
+        this.gizmoHover = shiftHoversSelectedGroup ? null : this.hitTestGizmo(cx, cy);
         if (this.gizmoHover !== prevGizmoHover) this.setNeedsRender();
         const hoveringMapOrGizmo = pointerInScreenmapObb || !!this.gizmoHover;
         if (this.isHovering !== hoveringMapOrGizmo) {
@@ -956,6 +976,13 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
 
         // Ruler hover takes top cursor priority
         if (rulerHoverHit) return;
+
+        if (shiftHoversSelectedGroup) {
+            this._oc().style.cursor = 'grab';
+            this.tooltipLedIdx = -1;
+            this._tooltip().style.opacity = '0';
+            return;
+        }
 
         // Gizmo handle hover takes cursor priority
         if (this.gizmoHover && this.gizmoHover !== 'translate') {
