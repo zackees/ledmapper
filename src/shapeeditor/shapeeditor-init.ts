@@ -376,6 +376,7 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
         getPointerGestureState: () => ({
             rightButtonDown: this.rightButtonDown,
             pending: this.pendingGroupGesture ? { ...this.pendingGroupGesture } : null,
+            pendingRightPan: this.pendingRightPan !== null,
             stripDragActive: this.stripDragActive,
         }),
         // Drive a synthetic drag from (flatIdx) by (dxClient, dyClient) client px.
@@ -622,6 +623,7 @@ registerDebugState('shapeeditor', {
         this.rightClickMoved = false;
         this.rightStartClientX = 0;
         this.rightStartClientY = 0;
+        this.pendingRightPan = null;
         this.spacePanHeld = false;
         this.gizmoActive = null;
         this.gizmoHover = null;
@@ -1003,6 +1005,7 @@ window.addEventListener('keydown', (e) => {
         // Escape: cancel panel placement, dismiss bg delete confirm, exit point-edit, or deselect
         if (e.key === 'Escape') {
             const hasActiveCanvasGesture = this.pendingGroupGesture !== null ||
+                this.pendingRightPan !== null ||
                 this.groupMarqueeActive || this.stripDragActive || this.stripRotateActive ||
                 this.isPanning || this.isDragging || this.multiDragActive ||
                 this.marqueeActive || this._pendingMarquee !== null ||

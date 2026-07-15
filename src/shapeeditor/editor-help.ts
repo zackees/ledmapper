@@ -24,6 +24,7 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
                         <h3 class="help-overlay-h3">Mouse</h3>
                         <ul class="help-overlay-ul">
                             <li>Left drag: select groups with a marquee</li>
+                            <li>Right drag empty space: pan</li>
                             <li>Space + left drag or middle drag: pan</li>
                             <li>Wheel: zoom</li>
                             <li>Click LED: select its strip</li>

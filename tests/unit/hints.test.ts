@@ -11,7 +11,7 @@ test('empty state shows discoverability nudge for right-click and I', () => {
 test('idle editor explains Select-mode marquee, navigation, group selection, and insert', () => {
     const t = hintTextFor({ empty: false, selectedStripName: null });
     assert.match(t, /L-drag: group marquee/);
-    assert.match(t, /Space\+drag: pan/);
+    assert.match(t, /R-drag empty \/ Space\+drag: pan/);
     assert.match(t, /wheel: zoom/);
     assert.match(t, /click group: select/);
     assert.match(t, /I: insert/);
@@ -20,6 +20,7 @@ test('idle editor explains Select-mode marquee, navigation, group selection, and
 test('strip selected explains explicit point editing and group movement', () => {
     const t = hintTextFor({ empty: false, selectedStripName: 'strip1' });
     assert.match(t, /R-drag|Shift\+drag/);
+    assert.match(t, /R-drag empty: pan/);
     assert.match(t, /Shift\+click: add\/remove group/);
     assert.match(t, /double-click LED: edit points/);
     assert.match(t, /rotate handle: rotate selection/);
@@ -60,6 +61,7 @@ test('chain mode shows arrowhead rewire + Esc-to-exit hint', () => {
     assert.match(t, /Chain edit/);
     assert.match(t, /drag an arrowhead to rewire/);
     assert.match(t, /right-click arrow: menu/);
+    assert.match(t, /R-drag empty: pan/);
     assert.match(t, /Esc\/\[Chain\]: exit/);
 });
 
@@ -68,6 +70,7 @@ test('reorder mode shows move arrows + repin hint', () => {
     assert.match(t, /Reorder:/);
     assert.match(t, /move strips within a pin/);
     assert.match(t, /drag grip across pins to repin/);
+    assert.match(t, /R-drag empty: pan/);
     assert.match(t, /Esc\/\[Reorder\]: exit/);
 });
 
