@@ -17,17 +17,11 @@
     min-height: 0;
     overflow: hidden;
     position: relative;
-    display: grid;
-    grid-template-columns: minmax(240px, min(420px, 32vw)) minmax(0, 1fr);
-}
-
-.shapeeditor-main.tools-collapsed {
-    grid-template-columns: auto minmax(0, 1fr);
 }
 
 .shapeeditor-canvas-viewport {
-    position: relative;
-    grid-column: 2;
+    position: absolute;
+    inset: 0;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
@@ -55,30 +49,32 @@
     letter-spacing: -0.01em;
 }
 
-/* ── Transform tools rail ─────────────────────────────────── */
+/* ── Transform tools overlay ──────────────────────────────── */
 
 .transform-overlay {
-    position: relative;
-    grid-column: 1;
-    grid-row: 1;
+    position: absolute;
+    top: 8px;
+    left: 8px;
     z-index: 900;
-    min-width: 0;
-    height: 100%;
+    box-sizing: border-box;
+    width: fit-content;
+    max-width: 420px;
+    max-height: calc(100% - 16px);
     overflow: auto;
-    background: var(--color-lm-surface-1);
+    background: rgba(17, 17, 17, 0.65);
     border: 1px solid var(--color-lm-border);
-    border-radius: 0;
+    border-radius: 8px;
     padding: 6px 10px;
-    width: 100%;
-    max-width: none;
     pointer-events: auto;
-    opacity: 1;
-    transition: width 0.18s ease, background 0.18s ease;
+    opacity: 0.35;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: opacity 0.18s ease, background 0.18s ease;
 }
 
 .transform-overlay:hover,
 .transform-overlay:focus-within {
-    background: var(--color-lm-surface-1);
+    background: rgba(17, 17, 17, 0.95);
     opacity: 1;
 }
 
@@ -137,7 +133,7 @@
     padding: 0;
     width: auto;
     height: auto;
-    align-self: start;
+    overflow: visible;
     background: rgba(17, 17, 17, 0.65);
     opacity: 0.7;
 }

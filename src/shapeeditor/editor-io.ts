@@ -415,13 +415,16 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
 
         // Use the smaller reference size so the screenmap stays the same pixel
         // size regardless of how large the canvas is (leaves room for pan/zoom).
-        const { width: fitW, height: fitH } = this.getFitSize();
+        const fitViewport = this.getFitViewport();
+        const { width: fitW, height: fitH } = fitViewport;
         this.fitScale = computeCenterFitScale(this.rawPts, fitW, fitH, {
             margin: 0.95,
             center: 'origin',
             pixelAlignScale: true,
         });
         this.screenmap_pts = this.center_and_fit(this.screenmap_pts, fitW, fitH);
+        this.camPanX = fitViewport.centerOffsetX;
+        this.camPanY = fitViewport.centerOffsetY;
         this.positionRulerAboveBBox();
         // A loaded map is a document you can export straight away (#292).
         this._refreshSaveEnabled();

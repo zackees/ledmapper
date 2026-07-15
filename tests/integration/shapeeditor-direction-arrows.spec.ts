@@ -63,9 +63,9 @@ test('Create reveals adaptively spaced direction arrows only while hovering the 
     await page.mouse.up({ button: 'right' });
     expect(await page.evaluate(() => window.__shapeeditorDebug?.getCamZoom?.())).toBe(zoomBeforeRightDrag);
 
-    const canvas = await page.locator('.shapeeditor-overlay-canvas').boundingBox();
-    if (!canvas) throw new Error('expected overlay canvas bounds');
-    await page.mouse.move(canvas.x + canvas.width - 4, canvas.y + canvas.height - 4);
+    // Move into the page chrome. After zoom, a full-width Create canvas can
+    // have map geometry beneath any in-canvas corner.
+    await page.mouse.move(4, 4);
     await expect.poll(
         () => page.evaluate(() => window.__lmDebug?.shapeeditor?.getState().directionArrowAlpha),
     ).toBeLessThan(0.05);
