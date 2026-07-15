@@ -23,12 +23,12 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
                     <div>
                         <h3 class="help-overlay-h3">Mouse</h3>
                         <ul class="help-overlay-ul">
-                            <li>Left drag: select groups with a marquee</li>
-                            <li>Right drag empty space: pan</li>
+                            <li>Left drag empty space: select groups with a marquee</li>
+                            <li>Right drag: pan canvas</li>
                             <li>Space + left drag or middle drag: pan</li>
                             <li>Wheel: zoom</li>
                             <li>Click LED: select its strip</li>
-                            <li>Right drag selected group: move with snapping</li>
+                            <li>Left drag group: select and move with snapping</li>
                             <li>Shift + left drag selected group: move freely</li>
                             <li>Double-click LED: enter point-edit, then drag one LED</li>
                             <li>Double-click LED: enter point-edit</li>
@@ -124,7 +124,7 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
         if (safeStorage.get('lm:shapeeditor-helpDismissed') !== '1') return;
         this._gestureNoticeShown = true;
         safeStorage.set('lm:shapeeditor-gestureNotice', '1');
-        void this._toastInfo('Selected group: right-drag or Shift+drag to move • double-click an LED to edit points');
+        void this._toastInfo('Selected group: drag to move • right-drag to pan canvas • double-click an LED to edit points');
     },
     _maybeAutoOpenHelpOnLaunch(this: ShapeEditor){
 
@@ -137,7 +137,7 @@ export const editorHelpMethods: EditorHelpMethods & ThisType<ShapeEditor> = {
         // "? Help" button in the hint strip.
         setTimeout(() => {
             if (this.signal.aborted) return;
-            void this._toastInfo('Click a group to select · left-drag to marquee · press ? for all shortcuts');
+            void this._toastInfo('Drag a group to select and move · drag empty space to marquee · press ? for all shortcuts');
         }, 400);
     },
     _currentHintState(this: ShapeEditor){

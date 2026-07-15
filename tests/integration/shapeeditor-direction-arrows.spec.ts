@@ -57,11 +57,15 @@ test('Create reveals adaptively spaced direction arrows only while hovering the 
     )).toBeGreaterThanOrEqual(countBeforeZoom);
 
     const zoomBeforeRightDrag = await page.evaluate(() => window.__shapeeditorDebug?.getCamZoom?.());
+    const panBeforeRightDrag = await page.evaluate(() => window.__shapeeditorDebug?.getCamPan?.());
+    const pointsBeforeRightDrag = await page.evaluate(() => window.__shapeeditorDebug?.getStripPoints?.(0));
     await page.mouse.move(centerLed.clientX, centerLed.clientY);
     await page.mouse.down({ button: 'right' });
     await page.mouse.move(centerLed.clientX, centerLed.clientY - 120);
     await page.mouse.up({ button: 'right' });
     expect(await page.evaluate(() => window.__shapeeditorDebug?.getCamZoom?.())).toBe(zoomBeforeRightDrag);
+    expect(await page.evaluate(() => window.__shapeeditorDebug?.getCamPan?.())).not.toEqual(panBeforeRightDrag);
+    expect(await page.evaluate(() => window.__shapeeditorDebug?.getStripPoints?.(0))).toEqual(pointsBeforeRightDrag);
 
     // Move into the page chrome. After zoom, a full-width Create canvas can
     // have map geometry beneath any in-canvas corner.

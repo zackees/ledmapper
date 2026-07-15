@@ -149,7 +149,7 @@ test.describe('Shapeeditor chain/reorder canvas modes (issue #24, Phase 3)', () 
         // Outside Chain mode the same drag moves the strip (control case).
         await page.evaluate(() => window.__shapeeditorDebug.setMode(null));
         await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
-        await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(0, 60, 60, { button: 2 }));
+        await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(0, 60, 60));
         const moved = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
         expect(moved).not.toEqual(before);
     });
