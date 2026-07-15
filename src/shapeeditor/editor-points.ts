@@ -194,6 +194,7 @@ export const editorPointsMethods: EditorPointsMethods & ThisType<ShapeEditor> = 
         this.isPanning = false;
         this.rightButtonDown = false;
         this.rightClickMoved = false;
+        this.pendingRightPan = null;
         this.gizmoActive = null;
         this.gizmoHover = null;
         this.gizmoDragStart = null;

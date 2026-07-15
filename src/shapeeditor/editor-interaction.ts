@@ -18,6 +18,7 @@ const STRIP_STROKE_HIT_PX = 10;
 export interface EditorInteractionMethods {
     _clearStripSnapState: () => void;
     _resolveCoarseStripHit: (canvasX: number, canvasY: number) => { stripIdx: number; edgeIdx: number } | null;
+    _isEmptyRightPanTarget: (canvasX: number, canvasY: number) => boolean;
     _startStripDrag: (stripIdx: number, canvasX: number, canvasY: number) => boolean;
     _ledIdxsInCanvasRect: (c1x: number, c1y: number, c2x: number, c2y: number) => Set<number>;
     _updateMarqueeSelection: () => void;
@@ -59,6 +60,20 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         const edge = this.findNearestEdge(canvasX, canvasY);
         if (!edge || edge.distSq > STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) return null;
         return { stripIdx: edge.stripIdx, edgeIdx: edge.idx };
+    },
+    _isEmptyRightPanTarget(this: ShapeEditor, canvasX: number, canvasY: number): boolean{
+        if (this._resolveCoarseStripHit(canvasX, canvasY)) return false;
+        if (this.hitTestStripRotateHandle(canvasX, canvasY)) return false;
+        if (this.hitTestRuler(canvasX, canvasY)) return false;
+        if (this.hitTestGizmo(canvasX, canvasY)) return false;
+        if (this.bgImageMesh && this.hitTestBgGizmo(canvasX, canvasY)) return false;
+        if (this.editorMode === 'chain') {
+            if (this._hitConnectorBody(canvasX, canvasY)) return false;
+            if (this._hitChainArrowhead(canvasX, canvasY)) return false;
+            if (this._hitStartHandle(canvasX, canvasY, -1) !== null) return false;
+            if (this._hitEndHandle(canvasX, canvasY, -1) !== null) return false;
+        }
+        return true;
     },
     onContextMenu(this: ShapeEditor, e: MouseEvent){
 
@@ -183,6 +198,9 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         if (this.placingState) {
             if (e.button === 2) {
                 e.preventDefault();
+                // The browser dispatches contextmenu after this pointerdown.
+                // Suppress that paired event after the placement is gone.
+                this.rightClickMoved = true;
                 this._cancelPlacing();
                 return;
             }
@@ -199,6 +217,9 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         if (this.pasteState) {
             if (e.button === 2) {
                 e.preventDefault();
+                // Keep the cancellation gesture from opening the normal menu
+                // when its subsequent contextmenu event arrives.
+                this.rightClickMoved = true;
                 this._cancelPaste();
                 return;
             }
@@ -234,6 +255,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this.rightClickMoved = false;
             this.rightStartClientX = e.clientX;
             this.rightStartClientY = e.clientY;
+            this.pendingRightPan = null;
             if (this.editorMode === 'select' && this.pointEditStripIdx === null) {
                 const hit = this._resolveCoarseStripHit(cx, cy);
                 if (hit) {
@@ -255,6 +277,16 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
                     this.setNeedsGeometryUpdate();
                     this._oc().style.cursor = 'grab';
                 }
+            }
+            if (!this.pendingGroupGesture && this._isEmptyRightPanTarget(cx, cy)) {
+                this.pendingRightPan = {
+                    canvasX: cx,
+                    canvasY: cy,
+                    clientX: e.clientX,
+                    clientY: e.clientY,
+                    camPanX: this.camPanX,
+                    camPanY: this.camPanY,
+                };
             }
             return;
         }
@@ -647,13 +679,25 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         // Track shift key for rotation snapping
         this.shiftHeld = e.shiftKey;
 
-        // Right drag translates selected groups; an empty/right click remains
-        // eligible for the context menu until it crosses the drag threshold.
+        // Right drag translates selected groups or pans from an explicitly
+        // classified empty target. A stationary right click stays eligible
+        // for the context menu until it crosses the shared CSS-pixel threshold.
         if (this.rightButtonDown) {
             const dx = e.clientX - this.rightStartClientX;
             const dy = e.clientY - this.rightStartClientY;
-            if (dx * dx + dy * dy > 9) this.rightClickMoved = true;
-            if (!this.pendingGroupGesture && !this.stripDragActive) return;
+            const crossedDragThreshold = dx * dx + dy * dy > 9;
+            if (crossedDragThreshold) this.rightClickMoved = true;
+            if (this.pendingRightPan) {
+                if (!crossedDragThreshold) return;
+                const pending = this.pendingRightPan;
+                this.pendingRightPan = null;
+                this.isPanning = true;
+                this.panStartX = pending.canvasX;
+                this.panStartY = pending.canvasY;
+                this.panStartCamX = pending.camPanX;
+                this.panStartCamY = pending.camPanY;
+                this._oc().style.cursor = 'grabbing';
+            } else if (!this.pendingGroupGesture && !this.stripDragActive && !this.isPanning) return;
         }
 
         // Chain-mode connector drag (arrowhead → new downstream target)
@@ -1036,6 +1080,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
 
         if (e.button === 2) {
             this.rightButtonDown = false;
+            this.pendingRightPan = null;
             // rightClickMoved is consumed by onContextMenu
         }
 
@@ -1231,6 +1276,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         if (this.marqueeActive) this._cancelMarquee();
         this._pendingMarquee = null;
         this.pendingGroupGesture = null;
+        this.pendingRightPan = null;
         this.groupMarqueeActive = false;
         this.groupMarqueeBaseSelection = new Set();
         this.groupGestureSelectionSnapshot = null;
@@ -1613,6 +1659,7 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
             this.rightButtonDown = false;
             this.rightClickMoved = false;
         }
+        this.pendingRightPan = null;
         if (this.isDragging && this.selectedIdx >= 0) {
             // Finalize drag on leave
             const newScreenmapPt = [...this.nn(this.screenmap_pts[this.selectedIdx])];

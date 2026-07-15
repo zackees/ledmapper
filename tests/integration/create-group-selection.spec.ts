@@ -49,6 +49,32 @@ async function expectCanvasTarget(page: Page, point: { clientX: number; clientY:
     expect(targetIsCanvas, `(${String(point.clientX)}, ${String(point.clientY)}) must target the canvas`).toBe(true);
 }
 
+async function emptyCanvasPoint(page: Page) {
+    const point = await page.evaluate(() => {
+        const canvas = document.querySelector<HTMLCanvasElement>('.shapeeditor-overlay-canvas');
+        if (!canvas) return null;
+        const rect = canvas.getBoundingClientRect();
+        const candidates = [
+            { clientX: rect.right - 40, clientY: rect.top + 40 },
+            { clientX: rect.right - 40, clientY: rect.bottom - 60 },
+            { clientX: rect.left + rect.width * 0.75, clientY: rect.top + 40 },
+        ];
+        const leds = Array.from({ length: 10 }, (_, idx) => window.__shapeeditorDebug.getLedCanvasPos(idx))
+            .filter((pos): pos is NonNullable<typeof pos> => pos !== null);
+        return candidates.find((candidate) => {
+            const targetsCanvas = document.elementFromPoint(candidate.clientX, candidate.clientY)
+                ?.classList.contains('shapeeditor-overlay-canvas') ?? false;
+            const clearOfLeds = leds.every((ledPos) => Math.hypot(
+                candidate.clientX - ledPos.clientX,
+                candidate.clientY - ledPos.clientY,
+            ) > 60);
+            return targetsCanvas && clearOfLeds;
+        }) ?? null;
+    });
+    expect(point, 'expected an unobstructed empty canvas coordinate').not.toBeNull();
+    return point!;
+}
+
 async function drag(page: Page, start: { clientX: number; clientY: number }, dx: number, dy: number, button: 'left' | 'right' | 'middle' = 'left') {
     await expectCanvasTarget(page, start);
     await expectCanvasTarget(page, { clientX: start.clientX + dx, clientY: start.clientY + dy });
@@ -224,6 +250,24 @@ test('the first panel created through visible controls stays in the usable canva
         && rotationTarget.clientY >= panel!.y && rotationTarget.clientY <= panel!.y + panel!.height;
     expect(handleCovered, 'newly created rotation handle must stay outside the tools overlay').toBe(false);
     await expectCanvasTarget(page, rotationTarget);
+});
+
+test('right-click still cancels panel placement and paste without opening the canvas menu', async ({ page }) => {
+    await open(page);
+    const target = await emptyCanvasPoint(page);
+
+    await page.locator('#panel_palette').evaluate((element: HTMLDetailsElement) => { element.open = true; });
+    await page.locator('#panel_catalog_buttons [data-catalog-id="ring-16"]').click();
+    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getPlacingMode())).toBe('ring-16');
+    await page.mouse.click(target.clientX, target.clientY, { button: 'right' });
+    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getPlacingMode())).toBeNull();
+    await expect(page.locator('.shapeeditor-ctx-menu')).toBeHidden();
+
+    await page.evaluate((json) => { window.__shapeeditorDebug.pasteScreenmapText(json); }, map());
+    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getPasteState())).not.toBeNull();
+    await page.mouse.click(target.clientX, target.clientY, { button: 'right' });
+    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getPasteState())).toBeNull();
+    await expect(page.locator('.shapeeditor-ctx-menu')).toBeHidden();
 });
 
 test('real left click selects and plain left drag performs group marquee without panning', async ({ page }) => {
@@ -416,6 +460,178 @@ test('Escape, pointercancel, and lost capture restore active translation without
     });
     await page.mouse.up({ button: 'right' });
     await expectRestored();
+});
+
+test('right-dragging empty canvas pans without mutating the selected layout', async ({ page }) => {
+    await open(page);
+    const a = await led(page, 0);
+    await page.mouse.click(a.clientX, a.clientY);
+    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips())).toEqual([0]);
+    const start = await emptyCanvasPoint(page);
+    const before = await page.evaluate(() => ({
+        pan: window.__shapeeditorDebug.getCamPan(),
+        zoom: window.__shapeeditorDebug.getCamZoom(),
+        selected: window.__shapeeditorDebug.getSelectedStrips(),
+        points: window.__shapeeditorDebug.getStripPoints(0),
+        undo: window.__shapeeditorDebug.getUndoStack(),
+        dirty: window.__lmDebug.shapeeditor.getState().dirty,
+    }));
+    await resetScreenmapWriteProbe(page);
+
+    await page.mouse.move(start.clientX, start.clientY);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(start.clientX - 70, start.clientY + 35, { steps: 4 });
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getInteractionState().isPanning)).toBe(true);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).not.toEqual(before.pan);
+    await page.mouse.up({ button: 'right' });
+
+    const after = await page.evaluate(() => ({
+        pan: window.__shapeeditorDebug.getCamPan(),
+        zoom: window.__shapeeditorDebug.getCamZoom(),
+        selected: window.__shapeeditorDebug.getSelectedStrips(),
+        points: window.__shapeeditorDebug.getStripPoints(0),
+        undo: window.__shapeeditorDebug.getUndoStack(),
+        dirty: window.__lmDebug.shapeeditor.getState().dirty,
+    }));
+    expect(after.pan).not.toEqual(before.pan);
+    expect(after.zoom).toBe(before.zoom);
+    expect(after.selected).toEqual(before.selected);
+    expect(after.points).toEqual(before.points);
+    expect(after.undo).toEqual(before.undo);
+    expect(after.dirty).toBe(before.dirty);
+    expect(await screenmapWriteCount(page)).toBe(0);
+    await expect(page.locator('.shapeeditor-ctx-menu')).toBeHidden();
+});
+
+test('empty right-pan uses a greater-than-3-CSS-pixel threshold and preserves stationary context clicks', async ({ page }) => {
+    await open(page, 1279);
+    const start = await emptyCanvasPoint(page);
+    const initialPan = await page.evaluate(() => window.__shapeeditorDebug.getCamPan());
+
+    await page.mouse.click(start.clientX, start.clientY, { button: 'right' });
+    await expect(page.locator('.shapeeditor-ctx-menu')).toBeVisible();
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).toEqual(initialPan);
+    await page.keyboard.press('Escape');
+
+    await drag(page, start, -3, 0, 'right');
+    await expect(page.locator('.shapeeditor-ctx-menu')).toBeVisible();
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).toEqual(initialPan);
+    await page.keyboard.press('Escape');
+
+    await page.mouse.move(start.clientX, start.clientY);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(start.clientX - 4, start.clientY);
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getInteractionState().isPanning)).toBe(true);
+    await page.mouse.up({ button: 'right' });
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).not.toEqual(initialPan);
+    await expect(page.locator('.shapeeditor-ctx-menu')).toBeHidden();
+});
+
+test('right-dragging empty canvas pans in Select, Chain, and Reorder modes', async ({ page }) => {
+    await open(page);
+    for (const mode of ['select', 'chain', 'reorder']) {
+        await page.evaluate((nextMode) => { window.__shapeeditorDebug.setMode(nextMode); }, mode);
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getMode())).toBe(mode);
+        const start = await emptyCanvasPoint(page);
+        const beforePan = await page.evaluate(() => window.__shapeeditorDebug.getCamPan());
+        await drag(page, start, -24, 14, 'right');
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).not.toEqual(beforePan);
+        await expect(page.locator('.shapeeditor-ctx-menu')).toBeHidden();
+    }
+});
+
+test('selected rotation handles and Chain connectors are not empty right-pan targets', async ({ page }) => {
+    await open(page);
+    const a = await led(page, 0);
+    await page.mouse.click(a.clientX, a.clientY);
+    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getStripRotateVisualState?.()?.handle ?? null)).not.toBeNull();
+    const rotation = await page.evaluate(() => window.__shapeeditorDebug.getStripRotateVisualState?.()?.handle ?? null);
+    expect(rotation).not.toBeNull();
+    const rotationTarget = { clientX: rotation!.clientHandleX, clientY: rotation!.clientHandleY };
+    await expectCanvasTarget(page, rotationTarget);
+    const beforeRotationPan = await page.evaluate(() => window.__shapeeditorDebug.getCamPan());
+    await drag(page, rotationTarget, 16, 8, 'right');
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).toEqual(beforeRotationPan);
+
+    await page.evaluate(() => { window.__shapeeditorDebug.setMode('chain'); });
+    await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getChainGeom().connectors.length)).toBeGreaterThan(0);
+    const connectorTarget = await page.evaluate(() => {
+        const canvas = document.querySelector<HTMLCanvasElement>('.shapeeditor-overlay-canvas');
+        const connector = window.__shapeeditorDebug.getChainGeom().connectors[0];
+        if (!canvas || !connector) return null;
+        const rect = canvas.getBoundingClientRect();
+        const canvasCssWidth = canvas.width / devicePixelRatio;
+        const canvasCssHeight = canvas.height / devicePixelRatio;
+        return {
+            clientX: rect.left + ((connector.x1 + connector.x2) / 2 / canvasCssWidth) * rect.width,
+            clientY: rect.top + ((connector.y1 + connector.y2) / 2 / canvasCssHeight) * rect.height,
+        };
+    });
+    expect(connectorTarget).not.toBeNull();
+    await expectCanvasTarget(page, connectorTarget!);
+    const beforeConnectorPan = await page.evaluate(() => window.__shapeeditorDebug.getCamPan());
+    await drag(page, connectorTarget!, 16, 8, 'right');
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).toEqual(beforeConnectorPan);
+});
+
+test('Escape, pointercancel, and lost capture restore right-pan; capture permits an outside release', async ({ page }) => {
+    await open(page);
+    const start = await emptyCanvasPoint(page);
+    const originalPan = await page.evaluate(() => window.__shapeeditorDebug.getCamPan());
+
+    const beginPan = async () => {
+        await page.evaluate(() => {
+            const target = window as typeof window & { __activeRightPanPointerId?: number };
+            document.querySelector('.shapeeditor-overlay-canvas')?.addEventListener('pointerdown', (event) => {
+                target.__activeRightPanPointerId = (event as PointerEvent).pointerId;
+            }, { once: true });
+        });
+        await page.mouse.move(start.clientX, start.clientY);
+        await page.mouse.down({ button: 'right' });
+        await page.mouse.move(start.clientX - 36, start.clientY + 20, { steps: 3 });
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getInteractionState().isPanning)).toBe(true);
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).not.toEqual(originalPan);
+    };
+    const releaseAndExpectRestored = async () => {
+        await page.mouse.up({ button: 'right' });
+        await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getCamPan())).toEqual(originalPan);
+        await expect(page.locator('.shapeeditor-ctx-menu')).toBeHidden();
+    };
+
+    await beginPan();
+    await page.keyboard.press('Escape');
+    await releaseAndExpectRestored();
+
+    await beginPan();
+    await page.evaluate(() => {
+        const target = window as typeof window & { __activeRightPanPointerId?: number };
+        const canvas = document.querySelector('.shapeeditor-overlay-canvas');
+        canvas?.dispatchEvent(new PointerEvent('pointercancel', {
+            pointerId: target.__activeRightPanPointerId ?? 1,
+            pointerType: 'mouse',
+            bubbles: true,
+        }));
+    });
+    await releaseAndExpectRestored();
+
+    await beginPan();
+    await page.evaluate(() => {
+        const target = window as typeof window & { __activeRightPanPointerId?: number };
+        const canvas = document.querySelector<HTMLCanvasElement>('.shapeeditor-overlay-canvas');
+        const pointerId = target.__activeRightPanPointerId;
+        if (canvas && pointerId !== undefined && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+    });
+    await releaseAndExpectRestored();
+
+    const canvas = await page.locator('.shapeeditor-overlay-canvas').boundingBox();
+    expect(canvas).not.toBeNull();
+    await page.mouse.move(start.clientX, start.clientY);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(start.clientX - 80, canvas!.y - 8, { steps: 4 });
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getInteractionState().isPanning)).toBe(true);
+    await page.mouse.up({ button: 'right' });
+    expect(await page.evaluate(() => window.__shapeeditorDebug.getCamPan())).not.toEqual(originalPan);
+    await expect(page.locator('.shapeeditor-ctx-menu')).toBeHidden();
 });
 
 test('Space-left and middle drag pan while wheel zooms', async ({ page }) => {

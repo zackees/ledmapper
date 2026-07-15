@@ -45,6 +45,14 @@ export interface PendingGroupGesture {
     toggleOnClick: boolean;
     freeTranslate: boolean;
 }
+export interface PendingRightPan {
+    canvasX: number;
+    canvasY: number;
+    clientX: number;
+    clientY: number;
+    camPanX: number;
+    camPanY: number;
+}
 
 // Prototype bundles are composed into this class through the typed interface below.
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
@@ -245,6 +253,7 @@ export class ShapeEditor {
     declare rightClickMoved: boolean;
     declare rightStartClientX: number;
     declare rightStartClientY: number;
+    declare pendingRightPan: PendingRightPan | null;
     declare spacePanHeld: boolean;
     declare gizmoActive: string | null;
     declare gizmoHover: string | null;

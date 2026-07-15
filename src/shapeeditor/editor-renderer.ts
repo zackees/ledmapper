@@ -244,6 +244,9 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
             }, { signal: this.signal });
             overlayCanvas.addEventListener('pointerleave', (e: PointerEvent) => {
                 if (e.pointerType === 'touch') return;
+                // Pointer capture owns an active gesture even outside the
+                // canvas. Its pointerup/cancel event decides commit/restore.
+                if (activePointerId !== null && overlayCanvas.hasPointerCapture(activePointerId)) return;
                 this.onMouseLeave();
             }, { signal: this.signal });
         } else {
