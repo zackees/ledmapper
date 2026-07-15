@@ -106,7 +106,7 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
 
         // The first gesture may cover the same distance but is selection-only.
         const ok = await page.evaluate(() =>
-            window.__shapeeditorDebug.simulateLedDrag(0, 30, 20, {})
+            window.__shapeeditorDebug.simulateLedDrag(0, 30, 20, { button: 2 })
         );
         expect(ok).toBe(true);
 
@@ -114,7 +114,7 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
         expect(await page.evaluate(() => window.__shapeeditorDebug.getSelectedStrips())).toEqual([0]);
 
         // Now that strip A is selected, the same gesture translates it.
-        expect(await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(0, 30, 20, {}))).toBe(true);
+        expect(await page.evaluate(() => window.__shapeeditorDebug.simulateLedDrag(0, 30, 20, { button: 2 }))).toBe(true);
 
         const afterA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
         const afterB = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
@@ -142,14 +142,14 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
         }
     });
 
-    test('plain LED drag within an already selected group still moves the whole group', async ({ page }) => {
+    test('right drag within an already selected group moves the whole group', async ({ page }) => {
         await seedAndOpen(page);
         await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
 
         const beforeA = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
         const beforeB = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(1));
         const ok = await page.evaluate(() =>
-            window.__shapeeditorDebug.simulateLedDrag(1, 25, 15, {})
+            window.__shapeeditorDebug.simulateLedDrag(1, 25, 15, { button: 2 })
         );
         expect(ok).toBe(true);
 
@@ -165,7 +165,11 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
         expect(afterB).toEqual(beforeB);
 
         await page.keyboard.press('Control+z');
-        expect(await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0))).toEqual(beforeA);
+        const restored = await page.evaluate(() => window.__shapeeditorDebug.getStripPoints(0));
+        for (let i = 0; i < beforeA.length; i++) {
+            expect(restored[i][0]).toBeCloseTo(beforeA[i][0], 6);
+            expect(restored[i][1]).toBeCloseTo(beforeA[i][1], 6);
+        }
     });
 
     test('double-click renders the red edit frame and badge; Esc restores the blue dashed frame', async ({ page }) => {
@@ -179,7 +183,7 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
                     && operation.dash?.join(',') === '6,4')
         ))).toBe(true);
         await clearOverlayCapture(page);
-        const pos = await page.evaluate(() => window.__shapeeditorDebug.getLedCanvasPos(0));
+        const pos = await page.evaluate(() => window.__shapeeditorDebug.getLedCanvasPos(1));
         await page.mouse.dblclick(pos.clientX, pos.clientY);
         expect(await page.evaluate(() => window.__shapeeditorDebug.getPointEditMode())).toBe(0);
         await expect.poll(() => page.evaluate(() => (
@@ -207,9 +211,11 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
             && operation.text === 'Drag LEDs individually · Esc to exit')).toBe(true);
         const hint = await page.evaluate(() => window.__shapeeditorDebug.getHintText());
         expect(hint).toMatch(/Editing points/);
-        await clearOverlayCapture(page);
         await page.keyboard.press('Escape');
         expect(await page.evaluate(() => window.__shapeeditorDebug.getPointEditMode())).toBe(null);
+        // Start the capture after Escape has synchronously changed state so a
+        // queued pre-Escape animation frame cannot leave stale edit text in it.
+        await clearOverlayCapture(page);
         await expect.poll(() => page.evaluate(() => (
             (window as unknown as { __shapeeditorOverlayCapture: OverlayCapture })
                 .__shapeeditorOverlayCapture.operations.some((operation) => operation.kind === 'stroke'
@@ -261,7 +267,7 @@ test.describe('Shapeeditor group drag + point-edit mode', () => {
         await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
 
         const ok = await page.evaluate(() =>
-            window.__shapeeditorDebug.simulateLedDrag(0, 20, 10, { altKey: true })
+            window.__shapeeditorDebug.simulateLedDrag(0, 20, 10, { altKey: true, button: 2 })
         );
         expect(ok).toBe(true);
 

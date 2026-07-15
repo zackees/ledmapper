@@ -10,19 +10,20 @@ test('issue #375: strip drag builds typed snap targets and engages an axis snap'
         localStorage.setItem('lm:screenmap-meta', JSON.stringify({ savedAt: Date.now(), source: 'save', ledCount: 8, stripCount: 2 }));
         localStorage.setItem('lm:shapeeditor-helpDismissed', '1');
     });
-    await page.goto('/shapeeditor/');
+    await page.goto('/create');
     await page.waitForFunction(() => !!window.__shapeeditorDebug);
     await page.waitForFunction(() => window.__shapeeditorDebug.getLedCanvasPos(0) !== null);
 
     const pos = await page.evaluate(() => window.__shapeeditorDebug.getLedCanvasPos(0));
+    await page.evaluate(() => window.__shapeeditorDebug.selectStrip(0));
     await page.mouse.move(pos.clientX, pos.clientY);
-    await page.mouse.down();
-    await page.mouse.move(pos.clientX, pos.clientY + 5);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(pos.clientX, pos.clientY + 12);
 
     const state = await page.evaluate(() => window.__shapeeditorDebug.getStripSnapState());
     expect(state.active).toBe(true);
     expect(state.targetCounts.x + state.targetCounts.y).toBeGreaterThan(0);
     expect(state.targetKinds.x.concat(state.targetKinds.y)).toEqual(expect.arrayContaining(['centroid', 'bbox-edge']));
 
-    await page.mouse.up();
+    await page.mouse.up({ button: 'right' });
 });

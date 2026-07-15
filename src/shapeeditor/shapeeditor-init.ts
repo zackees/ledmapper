@@ -199,7 +199,7 @@ this.selection.setOnChange(() => {
         this._updateHintStrip();
         this._maybeShowGestureNotice();
     });
-        this.editorMode = null;
+        this.editorMode = 'select';
         this.connectorDrag = null;
         this.startHandleDrag = null;
         this._chainGeom = { connectors: [], starts: [], ends: [], crossBadges: [] };
@@ -373,18 +373,24 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
             },
             engagement: this.stripSnapEngagement,
         }),
-        // Drive a synthetic L-drag from (flatIdx) by (dxClient, dyClient) client px.
+        getPointerGestureState: () => ({
+            rightButtonDown: this.rightButtonDown,
+            pending: this.pendingGroupGesture ? { ...this.pendingGroupGesture } : null,
+            stripDragActive: this.stripDragActive,
+        }),
+        // Drive a synthetic drag from (flatIdx) by (dxClient, dyClient) client px.
         simulateLedDrag: (flatIdx: number, dxClient: number, dyClient: number, opts: Record<string, unknown> | null | undefined) => {
             const pos = window.__shapeeditorDebug?.getLedCanvasPos?.(flatIdx) ?? null;
             if (!pos) return false;
             const altKey = Boolean(opts?.altKey);
             const shiftKey = Boolean(opts?.shiftKey);
+            const button = typeof opts?.button === 'number' ? opts.button : 0;
             // Drive the same handlers directly because modern browsers route
             // canvas input through PointerEvents (there is no mouse listener
             // to receive a synthetic MouseEvent in that mode).
-            this._synth('mousedown', pos.clientX, pos.clientY, { altKey, shiftKey });
-            this._synth('mousemove', pos.clientX + dxClient, pos.clientY + dyClient, { altKey, shiftKey });
-            this._synth('mouseup', pos.clientX + dxClient, pos.clientY + dyClient, { altKey, shiftKey });
+            this._synth('mousedown', pos.clientX, pos.clientY, { altKey, shiftKey, button });
+            this._synth('mousemove', pos.clientX + dxClient, pos.clientY + dyClient, { altKey, shiftKey, button });
+            this._synth('mouseup', pos.clientX + dxClient, pos.clientY + dyClient, { altKey, shiftKey, button });
             return true;
         },
         // Synthetic per-strip rotation drag: select strip `i`, then drive
@@ -467,6 +473,13 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
             crossBadges: this._chainGeom.crossBadges.map((b) => ({ up: b.up, down: b.down })),
         }),
         getUndoStack: () => (this.undoStack).map((a) => a.type),
+        getInteractionState: () => ({
+            pendingGroupGesture: this.pendingGroupGesture?.kind ?? null,
+            stripDragActive: this.stripDragActive,
+            groupMarqueeActive: this.groupMarqueeActive,
+            isPanning: this.isPanning,
+            connectorDragActive: this.connectorDrag !== null || this.startHandleDrag !== null,
+        }),
         // Dispatch a real contextmenu event at canvas-internal coords so the
         // connector right-click hit-test path is exercised end-to-end.
         simulateCanvasContextMenu: (canvasX: number, canvasY: number) => {
@@ -548,10 +561,13 @@ registerDebugState('shapeeditor', {
         this.pendingGroupGesture = null;
         this.groupMarqueeActive = false;
         this.groupMarqueeBaseSelection = new Set();
+        this.groupMarqueeMode = 'replace';
+        this.groupGestureSelectionSnapshot = null;
         this.stripDragStartScreenmap = null;
         this.stripDragStartRaw = null;
         this.stripDragLastSdx = 0;
         this.stripDragLastSdy = 0;
+        this.stripDragFreeTranslate = false;
         this.stripSnapStartGeometry = null;
         this.stripSnapTransform = null;
         this.stripSnapTargets = emptyStripSnapTargetSet();
@@ -604,8 +620,9 @@ registerDebugState('shapeeditor', {
         this.panStartCamY = 0;
         this.rightButtonDown = false;
         this.rightClickMoved = false;
-        this.zoomStartY = 0;
-        this.zoomStartLevel = 1;
+        this.rightStartClientX = 0;
+        this.rightStartClientY = 0;
+        this.spacePanHeld = false;
         this.gizmoActive = null;
         this.gizmoHover = null;
         this.gizmoDragStart = null;
@@ -781,10 +798,14 @@ this.dom_btn_redo.addEventListener('click', () => { this.performRedo(); }, { sig
         this.dom_strips_btn_add_pin = this.qe<HTMLElement>('#strips_btn_add_pin');
         this.dom_strips_btn_add_pin.addEventListener('click', () => { this.doAddPin(); }, { signal: this.signal });
 
+        this.dom_strips_btn_select = this.qe<HTMLElement>('#strips_btn_select');
         this.dom_strips_btn_chain = this.qe<HTMLElement>('#strips_btn_chain');
         this.dom_strips_btn_reorder = this.qe<HTMLElement>('#strips_btn_reorder');
+        this.dom_strips_btn_select.addEventListener('click', () => {
+            this.setEditorMode('select');
+        }, { signal: this.signal });
         this.dom_strips_btn_chain.addEventListener('click', () => {
-            this.setEditorMode(this.editorMode === 'chain' ? null : 'chain');
+            this.setEditorMode(this.editorMode === 'chain' ? 'select' : 'chain');
         }, { signal: this.signal });
         // Canvas Chain-mode interactions are desktop-only (§1.11): hide the
         // button on touch-only devices.
@@ -794,7 +815,7 @@ this.dom_btn_redo.addEventListener('click', () => { this.performRedo(); }, { sig
             }
         } catch { /* matchMedia unavailable */ }
         this.dom_strips_btn_reorder.addEventListener('click', () => {
-            this.setEditorMode(this.editorMode === 'reorder' ? null : 'reorder');
+            this.setEditorMode(this.editorMode === 'reorder' ? 'select' : 'reorder');
         }, { signal: this.signal });
 
         this.dom_strips_selected_row = this.qe<HTMLElement>('#strips_selected_row');
@@ -981,9 +1002,21 @@ window.addEventListener('keydown', (e) => {
         }
         // Escape: cancel panel placement, dismiss bg delete confirm, exit point-edit, or deselect
         if (e.key === 'Escape') {
+            const hasActiveCanvasGesture = this.pendingGroupGesture !== null ||
+                this.groupMarqueeActive || this.stripDragActive || this.stripRotateActive ||
+                this.isPanning || this.isDragging || this.multiDragActive ||
+                this.marqueeActive || this._pendingMarquee !== null ||
+                this.gizmoActive !== null || this.bgGizmoActive !== null ||
+                this.rulerDrag !== null;
+            if (hasActiveCanvasGesture) {
+                this._cancelSingleTouchGesture();
+                e.preventDefault();
+                return;
+            }
+            if (this.ctxMenu && getComputedStyle(this.ctxMenu).display !== 'none') { this.hideContextMenu(); e.preventDefault(); return; }
             if (this.connectorDrag || this.startHandleDrag) { this._cancelConnectorDrag(); e.preventDefault(); return; }
             if (this.connectorMenuEl) { this._hideConnectorMenu(); e.preventDefault(); return; }
-            if (this.editorMode) { this.setEditorMode(null); e.preventDefault(); return; }
+            if (this.editorMode !== 'select') { this.setEditorMode('select'); e.preventDefault(); return; }
             if (this.placingState) { this._cancelPlacing(); e.preventDefault(); return; }
             if (this.pasteState) { this._cancelPaste(); e.preventDefault(); return; }
             if (this.deleteBgConfirmEl) { this.dismissDeleteBgConfirm(); e.preventDefault(); return; }
@@ -1000,6 +1033,16 @@ window.addEventListener('keydown', (e) => {
         // Discoverability shortcuts — skip when typing in an input/textarea
         const isTyping = e.target && ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable);
         if (isTyping) return;
+        if (e.code === 'Space') {
+            this.spacePanHeld = true;
+            e.preventDefault();
+            return;
+        }
+        if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            this.setEditorMode('select');
+            e.preventDefault();
+            return;
+        }
         // ? or F1 → help
         if (e.key === '?' || e.key === 'F1') {
             void this._openHelpOverlay();
@@ -1031,6 +1074,10 @@ window.addEventListener('keydown', (e) => {
         }
     }, { signal: this.signal });
 window.addEventListener('resize', () => { this.handleResize(); }, { signal: this.signal });
+window.addEventListener('keyup', (e) => {
+        if (e.code === 'Space') this.spacePanHeld = false;
+    }, { signal: this.signal });
+window.addEventListener('blur', () => { this.spacePanHeld = false; }, { signal: this.signal });
         this.placingState = null;
         this.pendingNewStripPin = null;
         this.pasteState = null;
@@ -1079,6 +1126,7 @@ ShapeEditor.prototype.start = function (this: ShapeEditor): void {
 ShapeEditor.prototype.destroy = function (this: ShapeEditor): void {
 
         unregisterDebugState('shapeeditor');
+        this._cancelSingleTouchGesture();
         this.ac.abort();
         // Toasts/dialogs this editor spawned (e.g. the first-run hint toast)
         // live on document.body, outside our container, so they outlive the

@@ -162,7 +162,7 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
         // Esc exits the mode and restores the idle hint.
         await page.keyboard.press('Escape');
         await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getMode()))
-            .toBe(null);
+            .toBe('select');
         await expect.poll(() => page.evaluate(() => window.__shapeeditorDebug.getHintText()))
             .not.toMatch(/Reorder:/);
     });

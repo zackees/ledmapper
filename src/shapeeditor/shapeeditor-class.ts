@@ -31,6 +31,21 @@ import type { EditorPanelsMethods } from './editor-panels';
 import type { EditorPasteMethods } from './editor-paste';
 import type { SnapDocumentTransform, StripSnapEngagement, StripSnapGeometry, StripSnapTargetSet } from './strip-snap-targets';
 
+export type EditorMode = 'select' | 'chain' | 'reorder';
+export type GroupMarqueeMode = 'replace' | 'add' | 'toggle';
+export interface PendingGroupGesture {
+    kind: 'select-only' | 'translate' | 'marquee';
+    stripIdx: number;
+    cx: number;
+    cy: number;
+    clientX: number;
+    clientY: number;
+    button: 0 | 2;
+    marqueeMode: GroupMarqueeMode;
+    toggleOnClick: boolean;
+    freeTranslate: boolean;
+}
+
 // Prototype bundles are composed into this class through the typed interface below.
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export class ShapeEditor {
@@ -109,7 +124,7 @@ export class ShapeEditor {
     declare stripStore: StripStore;
     declare stripInfo: StripInfo | null;
     declare selection: Selection;
-    declare editorMode: string | null;
+    declare editorMode: EditorMode;
     declare connectorDrag: ConnectorDrag | null;
     declare startHandleDrag: StartHandleDrag | null;
     declare _chainGeom: { connectors: GizmoHandle[]; starts: GizmoHandle[]; ends: GizmoHandle[]; crossBadges: GizmoHandle[] };
@@ -159,13 +174,16 @@ export class ShapeEditor {
     declare stripDragPointIdxs: number[];
     declare stripDragStartScreenmapByIdx: Map<number, [number, number]>;
     declare stripDragStartRawByIdx: Map<number, [number, number]>;
-    declare pendingGroupGesture: { kind: 'select-only' | 'translate'; stripIdx: number; cx: number; cy: number } | null;
+    declare pendingGroupGesture: PendingGroupGesture | null;
     declare groupMarqueeActive: boolean;
     declare groupMarqueeBaseSelection: Set<number>;
+    declare groupMarqueeMode: GroupMarqueeMode;
+    declare groupGestureSelectionSnapshot: Set<number> | null;
     declare stripDragStartScreenmap: StripDragPt[] | null;
     declare stripDragStartRaw: StripDragPt[] | null;
     declare stripDragLastSdx: number;
     declare stripDragLastSdy: number;
+    declare stripDragFreeTranslate: boolean;
     declare stripSnapStartGeometry: StripSnapGeometry | null;
     declare stripSnapTransform: SnapDocumentTransform | null;
     declare stripSnapTargets: StripSnapTargetSet;
@@ -225,8 +243,9 @@ export class ShapeEditor {
     declare panStartCamY: number;
     declare rightButtonDown: boolean;
     declare rightClickMoved: boolean;
-    declare zoomStartY: number;
-    declare zoomStartLevel: number;
+    declare rightStartClientX: number;
+    declare rightStartClientY: number;
+    declare spacePanHeld: boolean;
     declare gizmoActive: string | null;
     declare gizmoHover: string | null;
     declare gizmoDragStart: GizmoDragStart | null;
@@ -247,6 +266,7 @@ export class ShapeEditor {
     declare dom_strips_backup_summary: HTMLElement;
     declare dom_strips_btn_restore_backup: HTMLButtonElement;
     declare dom_strips_btn_add_pin: HTMLElement;
+    declare dom_strips_btn_select: HTMLElement;
     declare dom_strips_btn_chain: HTMLElement;
     declare dom_strips_btn_reorder: HTMLElement;
     declare dom_strips_selected_row: HTMLElement;

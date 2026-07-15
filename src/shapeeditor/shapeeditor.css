@@ -17,6 +17,20 @@
     min-height: 0;
     overflow: hidden;
     position: relative;
+    display: grid;
+    grid-template-columns: minmax(240px, min(420px, 32vw)) minmax(0, 1fr);
+}
+
+.shapeeditor-main.tools-collapsed {
+    grid-template-columns: auto minmax(0, 1fr);
+}
+
+.shapeeditor-canvas-viewport {
+    position: relative;
+    grid-column: 2;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .mobile-sheet-heading,
@@ -41,30 +55,30 @@
     letter-spacing: -0.01em;
 }
 
-/* ── Transform overlay panel (floats over canvas) ──────────── */
+/* ── Transform tools rail ─────────────────────────────────── */
 
 .transform-overlay {
-    position: absolute;
-    top: 8px;
-    left: 8px;
+    position: relative;
+    grid-column: 1;
+    grid-row: 1;
     z-index: 900;
-    background: rgba(17, 17, 17, 0.65);
-    backdrop-filter: blur(8px);
+    min-width: 0;
+    height: 100%;
+    overflow: auto;
+    background: var(--color-lm-surface-1);
     border: 1px solid var(--color-lm-border);
-    border-radius: 8px;
+    border-radius: 0;
     padding: 6px 10px;
-    /* Hug content (no fixed 420px box) but cap so a wildly-wide accordion can't
-       eat the canvas. */
-    width: fit-content;
-    max-width: 420px;
+    width: 100%;
+    max-width: none;
     pointer-events: auto;
-    opacity: 0.35;
-    transition: opacity 0.18s ease, background 0.18s ease;
+    opacity: 1;
+    transition: width 0.18s ease, background 0.18s ease;
 }
 
 .transform-overlay:hover,
 .transform-overlay:focus-within {
-    background: rgba(17, 17, 17, 0.95);
+    background: var(--color-lm-surface-1);
     opacity: 1;
 }
 
@@ -122,6 +136,8 @@
 .transform-overlay.collapsed {
     padding: 0;
     width: auto;
+    height: auto;
+    align-self: start;
     background: rgba(17, 17, 17, 0.65);
     opacity: 0.7;
 }
@@ -348,6 +364,15 @@
     padding: 1px 4px;
 }
 
+.editor-mode-toolbar {
+    @apply flex items-center gap-1;
+}
+
+.mode-btn {
+    @apply py-0.5 px-2 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs;
+}
+
+
 .strip-row .strip-offset:invalid {
     border-color: #ef4444;
 }
@@ -432,7 +457,7 @@
     @apply shrink-0 py-0.5 px-1.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-xs;
 }
 
-/* ── Toolbar modes: [Chain] / [Reorder] (issue #24 Phase 3) ─── */
+/* ── Toolbar modes: [Select] / [Chain] / [Reorder] ──────────── */
 
 .mode-btn.active {
     border-color: #3b82f6;
@@ -842,6 +867,12 @@
         flex: 1 1 auto;
         min-height: 0;
         overflow: hidden;
+        display: block;
+    }
+
+    .shapeeditor-canvas-viewport {
+        position: absolute;
+        inset: 0;
     }
 
     #hint_strip {

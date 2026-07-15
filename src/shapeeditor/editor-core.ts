@@ -96,7 +96,9 @@ export const editorCoreMethods: EditorCoreMethods & ThisType<ShapeEditor> = {
                     if (popupContainer) {
                         const canvasTop = Math.ceil(this.mainEl.getBoundingClientRect().top);
                         popupContainer.style.setProperty('padding-top', `${String(canvasTop + 8)}px`, 'important');
+                        popupContainer.style.pointerEvents = 'none';
                     }
+                    popup.style.pointerEvents = 'none';
                     callerDidOpen?.(popup);
                 },
             });

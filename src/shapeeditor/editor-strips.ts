@@ -456,12 +456,14 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
     },
     setEditorMode(this: ShapeEditor, mode: string | null){
 
-        const m = (mode === 'chain' || mode === 'reorder') ? mode : null;
+        const m = (mode === 'chain' || mode === 'reorder') ? mode : 'select';
         if (m === this.editorMode) return;
         this.editorMode = m;
         this.connectorDrag = null;
         this.startHandleDrag = null;
-        if (m) (this.dom_strips_panel as HTMLDetailsElement).open = true;
+        if (m !== 'select') (this.dom_strips_panel as HTMLDetailsElement).open = true;
+        this.dom_strips_btn_select.classList.toggle('active', m === 'select');
+        this.dom_strips_btn_select.setAttribute('aria-pressed', m === 'select' ? 'true' : 'false');
         this.dom_strips_btn_chain.classList.toggle('active', m === 'chain');
         this.dom_strips_btn_chain.setAttribute('aria-pressed', m === 'chain' ? 'true' : 'false');
         this.dom_strips_btn_reorder.classList.toggle('active', m === 'reorder');
@@ -784,6 +786,8 @@ export const editorStripsMethods: EditorStripsMethods & ThisType<ShapeEditor> = 
         this._clearStripSnapState();
         this.stripDragLastSdx = 0;
         this.stripDragLastSdy = 0;
+        this.stripDragFreeTranslate = false;
+        this.groupGestureSelectionSnapshot = null;
     },
     _applyStripTranslate(this: ShapeEditor, stripIdx: number, sdx: number, sdy: number){
 
