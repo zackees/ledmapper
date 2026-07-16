@@ -553,8 +553,30 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
             });
             // Keep populating the right-click context-menu submenu — it
             // works off the same loadedPresets list.
+            const categoryById = new Map(categories.map((category) => [category.id, category.label]));
+            const groupedPresets = new Map<string, PresetEntry[]>();
             for (const preset of this.loadedPresets) {
-                this.makeCtxBtn(preset.name, `load-preset:${preset.file}`, this.ctxLoadSubmenu);
+                const categoryId = typeof preset.category === 'string' && categoryById.has(preset.category)
+                    ? preset.category
+                    : '__other';
+                const entries = groupedPresets.get(categoryId) ?? [];
+                entries.push(preset);
+                groupedPresets.set(categoryId, entries);
+            }
+            const orderedGroups = [
+                ...categories.map((category) => ({ id: category.id, label: category.label })),
+                { id: '__other', label: 'Other' },
+            ];
+            for (const group of orderedGroups) {
+                const presets = groupedPresets.get(group.id);
+                if (!presets?.length) continue;
+                const heading = document.createElement('div');
+                heading.className = 'shapeeditor-ctx-category';
+                heading.textContent = group.label;
+                this.ctxLoadSubmenu.appendChild(heading);
+                for (const preset of presets) {
+                    this.makeCtxBtn(preset.name, `load-preset:${preset.file}`, this.ctxLoadSubmenu);
+                }
             }
             // Restore stored screenmap (autosave/backup-aware), then fall
             // back to the first preset if nothing was auto-loaded.
