@@ -56,7 +56,14 @@ export function normalizeScreenmap(input: unknown, paneSize: number): Screenmap 
                 const p = fitted[cursor++] ?? [0, 0];
                 return [p[0], p[1]] as const;
             });
-            shapes.push({ name: s.name, type: s.type, offset: s.offset, vertices, ...(s.thickness !== undefined ? { thickness: s.thickness * fitScale } : {}) });
+            shapes.push({
+                name: s.name,
+                type: s.type,
+                offset: s.offset,
+                vertices,
+                ...(s.electricalGroup !== undefined ? { electricalGroup: s.electricalGroup } : {}),
+                ...(s.thickness !== undefined ? { thickness: s.thickness * fitScale } : {}),
+            });
         } else {
             cursor += s.points.length;
         }

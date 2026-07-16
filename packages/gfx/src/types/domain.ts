@@ -50,6 +50,8 @@ export interface ScreenmapV2Segment {
     id: string;
     pin: number | string;
     group: string;
+    /** Electrical/logical connection shared by display units. */
+    electrical_group?: string;
     type?: 'led_strip' | 'el_wire' | 'el_panel';
     x: number[];
     y: number[];
@@ -95,6 +97,7 @@ export interface ParsedStrip {
     type?: 'led_strip' | 'el_wire' | 'el_panel';
     vertices?: StripPoint[];
     thickness?: number;
+    electricalGroup?: string;
 }
 
 /** Return value of parseScreenmapMultiStrip(). */

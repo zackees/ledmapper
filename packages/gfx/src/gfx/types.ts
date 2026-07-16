@@ -34,6 +34,8 @@ export interface Screenmap {
 export interface ScreenmapShape {
     name: string;
     type: 'el_wire' | 'el_panel';
+    /** Electrical/logical connection; does not constrain placement. */
+    electricalGroup?: string;
     offset: number;
     vertices: readonly (readonly [number, number])[];
     thickness?: number;

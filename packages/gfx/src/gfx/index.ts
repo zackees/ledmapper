@@ -43,6 +43,7 @@ export type {
     PlayerControlLabels,
     PlayerControlsOptions,
     Screenmap,
+    ScreenmapShape,
     BloomConfig,
     CreateGfxOptions,
     CreateGfxFromFledOptions,
