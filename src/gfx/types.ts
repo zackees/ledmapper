@@ -38,6 +38,10 @@ export interface ScreenmapShape {
     type: 'el_wire' | 'el_panel';
     /** Optional UI linkage group; shapes sharing it move together. */
     group?: string;
+    /** Electrical/logical connection; does not constrain placement. */
+    electricalGroup?: string;
+    /** Electrical/logical connection; does not constrain placement. */
+    electricalGroup?: string;
     offset: number;
     vertices: readonly (readonly [number, number])[];
     thickness?: number;

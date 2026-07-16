@@ -57,6 +57,7 @@ this.mainEl.classList.add('shapeeditor-main');
         this._dirty = false;
         this.screenmap_pts = [];
         this.rawPts = [];
+        this.screenmapSourceText = null;
         this.screenmapShapes = [];
         this.lastTransformedShapes = [];
         this.undoStack = [];
@@ -332,12 +333,9 @@ this.wireTransformUndo('translateY', this.dom_txt_translate_y);
         this.stripStore = new StripStore();
         this.stripInfo = null;
         this.selection = new Selection();
-        this.selection.setLinkedGroupResolver((stripIdx) => {
-            const strips = this.stripInfo?.strips ?? [];
-            const group = strips[stripIdx]?.group;
-            if (!group) return [stripIdx];
-            return strips.flatMap((strip, idx) => strip.group === group ? [idx] : []);
-        });
+        // Electrical linkage is metadata only: it must never constrain
+        // physical placement. Each display unit remains independently movable.
+        this.selection.setLinkedGroupResolver((stripIdx) => [stripIdx]);
 this.selection.setOnChange(() => {
         this.setNeedsGeometryUpdate();
         this.renderStripsPanel();
@@ -659,6 +657,7 @@ registerDebugState('shapeeditor', {
         totalPoints: this.screenmap_pts.length,
         shapeCount: this.screenmapShapes.length,
         shapeTypes: this.screenmapShapes.map((shape) => shape.type),
+        electricalGroups: this.screenmapShapes.map((shape) => shape.electricalGroup ?? null),
         // Reset stays dirty-gated, so its enabled state is the dirty flag now
         // that Save As… is existence-gated instead (#292).
         dirty: !this.dom_btn_reset.disabled,

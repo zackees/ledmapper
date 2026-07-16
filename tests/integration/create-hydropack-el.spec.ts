@@ -29,14 +29,14 @@ test.describe('Create HydroPack EL preset', () => {
         await expect(page.locator('#controls')).toBeHidden();
         await expect(page.locator('.shapeeditor-placeholder')).toBeHidden();
         await expect.poll(() => page.evaluate(() => {
-            const state = window.__lmDebug?.shapeeditor?.getState?.() as { shapeCount?: number; shapeTypes?: string[] } | undefined;
-            return state ? { shapeCount: state.shapeCount, shapeTypes: state.shapeTypes } : null;
-        })).toEqual({ shapeCount: 3, shapeTypes: ['el_panel', 'el_panel', 'el_panel'] });
-        const linkedSelection = await page.evaluate(() => {
+            const state = window.__lmDebug?.shapeeditor?.getState?.() as { shapeCount?: number; shapeTypes?: string[]; electricalGroups?: (string | null)[] } | undefined;
+            return state ? { shapeCount: state.shapeCount, shapeTypes: state.shapeTypes, electricalGroups: state.electricalGroups } : null;
+        })).toEqual({ shapeCount: 3, shapeTypes: ['el_panel', 'el_panel', 'el_panel'], electricalGroups: ['hydropack-el', 'center-panel', 'hydropack-el'] });
+        const independentSelection = await page.evaluate(() => {
             window.__shapeeditorDebug?.selectStrip?.(0);
             return window.__shapeeditorDebug?.getSelectedStrips?.();
         });
-        expect(linkedSelection).toEqual([0, 2]);
+        expect(independentSelection).toEqual([0]);
 
         const loaded = await page.evaluate(() => JSON.parse(localStorage.getItem('lm:screenmap') ?? '{}'));
         expect(loaded.segments.map((segment: { type: string }) => segment.type)).toEqual([

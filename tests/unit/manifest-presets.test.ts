@@ -70,5 +70,7 @@ describe('screenmaps manifest', () => {
             'el_panel', 'el_panel', 'el_panel',
         ]);
         assert.deepStrictEqual(screenmap.segments[1].x, [-0.5, 0.5, 0.5, -0.5]);
+        assert.equal(screenmap.segments[0].electrical_group, 'hydropack-el');
+        assert.equal(screenmap.segments[2].electrical_group, 'hydropack-el');
     });
 });
