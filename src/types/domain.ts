@@ -93,6 +93,7 @@ export interface ParsedStrip {
     pin: string;
     videoOffsetOverride: boolean;
     type?: 'led_strip' | 'el_wire' | 'el_panel';
+    group?: string;
     vertices?: StripPoint[];
     thickness?: number;
 }

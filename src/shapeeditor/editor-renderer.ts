@@ -595,7 +595,7 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
                 this.lastTransformedPts = transformedPts;
                 this.lastTransformedShapes = this.screenmapShapes.map((shape) => ({
                     ...shape,
-                    vertices: shape.vertices.map(([x, y]) => {
+                    vertices: this.screenmap_pts.slice(shape.offset, shape.offset + shape.vertices.length).map(([x, y]) => {
                         const sx = x * scaleX;
                         const sy = y * scaleY;
                         return [sx * cosR - sy * sinR + tx, sx * sinR + sy * cosR + ty] as [number, number];

@@ -67,8 +67,8 @@ describe('screenmaps manifest', () => {
 
         const screenmap = JSON.parse(readFileSync(join(screenmapsDir, 'hydropack_el_shapes.json'), 'utf-8'));
         assert.deepStrictEqual(screenmap.segments.map((segment: { type: string }) => segment.type), [
-            'el_panel', 'el_wire', 'el_panel',
+            'el_panel', 'el_panel', 'el_panel',
         ]);
-        assert.equal(screenmap.segments[1].thickness, 1);
+        assert.deepStrictEqual(screenmap.segments[1].x, [-0.5, 0.5, 0.5, -0.5]);
     });
 });

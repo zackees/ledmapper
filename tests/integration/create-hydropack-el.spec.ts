@@ -31,18 +31,23 @@ test.describe('Create HydroPack EL preset', () => {
         await expect.poll(() => page.evaluate(() => {
             const state = window.__lmDebug?.shapeeditor?.getState?.() as { shapeCount?: number; shapeTypes?: string[] } | undefined;
             return state ? { shapeCount: state.shapeCount, shapeTypes: state.shapeTypes } : null;
-        })).toEqual({ shapeCount: 3, shapeTypes: ['el_panel', 'el_wire', 'el_panel'] });
+        })).toEqual({ shapeCount: 3, shapeTypes: ['el_panel', 'el_panel', 'el_panel'] });
+        const linkedSelection = await page.evaluate(() => {
+            window.__shapeeditorDebug?.selectStrip?.(0);
+            return window.__shapeeditorDebug?.getSelectedStrips?.();
+        });
+        expect(linkedSelection).toEqual([0, 2]);
 
         const loaded = await page.evaluate(() => JSON.parse(localStorage.getItem('lm:screenmap') ?? '{}'));
         expect(loaded.segments.map((segment: { type: string }) => segment.type)).toEqual([
-            'el_panel', 'el_wire', 'el_panel',
+            'el_panel', 'el_panel', 'el_panel',
         ]);
         expect(loaded.segments[0].x).toEqual([-5, -2, -2]);
         expect(loaded.segments[0].y).toEqual([0, -1.5, 1.5]);
         expect(loaded.segments[2].x).toEqual([5, 2, 2]);
         expect(loaded.segments[2].y).toEqual([0, 1.5, -1.5]);
-        expect(loaded.segments[1].y).toEqual([-3, 3]);
-        expect(loaded.segments[1].thickness).toBe(1);
+        expect(loaded.segments[1].x).toEqual([-0.5, 0.5, 0.5, -0.5]);
+        expect(loaded.segments[1].y).toEqual([-3, -3, 3, 3]);
         await expect.poll(() => page.evaluate(() => localStorage.getItem('lm:screenmap-preset')))
             .toBe('hydropack_el_shapes.json');
     });
