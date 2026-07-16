@@ -11,25 +11,25 @@
       "type": "el_panel",
       "pin": "pin1",
       "group": "left-panel",
-      "x": [-20, -42, -42],
-      "y": [0, -24, 24]
+      "x": [-5, -2, -2],
+      "y": [0, -1.5, 1.5]
     },
     {
       "id": "center-wire",
       "type": "el_wire",
       "pin": "pin2",
       "group": "center-wire",
-      "x": [-10, 10],
-      "y": [0, 0],
-      "thickness": 5
+      "x": [0, 0],
+      "y": [-3, 3],
+      "thickness": 1
     },
     {
       "id": "right-panel",
       "type": "el_panel",
       "pin": "pin3",
       "group": "right-panel",
-      "x": [20, 42, 42],
-      "y": [0, -24, 24]
+      "x": [5, 2, 2],
+      "y": [0, 1.5, -1.5]
     }
   ]
 }
