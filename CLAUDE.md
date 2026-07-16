@@ -12,8 +12,11 @@ FastLED Video Mapper (www.ledmapper.com) — a web-based tool suite for mapping 
 # One-time setup
 npm install
 
-# Start dev server (port 8080)
+# Start dev server (OS-selected free port)
 npm run dev
+
+# Use a specific port when needed
+npm run dev -- --port 8080
 
 # Open a visible browser window too. Use this exact command when the user
 # says "open/start/turn on the agent browser" or expects a window to pop up.
