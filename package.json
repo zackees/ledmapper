@@ -9,7 +9,7 @@
   ],
   "description": "FastLED Video Mapper - map video content to physical LED arrays",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev-server.mjs",
     "dev:agent": "node scripts/dev-server.mjs",
     "prebuild": "npm run build:gfx",
     "build": "vite build",

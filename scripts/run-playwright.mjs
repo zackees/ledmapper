@@ -112,7 +112,9 @@ async function main() {
         // test runner that may start a server many times in a session.
         viteServer = await createServer({
             configFile: join(repoRoot, 'vite.config.js'),
-            server: { open: false },
+            // Integration tests use the fixed baseURL in playwright.config.js;
+            // interactive dev servers deliberately use an OS-selected port.
+            server: { open: false, port: PORT, strictPort: true },
         });
         try {
             await viteServer.listen();
