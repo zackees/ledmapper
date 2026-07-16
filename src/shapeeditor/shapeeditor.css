@@ -758,7 +758,10 @@
     background: rgba(59, 130, 246, 0.28);
 }
 
-/* ── Desktop: hide file-ops row (available via right-click) ── */
+/* ── Desktop: hide file-ops row (available via right-click) ──
+   This is the CLOSED state of the "Choose a map" popover below —
+   #controls stays hidden until the header Load… button gives it the
+   `.desktop-popover-open` class (issue #443). */
 
 @media (hover: hover) and (pointer: fine) {
     .file-ops-row {
@@ -767,6 +770,96 @@
 
     #controls {
         display: none;
+    }
+}
+
+/* ── Desktop: "Choose a map" popover, opened by the header Load… button
+   (issue #443) ──
+   Reuses the very same #controls element as the mobile bottom sheet —
+   same DOM, a second presentation, styled to match moviemaker's
+   `.screenmap-expanded-panel` (dark surface, border, rounded-lm-lg,
+   shadow). JS (shapeeditor-init.ts) sets inline top/left/width, anchoring
+   it under the Load… button like moviemaker's positionLayoutPopover.
+   Scoped to width >= 601px so it never overlaps the mobile sheet's own
+   fixed-position rules for narrow fine-pointer windows — those keep the
+   original direct file-picker behavior instead. */
+@media (hover: hover) and (pointer: fine) and (min-width: 601px) {
+    #controls.desktop-popover-open {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        position: fixed;
+        z-index: 1400;
+        max-height: 70vh;
+        overflow-x: hidden;
+        overflow-y: auto;
+        padding: 12px 14px;
+        background: var(--color-mm-surface-1);
+        border: 1px solid var(--color-lm-border);
+        border-radius: var(--radius-lm-lg);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+    }
+
+    #controls.desktop-popover-open .file-ops-row {
+        display: flex;
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    #controls.desktop-popover-open #screenmap_drop_target,
+    #controls.desktop-popover-open #image_drop_target {
+        width: 100%;
+        box-sizing: border-box;
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    #controls.desktop-popover-open .mobile-sheet-heading {
+        display: flex;
+        position: sticky;
+        top: -12px;
+        z-index: 2;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: -12px -14px 10px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--color-lm-border);
+        background: rgba(17, 17, 17, 0.98);
+    }
+
+    #controls.desktop-popover-open .mobile-sheet-heading > div {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+    }
+
+    #controls.desktop-popover-open .mobile-sheet-heading span {
+        color: var(--color-lm-text-muted);
+        font-size: 0.75rem;
+    }
+
+    #controls.desktop-popover-open .mobile-sheet-close {
+        flex: none;
+        width: 26px;
+        height: 26px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        background: transparent;
+        color: var(--color-lm-text-muted);
+        border: 1px solid transparent;
+        border-radius: var(--radius-lm);
+        font-size: 0.95rem;
+        line-height: 1;
+        cursor: pointer;
+        transition: color var(--lm-dur) var(--lm-ease), background var(--lm-dur) var(--lm-ease);
+    }
+
+    #controls.desktop-popover-open .mobile-sheet-close:hover {
+        color: var(--color-lm-text);
+        background: var(--color-lm-surface-2);
     }
 }
 

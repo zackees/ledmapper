@@ -34,7 +34,32 @@ async function openCreate(page: Page, viewport?: { width: number; height: number
     await expect(page.locator('#btn_load_screenmap')).toBeVisible();
 }
 
-async function loadViaHeader(page: Page, files: string | TestFilePayload | string[]): Promise<void> {
+/** Desktop only (issue #443): clicking Load… toggles the "Choose a map"
+ * popover instead of opening the OS file picker directly. */
+async function openPopover(page: Page): Promise<void> {
+    await page.locator('#btn_load_screenmap').click();
+    await expect(page.locator('#controls')).toBeVisible();
+    await expect(page.locator('#controls')).toHaveAttribute('role', 'dialog');
+    await expect(page.locator('#btn_load_screenmap')).toHaveAttribute('aria-expanded', 'true');
+}
+
+/** Desktop: open the popover, then trigger the OS file chooser from the
+ * upload input living inside it. */
+async function loadViaHeaderDesktop(page: Page, files: string | TestFilePayload | string[]): Promise<void> {
+    await openPopover(page);
+    const [chooser] = await Promise.all([
+        page.waitForEvent('filechooser'),
+        page.locator('#btn_upload_screenmap').click(),
+    ]);
+    const input = await chooser.element();
+    expect(await input.getAttribute('id')).toBe('btn_upload_screenmap');
+    expect(await input.getAttribute('accept')).toBe('.json');
+    await chooser.setFiles(files);
+}
+
+/** Mobile (coarse pointer): Load… still opens the OS file picker directly —
+ * unchanged by issue #443. */
+async function loadViaHeaderMobile(page: Page, files: string | TestFilePayload | string[]): Promise<void> {
     const [chooser] = await Promise.all([
         page.waitForEvent('filechooser'),
         page.locator('#btn_load_screenmap').click(),
@@ -76,61 +101,103 @@ test.describe('Create header screenmap loading', () => {
         }, STORAGE_KEYS).catch(() => { /* page may already be closed */ });
     });
 
-    test('header Load opens the JSON picker and loads a valid screenmap', async ({ page }) => {
+    test('header Load opens a "Choose a map" popover; uploading a JSON screenmap loads it and closes the popover', async ({ page }) => {
         await openCreate(page, { width: 1280, height: 720 });
         const loadButton = page.locator('#btn_load_screenmap');
         await expect(loadButton).toHaveText('Load...');
         await expect(loadButton).toBeEnabled();
+        await expect(loadButton).toHaveAttribute('aria-expanded', 'false');
 
-        await loadViaHeader(page, MULTI_SCREENMAP);
+        await loadViaHeaderDesktop(page, MULTI_SCREENMAP);
         await expect.poll(() => editorState(page)).toEqual({ totalPoints: 7, stripCount: 2 });
+        await expect(page.locator('#controls')).toBeHidden();
+        await expect(loadButton).toHaveAttribute('aria-expanded', 'false');
         await expect(page.locator('#btn_save_as')).toBeEnabled();
         await expect.poll(() => page.evaluate(() => localStorage.getItem('lm:screenmap')))
             .not.toBeNull();
     });
 
-    test('keyboard activation opens the same picker', async ({ page }) => {
+    test('keyboard activation opens the popover; Esc closes it and returns focus to Load…', async ({ page }) => {
         await openCreate(page, { width: 1280, height: 720 });
         const loadButton = page.locator('#btn_load_screenmap');
         await loadButton.focus();
+        await loadButton.press('Enter');
+        await expect(page.locator('#controls')).toBeVisible();
+        await expect(loadButton).toHaveAttribute('aria-expanded', 'true');
 
-        const [chooser] = await Promise.all([
-            page.waitForEvent('filechooser'),
-            loadButton.press('Enter'),
-        ]);
-        await chooser.setFiles(SINGLE_SCREENMAP);
-        await expect.poll(() => editorState(page)).toEqual({ totalPoints: 4, stripCount: 1 });
+        await page.keyboard.press('Escape');
+        await expect(page.locator('#controls')).toBeHidden();
+        await expect(loadButton).toHaveAttribute('aria-expanded', 'false');
+        await expect(loadButton).toBeFocused();
+    });
+
+    test('✕ closes the popover and returns focus to Load…', async ({ page }) => {
+        await openCreate(page, { width: 1280, height: 720 });
+        await openPopover(page);
+
+        await page.locator('#btn_mobile_map_close').click();
+        await expect(page.locator('#controls')).toBeHidden();
+        await expect(page.locator('#btn_load_screenmap')).toHaveAttribute('aria-expanded', 'false');
+        await expect(page.locator('#btn_load_screenmap')).toBeFocused();
+    });
+
+    test('clicking outside the popover closes it', async ({ page }) => {
+        await openCreate(page, { width: 1280, height: 720 });
+        await openPopover(page);
+
+        await page.mouse.click(20, 400);
+        await expect(page.locator('#controls')).toBeHidden();
+        await expect(page.locator('#btn_load_screenmap')).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    test('choosing a preset loads it, closes the popover, and stays highlighted on reopen', async ({ page }) => {
+        await openCreate(page, { width: 1280, height: 720 });
+        await openPopover(page);
+
+        const before = await editorState(page);
+        const gridPreset = page.locator('#sel_preset_mount .preset-btn', { hasText: '8x8 Grid' });
+        await expect(gridPreset).toBeVisible();
+
+        await gridPreset.click();
+        await expect(page.locator('#controls')).toBeHidden();
+        await expect(page.locator('#btn_load_screenmap')).toHaveAttribute('aria-expanded', 'false');
+        await expect.poll(() => editorState(page)).not.toEqual(before);
+
+        await openPopover(page);
+        await expect(gridPreset).toHaveClass(/active-preset/);
     });
 
     test('the same file can be loaded twice', async ({ page }) => {
         await openCreate(page, { width: 1280, height: 720 });
-        await loadViaHeader(page, MULTI_SCREENMAP);
+        await loadViaHeaderDesktop(page, MULTI_SCREENMAP);
         await expect.poll(() => editorState(page)).toEqual({ totalPoints: 7, stripCount: 2 });
 
-        // The desktop layout hides the Map sheet's New button; invoking its
-        // existing click handler keeps this test focused on re-opening the
-        // same native file input through the header action.
+        // The desktop layout keeps the Map popover's New button reachable
+        // only while the popover is open; invoking its existing click
+        // handler keeps this test focused on re-opening the same native
+        // file input through the header action.
         await page.locator('#btn_new').evaluate((button) => button.click());
         await expect.poll(() => editorState(page)).toMatchObject({ totalPoints: 1 });
 
-        await loadViaHeader(page, MULTI_SCREENMAP);
+        await loadViaHeaderDesktop(page, MULTI_SCREENMAP);
         await expect.poll(() => editorState(page)).toEqual({ totalPoints: 7, stripCount: 2 });
     });
 
     test('cancel and invalid selection preserve the current document', async ({ page }) => {
         await openCreate(page, { width: 1280, height: 720 });
-        await loadViaHeader(page, SINGLE_SCREENMAP);
+        await loadViaHeaderDesktop(page, SINGLE_SCREENMAP);
         await expect.poll(() => editorState(page)).toEqual({ totalPoints: 4, stripCount: 1 });
         const before = await documentSnapshot(page);
 
+        await openPopover(page);
         const [cancelled] = await Promise.all([
             page.waitForEvent('filechooser'),
-            page.locator('#btn_load_screenmap').click(),
+            page.locator('#btn_upload_screenmap').click(),
         ]);
         await cancelled.setFiles([]);
         await expect.poll(() => documentSnapshot(page)).toEqual(before);
 
-        await loadViaHeader(page, {
+        await loadViaHeaderDesktop(page, {
             name: 'not-a-screenmap.txt',
             mimeType: 'text/plain',
             buffer: Buffer.from('not json'),
@@ -162,7 +229,7 @@ test.describe('Create header screenmap loading on mobile', () => {
         expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
         expect(metrics.documentWidth).toBeLessThanOrEqual(391);
 
-        await loadViaHeader(page, SINGLE_SCREENMAP);
+        await loadViaHeaderMobile(page, SINGLE_SCREENMAP);
         await expect.poll(() => editorState(page)).toEqual({ totalPoints: 4, stripCount: 1 });
     });
 });
