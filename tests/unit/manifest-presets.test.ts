@@ -56,4 +56,19 @@ describe('screenmaps manifest', () => {
         assert.strictEqual(files.length, unique.size,
             `manifest has duplicate entries: ${files.filter((f: string, i: number) => files.indexOf(f) !== i).join(', ')}`);
     });
+
+    it('includes the HydroPack EL geometry in its dedicated category', () => {
+        const manifest = JSON.parse(readFileSync(join(screenmapsDir, 'manifest.json'), 'utf-8'));
+        const category = manifest.categories.find((entry: { id: string }) => entry.id === 'el');
+        assert.deepStrictEqual(category, { id: 'el', label: 'EL Wire & Panels' });
+
+        const preset = manifest.presets.find((entry: ScreenmapPresetManifestEntry) => entry.file === 'hydropack_el_shapes.json');
+        assert.equal(preset?.category, 'el');
+
+        const screenmap = JSON.parse(readFileSync(join(screenmapsDir, 'hydropack_el_shapes.json'), 'utf-8'));
+        assert.deepStrictEqual(screenmap.segments.map((segment: { type: string }) => segment.type), [
+            'el_panel', 'el_wire', 'el_panel',
+        ]);
+        assert.equal(screenmap.segments[1].thickness, 5);
+    });
 });

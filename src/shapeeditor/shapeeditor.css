@@ -644,6 +644,14 @@
     color: var(--fastled-text-strong);
 }
 
+.shapeeditor-ctx-category {
+    padding: 5px 12px 3px;
+    color: var(--fastled-text-muted);
+    font: 11px/1.2 monospace;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
 /* Bottom-left info readout + center placeholder. The shared base
    (`labelStyle` in TS) is captured by .shapeeditor-canvas-label; the
    per-element placement adds position offsets. */

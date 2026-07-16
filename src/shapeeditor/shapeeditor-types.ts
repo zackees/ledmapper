@@ -58,7 +58,7 @@ interface PasteStateItem { name: string; points: [number, number][]; diameter?: 
 
 interface PasteStateActive { strips: PasteStateItem[]; ghostWorld: [number, number] | null; totalCount: number; }
 
-interface PresetEntry { file: string; name: string; }
+interface PresetEntry { file: string; name: string; category?: string; }
 
 /** Strip drag start snapshot. */
 type StripDragPt = [number, number];
