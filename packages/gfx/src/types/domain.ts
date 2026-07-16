@@ -50,12 +50,14 @@ export interface ScreenmapV2Segment {
     id: string;
     pin: number | string;
     group: string;
+    type?: 'led_strip' | 'el_wire' | 'el_panel';
     x: number[];
     y: number[];
     z?: number[];
     /** LED diameter in cm. Preserved from v1 conversions; the editor's
      *  preview / FastLED ScreenMap export read it. Optional. */
     diameter?: number;
+    thickness?: number;
     parent?: string;
     offset?: number | null;
     /** Ledmapper-specific extension (not part of the canonical v2 schema):
@@ -90,6 +92,9 @@ export interface ParsedStrip {
     video_offset: number;
     pin: string;
     videoOffsetOverride: boolean;
+    type?: 'led_strip' | 'el_wire' | 'el_panel';
+    vertices?: StripPoint[];
+    thickness?: number;
 }
 
 /** Return value of parseScreenmapMultiStrip(). */
@@ -97,6 +102,7 @@ export interface MultiStripParseResult {
     strips: ParsedStrip[];
     allPoints: StripPoint[];
     totalCount: number;
+    channelCount?: number;
 }
 
 // ---------------------------------------------------------------------------

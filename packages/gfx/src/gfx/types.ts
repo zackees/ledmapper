@@ -27,6 +27,16 @@ export interface Screenmap {
     strips?: readonly { name: string; offset: number; count: number }[];
     /** Declared LED diameter in source units, if any. */
     diameter?: number;
+    shapes?: readonly ScreenmapShape[];
+    channelCount?: number;
+}
+
+export interface ScreenmapShape {
+    name: string;
+    type: 'el_wire' | 'el_panel';
+    offset: number;
+    vertices: readonly (readonly [number, number])[];
+    thickness?: number;
 }
 
 /** Bloom configuration. `auto` lets the engine pick per-frame strength
@@ -100,7 +110,7 @@ export interface Gfx {
     readonly overlayCanvas?: HTMLCanvasElement;
     /** 2D overlay context, present only when `enableOverlay: true`. */
     readonly overlayCtx?: CanvasRenderingContext2D;
-    /** Push one frame of LED colors. Length = `screenmap.points.length * 3`. */
+    /** Push one frame of RGB colors. Length = `screenmap.channelCount * 3`. */
     pushFrame(rgb: Uint8Array): void;
     /** Update bloom mode / strength on the fly. */
     setBloom(cfg: BloomConfig): void;

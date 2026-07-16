@@ -53,3 +53,20 @@ test('normalizeScreenmap: points are fit-and-centered into the pane', () => {
         assert.ok(y >= 0 && y <= 800, `y=${String(y)} out of pane`);
     }
 });
+
+test('normalizeScreenmap: preserves EL panels and wire as shapes/channels', () => {
+    const map = {
+        version: 2,
+        groups: { left: { color: '#f00' }, center: { color: '#0f0' }, right: { color: '#00f' } },
+        segments: [
+            { id: 'left', type: 'el_panel', pin: 'p1', group: 'left', x: [-20, -40, -40], y: [0, -20, 20] },
+            { id: 'center', type: 'el_wire', pin: 'p2', group: 'center', x: [-10, 10], y: [0, 0], thickness: 5 },
+            { id: 'right', type: 'el_panel', pin: 'p3', group: 'right', x: [20, 40, 40], y: [0, -20, 20] },
+        ],
+    };
+    const sm = normalizeScreenmap(map, 800);
+    assert.equal(sm.points.length, 0);
+    assert.equal(sm.channelCount, 3);
+    assert.equal(sm.shapes?.length, 3);
+    assert.ok((sm.shapes[1]?.thickness ?? 0) > 5);
+});
