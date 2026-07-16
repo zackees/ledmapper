@@ -6,7 +6,7 @@ import { centerAndFitPoints, computeCenterFitScale, download_text_as_file, parse
 import { formatCompactJson } from "../json-compact";
 import { safeStorage } from "../services/storage";
 import { errorDialog, fireDialog, getSwal } from "../ui/dialogs";
-import { backfillMeta, buildScreenmapMultiStripJson, getBackup, getPresetSelection, getScreenmap, getScreenmapMeta, isDegenerate, notePinMutation, promoteToBackup, restoreBackup, savePresetScreenmap, saveScreenmap, saveScreenmapMultiStrip, type BackupMeta } from "../screenmap-store";
+import { backfillMeta, buildScreenmapMultiStripJson, getBackup, getPresetSelection, getScreenmap, getScreenmapMeta, isDegenerate, notePinMutation, promoteToBackup, restoreBackup, savePresetScreenmap, savePresetSelection, saveScreenmap, saveScreenmapMultiStrip, type BackupMeta } from "../screenmap-store";
 import { fileHasExtension } from "../drag-drop";
 import { CANONICAL_64X64_PRESET, analyzeCanonical64x64Divergence, getDefaultPresetFile, isCanonical64x64Geometry } from "../canonical-screenmap";
 import { mountPresetPicker, type PresetCategory } from "../ui/preset-picker";
@@ -18,7 +18,7 @@ function escapeForTextarea(s: string): string {
 }
 
 export interface EditorIoMethods {
-    doNewScreenmap: () => void;
+    doNewScreenmap: (recordHistory?: boolean) => void;
     saveAs: () => void;
     _buildCurrentScreenmapJson: () => string;
     _openInspectJsonDialog: () => Promise<void>;
@@ -30,13 +30,16 @@ export interface EditorIoMethods {
     doRestoreBackupFromButton: () => void;
     buildGrid: (width: number, height: number) => void;
     center_and_fit: (pts: [number, number][], canvasW: number, canvasH: number) => PointArrayWithDiameter;
-    load_screenmap_data: (text: string, persist?: boolean) => void;
+    load_screenmap_data: (text: string, persist?: boolean, recordHistory?: boolean, presetFile?: string | null) => void;
     loadScreenmapFile: (file: File | null | undefined) => void;
     loadPresetsFromManifest: () => Promise<void>;
 }
 
 export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
-    doNewScreenmap(this: ShapeEditor){
+    doNewScreenmap(this: ShapeEditor, recordHistory = true){
+
+        const beforeJson = recordHistory ? this._buildCurrentScreenmapJson() : null;
+        const beforePresetFile = recordHistory ? getPresetSelection() : null;
 
         // Promote current working copy (if any) into the backup slot BEFORE
         // we wipe it, so the prior layout stays restorable. Then drop the
@@ -63,6 +66,9 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
         try { this.renderBackupRow(); } catch { /* render is best-effort */ }
         if (hadBackupPromote) {
             void this._toastInfo('New layout — previous layout kept as backup').catch(() => { /* toast is best effort */ });
+        }
+        if (recordHistory) {
+            this.pushUndo({ type: 'new-screenmap', beforeJson, beforePresetFile });
         }
     },
     _buildCurrentScreenmapJson(this: ShapeEditor): string{
@@ -361,12 +367,12 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
         const beforeJson = getScreenmap();
         const restored = restoreBackup();
         if (!restored) return;
+        this.load_screenmap_data(restored);
         this.pushUndo({
             type: 'restore-backup',
             beforeJson: typeof beforeJson === 'string' ? beforeJson : null,
             afterJson: restored,
         });
-        this.load_screenmap_data(restored);
         this.renderBackupRow();
         void this._toastSuccess('Backup restored');
     },
@@ -402,12 +408,17 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
             pixelAlignScale: true,
         });
     },
-    load_screenmap_data(this: ShapeEditor, text: string, persist = true){
+    load_screenmap_data(this: ShapeEditor, text: string, persist = true, recordHistory = false, presetFile: string | null = null){
 
+        // Parse before clearing the current document. Invalid or empty input
+        // must leave both the document and its history untouched (#449).
+        const parsedPoints = parse_screenmap_data(text);
+        if (parsedPoints.length === 0) return;
+        const beforeJson = recordHistory ? this._buildCurrentScreenmapJson() : null;
+        const beforePresetFile = recordHistory ? getPresetSelection() : null;
         this.clearEditingState();
 
-        this.screenmap_pts = parse_screenmap_data(text);
-        if (this.screenmap_pts.length === 0) return;
+        this.screenmap_pts = parsedPoints;
         // Loading a new file is a user-initiated pin change — even if it has
         // fewer pins than the previous working copy (guard grace window).
         if (persist) {
@@ -415,6 +426,7 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
             saveScreenmap(text);
             try { this.renderBackupRow(); } catch { /* render is best-effort */ }
         }
+        if (presetFile !== null) savePresetSelection(presetFile);
 
         // Parse multi-strip metadata for color-coded visualization
         try {
@@ -458,6 +470,15 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
         this.positionRulerAboveBBox();
         // A loaded map is a document you can export straight away (#292).
         this._refreshSaveEnabled();
+        if (recordHistory) {
+            this.pushUndo({
+                type: 'load-screenmap',
+                beforeJson,
+                afterJson: text,
+                beforePresetFile,
+                afterPresetFile: presetFile,
+            });
+        }
     },
     loadScreenmapFile(this: ShapeEditor, file: File | null | undefined){
 
@@ -469,7 +490,7 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
         const generation = ++this.layoutLoadGeneration;
         this.presetPicker?.setActive('');
         file.text().then((text) => {
-            if (!this.signal.aborted && generation === this.layoutLoadGeneration) this.load_screenmap_data(text);
+            if (!this.signal.aborted && generation === this.layoutLoadGeneration) this.load_screenmap_data(text, true, true);
         }).catch((error: unknown) => {
             void errorDialog('Error reading screenmap file', String(error));
         });
@@ -506,13 +527,13 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
             // Mount the shared accordion picker. The on-click load path goes
             // through the picker's `onChoose` callback instead of a
             // <select>-change event.
-            const loadPresetFile = async (file: string, generation: number) => {
+            const loadPresetFile = async (file: string, generation: number, recordHistory = false) => {
                 try {
                     const r = await fetch(`/screenmaps/${file}`, { signal: this.signal });
                     const text = await r.text();
                     if (isStaleLayoutLoad(generation)) return;
                     if (!savePresetScreenmap(text, file)) throw new Error(`Could not persist preset ${file}`);
-                    this.load_screenmap_data(text, false);
+                    this.load_screenmap_data(text, false, recordHistory, file);
                     this.presetPicker?.setActive(file);
                 } catch (e: unknown) {
                     console.warn('Failed to load preset:', e);
@@ -528,7 +549,7 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
                 signal: this.signal,
                 presets: this.loadedPresets,
                 categories,
-                onChoose: (file) => loadPresetFile(file, ++this.layoutLoadGeneration),
+                onChoose: (file) => loadPresetFile(file, ++this.layoutLoadGeneration, true),
             });
             // Keep populating the right-click context-menu submenu — it
             // works off the same loadedPresets list.

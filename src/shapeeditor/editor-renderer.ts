@@ -144,7 +144,7 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
         ctxUploadInput.addEventListener('change', () => {
             if (ctxUploadInput.files?.[0]) {
                 const reader = new FileReader();
-                reader.onload = (ev) => { if (ev.target) this.load_screenmap_data(ev.target.result as string); };
+                reader.onload = (ev) => { if (ev.target) this.load_screenmap_data(ev.target.result as string, true, true); };
                 reader.readAsText(ctxUploadInput.files[0]);
             }
             ctxUploadInput.value = '';
@@ -165,7 +165,7 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
                 fetch(`/screenmaps/${file}`, { signal: this.signal }).then(r => r.text()).then((text) => {
                     if (this.signal.aborted || generation !== this.layoutLoadGeneration) return;
                     if (!savePresetScreenmap(text, file)) throw new Error(`Could not persist preset ${file}`);
-                    this.load_screenmap_data(text, false);
+                    this.load_screenmap_data(text, false, true, file);
                     this.presetPicker?.setActive(file);
                 })
                     .catch((err: unknown) => { console.warn('Failed to load preset:', err); });
