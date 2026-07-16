@@ -31,6 +31,7 @@ import type { EditorPanelsMethods } from './editor-panels';
 import type { EditorPasteMethods } from './editor-paste';
 import type { EditorCommandsMethods, CommandRegistry } from './editor-commands';
 import type { SnapDocumentTransform, StripSnapEngagement, StripSnapGeometry, StripSnapTargetSet } from './strip-snap-targets';
+import type { ScreenmapShape } from '../gfx/types';
 
 export type EditorMode = 'select' | 'chain' | 'reorder';
 export type GroupMarqueeMode = 'replace' | 'add' | 'toggle';
@@ -134,6 +135,9 @@ export class ShapeEditor {
     declare SCALE_MAX: number;
     declare screenmap_pts: PointArrayWithDiameter;
     declare rawPts: [number, number][];
+    /** Geometry-native EL shapes, kept separately from LED points. */
+    declare screenmapShapes: ScreenmapShape[];
+    declare lastTransformedShapes: ScreenmapShape[];
     declare origWidth: number;
     declare origHeight: number;
     declare fitScale: number;

@@ -566,7 +566,8 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
         // Nothing to do — skip all work this frame
         if (!this.geometryDirty && !this.frameDirty) return;
 
-        if (this.screenmap_pts.length > 0) {
+        const hasGeometry = this.screenmap_pts.length > 0 || this.screenmapShapes.length > 0;
+        if (hasGeometry) {
             // The rebuild path bakes the current DOM transform into the
             // points-mesh / outline buffers. While previewing, handleGizmoDrag
             // no longer sets geometryDirty, so this only runs at preview entry
@@ -592,6 +593,15 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
                     ] as [number, number];
                 });
                 this.lastTransformedPts = transformedPts;
+                this.lastTransformedShapes = this.screenmapShapes.map((shape) => ({
+                    ...shape,
+                    vertices: shape.vertices.map(([x, y]) => {
+                        const sx = x * scaleX;
+                        const sy = y * scaleY;
+                        return [sx * cosR - sy * sinR + tx, sx * sinR + sy * cosR + ty] as [number, number];
+                    }),
+                    ...(shape.thickness !== undefined ? { thickness: shape.thickness * (scaleX + scaleY) / 2 } : {}),
+                }));
                 this.buildScreenmap(transformedPts);
                 this.updateLabels(transformedPts);
             }
@@ -615,6 +625,7 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
             }
             this.updateLabels([]);
             this.lastTransformedPts = [];
+            this.lastTransformedShapes = [];
             this.drawOverlay();
         }
 

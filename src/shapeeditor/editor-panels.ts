@@ -149,6 +149,8 @@ export const editorPanelsMethods: EditorPanelsMethods & ThisType<ShapeEditor> = 
         // when the user places a panel onto an empty editor.
         this.screenmap_pts = [];
         this.rawPts = [];
+        this.screenmapShapes = [];
+        this.lastTransformedShapes = [];
         this.stripInfo = null;
         this.stripStore.load(null);
         this.origDiameter = 0.5;
