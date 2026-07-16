@@ -32,9 +32,12 @@ test.describe('Create HydroPack EL preset', () => {
         expect(loaded.segments.map((segment: { type: string }) => segment.type)).toEqual([
             'el_panel', 'el_wire', 'el_panel',
         ]);
-        expect(loaded.segments[0].x).toEqual([-20, -42, -42]);
-        expect(loaded.segments[2].x).toEqual([20, 42, 42]);
-        expect(loaded.segments[1].thickness).toBe(5);
+        expect(loaded.segments[0].x).toEqual([-5, -2, -2]);
+        expect(loaded.segments[0].y).toEqual([0, -1.5, 1.5]);
+        expect(loaded.segments[2].x).toEqual([5, 2, 2]);
+        expect(loaded.segments[2].y).toEqual([0, 1.5, -1.5]);
+        expect(loaded.segments[1].y).toEqual([-3, 3]);
+        expect(loaded.segments[1].thickness).toBe(1);
         await expect.poll(() => page.evaluate(() => localStorage.getItem('lm:screenmap-preset')))
             .toBe('hydropack_el_shapes.json');
     });

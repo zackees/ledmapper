@@ -69,6 +69,6 @@ describe('screenmaps manifest', () => {
         assert.deepStrictEqual(screenmap.segments.map((segment: { type: string }) => segment.type), [
             'el_panel', 'el_wire', 'el_panel',
         ]);
-        assert.equal(screenmap.segments[1].thickness, 5);
+        assert.equal(screenmap.segments[1].thickness, 1);
     });
 });
