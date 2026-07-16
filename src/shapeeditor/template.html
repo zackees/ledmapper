@@ -4,11 +4,23 @@
             <h1 class="mb-0">ScreenMap Design</h1>
         </div>
         <div class="shapeeditor-header-actions flex items-center gap-2">
-            <button id="btn_undo" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Undo (Ctrl+Z)">Undo</button>
-            <button id="btn_redo" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Redo (Ctrl+Shift+Z)">Redo</button>
-            <button id="btn_reset" class="py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled>Reset</button>
-            <button id="btn_load_screenmap" type="button" class="create-load-button" title="Load screenmap JSON" aria-haspopup="dialog" aria-controls="controls" aria-expanded="false">Load...</button>
-            <button id="btn_save_as" class="btn-save py-1 px-3.5 bg-lm-accent text-white border-none rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed" disabled>Save As…</button>
+            <div class="header-history-group" role="group" aria-label="History">
+                <button id="btn_undo" type="button" class="header-icon-btn" disabled aria-label="Undo">
+                    <!-- FA arrow-rotate-left SVG path (Font Awesome Free, CC BY 4.0). -->
+                    <svg viewBox="0 0 512 512" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M125.7 160H176c17.7 0 32 14.3 32 32s-14.3 32-32 32H48c-17.7 0-32-14.3-32-32V64c0-17.7 14.3-32 32-32s32 14.3 32 32v51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"/>
+                    </svg>
+                </button>
+                <button id="btn_redo" type="button" class="header-icon-btn" disabled aria-label="Redo">
+                    <!-- FA arrow-rotate-right SVG path (Font Awesome Free, CC BY 4.0). -->
+                    <svg viewBox="0 0 512 512" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M386.3 160H336c-17.7 0-32 14.3-32 32s14.3 32 32 32H464c17.7 0 32-14.3 32-32V64c0-17.7-14.3-32-32-32s-32 14.3-32 32v51.2L414.4 97.6c-87.5-87.5-229.3-87.5-316.8 0s-87.5 229.3 0 316.8s229.3 87.5 316.8 0c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0c-62.5 62.5-163.8 62.5-226.3 0s-62.5-163.8 0-226.3s163.8-62.5 226.3 0L386.3 160z"/>
+                    </svg>
+                </button>
+            </div>
+            <button id="btn_header_new" class="toolbar-btn">New</button>
+            <button id="btn_load_screenmap" type="button" class="create-load-button" aria-haspopup="dialog" aria-controls="controls" aria-expanded="false">Load...</button>
+            <button id="btn_save_as" class="btn-save toolbar-btn-primary" disabled>Save As…</button>
         </div>
     </div>
 </div>
@@ -44,6 +56,18 @@
     <div class="mobile-editor-actions" aria-label="Create mobile tools">
         <button id="btn_mobile_map" type="button" class="mobile-editor-action" aria-controls="controls" aria-expanded="false" aria-haspopup="dialog">Map</button>
         <button id="btn_mobile_tools" type="button" class="mobile-editor-action" aria-controls="transform-overlay" aria-expanded="false" aria-haspopup="dialog">Tools</button>
+        <button id="btn_mobile_undo" type="button" class="mobile-editor-action mobile-editor-action-icon" disabled aria-label="Undo">
+            <!-- FA arrow-rotate-left SVG path (Font Awesome Free, CC BY 4.0). -->
+            <svg viewBox="0 0 512 512" width="16" height="16" aria-hidden="true">
+                <path fill="currentColor" d="M125.7 160H176c17.7 0 32 14.3 32 32s-14.3 32-32 32H48c-17.7 0-32-14.3-32-32V64c0-17.7 14.3-32 32-32s32 14.3 32 32v51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"/>
+            </svg>
+        </button>
+        <button id="btn_mobile_redo" type="button" class="mobile-editor-action mobile-editor-action-icon" disabled aria-label="Redo">
+            <!-- FA arrow-rotate-right SVG path (Font Awesome Free, CC BY 4.0). -->
+            <svg viewBox="0 0 512 512" width="16" height="16" aria-hidden="true">
+                <path fill="currentColor" d="M386.3 160H336c-17.7 0-32 14.3-32 32s14.3 32 32 32H464c17.7 0 32-14.3 32-32V64c0-17.7-14.3-32-32-32s-32 14.3-32 32v51.2L414.4 97.6c-87.5-87.5-229.3-87.5-316.8 0s-87.5 229.3 0 316.8s229.3 87.5 316.8 0c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0c-62.5 62.5-163.8 62.5-226.3 0s-62.5-163.8 0-226.3s163.8-62.5 226.3 0L386.3 160z"/>
+            </svg>
+        </button>
         <button id="btn_mobile_help" type="button" class="mobile-editor-action">Help</button>
     </div>
     <div id="transform-overlay" class="transform-overlay">
@@ -52,7 +76,7 @@
                 <strong>Editor tools</strong>
                 <span>Transform the map, add panels, and manage strips.</span>
             </div>
-            <button id="btn_mobile_reset" type="button" class="mobile-tools-reset">Reset</button>
+            <button id="btn_mobile_reset" type="button" class="mobile-tools-reset">Reset transforms</button>
         </div>
         <button id="btn_overlay_collapse" type="button"
             class="overlay-collapse-btn"
@@ -87,6 +111,7 @@
                 <label>Move X <input id="txt_translate_x" type="number" value="0" step="1"><span class="unit">px</span></label>
                 <label>Move Y <input id="txt_translate_y" type="number" value="0" step="1"><span class="unit">px</span></label>
                 <label>LED ⌀ <input id="txt_diameter" type="number" value="0.50" min="0.01" max="100" step="0.01"></label>
+                <button id="btn_reset" type="button" class="toolbar-btn" disabled>Reset transforms</button>
             </div>
             <div class="transform-row flex flex-wrap items-center gap-x-3 gap-y-1 pt-2">
                 <label class="flex items-center gap-1" title="Snap a dragged strip back to its starting place when the cursor comes back near the mousedown point.">

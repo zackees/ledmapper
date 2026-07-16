@@ -59,17 +59,25 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
         this.ctxMenu.className = 'shapeeditor-ctx-menu';
 
         // ── File operations (wrapped for show/hide) ──
+        // New / Save As… / Load background image… are command-registry-bound
+        // (#445): bindCommand wires their click, tooltip, and disabled state
+        // from the same commands the header/popover/mobile-sheet buttons use,
+        // so labels and enablement can't drift across surfaces.
         this.ctxFileOps = document.createElement('div');
         this.ctxMenu.appendChild(this.ctxFileOps);
-        this.makeCtxBtn('New', 'new', this.ctxFileOps);
-        this.ctxBtnSave = this.makeCtxBtn('Save As\u2026', 'save', this.ctxFileOps);
+        const ctxBtnNew = this.makeCtxBtn('New', 'new', this.ctxFileOps);
+        this.bindCommand('new', ctxBtnNew);
+        this.ctxBtnSave = this.makeCtxBtn('Save As\u2026', 'save-as', this.ctxFileOps);
+        this.bindCommand('save-as', this.ctxBtnSave);
 
-        // Load Screenmap with submenu
+        // Load Screenmap with submenu — the submenu trigger itself isn't a
+        // registry command (it just shows/hides the submenu on hover); its
+        // label mirrors the header's "Load…" command for consistency.
         const ctxLoadWrapper = document.createElement('div');
         ctxLoadWrapper.className = 'shapeeditor-ctx-load-wrapper';
         this.ctxFileOps.appendChild(ctxLoadWrapper);
         this.ctxBtnLoadScreenmap = document.createElement('button');
-        this.ctxBtnLoadScreenmap.textContent = 'Load Screenmap \u25B8';
+        this.ctxBtnLoadScreenmap.textContent = 'Load \u25B8';
         this.ctxBtnLoadScreenmap.className = `${this.ctxBtnClass} shapeeditor-ctx-load-trigger`;
         ctxLoadWrapper.appendChild(this.ctxBtnLoadScreenmap);
 
@@ -91,13 +99,12 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
             if (this.ctxLoadSubmenu) this.ctxLoadSubmenu.style.display = 'none';
         });
 
-        // Load Image (triggers file picker)
-        this.makeCtxBtn('Load Background Image\u2026', 'load-image', this.ctxFileOps);
-        this.ctxLoadImageInput = document.createElement('input');
-        this.ctxLoadImageInput.type = 'file';
-        this.ctxLoadImageInput.accept = 'image/*';
-        this.ctxLoadImageInput.style.display = 'none';
-        this.ctxFileOps.appendChild(this.ctxLoadImageInput);
+        // Load background image… triggers the SAME background-image file
+        // input the "Choose a map" popover's Image row uses (dom_btn_upload_
+        // image) instead of a second hidden input — one canonical picker,
+        // per the command-registry unification (#445).
+        const ctxBtnLoadImage = this.makeCtxBtn('Load background image\u2026', 'load-image', this.ctxFileOps);
+        this.bindCommand('load-image', ctxBtnLoadImage);
 
         this.ctxFileOpsSep = this.makeCtxSeparator();
 
@@ -143,19 +150,14 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
             ctxUploadInput.value = '';
         }, { signal: this.signal });
 
-        this.ctxLoadImageInput.addEventListener('change', () => {
-            if (this.ctxLoadImageInput?.files?.[0]) this.loadBackgroundImage(this.ctxLoadImageInput.files[0]);
-            if (this.ctxLoadImageInput) this.ctxLoadImageInput.value = '';
-        }, { signal: this.signal });
-
         this.ctxMenu.addEventListener('click', (e: MouseEvent) => {
             const cm_tgt = e.target instanceof HTMLElement ? e.target : null;
             const action = cm_tgt?.dataset.action ?? null;
-            if (action === 'new') {
-                this.dom_btn_new.click();
-            } else if (action === 'save') {
-                this.saveAs();
-            } else if (action === 'upload-screenmap') {
+            // 'new' / 'save-as' / 'load-image' route through their own
+            // bindCommand-attached click listeners (#445); this delegated
+            // listener still fires afterward on every click inside the menu
+            // to close it (see hideContextMenu() at the end, unconditional).
+            if (action === 'upload-screenmap') {
                 ctxUploadInput.click();
             } else if (action?.startsWith('load-preset:')) {
                 const file = action.slice('load-preset:'.length);
@@ -167,8 +169,6 @@ export const editorRendererMethods: EditorRendererMethods & ThisType<ShapeEditor
                     this.presetPicker?.setActive(file);
                 })
                     .catch((err: unknown) => { console.warn('Failed to load preset:', err); });
-            } else if (action === 'load-image') {
-                this.ctxLoadImageInput?.click();
             } else if (action === 'delete' && this.ctxMenuIdx >= 0) {
                 this.deletePoint(this.ctxMenuIdx);
             } else if (action === 'insert-between' && this.highlightedEdgeIdx >= 0) {

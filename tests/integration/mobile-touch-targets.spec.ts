@@ -54,6 +54,8 @@ test.describe('shared coarse-pointer touch targets', () => {
             { label: 'Load screenmap action', selector: '#btn_load_screenmap' },
             { label: 'Map action', selector: '#btn_mobile_map' },
             { label: 'Tools action', selector: '#btn_mobile_tools' },
+            { label: 'Mobile undo action', selector: '#btn_mobile_undo' },
+            { label: 'Mobile redo action', selector: '#btn_mobile_redo' },
             { label: 'Help action', selector: '#btn_mobile_help' },
         ]);
 

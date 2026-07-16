@@ -6,7 +6,7 @@ import { centerAndFitPoints, computeCenterFitScale, download_text_as_file, parse
 import { formatCompactJson } from "../json-compact";
 import { safeStorage } from "../services/storage";
 import { errorDialog, fireDialog, getSwal } from "../ui/dialogs";
-import { backfillMeta, buildScreenmapMultiStripJson, getBackup, getPresetSelection, getScreenmap, getScreenmapMeta, isDegenerate, notePinMutation, restoreBackup, savePresetScreenmap, saveScreenmap, saveScreenmapMultiStrip, type BackupMeta } from "../screenmap-store";
+import { backfillMeta, buildScreenmapMultiStripJson, getBackup, getPresetSelection, getScreenmap, getScreenmapMeta, isDegenerate, notePinMutation, promoteToBackup, restoreBackup, savePresetScreenmap, saveScreenmap, saveScreenmapMultiStrip, type BackupMeta } from "../screenmap-store";
 import { fileHasExtension } from "../drag-drop";
 import { CANONICAL_64X64_PRESET, analyzeCanonical64x64Divergence, getDefaultPresetFile, isCanonical64x64Geometry } from "../canonical-screenmap";
 import { mountPresetPicker, type PresetCategory } from "../ui/preset-picker";
@@ -18,6 +18,7 @@ function escapeForTextarea(s: string): string {
 }
 
 export interface EditorIoMethods {
+    doNewScreenmap: () => void;
     saveAs: () => void;
     _buildCurrentScreenmapJson: () => string;
     _openInspectJsonDialog: () => Promise<void>;
@@ -35,6 +36,35 @@ export interface EditorIoMethods {
 }
 
 export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
+    doNewScreenmap(this: ShapeEditor){
+
+        // Promote current working copy (if any) into the backup slot BEFORE
+        // we wipe it, so the prior layout stays restorable. Then drop the
+        // working copy entirely instead of writing a degenerate
+        // single-LED screenmap that would auto-load on next launch.
+        const hadBackupPromote = promoteToBackup();
+        this.clearEditingState();
+        this.presetPicker?.setActive('');
+        this.screenmap_pts = [[0, 0]];
+        this.rawPts = [[0, 0]];
+        this.stripInfo = null;
+        this.stripStore.load(null);
+        this.renderStripsPanel();
+        this.origDiameter = 0.5;
+        this.dom_txt_diameter.value = String(this.origDiameter);
+        this.origWidth = 0;
+        this.origHeight = 0;
+        this.fitScale = 1;
+        this.resetTransforms();
+        this.setNeedsGeometryUpdate();
+        safeStorage.remove('lm:screenmap');
+        safeStorage.remove('lm:screenmap-meta');
+        safeStorage.remove('lm:screenmap-preset');
+        try { this.renderBackupRow(); } catch { /* render is best-effort */ }
+        if (hadBackupPromote) {
+            void this._toastInfo('New layout — previous layout kept as backup').catch(() => { /* toast is best effort */ });
+        }
+    },
     _buildCurrentScreenmapJson(this: ShapeEditor): string{
 
     if (this.rawPts.length === 0) return '';
