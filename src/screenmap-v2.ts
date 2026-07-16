@@ -147,6 +147,7 @@ export function v2ToMultiStripResult(v2: ScreenmapV2): MultiStripParseResult {
             pin: typeof seg.pin === 'string' ? seg.pin : String(seg.pin),
             videoOffsetOverride: overrideOn,
             type,
+            group: seg.group,
             ...(type !== 'led_strip' ? { vertices, ...(seg.thickness !== undefined ? { thickness: seg.thickness } : {}) } : {}),
         });
         flatOffset += type === 'led_strip' ? points.length : 1;

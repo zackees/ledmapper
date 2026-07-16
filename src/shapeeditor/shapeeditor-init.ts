@@ -332,6 +332,12 @@ this.wireTransformUndo('translateY', this.dom_txt_translate_y);
         this.stripStore = new StripStore();
         this.stripInfo = null;
         this.selection = new Selection();
+        this.selection.setLinkedGroupResolver((stripIdx) => {
+            const strips = this.stripInfo?.strips ?? [];
+            const group = strips[stripIdx]?.group;
+            if (!group) return [stripIdx];
+            return strips.flatMap((strip, idx) => strip.group === group ? [idx] : []);
+        });
 this.selection.setOnChange(() => {
         this.setNeedsGeometryUpdate();
         this.renderStripsPanel();

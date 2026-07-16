@@ -55,6 +55,26 @@ export const editorInteractionMethods: EditorInteractionMethods & ThisType<Shape
         const hitStripIdx = candidateStrips.find((idx) => this.selection.isStripSelected(idx))
             ?? (primary !== null && candidateStrips.includes(primary) ? primary : candidateStrips[candidateStrips.length - 1]);
         if (hitStripIdx !== undefined && hitStripIdx >= 0) return { stripIdx: hitStripIdx, edgeIdx: -1 };
+        // EL panels are selectable by their filled interior, not only by a
+        // vertex or outline edge. Their strip offsets point into the fitted
+        // vertex array, so moving the selected group updates the shape.
+        for (const shape of this.screenmapShapes) {
+            if (shape.type !== 'el_panel' || shape.vertices.length < 3) continue;
+            const vertices = this.screenmap_pts.slice(shape.offset, shape.offset + shape.vertices.length)
+                .map(([x, y]) => this.toCanvasCoords(x, y));
+            let inside = false;
+            for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+                const a = vertices[i], b = vertices[j];
+                if (!a || !b) continue;
+                const crossing = ((a[1] > canvasY) !== (b[1] > canvasY))
+                    && canvasX < (b[0] - a[0]) * (canvasY - a[1]) / (b[1] - a[1]) + a[0];
+                if (crossing) inside = !inside;
+            }
+            if (inside) {
+                const stripIdx = this.stripInfo?.strips.findIndex((strip) => strip.name === shape.name) ?? -1;
+                if (stripIdx >= 0) return { stripIdx, edgeIdx: -1 };
+            }
+        }
         if (this.screenmap_pts.length < 2) return null;
         const edge = this.findNearestEdge(canvasX, canvasY);
         if (!edge || edge.distSq > STRIP_STROKE_HIT_PX * STRIP_STROKE_HIT_PX) return null;

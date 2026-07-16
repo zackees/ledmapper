@@ -1,33 +1,31 @@
 {
   "version": 2,
   "groups": {
-    "left-panel": { "color": "#ef4444" },
-    "center-wire": { "color": "#f59e0b" },
-    "right-panel": { "color": "#3b82f6" }
+    "center-panel": { "color": "#3b82f6" },
+    "hydropack-panels": { "color": "#3b82f6" }
   },
   "segments": [
     {
       "id": "left-panel",
       "type": "el_panel",
       "pin": "pin1",
-      "group": "left-panel",
+      "group": "hydropack-panels",
       "x": [-5, -2, -2],
       "y": [0, -1.5, 1.5]
     },
     {
-      "id": "center-wire",
-      "type": "el_wire",
+      "id": "center-panel",
+      "type": "el_panel",
       "pin": "pin2",
-      "group": "center-wire",
-      "x": [0, 0],
-      "y": [-3, 3],
-      "thickness": 1
+      "group": "center-panel",
+      "x": [-0.5, 0.5, 0.5, -0.5],
+      "y": [-3, -3, 3, 3]
     },
     {
       "id": "right-panel",
       "type": "el_panel",
       "pin": "pin3",
-      "group": "right-panel",
+      "group": "hydropack-panels",
       "x": [5, 2, 2],
       "y": [0, 1.5, -1.5]
     }

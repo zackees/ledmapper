@@ -3,8 +3,14 @@ export class Selection {
     _pointIdx: number | null = null;
     _stripIdxs = new Set<number>();
     _onChange: (() => void) | null = null;
+    _linkedGroupResolver: ((stripIdx: number) => number[]) | null = null;
 
     setOnChange(fn: (() => void) | null | undefined) { this._onChange = typeof fn === 'function' ? fn : null; }
+    setLinkedGroupResolver(fn: ((stripIdx: number) => number[]) | null | undefined) { this._linkedGroupResolver = fn ?? null; }
+    _expand(stripIdx: number): number[] {
+        const linked = this._linkedGroupResolver?.(stripIdx) ?? [stripIdx];
+        return [...new Set(linked.filter((idx) => Number.isInteger(idx) && idx >= 0))];
+    }
     getPointIdx() { return this._pointIdx; }
     /** Compatibility alias for consumers that explicitly need the primary group. */
     getStripIdx() { return this.getPrimaryStripIdx(); }
@@ -22,32 +28,35 @@ export class Selection {
     selectPoint(pointIdx: number | null, stripIdx: number | null) {
         const nextPoint = typeof pointIdx === 'number' && pointIdx >= 0 ? pointIdx : null;
         const nextStrip = typeof stripIdx === 'number' && stripIdx >= 0 ? stripIdx : this.getPrimaryStripIdx();
-        const sameGroups = this._stripIdxs.size === (nextStrip === null ? 0 : 1) && this.getPrimaryStripIdx() === nextStrip;
+        const expanded = nextStrip === null ? [] : this._expand(nextStrip);
+        const sameGroups = this._stripIdxs.size === expanded.length && expanded.every((idx) => this._stripIdxs.has(idx));
         if (nextPoint === this._pointIdx && sameGroups) return;
         this._pointIdx = nextPoint;
-        this._stripIdxs = nextStrip === null ? new Set() : new Set([nextStrip]);
+        this._stripIdxs = new Set(expanded);
         this._emit();
     }
 
     selectStrip(stripIdx: number | null) { this.selectOnlyStrip(stripIdx); }
     selectOnlyStrip(stripIdx: number | null) {
         const next = typeof stripIdx === 'number' && stripIdx >= 0 ? stripIdx : null;
-        if (this._pointIdx === null && this._stripIdxs.size === (next === null ? 0 : 1) && this.getPrimaryStripIdx() === next) return;
+        const expanded = next === null ? [] : this._expand(next);
+        if (this._pointIdx === null && this._stripIdxs.size === expanded.length && expanded.every((idx) => this._stripIdxs.has(idx))) return;
         this._pointIdx = null;
-        this._stripIdxs = next === null ? new Set() : new Set([next]);
+        this._stripIdxs = new Set(expanded);
         this._emit();
     }
     addStrip(stripIdx: number) {
         if (!Number.isInteger(stripIdx) || stripIdx < 0) return;
         if (this.getPrimaryStripIdx() === stripIdx && this._pointIdx === null) return;
-        this._stripIdxs.delete(stripIdx);
-        this._stripIdxs.add(stripIdx);
+        for (const idx of this._expand(stripIdx)) this._stripIdxs.add(idx);
         this._pointIdx = null;
         this._emit();
     }
     toggleStrip(stripIdx: number) {
         if (!Number.isInteger(stripIdx) || stripIdx < 0) return;
-        if (this._stripIdxs.has(stripIdx)) this._stripIdxs.delete(stripIdx); else this._stripIdxs.add(stripIdx);
+        const linked = this._expand(stripIdx);
+        if (linked.some((idx) => this._stripIdxs.has(idx))) linked.forEach((idx) => this._stripIdxs.delete(idx));
+        else linked.forEach((idx) => this._stripIdxs.add(idx));
         this._pointIdx = null;
         this._emit();
     }

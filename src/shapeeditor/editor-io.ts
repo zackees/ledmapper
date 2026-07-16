@@ -1,7 +1,8 @@
 // Named ShapeEditor method bundle: io.
 import type { ShapeEditor } from './shapeeditor-class';
 import { BufferGeometry, Float32BufferAttribute, LineBasicMaterial, LineSegments, type Material } from "three";
-import type { StripEntry, StripInfo } from "./strips-model";
+import type { StripEntry } from "./strips-model";
+import type { ParsedStrip } from '../types/domain';
 import { centerAndFitPoints, computeCenterFitScale, download_text_as_file, parseScreenmapMultiStrip, parse_screenmap_data } from "../common";
 import { formatCompactJson } from "../json-compact";
 import { safeStorage } from "../services/storage";
@@ -12,7 +13,6 @@ import { CANONICAL_64X64_PRESET, analyzeCanonical64x64Divergence, getDefaultPres
 import { mountPresetPicker, type PresetCategory } from "../ui/preset-picker";
 import type { PresetEntry } from "./shapeeditor-types";
 import type { PointArrayWithDiameter } from "../common";
-import type { ScreenmapShape } from '../gfx/types';
 
 function escapeForTextarea(s: string): string {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -440,14 +440,28 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
 
         // Parse multi-strip metadata for color-coded visualization
         try {
-            this.stripInfo = (multi ?? parseScreenmapMultiStrip(text)) as unknown as StripInfo;
-            this.screenmapShapes = (multi ?? parseScreenmapMultiStrip(text)).strips
-                .filter((strip) => strip.type === 'el_wire' || strip.type === 'el_panel')
+            const parsedMulti = multi ?? parseScreenmapMultiStrip(text);
+            let editorOffset = 0;
+            const editorMulti = {
+                ...parsedMulti,
+                strips: parsedMulti.strips.map((strip: ParsedStrip) => {
+                    const points = strip.type === 'led_strip' ? strip.points : (strip.vertices ?? []);
+                    const normalized = { ...strip, points, offset: editorOffset, count: points.length };
+                    editorOffset += points.length;
+                    return normalized;
+                }),
+                allPoints: sourceGeometry,
+                totalCount: sourceGeometry.length,
+            };
+            this.stripInfo = editorMulti;
+            this.screenmapShapes = editorMulti.strips
+                .filter((strip: ParsedStrip) => strip.type === 'el_wire' || strip.type === 'el_panel')
                 .map((strip) => ({
                     name: strip.name,
-                    type: strip.type as ScreenmapShape['type'],
+                    type: strip.type === 'el_wire' ? 'el_wire' : 'el_panel',
                     offset: strip.offset,
                     vertices: strip.vertices ?? [],
+                    ...(typeof strip.group === 'string' ? { group: strip.group } : {}),
                     ...(strip.thickness !== undefined ? { thickness: strip.thickness } : {}),
                 }));
         } catch {

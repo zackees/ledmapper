@@ -36,6 +36,8 @@ export interface Screenmap {
 export interface ScreenmapShape {
     name: string;
     type: 'el_wire' | 'el_panel';
+    /** Optional UI linkage group; shapes sharing it move together. */
+    group?: string;
     offset: number;
     vertices: readonly (readonly [number, number])[];
     thickness?: number;
