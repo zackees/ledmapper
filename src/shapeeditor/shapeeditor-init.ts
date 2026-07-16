@@ -102,9 +102,6 @@ this.mainEl.classList.add('shapeeditor-main');
         this.dom_btn_remove_image = this.qeb('#btn_remove_image');
         this.ac = new AbortController();
         this.signal = this.ac.signal;
-        this.dom_btn_load_screenmap.addEventListener('click', () => {
-            resetAndOpenFilePicker(this.dom_btn_upload_screenmap);
-        }, { signal: this.signal });
         // Mobile canvas-first chrome (issue #412). The existing controls and
         // transform panel are reused as bottom sheets so desktop behavior and
         // every established control binding stay intact.
@@ -158,6 +155,91 @@ this.mainEl.classList.add('shapeeditor-main');
                 if (event.key !== 'Escape') return;
                 if (mapSheet.classList.contains('mobile-sheet-open')) setMapOpen(false);
                 if (this.dom_transform_overlay.classList.contains('mobile-sheet-open')) setToolsOpen(false);
+            }, { signal: this.signal });
+        }
+        // Desktop "Choose a map" popover (issue #443). #btn_load_screenmap
+        // toggles the SAME #controls element used above as the mobile bottom
+        // sheet — same DOM, a second presentation — anchored under the
+        // button the way moviemaker anchors `#screenmap_expanded_panel`
+        // under `#btn_change_layout` (src/moviemaker/moviemaker.ts,
+        // positionLayoutPopover). Narrow fine-pointer windows (<=600px)
+        // keep the original direct-open behavior so this never collides
+        // with the mobile sheet's own fixed-position rules above.
+        {
+            const popover = this.qe<HTMLElement>('#controls');
+            const loadButton = this.dom_btn_load_screenmap;
+            const closeButton = this.qeb('#btn_mobile_map_close');
+            const isDesktopPointer = () => {
+                try {
+                    return window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 601px)').matches;
+                } catch {
+                    return false;
+                }
+            };
+            const positionPopover = () => {
+                const r = loadButton.getBoundingClientRect();
+                const margin = 8;
+                const width = Math.min(560, window.innerWidth * 0.92);
+                let left = r.left;
+                if (left + width > window.innerWidth - margin) left = window.innerWidth - margin - width;
+                if (left < margin) left = margin;
+                popover.style.top = `${String(Math.round(r.bottom + 6))}px`;
+                popover.style.left = `${String(Math.round(left))}px`;
+                popover.style.width = `${String(Math.round(width))}px`;
+            };
+            const setPopoverOpen = (open: boolean) => {
+                popover.classList.toggle('desktop-popover-open', open);
+                loadButton.setAttribute('aria-expanded', String(open));
+                if (open) {
+                    // Clear any stale selection so re-choosing the same file
+                    // fires 'change' again — mirrors resetAndOpenFilePicker's
+                    // reset-before-open contract for the mobile/direct path.
+                    this.dom_btn_upload_screenmap.value = '';
+                    positionPopover();
+                    closeButton.focus();
+                } else {
+                    popover.style.top = '';
+                    popover.style.left = '';
+                    popover.style.width = '';
+                    loadButton.focus();
+                }
+            };
+            loadButton.addEventListener('click', () => {
+                if (!isDesktopPointer()) {
+                    resetAndOpenFilePicker(this.dom_btn_upload_screenmap);
+                    return;
+                }
+                setPopoverOpen(!popover.classList.contains('desktop-popover-open'));
+            }, { signal: this.signal });
+            closeButton.addEventListener('click', () => {
+                if (popover.classList.contains('desktop-popover-open')) setPopoverOpen(false);
+            }, { signal: this.signal });
+            popover.addEventListener('click', (event) => {
+                if (!popover.classList.contains('desktop-popover-open')) return;
+                const target = event.target instanceof Element ? event.target : null;
+                if (target?.closest('.preset-btn') || target?.closest('#btn_new')) {
+                    setPopoverOpen(false);
+                }
+            }, { signal: this.signal });
+            this.dom_btn_upload_screenmap.addEventListener('change', () => {
+                if (popover.classList.contains('desktop-popover-open')) setPopoverOpen(false);
+            }, { signal: this.signal });
+            this.dom_btn_upload_image.addEventListener('change', () => {
+                if (popover.classList.contains('desktop-popover-open')) setPopoverOpen(false);
+            }, { signal: this.signal });
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape') return;
+                if (popover.classList.contains('desktop-popover-open')) setPopoverOpen(false);
+            }, { signal: this.signal });
+            document.addEventListener('pointerdown', (event) => {
+                if (!popover.classList.contains('desktop-popover-open')) return;
+                const target = event.target instanceof Node ? event.target : null;
+                if (target && popover.contains(target)) return;
+                if (target && loadButton.contains(target)) return;
+                setPopoverOpen(false);
+            }, { signal: this.signal });
+            window.addEventListener('resize', () => {
+                if (popover.classList.contains('desktop-popover-open')) positionPopover();
             }, { signal: this.signal });
         }
 for (const el of [this.dom_txt_scale, this.dom_txt_scale_x, this.dom_txt_scale_y,
