@@ -223,6 +223,38 @@ describe('v2ToMultiStripResult', () => {
     });
 });
 
+describe('EL geometry segments', () => {
+    const fixture = {
+        version: 2 as const,
+        groups: {
+            left: { color: '#f00' }, center: { color: '#0f0' }, right: { color: '#00f' },
+        },
+        segments: [
+            { id: 'left', type: 'el_panel' as const, pin: 'p1', group: 'left', x: [-20, -40, -40], y: [0, -20, 20] },
+            { id: 'center', type: 'el_wire' as const, pin: 'p2', group: 'center', x: [-10, 10], y: [0, 0], thickness: 5 },
+            { id: 'right', type: 'el_panel' as const, pin: 'p3', group: 'right', x: [20, 40, 40], y: [0, -20, 20] },
+        ],
+    };
+
+    test('preserves geometry and counts one channel per shape', () => {
+        const parsed = parseScreenmapV2(fixture);
+        assert.equal(parsed.segments[0]?.type, 'el_panel');
+        assert.equal(parsed.segments[1]?.thickness, 5);
+        const result = v2ToMultiStripResult(parsed);
+        assert.deepEqual(result.allPoints, []);
+        assert.equal(result.totalCount, 3);
+        assert.deepEqual(result.strips.map((s) => [s.type, s.count, s.vertices?.length]), [
+            ['el_panel', 1, 3], ['el_wire', 1, 2], ['el_panel', 1, 3],
+        ]);
+    });
+
+    test('rejects invalid EL geometry', () => {
+        assert.throws(() => parseScreenmapV2({ ...fixture, segments: [{ ...fixture.segments[1], thickness: 0 }] }), /positive finite/);
+        assert.throws(() => parseScreenmapV2({ ...fixture, segments: [{ ...fixture.segments[0], x: [1, 2] }] }), /mismatched|at least 3 vertices/);
+        assert.throws(() => parseScreenmapV2({ ...fixture, segments: [{ ...fixture.segments[1], type: 'unknown' }] }), /unsupported type/);
+    });
+});
+
 describe('parseScreenmapMultiStrip dispatcher', () => {
     test('v1 file still parses through the legacy path', () => {
         const result = parseScreenmapMultiStrip(V1_SAMPLE);

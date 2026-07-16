@@ -106,10 +106,10 @@ export function parseScreenmapMultiStrip(text: string | ScreenmapJson): MultiStr
         strips: [{
             name: 'strip1', points: pts, diameter: undefined, offset: 0,
             count: pts.length, video_offset: 0,
-            pin: 'pin1', videoOffsetOverride: false,
+            pin: 'pin1', videoOffsetOverride: false, type: 'led_strip',
         }],
         allPoints: pts,
-        totalCount: pts.length,
+        totalCount: pts.length, channelCount: pts.length,
     };
 }
 
@@ -157,11 +157,11 @@ function _parseMultiStripJson(obj: ScreenmapJson): MultiStripParseResult {
             : (typeof strip.video_offset === "number" && strip.video_offset !== offset);
         strips.push({
             name: key, points, diameter, offset, count: points.length,
-            video_offset, pin, videoOffsetOverride,
+            video_offset, pin, videoOffsetOverride, type: 'led_strip',
         });
         offset += points.length;
     }
-    return { strips, allPoints, totalCount: allPoints.length };
+    return { strips, allPoints, totalCount: allPoints.length, channelCount: allPoints.length };
 }
 
 /**

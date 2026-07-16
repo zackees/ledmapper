@@ -17,6 +17,7 @@
  * everything renderer-shaped, then adds the DOM wrapper + widgets.
  */
 
+import { Shape, ShapeGeometry, Mesh, MeshBasicMaterial } from 'three';
 import type { BufferGeometry, PointsMaterial, Points, Float32BufferAttribute } from 'three';
 
 import {
@@ -131,6 +132,8 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
     let pointsMaterial: PointsMaterial | undefined;
     let pointsMesh: Points | undefined;
     let colorAttribute: Float32BufferAttribute | undefined;
+    let shapeMeshes: Mesh[] = [];
+    let shapeMaterials: MeshBasicMaterial[] = [];
 
     // --- Frame interpolation (opt-in; default off) ------------------------
     // When enabled, the render loop blends between the two most-recent source
@@ -163,6 +166,18 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
         colorAttribute = result.colorAttribute;
         blendScratch = new Uint8Array(screenmap.points.length * 3);
         applyBloomGeometry(bloom, screenmap.points.map(([x, y]) => [x, y]), { ledPx: diameter, panePx: paneSize });
+        for (const mesh of shapeMeshes) { scene.remove(mesh); mesh.geometry.dispose(); }
+        for (const material of shapeMaterials) material.dispose();
+        shapeMeshes = [];
+        shapeMaterials = [];
+        for (const shape of screenmap.shapes ?? []) {
+            const geometry = new ShapeGeometry(shapeToPolygon(shape));
+            const material = new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 1, depthTest: false, depthWrite: false });
+            const mesh = new Mesh(geometry, material);
+            scene.add(mesh);
+            shapeMeshes.push(mesh);
+            shapeMaterials.push(material);
+        }
     }
     rebuildPoints();
 
@@ -175,10 +190,10 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
         targetFPS: opts.targetFPS ?? 60,
         watchdogTool: 'gfx-core',
         onFrame(time: number) {
-            if (!colorAttribute || screenmap.points.length === 0) return;
+            if (!colorAttribute || (screenmap.points.length === 0 && shapeMeshes.length === 0)) return;
             const arr = colorAttribute.array as Float32Array;
             const n = screenmap.points.length;
-            if (interpolate && frameA && frameB && blendScratch) {
+            if (interpolate && frameA && frameB && blendScratch && n > 0) {
                 // Fraction through the current source interval [frameBTime,
                 // frameBTime+srcIntervalMs]. Clamped to [0,1] so a late next
                 // frame holds on frameB instead of extrapolating past it.
@@ -200,7 +215,7 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
                 }
                 colorAttribute.needsUpdate = true;
                 bloom.frame(scratch);
-            } else if (lastFrame) {
+            } else if (lastFrame && n > 0) {
                 for (let i = 0; i < n; i++) {
                     const i3 = i * 3;
                     arr[i3    ] = (lastFrame[i3    ] ?? 0) * INV_255;
@@ -209,6 +224,13 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
                 }
                 colorAttribute.needsUpdate = true;
                 bloom.frame(lastFrame);
+            }
+            for (let i = 0; i < shapeMaterials.length; i++) {
+                const offset = screenmap.shapes?.[i]?.offset ?? 0;
+                const r = lastFrame?.[offset * 3] ?? 0;
+                const g = lastFrame?.[offset * 3 + 1] ?? 0;
+                const b = lastFrame?.[offset * 3 + 2] ?? 0;
+                shapeMaterials[i]!.color.setRGB(r * INV_255, g * INV_255, b * INV_255);
             }
             if (pointsMaterial) pointsMaterial.size = diameter * bloom.getDiameterScale();
             bloom.render();
@@ -290,12 +312,46 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
                 pointsGeometry?.dispose();
                 pointsMaterial?.dispose();
             }
+            for (const mesh of shapeMeshes) { scene.remove(mesh); mesh.geometry.dispose(); }
+            for (const material of shapeMaterials) material.dispose();
             circleTexture.dispose();
             bloom.dispose();
             renderer.dispose();
         },
     };
     return core;
+}
+
+function shapeToPolygon(shape: NonNullable<Screenmap['shapes']>[number]): Shape {
+    const points = shape.type === 'el_wire'
+        ? expandPolyline(shape.vertices, shape.thickness ?? 1)
+        : shape.vertices;
+    const path = new Shape();
+    const first = points[0];
+    if (!first) return path;
+    path.moveTo(first[0], first[1]);
+    for (const point of points.slice(1)) path.lineTo(point[0], point[1]);
+    path.closePath();
+    return path;
+}
+
+function expandPolyline(vertices: readonly (readonly [number, number])[], thickness: number): readonly (readonly [number, number])[] {
+    const radius = thickness / 2;
+    const left: [number, number][] = [];
+    const right: [number, number][] = [];
+    for (let i = 0; i < vertices.length; i++) {
+        const a = vertices[Math.max(0, i - 1)]!;
+        const b = vertices[Math.min(vertices.length - 1, i + 1)]!;
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len * radius;
+        const ny = dx / len * radius;
+        const p = vertices[i]!;
+        left.push([p[0] + nx, p[1] + ny]);
+        right.push([p[0] - nx, p[1] - ny]);
+    }
+    return [...left, ...right.reverse()];
 }
 
 function applyBloomConfig(bloom: ReturnType<typeof createAutoBloom>, cfg: BloomConfig): void {

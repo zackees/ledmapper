@@ -6,8 +6,8 @@
  * of them into the package's internal `Screenmap`.
  */
 
-import { parse_screenmap_data_json, parseScreenmapMultiStrip, centerAndFitPoints } from '../common';
-import type { Screenmap } from './types';
+import { parse_screenmap_data_json, parseScreenmapMultiStrip, centerAndFitPoints, computeCenterFitScale } from '../common';
+import type { Screenmap, ScreenmapShape } from './types';
 import type { ScreenmapJson, StripPoint } from '../types/domain';
 
 function isAlreadyNormalized(value: unknown): value is Screenmap {
@@ -34,23 +34,41 @@ export function normalizeScreenmap(input: unknown, paneSize: number): Screenmap 
         ? (JSON.parse(input) as ScreenmapJson)
         : (input as ScreenmapJson);
 
-    const rawPoints = parse_screenmap_data_json(json);
-    if (rawPoints.length === 0) {
+    const multi = parseScreenmapMultiStrip(json);
+    const sourceGeometry = multi.strips.flatMap((s) => s.type === 'led_strip' ? s.points : (s.vertices ?? []));
+    if (sourceGeometry.length === 0 && (multi.channelCount ?? multi.totalCount) === 0) {
         throw new Error('normalizeScreenmap: screenmap parsed to zero points');
     }
 
-    const fitted = centerAndFitPoints(rawPoints, paneSize, paneSize);
-    const multi = parseScreenmapMultiStrip(json);
+    const fitted = centerAndFitPoints(sourceGeometry, paneSize, paneSize);
+    const fittedPoints = centerAndFitPoints(multi.allPoints, paneSize, paneSize);
+    const fitScale = computeCenterFitScale(sourceGeometry, paneSize, paneSize);
+    let cursor = 0;
     const strips = multi.strips.map((s) => ({
         name: s.name,
         offset: s.offset,
         count: s.count,
     }));
+    const shapes: ScreenmapShape[] = [];
+    for (const s of multi.strips) {
+        if (s.type === 'el_wire' || s.type === 'el_panel') {
+            const vertices = (s.vertices ?? []).map(() => {
+                const p = fitted[cursor++] ?? [0, 0];
+                return [p[0], p[1]] as const;
+            });
+            shapes.push({ name: s.name, type: s.type, offset: s.offset, vertices, ...(s.thickness !== undefined ? { thickness: s.thickness * fitScale } : {}) });
+        } else {
+            cursor += s.points.length;
+        }
+    }
+    const rawPoints = parse_screenmap_data_json(json);
 
     const screenmap: Screenmap = {
-        points: fitted.map(([x, y]: StripPoint) => [x, y] as const),
+        points: fittedPoints.map(([x, y]: StripPoint) => [x, y] as const),
         strips,
         ...(typeof rawPoints.diameter === 'number' ? { diameter: rawPoints.diameter } : {}),
+        ...(shapes.length > 0 ? { shapes } : {}),
+        channelCount: multi.channelCount ?? multi.totalCount,
     };
     return screenmap;
 }
