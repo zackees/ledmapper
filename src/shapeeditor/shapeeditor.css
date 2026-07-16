@@ -814,6 +814,13 @@
         flex-direction: column;
     }
 
+    /* Inline mode lays tabs beside the items for the old file-ops row; in
+       the popover stack them like moviemaker's compact picker instead. */
+    #controls.desktop-popover-open .preset-picker[data-mode="inline"] {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
     #controls.desktop-popover-open .mobile-sheet-heading {
         display: flex;
         position: sticky;
