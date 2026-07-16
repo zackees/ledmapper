@@ -4,7 +4,8 @@
     "categories": [
         { "id": "grids",  "label": "Grids" },
         { "id": "strips", "label": "Strips & Rings" },
-        { "id": "shapes", "label": "Shapes" }
+        { "id": "shapes", "label": "Shapes" },
+        { "id": "el",     "label": "EL Wire & Panels" }
     ],
     "presets": [
         {
@@ -71,6 +72,11 @@
             "file":     "44x44_quad_serpentine.json",
             "name":     "44x44 Quad Pinwheel",
             "category": "grids"
+        },
+        {
+            "file":     "hydropack_el_shapes.json",
+            "name":     "HydroPack EL < | >",
+            "category": "el"
         }
     ]
 }
