@@ -51,6 +51,7 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
         this.presetPicker?.setActive('');
         this.screenmap_pts = [[0, 0]];
         this.rawPts = [[0, 0]];
+        this.screenmapSourceText = null;
         this.stripInfo = null;
         this.stripStore.load(null);
         this.renderStripsPanel();
@@ -96,6 +97,30 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
             +(rx * sinR + ry * cosR + tyCm).toFixed(4),
         ];
     };
+
+    // Preserve v2 EL metadata (including electrical_group) while exporting
+    // moved vertices. Electrical linkage is data, not a placement constraint.
+    if (this.screenmapSourceText !== null && this.screenmapShapes.length > 0) {
+        try {
+            const source = JSON.parse(this.screenmapSourceText) as {
+                segments?: Record<string, unknown>[];
+            };
+            if (Array.isArray(source.segments)) {
+                source.segments = source.segments.map((segment, stripIdx) => {
+                    const strip = this.stripInfo?.strips[stripIdx];
+                    if (!strip) return segment;
+                    const points = this.rawPts.slice(strip.offset, strip.offset + strip.count)
+                        .map((point) => transformPoint(point));
+                    return {
+                        ...segment,
+                        x: points.map(([x]) => x),
+                        y: points.map(([, y]) => y),
+                    };
+                });
+                return JSON.stringify(source, null, 2);
+            }
+        } catch { /* fall through to the legacy exporter */ }
+    }
 
     if (this.stripInfo && this.stripInfo.strips.length >= 1
         && this.stripInfo.totalCount === this.rawPts.length) {
@@ -423,6 +448,7 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
         const beforeJson = recordHistory ? this._buildCurrentScreenmapJson() : null;
         const beforePresetFile = recordHistory ? getPresetSelection() : null;
         this.clearEditingState();
+        this.screenmapSourceText = text;
 
         // EL strips have no LED points; their vertices are the drawable
         // geometry. Keep those vertices in the editor's fitted point space so
@@ -462,6 +488,7 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
                     offset: strip.offset,
                     vertices: strip.vertices ?? [],
                     ...(typeof strip.group === 'string' ? { group: strip.group } : {}),
+                    ...(typeof strip.electricalGroup === 'string' ? { electricalGroup: strip.electricalGroup } : {}),
                     ...(strip.thickness !== undefined ? { thickness: strip.thickness } : {}),
                 }));
         } catch {

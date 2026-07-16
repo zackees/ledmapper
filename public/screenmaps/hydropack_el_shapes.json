@@ -10,6 +10,7 @@
       "type": "el_panel",
       "pin": "pin1",
       "group": "hydropack-panels",
+      "electrical_group": "hydropack-el",
       "x": [-5, -2, -2],
       "y": [0, -1.5, 1.5]
     },
@@ -18,6 +19,7 @@
       "type": "el_panel",
       "pin": "pin2",
       "group": "center-panel",
+      "electrical_group": "center-panel",
       "x": [-0.5, 0.5, 0.5, -0.5],
       "y": [-3, -3, 3, 3]
     },
@@ -26,6 +28,7 @@
       "type": "el_panel",
       "pin": "pin3",
       "group": "hydropack-panels",
+      "electrical_group": "hydropack-el",
       "x": [5, 2, 2],
       "y": [0, 1.5, -1.5]
     }
