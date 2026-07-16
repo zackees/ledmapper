@@ -12,6 +12,7 @@ import { CANONICAL_64X64_PRESET, analyzeCanonical64x64Divergence, getDefaultPres
 import { mountPresetPicker, type PresetCategory } from "../ui/preset-picker";
 import type { PresetEntry } from "./shapeeditor-types";
 import type { PointArrayWithDiameter } from "../common";
+import type { ScreenmapShape } from '../gfx/types';
 
 function escapeForTextarea(s: string): string {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -413,12 +414,21 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
         // Parse before clearing the current document. Invalid or empty input
         // must leave both the document and its history untouched (#449).
         const parsedPoints = parse_screenmap_data(text);
-        if (parsedPoints.length === 0) return;
+        let multi: ReturnType<typeof parseScreenmapMultiStrip> | null = null;
+        try { multi = parseScreenmapMultiStrip(text); } catch { /* parsedPoints owns the error path */ }
+        const sourceGeometry = multi?.strips.flatMap((strip) =>
+            strip.type === 'led_strip' ? strip.points : (strip.vertices ?? []),
+        ) ?? parsedPoints;
+        if (sourceGeometry.length === 0) return;
         const beforeJson = recordHistory ? this._buildCurrentScreenmapJson() : null;
         const beforePresetFile = recordHistory ? getPresetSelection() : null;
         this.clearEditingState();
 
-        this.screenmap_pts = parsedPoints;
+        // EL strips have no LED points; their vertices are the drawable
+        // geometry. Keep those vertices in the editor's fitted point space so
+        // the existing transform/camera machinery can display the map.
+        this.screenmap_pts = sourceGeometry.map(([x, y]) => [x, y] as [number, number]);
+        this.screenmapShapes = [];
         // Loading a new file is a user-initiated pin change — even if it has
         // fewer pins than the previous working copy (guard grace window).
         if (persist) {
@@ -430,7 +440,16 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
 
         // Parse multi-strip metadata for color-coded visualization
         try {
-            this.stripInfo = parseScreenmapMultiStrip(text) as unknown as StripInfo;
+            this.stripInfo = (multi ?? parseScreenmapMultiStrip(text)) as unknown as StripInfo;
+            this.screenmapShapes = (multi ?? parseScreenmapMultiStrip(text)).strips
+                .filter((strip) => strip.type === 'el_wire' || strip.type === 'el_panel')
+                .map((strip) => ({
+                    name: strip.name,
+                    type: strip.type as ScreenmapShape['type'],
+                    offset: strip.offset,
+                    vertices: strip.vertices ?? [],
+                    ...(strip.thickness !== undefined ? { thickness: strip.thickness } : {}),
+                }));
         } catch {
             this.stripInfo = null;
         }
@@ -464,7 +483,20 @@ export const editorIoMethods: EditorIoMethods & ThisType<ShapeEditor> = {
             center: 'origin',
             pixelAlignScale: true,
         });
-        this.screenmap_pts = this.center_and_fit(this.screenmap_pts, fitW, fitH);
+        const fitXmin = Math.min(...sourceGeometry.map(([x]) => x));
+        const fitXmax = Math.max(...sourceGeometry.map(([x]) => x));
+        const fitYmin = Math.min(...sourceGeometry.map(([, y]) => y));
+        const fitYmax = Math.max(...sourceGeometry.map(([, y]) => y));
+        const fitPoint = ([x, y]: readonly [number, number]): [number, number] => [
+            (x - (fitXmin + fitXmax) / 2) * this.fitScale,
+            (y - (fitYmin + fitYmax) / 2) * this.fitScale,
+        ];
+        this.screenmap_pts = this.screenmap_pts.map(fitPoint);
+        this.screenmapShapes = this.screenmapShapes.map((shape) => ({
+            ...shape,
+            vertices: shape.vertices.map(fitPoint),
+            ...(shape.thickness !== undefined ? { thickness: shape.thickness * this.fitScale } : {}),
+        }));
         this.camPanX = fitViewport.centerOffsetX;
         this.camPanY = fitViewport.centerOffsetY;
         this.positionRulerAboveBBox();

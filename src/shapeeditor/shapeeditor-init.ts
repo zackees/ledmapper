@@ -57,6 +57,8 @@ this.mainEl.classList.add('shapeeditor-main');
         this._dirty = false;
         this.screenmap_pts = [];
         this.rawPts = [];
+        this.screenmapShapes = [];
+        this.lastTransformedShapes = [];
         this.undoStack = [];
         this.redoStack = [];
         this.commandRegistry = createCommandRegistry();
@@ -649,6 +651,8 @@ registerDebugState('shapeeditor', {
     getState: () => ({
         stripCount: this.stripStore.getStrips().length,
         totalPoints: this.screenmap_pts.length,
+        shapeCount: this.screenmapShapes.length,
+        shapeTypes: this.screenmapShapes.map((shape) => shape.type),
         // Reset stays dirty-gated, so its enabled state is the dirty flag now
         // that Save As… is existence-gated instead (#292).
         dirty: !this.dom_btn_reset.disabled,

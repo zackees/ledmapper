@@ -27,6 +27,11 @@ test.describe('Create HydroPack EL preset', () => {
         await expect(hydropack).toHaveText('HydroPack EL < | >');
         await hydropack.click();
         await expect(page.locator('#controls')).toBeHidden();
+        await expect(page.locator('.shapeeditor-placeholder')).toBeHidden();
+        await expect.poll(() => page.evaluate(() => {
+            const state = window.__lmDebug?.shapeeditor?.getState?.() as { shapeCount?: number; shapeTypes?: string[] } | undefined;
+            return state ? { shapeCount: state.shapeCount, shapeTypes: state.shapeTypes } : null;
+        })).toEqual({ shapeCount: 3, shapeTypes: ['el_panel', 'el_wire', 'el_panel'] });
 
         const loaded = await page.evaluate(() => JSON.parse(localStorage.getItem('lm:screenmap') ?? '{}'));
         expect(loaded.segments.map((segment: { type: string }) => segment.type)).toEqual([

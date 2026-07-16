@@ -171,6 +171,8 @@ export const editorPointsMethods: EditorPointsMethods & ThisType<ShapeEditor> = 
     },
     clearEditingState(this: ShapeEditor){
 
+        this.screenmapShapes = [];
+        this.lastTransformedShapes = [];
         this.selectedIdx = -1;
         this.selection.clear();
         this.pointEditStripIdx = null;

@@ -138,7 +138,47 @@ export const editorOverlayMethods: EditorOverlayMethods & ThisType<ShapeEditor> 
             this.bgImageBBox = null;
         }
 
+        if (this.lastTransformedPts.length === 0 && this.lastTransformedShapes.length === 0) {
+            this.ptsBBox = null;
+            this.directionArrowCount = 0;
+            this.directionArrowLayers = [];
+            this.directionArrowTransition.reset();
+            this.directionArrowTransitionPhase = 'idle';
+            this.drawBgGizmoHandles();
+            this.drawRuler();
+            this._drawPlacingGhost();
+            this._drawPasteGhost();
+            return;
+        }
+
+        // EL geometry is rendered as a filled panel or a thick wire. It has
+        // no LED point sprites, so draw it on the editor's 2D overlay.
+        const shapeColors = getStripColors(Math.max(1, this.lastTransformedShapes.length));
+        for (const [shapeIdx, shape] of this.lastTransformedShapes.entries()) {
+            const vertices = shape.vertices.map(([x, y]) => this.toCanvasCoords(x, y));
+            if (vertices.length < 2) continue;
+            const first = vertices[0];
+            if (!first) continue;
+            this.overlayCtx.globalAlpha = 0.72;
+            this.overlayCtx.strokeStyle = shapeColors[shapeIdx] ?? gfxColors.accentBlue();
+            this.overlayCtx.fillStyle = withAlpha(this.overlayCtx.strokeStyle, 0.28);
+            this.overlayCtx.lineWidth = Math.max(2, (shape.thickness ?? 2) * this.camZoom);
+            this.overlayCtx.beginPath();
+            this.overlayCtx.moveTo(first[0], first[1]);
+            for (const [x, y] of vertices.slice(1)) this.overlayCtx.lineTo(x, y);
+            if (shape.type === 'el_panel') {
+                this.overlayCtx.closePath();
+                this.overlayCtx.fill();
+            }
+            this.overlayCtx.stroke();
+        }
+        this.overlayCtx.globalAlpha = 1;
+
+        // Shape-only maps have no LED labels, selection box, or point-path
+        // affordances. Keep the geometry visible and finish the overlay pass.
         if (this.lastTransformedPts.length === 0) {
+            this._placeholderDiv().style.display = 'none';
+            this._infoDiv().innerHTML = `Shapes: ${String(this.lastTransformedShapes.length)}`;
             this.ptsBBox = null;
             this.directionArrowCount = 0;
             this.directionArrowLayers = [];
