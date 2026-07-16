@@ -147,6 +147,7 @@ export function v2ToMultiStripResult(v2: ScreenmapV2): MultiStripParseResult {
             pin: typeof seg.pin === 'string' ? seg.pin : String(seg.pin),
             videoOffsetOverride: overrideOn,
             type,
+            ...(seg.electrical_group !== undefined ? { electricalGroup: seg.electrical_group } : {}),
             ...(type !== 'led_strip' ? { vertices, ...(seg.thickness !== undefined ? { thickness: seg.thickness } : {}) } : {}),
         });
         flatOffset += type === 'led_strip' ? points.length : 1;
@@ -217,13 +218,20 @@ function parseSegment(raw: unknown, idx: number, _groups: Record<string, Screenm
 
     const type = raw.type === undefined ? 'led_strip' : raw.type;
     if (type !== 'led_strip' && type !== 'el_wire' && type !== 'el_panel') {
-        throw new Error(`Segment '${id}' has unsupported type '${String(type)}'`);
+        const typeName = typeof type === 'string' ? type : typeof type;
+        throw new Error(`Segment '${id}' has unsupported type '${typeName}'`);
     }
     const minimumVertices = type === 'el_wire' ? 2 : type === 'el_panel' ? 3 : 0;
     if (type !== 'led_strip' && x.length < minimumVertices) {
         throw new Error(`Segment '${id}' ${type} requires at least ${String(minimumVertices)} vertices`);
     }
     const out: ScreenmapV2Segment = { id, pin: pinValue, group, x, y, type };
+    if (raw.electrical_group !== undefined) {
+        if (typeof raw.electrical_group !== 'string' || raw.electrical_group.trim() === '') {
+            throw new Error(`Segment '${id}' 'electrical_group' must be a non-empty string`);
+        }
+        out.electrical_group = raw.electrical_group;
+    }
     if (type === 'el_wire') {
         if (typeof raw.thickness !== 'number' || !Number.isFinite(raw.thickness) || raw.thickness <= 0) {
             throw new Error(`Segment '${id}' el_wire requires a positive finite 'thickness'`);

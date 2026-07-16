@@ -13,6 +13,10 @@ These are subpath exports of one package, not separate npm packages. All
 subpaths are released together so FastLED pins one version and one set of
 Three.js/protocol compatibility guarantees.
 
+Version 0.1.1 preserves an optional v2 segment `electrical_group` as
+`ScreenmapShape.electricalGroup`. It declares logical/electrical linkage only;
+each shape remains independently positioned and rendered.
+
 Worker messages carry `protocolVersion`. A worker must reject an unsupported
 version with `code: "protocol-mismatch"`; a host must reject a `ready` message
 with an unsupported version. Capability names are additive and consumers must

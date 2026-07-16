@@ -11,4 +11,4 @@ export { resolveLedDiameter, computeFitScale } from './bloom-utils.js';
 export { buildVideoChannelMap } from './moviemaker/transforms.js';
 export type { GfxCore, CreateGfxCoreOptions } from './gfx/gfx-core-headless.js';
 export type { FramePacer } from './gfx/frame-pacer.js';
-export type { BloomConfig, Screenmap } from './gfx/types.js';
+export type { BloomConfig, Screenmap, ScreenmapShape } from './gfx/types.js';
