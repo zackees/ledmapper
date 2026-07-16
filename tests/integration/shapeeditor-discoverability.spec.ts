@@ -140,7 +140,7 @@ test.describe('Shapeeditor discoverability (hint strip + help overlay)', () => {
 
         // The canvas starts below both the product mode bar and the editor's
         // own toolbar. Keeping the toast at or below this boundary guarantees
-        // that Play/Create/Record and Undo/Redo/Reset/Save remain clickable.
+        // that Play/Create/Record and Undo/Redo/New/Load/Save remain clickable.
         expect(toastBox.y).toBeGreaterThanOrEqual(mainBox.y);
         expect(toastBox.y).toBeGreaterThanOrEqual(modeBarBox.y + modeBarBox.height);
     });

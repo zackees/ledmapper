@@ -38,6 +38,45 @@
     @apply py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed;
 }
 
+/* Secondary toolbar action (header New, accordion Reset transforms) and the
+   header's single accent CTA (Save As…) — issue #445's regrouped header
+   reuses the same look the old inline-utility buttons had. */
+.toolbar-btn {
+    @apply py-1 px-3.5 bg-lm-surface-1 text-lm-text border border-lm-border rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed;
+}
+
+.toolbar-btn-primary {
+    @apply py-1 px-3.5 bg-lm-accent text-white border-none rounded cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed;
+}
+
+/* Undo/Redo icon-pair segment (issue #445): a single joined pill instead of
+   two wide text buttons, matching the idiomatic-editor pattern cited in the
+   issue (Figma/Excalidraw/tldraw render history as a compact icon pair). */
+.header-history-group {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--color-lm-border);
+    border-radius: var(--radius-lm);
+    overflow: hidden;
+}
+
+.header-icon-btn {
+    @apply flex items-center justify-center bg-lm-surface-1 text-lm-text cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed;
+    width: 32px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    border-right: 1px solid var(--color-lm-border);
+}
+
+.header-history-group .header-icon-btn:last-child {
+    border-right: none;
+}
+
+.header-icon-btn:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
 /* ═══════════════════════════════════════════════════════════════
    ScreenMap Design — Layout Overrides
    ═══════════════════════════════════════════════════════════════ */
@@ -186,6 +225,16 @@
 .shapeeditor-context-menu-button:hover {
     background: var(--color-lm-accent);
     color: #fff;
+}
+
+.shapeeditor-context-menu-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.shapeeditor-context-menu-button:disabled:hover {
+    background: none;
+    color: var(--color-lm-text);
 }
 
 .shapeeditor-context-menu-separator {
@@ -955,7 +1004,16 @@
         min-height: 44px;
     }
 
-    .shapeeditor-header-actions #btn_reset {
+    .shapeeditor-header-actions .header-icon-btn {
+        width: 44px;
+        height: 44px;
+        padding: 0;
+    }
+
+    /* New stays reachable via the Map sheet's own New button (#btn_new) on
+       narrow/coarse-pointer viewports — mirrors the old #btn_reset hide
+       rule this replaces, keeping the header from overflowing at 390px. */
+    .shapeeditor-header-actions #btn_header_new {
         display: none;
     }
 
@@ -1026,6 +1084,17 @@
     .mobile-editor-action[aria-expanded="true"] {
         background: var(--color-lm-accent);
         border-color: var(--color-lm-accent);
+    }
+
+    /* Compact icon variant for the mobile Undo/Redo pair (issue #445) —
+       narrower than the Map/Tools/Help text buttons but still >= the 44px
+       coarse-pointer touch-target floor. */
+    .mobile-editor-action-icon {
+        min-width: 44px;
+        padding: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .shapeeditor-info-div {

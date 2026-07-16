@@ -47,17 +47,21 @@ export const editorCoreMethods: EditorCoreMethods & ThisType<ShapeEditor> = {
     },
     markDirty(this: ShapeEditor){
 
-        this.dom_btn_reset.disabled = false;
+        this._dirty = true;
         this._refreshSaveEnabled();
     },
     clearDirty(this: ShapeEditor){
 
-        this.dom_btn_reset.disabled = true;
+        this._dirty = false;
         this._refreshSaveEnabled();
     },
     _refreshSaveEnabled(this: ShapeEditor){
 
-        this.dom_btn_save.disabled = this.screenmap_pts.length === 0;
+        // Save As… and Reset transforms are both command-registry-bound
+        // controls now (#445) — one refresh syncs every bound control
+        // (header, popover, mobile sheets, context menu) instead of poking
+        // `dom_btn_save`/`dom_btn_reset` directly.
+        this.refreshCommandStates();
     },
     markDirtyAndGeometry(this: ShapeEditor){
  this.markDirty(); this.setNeedsGeometryUpdate(); },

@@ -29,6 +29,7 @@ import type { EditorOverlayMethods } from './editor-overlay';
 import type { EditorInteractionMethods } from './editor-interaction';
 import type { EditorPanelsMethods } from './editor-panels';
 import type { EditorPasteMethods } from './editor-paste';
+import type { EditorCommandsMethods, CommandRegistry } from './editor-commands';
 import type { SnapDocumentTransform, StripSnapEngagement, StripSnapGeometry, StripSnapTargetSet } from './strip-snap-targets';
 
 export type EditorMode = 'select' | 'chain' | 'reorder';
@@ -87,7 +88,15 @@ export class ShapeEditor {
     declare qei: (sel: string) => HTMLInputElement;
     declare qeb: (sel: string) => HTMLButtonElement;
     declare mainEl: HTMLElement;
+    declare commandRegistry: CommandRegistry;
+    // True whenever the working document has an uncommitted or committed
+    // change relative to the last load/save/reset — drives "Reset
+    // transforms" enablement. Set by markDirty()/clearDirty() (editor-core)
+    // and by updateUndoRedoButtons() (editor-history), mirroring the old
+    // direct `dom_btn_reset.disabled` write in both places.
+    declare _dirty: boolean;
     declare dom_btn_new: HTMLButtonElement;
+    declare dom_btn_header_new: HTMLButtonElement;
     declare dom_btn_upload_screenmap: HTMLInputElement;
     declare dom_btn_load_screenmap: HTMLButtonElement;
     declare dom_sel_preset_mount: HTMLElement;
@@ -222,7 +231,6 @@ export class ShapeEditor {
     declare ctxBtnSave: HTMLButtonElement | null;
     declare ctxBtnLoadScreenmap: HTMLButtonElement | null;
     declare ctxLoadSubmenu: HTMLElement | null;
-    declare ctxLoadImageInput: HTMLInputElement | null;
     declare ctxFileOps: HTMLElement | null;
     declare ctxFileOpsSep: HTMLElement | null;
     declare ctxBtnDelete: HTMLButtonElement | null;
@@ -358,5 +366,6 @@ export interface ShapeEditor extends
     EditorOverlayMethods,
     EditorInteractionMethods,
     EditorPanelsMethods,
-    EditorPasteMethods
+    EditorPasteMethods,
+    EditorCommandsMethods
 {}

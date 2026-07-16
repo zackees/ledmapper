@@ -1,6 +1,7 @@
 import { ShapeEditor } from './shapeeditor-class';
 import { installShapeEditorMethodBundle } from './shapeeditor-install';
 import { editorBackgroundMethods } from './editor-background';
+import { editorCommandsMethods } from './editor-commands';
 import { editorConnectorsMethods } from './editor-connectors';
 import { editorCoreMethods } from './editor-core';
 import { editorHelpMethods } from './editor-help';
@@ -18,6 +19,7 @@ import { editorTransformMethods } from './editor-transform';
 
 const bundles = [
     ['core', editorCoreMethods],
+    ['commands', editorCommandsMethods],
     ['io', editorIoMethods],
     ['history', editorHistoryMethods],
     ['points', editorPointsMethods],

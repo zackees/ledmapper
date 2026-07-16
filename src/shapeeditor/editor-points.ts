@@ -230,9 +230,8 @@ export const editorPointsMethods: EditorPointsMethods & ThisType<ShapeEditor> = 
         // File ops: hide when on a point or edge
         if (this.ctxFileOps) this.ctxFileOps.style.display = onPointOrEdge ? 'none' : '';
         if (this.ctxFileOpsSep) this.ctxFileOpsSep.style.display = onPointOrEdge ? 'none' : '';
-        // Save enabled when dirty
-        const canSave = !this.dom_btn_save.disabled;
-        if (this.ctxBtnSave) { this.ctxBtnSave.disabled = !canSave; this.ctxBtnSave.style.opacity = canSave ? '1' : '0.4'; }
+        // Save As… disabled state is command-registry-bound (#445) — kept in
+        // sync continuously via refreshCommandStates(), not recomputed here.
         // Show delete only when a point is targeted
         if (this.ctxBtnDelete) this.ctxBtnDelete.style.display = idx >= 0 ? 'block' : 'none';
         // Show insert-between only when an edge is targeted

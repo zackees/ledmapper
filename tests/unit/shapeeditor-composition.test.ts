@@ -12,14 +12,14 @@ const ownerSources = ownerFiles.map((name) => readFileSync(path.join(shapeeditor
 const manifestEntries = ownerSources.flatMap((source, ownerIndex) => [...source.matchAll(/^\s{4}(?:async\s+)?([A-Za-z_][A-Za-z0-9_]*)[^\n]*\(this: ShapeEditor/gm)].map((match) => ({ owner: ownerFiles[ownerIndex], name: match[1] })));
 
 test('ShapeEditor method manifest has one owner for every baseline method plus group selection controls', () => {
-    assert.equal(manifestEntries.length, 239);
+    assert.equal(manifestEntries.length, 242);
     assert.equal(new Set(manifestEntries.map(({ name }) => name)).size, manifestEntries.length);
 });
 
 test('ShapeEditor composition lists all named bundles and no numbered chunks', () => {
     const composition = readFileSync(path.join(shapeeditorDir, 'shapeeditor-composition.ts'), 'utf8');
     assert.match(composition, /installShapeEditorModules/);
-    assert.equal(ownerFiles.length, 15);
+    assert.equal(ownerFiles.length, 16);
     assert.equal(readdirSync(shapeeditorDir).some((name) => /^shapeeditor-methods-\d{2}\.ts$/.test(name)), false);
 });
 

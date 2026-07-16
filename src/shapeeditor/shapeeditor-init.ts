@@ -12,13 +12,14 @@ import { resetAndOpenFilePicker, wireFileDropTarget, wireFileSource } from '../d
 import { safeStorage } from '../services/storage';
 import { gfxColors } from '../ui/theme';
 import { errorDialog, getSwal } from '../ui/dialogs';
-import { getBackup, promoteToBackup } from '../screenmap-store';
+import { getBackup } from '../screenmap-store';
 
 import { createCircleTexture } from '../three-utils';
 import { StripStore } from './strips-model';
 import { Selection } from './selection';
 import { DirectionArrowTransition } from './direction-arrow-transition';
 import { PANEL_CATALOG } from './panel-catalog';
+import { createCommandRegistry } from './editor-commands';
 
 import templateHtml from './template.html?raw';
 import type { InsertDialogOpts } from './shapeeditor-types';
@@ -33,7 +34,42 @@ this.container.classList.add('shapeeditor-root');
         this.qeb = (sel: string) => this.qe<HTMLButtonElement>(sel);
         this.mainEl = this.qe<HTMLElement>('#main');
 this.mainEl.classList.add('shapeeditor-main');
+        // AbortController set up before any addEventListener call below —
+        // including the command-registry bindCommand() calls, whose click
+        // listeners must be torn down on destroy() like every other
+        // listener in this function.
+        this.ac = new AbortController();
+        this.signal = this.ac.signal;
+        // ── Command registry (issue #445) ────────────────────────────
+        // One registry backs every New / Save As… / Undo / Redo / Reset
+        // transforms / Load background image surface (header, popover,
+        // mobile action row + tools sheet, context menu). Registering the
+        // commands here — before any button is queried/bound below — means
+        // every `this.bindCommand(id, el)` call later in this function can
+        // assume its command already exists. The 'load' command (opens the
+        // #443 popover) is registered further down, at the point its
+        // popover-toggle closures are defined.
+        //
+        // bindCommand() applies each command's initial disabled/tooltip
+        // state synchronously, so the state its isEnabled() closures read
+        // (screenmap_pts, undoStack, redoStack, _dirty) must already exist —
+        // hoisted here from their original (later) init points below.
+        this._dirty = false;
+        this.screenmap_pts = [];
+        this.rawPts = [];
+        this.undoStack = [];
+        this.redoStack = [];
+        this.commandRegistry = createCommandRegistry();
+        this.commandRegistry.register({ id: 'new', label: 'New', isEnabled: () => true, run: () => { this.doNewScreenmap(); } });
+        this.commandRegistry.register({ id: 'save-as', label: 'Save As…', shortcut: 'Ctrl+S', isEnabled: () => this.screenmap_pts.length > 0, run: () => { this.saveAs(); } });
+        this.commandRegistry.register({ id: 'undo', label: 'Undo', shortcut: 'Ctrl+Z', isEnabled: () => this.undoStack.length > 0, run: () => { this.performUndo(); } });
+        this.commandRegistry.register({ id: 'redo', label: 'Redo', shortcut: 'Ctrl+Shift+Z', isEnabled: () => this.redoStack.length > 0, run: () => { this.performRedo(); } });
+        this.commandRegistry.register({ id: 'reset-transforms', label: 'Reset transforms', isEnabled: () => this._dirty, run: () => { this.resetTransforms(); } });
+        this.commandRegistry.register({ id: 'load-image', label: 'Load background image…', isEnabled: () => true, run: () => { resetAndOpenFilePicker(this.dom_btn_upload_image); } });
         this.dom_btn_new = this.qeb('#btn_new');
+        this.dom_btn_header_new = this.qeb('#btn_header_new');
+        this.bindCommand('new', this.dom_btn_new);
+        this.bindCommand('new', this.dom_btn_header_new);
         this.dom_btn_upload_screenmap = this.qei('#btn_upload_screenmap');
         this.dom_btn_load_screenmap = this.qeb('#btn_load_screenmap');
         this.dom_sel_preset_mount = this.qe<HTMLElement>('#sel_preset_mount');
@@ -92,6 +128,10 @@ this.mainEl.classList.add('shapeeditor-main');
         this.dom_btn_reset = this.qeb('#btn_reset');
         this.dom_btn_undo = this.qeb('#btn_undo');
         this.dom_btn_redo = this.qeb('#btn_redo');
+        this.bindCommand('save-as', this.dom_btn_save);
+        this.bindCommand('reset-transforms', this.dom_btn_reset);
+        this.bindCommand('undo', this.dom_btn_undo);
+        this.bindCommand('redo', this.dom_btn_redo);
         this.dom_bg_accordion = this.qe('#bg_image_accordion');
         this.dom_btn_upload_image = this.qei('#btn_upload_image');
         this.dom_txt_image_opacity = this.qei('#txt_image_opacity');
@@ -100,8 +140,6 @@ this.mainEl.classList.add('shapeeditor-main');
         this.dom_txt_image_tx = this.qei('#txt_image_tx');
         this.dom_txt_image_ty = this.qei('#txt_image_ty');
         this.dom_btn_remove_image = this.qeb('#btn_remove_image');
-        this.ac = new AbortController();
-        this.signal = this.ac.signal;
         // Mobile canvas-first chrome (issue #412). The existing controls and
         // transform panel are reused as bottom sheets so desktop behavior and
         // every established control binding stay intact.
@@ -110,9 +148,16 @@ this.mainEl.classList.add('shapeeditor-main');
             const mapButton = this.qeb('#btn_mobile_map');
             const mapCloseButton = this.qeb('#btn_mobile_map_close');
             const toolsButton = this.qeb('#btn_mobile_tools');
+            const mobileUndoButton = this.qeb('#btn_mobile_undo');
+            const mobileRedoButton = this.qeb('#btn_mobile_redo');
             const helpButton = this.qeb('#btn_mobile_help');
             const mobileResetButton = this.qeb('#btn_mobile_reset');
             const helpTarget = this.qeb('#hint_strip_help');
+            // 'undo'/'redo' are already registered above; this just adds the
+            // mobile action row as a second bound surface (#445 acceptance
+            // criterion: "mobile action row exposes working undo/redo").
+            this.bindCommand('undo', mobileUndoButton);
+            this.bindCommand('redo', mobileRedoButton);
 
             const setMapOpen = (open: boolean) => {
                 mapSheet.classList.toggle('mobile-sheet-open', open);
@@ -204,13 +249,23 @@ this.mainEl.classList.add('shapeeditor-main');
                     loadButton.focus();
                 }
             };
-            loadButton.addEventListener('click', () => {
-                if (!isDesktopPointer()) {
-                    resetAndOpenFilePicker(this.dom_btn_upload_screenmap);
-                    return;
-                }
-                setPopoverOpen(!popover.classList.contains('desktop-popover-open'));
-            }, { signal: this.signal });
+            // 'load' (issue #445): opens this popover on a desktop pointer,
+            // falls back to the OS file picker directly otherwise — same
+            // logic as before, now registered as the command every other
+            // "Load…" surface (context menu, future callers) can share.
+            this.commandRegistry.register({
+                id: 'load',
+                label: 'Load…',
+                isEnabled: () => true,
+                run: () => {
+                    if (!isDesktopPointer()) {
+                        resetAndOpenFilePicker(this.dom_btn_upload_screenmap);
+                        return;
+                    }
+                    setPopoverOpen(!popover.classList.contains('desktop-popover-open'));
+                },
+            });
+            this.bindCommand('load', loadButton);
             closeButton.addEventListener('click', () => {
                 if (popover.classList.contains('desktop-popover-open')) setPopoverOpen(false);
             }, { signal: this.signal });
@@ -246,8 +301,8 @@ for (const el of [this.dom_txt_scale, this.dom_txt_scale_x, this.dom_txt_scale_y
         this.dom_txt_rotate, this.dom_txt_translate_x, this.dom_txt_translate_y, this.dom_txt_diameter]) {
         el.addEventListener('input', () => { this.markDirtyAndGeometry(); }, { signal: this.signal });
     }
-this.dom_btn_reset.addEventListener('click', () => { this.resetTransforms(); }, { signal: this.signal });
-this.dom_btn_save.addEventListener('click', () => { this.saveAs(); }, { signal: this.signal });
+        // Reset transforms / Save As… click wiring lives in bindCommand()
+        // above (#445) — both buttons are command-registry-bound.
         this.SCALE_MIN = 0.1;
         this.SCALE_MAX = 10;
 this.dom_txt_scale.addEventListener('change', () => { this.writeScale(this.dom_txt_scale, this.dom_txt_scale.value); }, { signal: this.signal });
@@ -266,8 +321,8 @@ this.wireTransformUndo('scaleY', this.dom_txt_scale_y);
 this.wireTransformUndo('rotate', this.dom_txt_rotate);
 this.wireTransformUndo('translateX', this.dom_txt_translate_x);
 this.wireTransformUndo('translateY', this.dom_txt_translate_y);
-        this.screenmap_pts = [];
-        this.rawPts = [];
+        // screenmap_pts / rawPts initialized near the top of this function
+        // (command registry setup) — see the comment there.
         this.origWidth = 0;
         this.origHeight = 0;
         this.fitScale = 1;
@@ -556,6 +611,15 @@ const shapeeditorDebug: ShapeeditorDebugHooks = {
             crossBadges: this._chainGeom.crossBadges.map((b) => ({ up: b.up, down: b.down })),
         }),
         getUndoStack: () => (this.undoStack).map((a) => a.type),
+        // Test-only: force the document to an empty state (screenmap_pts=[])
+        // and resync the command registry, so Save As…'s existence-gated
+        // disabled state is reachable without fighting parse_screenmap_data
+        // (which throws rather than returning [] for "no strip data").
+        forceEmptyDocumentForTest: () => {
+            this.screenmap_pts = [];
+            this.rawPts = [];
+            this._refreshSaveEnabled();
+        },
         getInteractionState: () => ({
             pendingGroupGesture: this.pendingGroupGesture?.kind ?? null,
             stripDragActive: this.stripDragActive,
@@ -675,7 +739,6 @@ registerDebugState('shapeeditor', {
         this.ctxBtnSave = null;
         this.ctxBtnLoadScreenmap = null;
         this.ctxLoadSubmenu = null;
-        this.ctxLoadImageInput = null;
         this.ctxFileOps = null;
         this.ctxFileOpsSep = null;
         this.ctxBtnDelete = null;
@@ -735,11 +798,10 @@ registerDebugState('shapeeditor', {
         this.bgGizmoHover = null;
         this.bgGizmoDragStart = null;
         this.committedTransform = { scale: 1, scaleX: 1, scaleY: 1, rotate: 0, translateX: 0, translateY: 0 };
-;
-        this.undoStack = [];
-        this.redoStack = [];
-this.dom_btn_undo.addEventListener('click', () => { this.performUndo(); }, { signal: this.signal });
-this.dom_btn_redo.addEventListener('click', () => { this.performRedo(); }, { signal: this.signal });
+        // undoStack / redoStack initialized near the top of this function
+        // (command registry setup) — see the comment there.
+        // Undo/Redo click wiring lives in bindCommand() above (#445) — both
+        // buttons (header + mobile action row) are command-registry-bound.
         this.dom_strips_panel = this.qe<HTMLElement>('#strips_panel');
         this.dom_strips_list = this.qe<HTMLElement>('#strips_list');
         this.collapsedPins = new Set();
@@ -936,34 +998,9 @@ window.addEventListener('mousedown', (e) => {
     }, { signal: this.signal });
         this.rafId = null;
         this._gestureNoticeShown = false;
-this.dom_btn_new.addEventListener('click', () => {
-        // Promote current working copy (if any) into the backup slot BEFORE
-        // we wipe it, so the prior layout stays restorable. Then drop the
-        // working copy entirely instead of writing a degenerate
-        // single-LED screenmap that would auto-load on next launch.
-        const hadBackupPromote = promoteToBackup();
-        this.clearEditingState();
-        this.presetPicker?.setActive('');
-        this.screenmap_pts = [[0, 0]];
-        this.rawPts = [[0, 0]];
-        this.stripInfo = null;
-        this.stripStore.load(null);
-        this.renderStripsPanel();
-        this.origDiameter = 0.5;
-        this.dom_txt_diameter.value = String(this.origDiameter);
-        this.origWidth = 0;
-        this.origHeight = 0;
-        this.fitScale = 1;
-        this.resetTransforms();
-        this.setNeedsGeometryUpdate();
-        safeStorage.remove('lm:screenmap');
-        safeStorage.remove('lm:screenmap-meta');
-        safeStorage.remove('lm:screenmap-preset');
-        try { this.renderBackupRow(); } catch { /* render is best-effort */ }
-        if (hadBackupPromote) {
-            void this._toastInfo('New layout — previous layout kept as backup').catch(() => { /* toast is best effort */ });
-        }
-    }, { signal: this.signal });
+        // 'new' command click wiring lives in bindCommand() near the top of
+        // this function (#445) — doNewScreenmap() (editor-io.ts) holds the
+        // logic that used to live in this listener.
         this.screenmapDropTarget = this.qe<HTMLElement>('#screenmap_drop_target');
         wireFileSource({
             input: this.dom_btn_upload_screenmap,
@@ -1082,6 +1119,13 @@ window.addEventListener('keydown', (e) => {
             (e.key === 'y' && (e.ctrlKey || e.metaKey))) {
             this.performRedo();
             e.preventDefault();
+            return;
+        }
+        // Save As…: Ctrl+S / Cmd+S. Always suppress the browser's save-page
+        // dialog on this route (#445) — run the command only if enabled.
+        if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            this.commandRegistry.run('save-as');
             return;
         }
         // Escape: cancel panel placement, dismiss bg delete confirm, exit point-edit, or deselect

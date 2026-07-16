@@ -262,8 +262,13 @@ export const editorHistoryMethods: EditorHistoryMethods & ThisType<ShapeEditor> 
     },
     updateUndoRedoButtons(this: ShapeEditor){
 
-        this.dom_btn_undo.disabled = this.undoStack.length === 0;
-        this.dom_btn_redo.disabled = this.redoStack.length === 0;
-        this.dom_btn_reset.disabled = this.undoStack.length === 0 && this.redoStack.length === 0;
+        // Mirrors the old direct `dom_btn_reset.disabled = undoStack.length
+        // === 0 && redoStack.length === 0` write: every call site here is
+        // immediately followed by a markDirty()/clearDirty() call that can
+        // supersede this with the broader "uncommitted change" dirty flag
+        // (e.g. mid-drag preview), so this is the synchronous fallback for
+        // the one call site (clearEditingState) that isn't.
+        this._dirty = this.undoStack.length > 0 || this.redoStack.length > 0;
+        this.refreshCommandStates();
     },
 };
