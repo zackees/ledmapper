@@ -135,6 +135,7 @@ export class ShapeEditor {
     declare SCALE_MAX: number;
     declare screenmap_pts: PointArrayWithDiameter;
     declare rawPts: [number, number][];
+    declare screenmapSourceText: string | null;
     /** Geometry-native EL shapes, kept separately from LED points. */
     declare screenmapShapes: ScreenmapShape[];
     declare lastTransformedShapes: ScreenmapShape[];
