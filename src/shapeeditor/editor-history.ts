@@ -98,6 +98,12 @@ export const editorHistoryMethods: EditorHistoryMethods & ThisType<ShapeEditor> 
             if (typeof a.afterJson === 'string') {
                 this.load_screenmap_data(a.afterJson);
             }
+        } else if (action.type === 'new-screenmap') {
+            this.doNewScreenmap(false);
+        } else if (action.type === 'load-screenmap') {
+            if (typeof a.afterJson === 'string') {
+                this.load_screenmap_data(a.afterJson, true, false, typeof a.afterPresetFile === 'string' ? a.afterPresetFile : null);
+            }
         }
     },
     applyInverse(this: ShapeEditor, action: UndoAction){
@@ -187,6 +193,14 @@ export const editorHistoryMethods: EditorHistoryMethods & ThisType<ShapeEditor> 
                 this.stripInfo = null;
                 this.renderStripsPanel();
                 this.setNeedsGeometryUpdate();
+            }
+        } else if (action.type === 'load-screenmap') {
+            if (typeof a.beforeJson === 'string' && a.beforeJson.length > 0) {
+                this.load_screenmap_data(a.beforeJson, true, false, typeof a.beforePresetFile === 'string' ? a.beforePresetFile : null);
+            }
+        } else if (action.type === 'new-screenmap') {
+            if (typeof a.beforeJson === 'string' && a.beforeJson.length > 0) {
+                this.load_screenmap_data(a.beforeJson, true, false, typeof a.beforePresetFile === 'string' ? a.beforePresetFile : null);
             }
         }
     },

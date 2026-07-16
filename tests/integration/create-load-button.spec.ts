@@ -167,6 +167,65 @@ test.describe('Create header screenmap loading', () => {
         await expect(gridPreset).toHaveClass(/active-preset/);
     });
 
+    test('preset loads are undoable and redoable as one document action', async ({ page }) => {
+        await openCreate(page, { width: 1280, height: 720 });
+        await expect.poll(() => editorState(page).then((state) => state.totalPoints)).toBeGreaterThan(1);
+        const before = await editorState(page);
+        expect(before.totalPoints).toBeGreaterThan(1);
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack())).toEqual([]);
+
+        await openPopover(page);
+        await page.locator('#sel_preset_mount .preset-btn', { hasText: '8x8 Grid' }).click();
+        await expect.poll(() => editorState(page)).toEqual({ totalPoints: 64, stripCount: 1 });
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack())).toEqual(['load-screenmap']);
+
+        await page.locator('#btn_undo').click();
+        await expect.poll(() => editorState(page)).toEqual(before);
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack())).toEqual([]);
+
+        await page.locator('#btn_redo').click();
+        await expect.poll(() => editorState(page)).toEqual({ totalPoints: 64, stripCount: 1 });
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack())).toEqual(['load-screenmap']);
+    });
+
+    test('uploaded screenmap loads are undoable and invalid uploads do not add history', async ({ page }) => {
+        await openCreate(page, { width: 1280, height: 720 });
+        await expect.poll(() => editorState(page).then((state) => state.totalPoints)).toBeGreaterThan(1);
+        const before = await editorState(page);
+
+        await loadViaHeaderDesktop(page, SINGLE_SCREENMAP);
+        await expect.poll(() => editorState(page)).toEqual({ totalPoints: 4, stripCount: 1 });
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack())).toEqual(['load-screenmap']);
+
+        await loadViaHeaderDesktop(page, {
+            name: 'invalid.json',
+            mimeType: 'application/json',
+            buffer: Buffer.from('{ not a screenmap }'),
+        });
+        await expect.poll(() => editorState(page)).toEqual({ totalPoints: 4, stripCount: 1 });
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack())).toEqual(['load-screenmap']);
+
+        await page.locator('#btn_undo').click();
+        await expect.poll(() => editorState(page)).toEqual(before);
+    });
+
+    test('New is undoable and redoable as a document replacement', async ({ page }) => {
+        await openCreate(page, { width: 1280, height: 720 });
+        await expect.poll(() => editorState(page).then((state) => state.totalPoints)).toBeGreaterThan(1);
+        const before = await editorState(page);
+
+        await openPopover(page);
+        await page.locator('#btn_new').click();
+        await expect.poll(() => editorState(page)).toMatchObject({ totalPoints: 1, stripCount: 0 });
+        expect(await page.evaluate(() => window.__shapeeditorDebug.getUndoStack())).toEqual(['new-screenmap']);
+
+        await page.locator('#btn_undo').click();
+        await expect.poll(() => editorState(page)).toEqual(before);
+
+        await page.locator('#btn_redo').click();
+        await expect.poll(() => editorState(page)).toMatchObject({ totalPoints: 1, stripCount: 0 });
+    });
+
     test('the same file can be loaded twice', async ({ page }) => {
         await openCreate(page, { width: 1280, height: 720 });
         await loadViaHeaderDesktop(page, MULTI_SCREENMAP);
