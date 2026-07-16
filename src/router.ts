@@ -80,7 +80,9 @@ function setRouteReady(appEl: HTMLElement): void {
     appEl.classList.add('is-route-entering');
 }
 
-function renderRouteError(appEl: HTMLElement, message: string): void {
+/** Exported for reuse by the app shell (src/app/app.ts) so a failed layer
+ *  import renders the same treatment instead of a blank pane (issue #447). */
+export function renderRouteError(appEl: HTMLElement, message: string): void {
     const errorEl = document.createElement('div');
     errorEl.className = 'route-load-error';
     errorEl.textContent = `Failed to load tool: ${message}`;

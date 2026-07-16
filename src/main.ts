@@ -1,5 +1,6 @@
 import { initNav } from './nav';
 import { createRouter } from './router';
+import { installStaleChunkReload } from './stale-chunk-reload';
 import './agent-ui-sentinel';
 
 // Handle GitHub Pages 404 redirect
@@ -13,6 +14,10 @@ const appEl = document.getElementById('app');
 if (!appEl) throw new Error('Missing #app element');
 const router = createRouter(appEl);
 initNav();
+
+// Auto-recover from stale hashed chunks after a redeploy (issue #447) —
+// armed before the first route load so even the initial import is covered.
+installStaleChunkReload();
 
 // Load initial route
 router.start();

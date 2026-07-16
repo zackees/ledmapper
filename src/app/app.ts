@@ -14,9 +14,13 @@
 
 import type { SpaHistory, ToolInitFn } from '../types/domain';
 import { setNavVisible } from '../nav';
+import { renderRouteError } from '../router';
+import { createLogger } from '../debug-log';
 import templateHtml from './template.html?raw';
 
 export { default as css } from './app.css?url';
+
+const log = createLogger('app');
 
 export type AppMode = 'play' | 'create' | 'record';
 
@@ -108,7 +112,20 @@ export function init(container: HTMLElement, nav?: SpaHistory): () => void {
         // router writes `data-tool="app"` on the outer #app; we override
         // on the inner slot for the active layer.
         contentEl.dataset.tool = modeToolNames[mode];
-        const module = await layerLoaders[mode]();
+        let module: LayerModule;
+        try {
+            module = await layerLoaders[mode]();
+        } catch (e: unknown) {
+            // A stale-chunk 404 after a redeploy lands here when the
+            // auto-reload guard suppressed a second reload (issue #447) —
+            // render the router's route-error treatment instead of leaving
+            // the pane blank (it was cleared above).
+            if (id !== activationId) return; // a later activation overtook us
+            const message = e instanceof Error ? e.message : String(e);
+            log.error('layer-load-failed', { mode, error: message });
+            renderRouteError(contentEl, message);
+            return;
+        }
         if (id !== activationId) return; // a later activation overtook us
         // Swap in the layer's per-tool CSS. The router's #tool-css link
         // is pointing at app.css for the shell; the layer's own
