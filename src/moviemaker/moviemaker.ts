@@ -145,7 +145,10 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
     // ── State ───────────────────────────────────────────────────────────────────
     let screenmap_pts: [number, number][] = [];
     let rawScreenmapPts: [number, number][] = [];
-    let recordLayout: PreparedRecordLayout | null = null;
+    let visibleLedPoints: [number, number][] = [];
+    let ledPointChannelOffsets: number[] = [];
+    let recordShapes: PreparedRecordLayout['shapes'] = [];
+    let overlayLedStrips: ParsedStrip[] = [];
     let screenmapStrips: ParsedStrip[] = [];
     let videoChannelMap: Int32Array | null = null;   // flat LED index -> .rgb channel index (null = identity)
     let previewLedDiameter: number | null = null; // screenmap-declared diameter in screenmap_pts units (null = heuristic)
@@ -504,10 +507,13 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
     }
 
     function commitRecordLayout(prepared: PreparedRecordLayout) {
-        recordLayout = prepared;
         screenmapStrips = prepared.parsed.strips;
         videoChannelMap = prepared.videoChannelMap;
         rawScreenmapPts = prepared.ledPoints;
+        visibleLedPoints = prepared.ledPoints;
+        ledPointChannelOffsets = prepared.ledPointChannelOffsets;
+        recordShapes = prepared.shapes;
+        overlayLedStrips = prepared.overlayLedStrips;
         screenmap_pts = prepared.samplePoints;
         screenmapValid = prepared.channelCount > 0;
         previewLedDiameter = null;
@@ -1105,7 +1111,7 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
                     dom_btn_toggle_record.value = `Rendering ${String(message.done)}/${String(message.total)} — click to cancel`;
                     if (message.previewBuffer) {
                         const rgb = new Uint8Array(message.previewBuffer);
-                        preview.render(screenmap_pts, dom_chk_preview_rotate.checked ? curr_rotate : 0, { rgbPts: rgb, avgBri: message.avgBrightness ?? 0, oobCount: message.oobCount ?? 0 }, previewLedDiameter);
+                        preview.render(visibleLedPoints, dom_chk_preview_rotate.checked ? curr_rotate : 0, { rgbPts: rgb, avgBri: message.avgBrightness ?? 0, oobCount: message.oobCount ?? 0 }, previewLedDiameter, ledPointChannelOffsets, recordShapes);
                     }
                 },
             });
@@ -1146,7 +1152,7 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
                     // Drive the LED preview from the offline pass so the user
                     // watches the actual render progress.
                     const previewRotate = dom_chk_preview_rotate.checked ? curr_rotate : 0;
-                    preview.render(screenmap_pts, previewRotate, es, previewLedDiameter);
+                    preview.render(visibleLedPoints, previewRotate, es, previewLedDiameter, ledPointChannelOffsets, recordShapes);
                     const rec = toRecordingSample(es, s.numPts);
                     return new Uint8Array(rec.rgbPts);
                 },
@@ -1653,9 +1659,9 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
             recording.resetCapture();
         }
 
-    drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter, recording.isActive ? recording.getStats() : null, videoSource.sourceType !== null ? frame_rate : null, dom_chk_show_labels.checked, displayWidth, displayHeight, recordLayout?.shapes ?? []);
+    drawMoviemakerOverlay(overlayCtx, visibleLedPoints, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, overlayLedStrips, previewLedDiameter, recording.isActive ? recording.getStats() : null, videoSource.sourceType !== null ? frame_rate : null, dom_chk_show_labels.checked, displayWidth, displayHeight, recordShapes);
         const previewRotate = dom_chk_preview_rotate.checked ? curr_rotate : 0;
-        preview.render(screenmap_pts, previewRotate, lastSample, previewLedDiameter);
+        preview.render(visibleLedPoints, previewRotate, lastSample, previewLedDiameter, ledPointChannelOffsets, recordShapes);
 
         // While recording MP4, blit the just-rendered preview canvas into the
         // recorder's intermediate. No-op when not recording.

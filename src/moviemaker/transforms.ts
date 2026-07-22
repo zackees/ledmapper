@@ -259,6 +259,19 @@ export function estimateLedSize(pts: StripPoint[]): number {
     return Math.max(Math.sqrt(dx * dx + dy * dy), 1.0);
 }
 
+/** Stable screen-space fallback for sparse maps without a declared diameter. */
+export const STABLE_POINT_DIAMETER_PX = 8;
+export const STABLE_POINT_DIAMETER_MIN_PX = 6;
+export const STABLE_POINT_DIAMETER_MAX_PX = 10;
+
+export function resolvePointDiameterPx(declaredDiameterWorld: number | null, worldToPx: number): number {
+    if (typeof declaredDiameterWorld === 'number' && Number.isFinite(declaredDiameterWorld)
+        && declaredDiameterWorld > 0 && Number.isFinite(worldToPx) && worldToPx > 0) {
+        return declaredDiameterWorld * worldToPx;
+    }
+    return STABLE_POINT_DIAMETER_PX;
+}
+
 /**
  * Ring radius for the editor overlay: the screenmap's declared diameter
  * (already in localPts units) wins; the spacing heuristic is only a
