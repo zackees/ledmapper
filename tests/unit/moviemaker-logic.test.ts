@@ -13,6 +13,7 @@ import {
     overlayLedRadius,
     scaleToMaxDimension,
     mapClientPointToCanvasBacking,
+    getCanvasDisplayScale,
 } from '../../src/moviemaker/transforms';
 
 describe('transformToCenter', () => {
@@ -402,6 +403,27 @@ describe('mapClientPointToCanvasBacking', () => {
             mapClientPointToCanvasBacking(400, 300, 720, 0, { left: 100, top: 50, width: 430, height: 765 }),
             null,
         );
+    });
+});
+
+describe('getCanvasDisplayScale', () => {
+    it('returns identity when backing and display sizes match', () => {
+        assert.deepStrictEqual(getCanvasDisplayScale(480, 270, 480, 270), { x: 1, y: 1 });
+    });
+
+    it('scales down Native backing pixels into a fitted display box', () => {
+        const scale = getCanvasDisplayScale(1080, 1080, 632, 632);
+        assert.ok(Math.abs(scale.x - (1080 / 632)) < 1e-9);
+        assert.ok(Math.abs(scale.y - (1080 / 632)) < 1e-9);
+    });
+
+    it('scales up a small backing store into a larger display box', () => {
+        assert.deepStrictEqual(getCanvasDisplayScale(480, 270, 960, 540), { x: 0.5, y: 0.5 });
+    });
+
+    it('falls back to identity for incomplete dimensions', () => {
+        assert.deepStrictEqual(getCanvasDisplayScale(1080, 1080, 0, 632), { x: 1, y: 1 });
+        assert.deepStrictEqual(getCanvasDisplayScale(0, 1080, 632, 632), { x: 1, y: 1 });
     });
 });
 

@@ -173,6 +173,74 @@ test.describe('Moviemaker Resolution Control @gpu', () => {
         expect(b?.r.bottom ?? Infinity).toBeLessThanOrEqual(vh);
     });
 
+    test('HUD text stays a constant display size when backing resolution changes', async ({ page }) => {
+        test.setTimeout(60000);
+        await page.setViewportSize({ width: 1366, height: 768 });
+        await mockWebcam(page);
+        await page.addInitScript(() => {
+            MediaStreamTrack.prototype.getSettings = function getSettings(this: MediaStreamTrack): MediaTrackSettings {
+                return { width: 1080, height: 1080 };
+            };
+
+            interface HudRecord { font: string; transformX: number; transformY: number }
+            const records: HudRecord[] = [];
+            (window as Window & { __hudFillTextRecords?: HudRecord[] }).__hudFillTextRecords = records;
+            // Preserve the original dynamic canvas context receiver.
+            // eslint-disable-next-line @typescript-eslint/unbound-method
+            const original = CanvasRenderingContext2D.prototype.fillText;
+            CanvasRenderingContext2D.prototype.fillText = function patchedFillText(
+                this: CanvasRenderingContext2D,
+                text: string,
+                x: number,
+                y: number,
+                maxWidth?: number,
+            ): void {
+                if (/^(render:|Avg Brightness:|REC )/.test(text)) {
+                    const transform = this.getTransform();
+                    records.push({ font: this.font, transformX: transform.a, transformY: transform.d });
+                    if (records.length > 200) records.shift();
+                }
+                if (maxWidth === undefined) original.call(this, text, x, y);
+                else original.call(this, text, x, y, maxWidth);
+            };
+        });
+        await page.goto('/moviemaker/');
+        await page.locator('[data-trigger="btn_start_webcam"]').click();
+        await waitForSourceActive(page);
+
+        const readHudMeasurement = () => page.evaluate(() => {
+            const canvas = document.querySelector<HTMLCanvasElement>('#overlayCanvas');
+            const records = (window as Window & { __hudFillTextRecords?: { font: string; transformX: number; transformY: number }[] }).__hudFillTextRecords ?? [];
+            const record = records.at(-1);
+            if (!canvas || !record) return null;
+            const rect = canvas.getBoundingClientRect();
+            const fontPx = Number.parseFloat(record.font);
+            return {
+                backingWidth: canvas.width,
+                displayWidth: rect.width,
+                effectiveFontPx: fontPx * record.transformX * rect.width / canvas.width,
+            };
+        });
+
+        await expect.poll(readHudMeasurement).toMatchObject({ backingWidth: 480 });
+        const scaled = await readHudMeasurement();
+        expect(scaled).not.toBeNull();
+        expect(scaled?.effectiveFontPx ?? 0).toBeGreaterThan(11);
+        expect(scaled?.effectiveFontPx ?? 0).toBeLessThan(13);
+
+        await page.evaluate(() => {
+            const records = (window as Window & { __hudFillTextRecords?: unknown[] }).__hudFillTextRecords;
+            if (records) records.length = 0;
+        });
+        await page.locator('#sel_max_resolution').selectOption('0');
+        await expect.poll(readHudMeasurement).toMatchObject({ backingWidth: 1080 });
+        const native = await readHudMeasurement();
+        expect(native).not.toBeNull();
+        expect(native?.effectiveFontPx ?? 0).toBeGreaterThan(11);
+        expect(native?.effectiveFontPx ?? 0).toBeLessThan(13);
+        expect(Math.abs((native?.effectiveFontPx ?? 0) - (scaled?.effectiveFontPx ?? 0))).toBeLessThan(1);
+    });
+
     test('Native left-drag maps the displayed pointer into backing-store coordinates (#441)', async ({ page }) => {
         test.setTimeout(45_000);
         await page.setViewportSize({ width: 1440, height: 1000 });

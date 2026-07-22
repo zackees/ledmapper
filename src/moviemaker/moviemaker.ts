@@ -177,6 +177,7 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
     let frame_rate = 30;
     let nativeVideoWidth = 640, nativeVideoHeight = 480;
     let videoWidth = 640, videoHeight = 480;
+    let displayWidth = videoWidth, displayHeight = videoHeight;
     let rafId: number | null = null;
     let isScrubbing = false;
 
@@ -326,6 +327,8 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
         if (dispH > availH) { dispH = availH; dispW = availH * ratio; }
         renderCanvas.style.width = `${String(Math.max(1, Math.floor(dispW)))}px`;
         renderCanvas.style.height = `${String(Math.max(1, Math.floor(dispH)))}px`;
+        displayWidth = Math.max(1, Math.floor(dispW));
+        displayHeight = Math.max(1, Math.floor(dispH));
     }
     window.addEventListener('resize', fitCanvasDisplay, { signal });
 
@@ -1656,7 +1659,7 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
             recording.resetCapture();
         }
 
-        drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter, recording.isActive ? recording.getStats() : null, videoSource.sourceType !== null ? frame_rate : null, dom_chk_show_labels.checked);
+        drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter, recording.isActive ? recording.getStats() : null, videoSource.sourceType !== null ? frame_rate : null, dom_chk_show_labels.checked, displayWidth, displayHeight);
         const previewRotate = dom_chk_preview_rotate.checked ? curr_rotate : 0;
         preview.render(screenmap_pts, previewRotate, lastSample, previewLedDiameter);
 

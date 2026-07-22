@@ -5,7 +5,7 @@
 import { getStripColors, stripStartEndLabels } from '../common';
 import { gfxColors } from '../ui/theme';
 import { createLabelRenderer } from '../label-render';
-import { overlayLedRadius } from './transforms';
+import { getCanvasDisplayScale, overlayLedRadius } from './transforms';
 import { perfCount } from './perf';
 import type { ParsedStrip, StripPoint } from '../types/domain';
 
@@ -150,6 +150,8 @@ export function drawMoviemakerOverlay(
     // off; the editor tools draw their own labels and are unaffected. Toggled
     // via the toolbar "Labels" checkbox.
     showStripLabels = false,
+    displayWidth = videoWidth,
+    displayHeight = videoHeight,
 ): void {
     ctx.clearRect(0, 0, videoWidth, videoHeight);
     if (localPts.length === 0) return;
@@ -159,6 +161,9 @@ export function drawMoviemakerOverlay(
         ctx.drawImage(layer, translateX + ox, translateY + oy);
     }
 
+    const hudScale = getCanvasDisplayScale(videoWidth, videoHeight, displayWidth, displayHeight);
+    ctx.save();
+    ctx.scale(hudScale.x, hudScale.y);
     ctx.fillStyle = 'white';
     ctx.font = '12px monospace';
     // Two distinct clocks (#264/#265): `render` is this preview loop's rate;
@@ -189,4 +194,5 @@ export function drawMoviemakerOverlay(
             ctx.fillText(`REC ${String(captured)} frames${skipText}`, 10, oob > 0 ? 56 : 42);
         }
     }
+    ctx.restore();
 }
