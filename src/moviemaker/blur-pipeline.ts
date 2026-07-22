@@ -132,6 +132,12 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
     let lastPtsRef: number[][] | null = null;
     let lastPtsW = 0, lastPtsH = 0;
     let latestSample: { buffer: Uint8Array; numPts: number } | null = null;
+    let sampleGeneration = 0;
+
+    function invalidate() {
+        sampleGeneration++;
+        latestSample = null;
+    }
 
     function disposeGatherResources() {
         if (positionTexture) { positionTexture.dispose(); positionTexture = null; }
@@ -259,6 +265,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
      */
     function setSamplePoints(pts: number[][], w: number, h: number) {
         if (pts === lastPtsRef && w === lastPtsW && h === lastPtsH) return;
+        invalidate();
         lastPtsRef = pts;
         lastPtsW = w;
         lastPtsH = h;
@@ -351,11 +358,12 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         const buffer = gatherBuffers[slot];
         if (!buffer) { slotBusy[slot] = false; return; }
         const numPts = gatherNumPts;
+        const generation = sampleGeneration;
         renderer.readRenderTargetPixelsAsync(
             slotTarget, 0, 0, gatherW, gatherH, buffer,
         ).then(() => {
             // Resolution/screenmap may have changed while in flight
-            if (gatherBuffers[slot] === buffer) {
+            if (gatherBuffers[slot] === buffer && generation === sampleGeneration) {
                 latestSample = { buffer, numPts };
             }
         }).catch(() => {
@@ -459,6 +467,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         updateUniforms,
         renderFrame,
         setSamplePoints,
+        invalidate,
         setSampleTransform,
         requestSample,
         getLatestSample,

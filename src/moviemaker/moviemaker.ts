@@ -1,10 +1,9 @@
 import { errorDialog, fireDialog, getSwal } from '../ui/dialogs';
-import type { ParsedStrip, MultiStripParseResult, SpaHistory } from '../types/domain';
-import { parseScreenmapMultiStrip } from '../common';
+import type { ParsedStrip, SpaHistory } from '../types/domain';
 import { wireFileDropTarget, wireFileSource, fileHasExtension } from '../drag-drop';
 import { saveScreenmap, savePresetScreenmap, getPresetSelection, getScreenmap } from '../screenmap-store';
 import { analyzeCanonical64x64Divergence, CANONICAL_64X64_PRESET, getDefaultPresetFile, isCanonical64x64Geometry } from '../canonical-screenmap';
-import { transformToCenter, parseResolution, extractGatherSample, computeFps, scaleToMaxDimension, buildVideoChannelMap, mapClientPointToCanvasBacking } from './transforms';
+import { parseResolution, extractGatherSample, computeFps, scaleToMaxDimension, mapClientPointToCanvasBacking } from './transforms';
 import { resolveLedDiameter, computeFitScale } from '../bloom-utils';
 import { loadPresetText } from '../preset-loader';
 import screenmapManifest from 'virtual:screenmap-presets';
@@ -23,6 +22,7 @@ import { runOfflineCapture, isOfflineCaptureSupported, isOfflineCaptureWorkerSup
 import { runOfflineCaptureWorkerClient } from './offline-capture-worker-client';
 import type { OfflineCaptureBackend } from './offline-capture-protocol';
 import { registerDebugState, unregisterDebugState, type MoviemakerDebugState } from '../debug-registry';
+import { prepareRecordLayout, type PreparedRecordLayout } from './record-layout';
 
 const log = createLogger('moviemaker');
 import { withPrefix } from '../services/storage';
@@ -145,6 +145,7 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
     // ── State ───────────────────────────────────────────────────────────────────
     let screenmap_pts: [number, number][] = [];
     let rawScreenmapPts: [number, number][] = [];
+    let recordLayout: PreparedRecordLayout | null = null;
     let screenmapStrips: ParsedStrip[] = [];
     let videoChannelMap: Int32Array | null = null;   // flat LED index -> .rgb channel index (null = identity)
     let previewLedDiameter: number | null = null; // screenmap-declared diameter in screenmap_pts units (null = heuristic)
@@ -262,8 +263,9 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
         overlayCanvas.width = w;
         overlayCanvas.height = h;
 
-        if (screenmapValid) {
-            screenmap_pts = transformToCenter(rawScreenmapPts, videoWidth, videoHeight);
+        if (screenmapValid && currentScreenmapJson) {
+            const prepared = prepareRecordLayout(currentScreenmapJson, videoWidth, videoHeight);
+            commitRecordLayout(prepared);
             updatePreviewLedDiameter();
             target_translate = [w / 2, h / 2];
             curr_translate = [w / 2, h / 2];
@@ -501,36 +503,30 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
             : null;
     }
 
-    function loadScreenmapFromParsed(parsed: MultiStripParseResult | null | undefined) {
-        screenmapStrips = parsed ? parsed.strips : [];
-        videoChannelMap = parsed ? buildVideoChannelMap(parsed.strips, parsed.totalCount) : null;
-        rawScreenmapPts = parsed ? parsed.allPoints : [];
-        if (rawScreenmapPts.length === 0) {
-            screenmapValid = false;
-            previewLedDiameter = null;
-        } else {
-            screenmap_pts = transformToCenter(rawScreenmapPts, videoWidth, videoHeight);
-            updatePreviewLedDiameter();
-            screenmapValid = true;
-            target_zoom = 1; curr_zoom = 1;
-            curr_rotate = 0; target_rotate = 0;
-            const rotTxt = container.querySelector<HTMLElement>('#txt_curr_rotation');
-            if (rotTxt) rotTxt.innerText = '0';
-            dom_rng_rotation.value = '0';
-            target_translate = [videoWidth / 2, videoHeight / 2];
-            curr_translate = [videoWidth / 2, videoHeight / 2];
-        }
+    function commitRecordLayout(prepared: PreparedRecordLayout) {
+        recordLayout = prepared;
+        screenmapStrips = prepared.parsed.strips;
+        videoChannelMap = prepared.videoChannelMap;
+        rawScreenmapPts = prepared.ledPoints;
+        screenmap_pts = prepared.samplePoints;
+        screenmapValid = prepared.channelCount > 0;
+        previewLedDiameter = null;
+        blurPipeline.invalidate();
+        lastSample = null;
         updateElementStates();
     }
 
     /** Parse + apply screenmap text, keeping currentScreenmapJson in sync. */
     function applyScreenmapText(text: string, source: string) {
-        loadScreenmapFromParsed(parseScreenmapMultiStrip(text));
-        currentScreenmapJson = screenmapValid ? text : null;
+        const prepared = prepareRecordLayout(text, videoWidth, videoHeight);
+        commitRecordLayout(prepared);
+        currentScreenmapJson = text;
         log.info('screenmap-load', {
             source,
             leds: rawScreenmapPts.length,
             strips: screenmapStrips.length,
+            channels: prepared.channelCount,
+            shapes: prepared.shapeCount,
             valid: screenmapValid,
         });
     }
@@ -563,8 +559,8 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
     async function applyPreset(presetFile: string, source: string, generation: number) {
         const text = await loadPresetText(presetFile, signal);
         if (isStaleLayoutLoad(generation)) return false;
-        if (!savePresetScreenmap(text, presetFile)) throw new Error(`Could not persist preset ${presetFile}`);
         applyScreenmapText(text, source);
+        if (!savePresetScreenmap(text, presetFile)) throw new Error(`Could not persist preset ${presetFile}`);
         presetPicker?.setActive(presetFile);
         setUploadFilename('');
         activeLayoutLabel = screenmapManifest.presets.find((p) => p.file === presetFile)?.name ?? presetFile;
@@ -822,8 +818,6 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
         const generation = ++layoutLoadGeneration;
         setUploadFilename(file.name);
         presetPicker?.setActive('');
-        screenmapValid = false;
-        updateElementStates();
         file.text().then((text: string) => {
             if (isStaleLayoutLoad(generation)) return;
             applyScreenmapText(text, `upload:${file.name}`);
@@ -1659,7 +1653,7 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
             recording.resetCapture();
         }
 
-        drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter, recording.isActive ? recording.getStats() : null, videoSource.sourceType !== null ? frame_rate : null, dom_chk_show_labels.checked, displayWidth, displayHeight);
+    drawMoviemakerOverlay(overlayCtx, screenmap_pts, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, screenmapStrips, previewLedDiameter, recording.isActive ? recording.getStats() : null, videoSource.sourceType !== null ? frame_rate : null, dom_chk_show_labels.checked, displayWidth, displayHeight, recordLayout?.shapes ?? []);
         const previewRotate = dom_chk_preview_rotate.checked ? curr_rotate : 0;
         preview.render(screenmap_pts, previewRotate, lastSample, previewLedDiameter);
 

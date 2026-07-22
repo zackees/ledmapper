@@ -164,7 +164,7 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
         pointsMaterial = result.material;
         pointsMesh = result.mesh;
         colorAttribute = result.colorAttribute;
-        blendScratch = new Uint8Array(screenmap.points.length * 3);
+        blendScratch = new Uint8Array((screenmap.channelCount ?? screenmap.points.length) * 3);
         applyBloomGeometry(bloom, screenmap.points.map(([x, y]) => [x, y]), { ledPx: diameter, panePx: paneSize });
         for (const mesh of shapeMeshes) { scene.remove(mesh); mesh.geometry.dispose(); }
         for (const material of shapeMaterials) material.dispose();
@@ -244,9 +244,10 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
         get screenmap(): Screenmap { return screenmap; },
         colors,
         pushFrame(rgb: Uint8Array): void {
-            const expectedBytes = screenmap.points.length * 3;
+            const channelCount = screenmap.channelCount ?? screenmap.points.length;
+            const expectedBytes = channelCount * 3;
             if (rgb.byteLength !== expectedBytes) {
-                throw new RangeError(`pushFrame: expected ${String(expectedBytes)} RGB8 bytes for ${String(screenmap.points.length)} LEDs, got ${String(rgb.byteLength)}`);
+                throw new RangeError(`pushFrame: expected ${String(expectedBytes)} RGB8 bytes for ${String(channelCount)} channels, got ${String(rgb.byteLength)}`);
             }
             const now = nowMs();
             pushMeter.tick(now);

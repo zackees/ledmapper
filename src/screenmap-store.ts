@@ -49,6 +49,7 @@ export function _resetPinMutationGuardForTests() {
 import { safeStorage } from './services/storage';
 import { gfxColors } from './ui/theme';
 import { createLogger } from './debug-log';
+import { parseScreenmapMultiStrip } from './common';
 
 const log = createLogger('screenmap-store');
 
@@ -57,7 +58,7 @@ const log = createLogger('screenmap-store');
  * Returns `null` if the JSON is unusable.
  * @param {string} jsonText
  */
-interface MapCounts { stripCount: number; ledCount: number; pinCount: number; }
+interface MapCounts { stripCount: number; ledCount: number; channelCount: number; pinCount: number; }
 
 function _countMap(jsonText: string): MapCounts | null {
     if (typeof jsonText !== 'string' || jsonText.length === 0) return null;
@@ -75,13 +76,14 @@ function _countMap(jsonText: string): MapCounts | null {
         for (const seg of segments) {
             if (!seg || typeof seg !== 'object') continue;
             const s = seg as { x?: unknown[]; pin?: unknown };
-            if (Array.isArray(s.x)) ledCount += s.x.length;
+            if (Array.isArray(s.x) && (seg as Record<string, unknown>).type !== 'el_panel') ledCount += s.x.length;
             const pinKey = (typeof s.pin === 'string' || typeof s.pin === 'number')
                 ? String(s.pin)
                 : 'pin1';
             pinSet.add(pinKey);
         }
-        return { stripCount: segments.length, ledCount, pinCount: pinSet.size };
+        const parsed = parseScreenmapMultiStrip(jsonText);
+        return { stripCount: segments.length, ledCount, channelCount: parsed.channelCount ?? parsed.totalCount, pinCount: pinSet.size };
     }
 
     // v1: legacy `map` object keyed by strip name.
@@ -97,7 +99,7 @@ function _countMap(jsonText: string): MapCounts | null {
         else if (Array.isArray(s.points)) ledCount += s.points.length;
         pinSet.add((typeof s.pin === 'string' && s.pin.trim() !== '') ? s.pin : 'pin1');
     }
-    return { stripCount: stripNames.length, ledCount, pinCount: pinSet.size };
+    return { stripCount: stripNames.length, ledCount, channelCount: ledCount, pinCount: pinSet.size };
 }
 
 /**
@@ -112,7 +114,10 @@ export function isDegenerate(jsonText: string | null | undefined): boolean {
     const counts = _countMap(jsonText);
     if (counts === null) return true;
     if (counts.stripCount === 0) return true;
-    if (counts.ledCount < MIN_AUTOSAVE_LEDS) return true;
+    // EL-only layouts intentionally have no LED vertices; their channel
+    // count is still a valid output cardinality (HydroPack has three).
+    if (counts.ledCount === 0) return counts.channelCount < 1;
+    if (counts.channelCount < MIN_AUTOSAVE_LEDS) return true;
     return false;
 }
 
@@ -253,7 +258,7 @@ export function saveScreenmapMultiStrip(strips: Parameters<typeof buildScreenmap
  * Get the parsed meta sidecar, or null when missing/corrupt.
  * @returns {{savedAt:number, source:string, ledCount:number, stripCount:number}|null}
  */
-interface ScreenmapMeta { savedAt: number; source: string; ledCount: number; stripCount: number; pinCount: number; }
+interface ScreenmapMeta { savedAt: number; source: string; ledCount: number; channelCount?: number; stripCount: number; pinCount: number; }
 
 export function getScreenmapMeta(): ScreenmapMeta | null {
     const raw = safeStorage.get(META_KEY);
@@ -294,7 +299,7 @@ export function getBackup(): { json: string; meta: BackupMeta | null } | null {
 export function promoteToBackup() {
     const current = safeStorage.get(KEY);
     if (!current || isDegenerate(current)) return false;
-    const counts: MapCounts = _countMap(current) ?? { ledCount: 0, stripCount: 0, pinCount: 0 };
+    const counts: MapCounts = _countMap(current) ?? { ledCount: 0, channelCount: 0, stripCount: 0, pinCount: 0 };
     const existingMeta = getScreenmapMeta();
     const backupMeta = {
         savedAt: (existingMeta && typeof existingMeta.savedAt === 'number')
@@ -306,6 +311,7 @@ export function promoteToBackup() {
         ledCount: (existingMeta && typeof existingMeta.ledCount === 'number')
             ? existingMeta.ledCount
             : counts.ledCount,
+        channelCount: (existingMeta && typeof existingMeta.channelCount === 'number') ? existingMeta.channelCount : counts.channelCount,
         stripCount: (existingMeta && typeof existingMeta.stripCount === 'number')
             ? existingMeta.stripCount
             : counts.stripCount,
@@ -330,11 +336,12 @@ export function restoreBackup() {
     const backup = getBackup();
     if (!backup) return null;
     const { json, meta } = backup;
-    const counts: MapCounts = _countMap(json) ?? { ledCount: 0, stripCount: 0, pinCount: 0 };
+    const counts: MapCounts = _countMap(json) ?? { ledCount: 0, channelCount: 0, stripCount: 0, pinCount: 0 };
     const newMeta = {
         savedAt: (meta && typeof meta.savedAt === 'number') ? meta.savedAt : Date.now(),
         source: 'restore',
         ledCount: (meta && typeof meta.ledCount === 'number') ? meta.ledCount : counts.ledCount,
+        channelCount: (meta && typeof meta.channelCount === 'number') ? meta.channelCount : counts.channelCount,
         stripCount: (meta && typeof meta.stripCount === 'number') ? meta.stripCount : counts.stripCount,
         pinCount: (meta && typeof meta.pinCount === 'number') ? meta.pinCount : counts.pinCount,
     };
@@ -363,6 +370,7 @@ export function backfillMeta() {
         savedAt: Date.now(),
         source: 'backfill',
         ledCount: counts.ledCount,
+        channelCount: counts.channelCount,
         stripCount: counts.stripCount,
         pinCount: counts.pinCount,
     };
@@ -384,7 +392,7 @@ export function backfillMeta() {
 export function saveScreenmapWithMeta(jsonText: string, opts: { source?: string } = {}): boolean {
     if (isDegenerate(jsonText)) return false;
     const source = typeof opts.source === 'string' ? opts.source : 'save';
-    const counts = _countMap(jsonText) ?? { ledCount: 0, stripCount: 0, pinCount: 0 };
+    const counts = _countMap(jsonText) ?? { ledCount: 0, channelCount: 0, stripCount: 0, pinCount: 0 };
     const prev = safeStorage.get(KEY);
     // Pin-count regression guard (issue #24 §1.8): refuse a write whose
     // distinct pin count dropped vs. the stored working copy unless a
@@ -412,6 +420,7 @@ export function saveScreenmapWithMeta(jsonText: string, opts: { source?: string 
         savedAt: Date.now(),
         source,
         ledCount: counts.ledCount,
+        channelCount: counts.channelCount,
         stripCount: counts.stripCount,
         pinCount: counts.pinCount,
     };

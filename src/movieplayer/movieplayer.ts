@@ -63,6 +63,7 @@ export function init(container: HTMLElement) {
 
     let screenmap_pts: [number, number][] = [];
     let screenmap_strips: ParsedStrip[] = [];
+    let channelCount = 0;
     let player: Player | null = null;
     let frameCount = 0;
 
@@ -76,6 +77,7 @@ export function init(container: HTMLElement) {
         return {
             frameCount,
             ledCount: screenmap_pts.length,
+            channelCount,
             playing: player?.playing ?? false,
             loaded: player !== null,
         };
@@ -193,7 +195,8 @@ export function init(container: HTMLElement) {
             log.error('embedded-screenmap-parse-error', { error: String(error) });
             return false;
         }
-        if (parsed.allPoints.length === 0) return false;
+        channelCount = parsed.channelCount ?? parsed.totalCount;
+        if (channelCount <= 0) return false;
         screenmap_strips = parsed.strips;
         screenmap_pts = centerAndFitPoints(parsed.allPoints, CANVAS_SIZE, CANVAS_SIZE);
         // Hand the raw JSON to gfx so the package owns the centered/fitted
@@ -329,15 +332,15 @@ export function init(container: HTMLElement) {
             return;
         }
 
-        const parsed = parseRgbFrames(uint8_array, screenmap_pts.length);
+        const parsed = parseRgbFrames(uint8_array, channelCount);
         if (parsed.notMultiple) {
             log.info('load-failed', { reason: 'payload-mismatch', bytes: uint8_array.length });
             if (silent) { void clearVideo(); return; }
             void errorDialog('Corrupted video', 'Video payload does not match the embedded screenmap — file may be corrupted.');
             return;
         }
-        const channelMap = buildVideoChannelMap(screenmap_strips, screenmap_pts.length);
-        const frames = applyChannelMap(parsed.frames, channelMap, screenmap_pts.length);
+        const channelMap = buildVideoChannelMap(screenmap_strips, channelCount);
+        const frames = applyChannelMap(parsed.frames, channelMap, channelCount);
         teardownPlayer();
         // The spec-defined optional `video.fps` metadata key (#256,
         // docs/fled-format.md) — recordings of non-30fps sources play at
@@ -377,6 +380,7 @@ export function init(container: HTMLElement) {
         }
         log.info('movie-loaded', {
             leds: screenmap_pts.length,
+            channels: channelCount,
             frames: frameCount,
             fps: metaFps,
             autoplay,
@@ -385,7 +389,7 @@ export function init(container: HTMLElement) {
         // A file the user just picked shows the plain stats; a video restored
         // from the last session says so, so the filled-in status alongside the
         // browser's "No file chosen" (which we cannot set) reads coherently.
-        const stats = `${String(screenmap_pts.length)} LEDs · ${String(frameCount)} frames · ${String(metaFps)} fps`;
+        const stats = `${String(screenmap_pts.length)} LEDs · ${String(channelCount)} channels · ${String(frameCount)} frames · ${String(metaFps)} fps`;
         setStatus(persist ? stats : `${stats} · restored from last session`, true);
         set_dom_btn_play(player.playing);
     }

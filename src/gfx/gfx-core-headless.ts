@@ -160,7 +160,7 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
         pointsMaterial = result.material;
         pointsMesh = result.mesh;
         colorAttribute = result.colorAttribute;
-        blendScratch = new Uint8Array(screenmap.points.length * 3);
+        blendScratch = new Uint8Array((screenmap.channelCount ?? screenmap.points.length) * 3);
         applyBloomGeometry(bloom, screenmap.points.map(([x, y]) => [x, y]), { ledPx: diameter, panePx: paneSize });
         for (const mesh of shapeMeshes) { scene.remove(mesh); mesh.geometry.dispose(); }
         for (const material of shapeMaterials) material.dispose();
