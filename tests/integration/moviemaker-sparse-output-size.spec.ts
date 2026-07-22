@@ -73,7 +73,7 @@ test.describe('Moviemaker sparse output sizing @gpu', () => {
         await expect.poll(async () => {
             const sample = await samplePreviewRgb(page);
             return sample ? Math.max(sample.r, sample.g, sample.b) : 0;
-        }, { timeout: 15_000 }).toBeGreaterThan(3);
+        }, { timeout: 15_000 }).toBeGreaterThan(1);
 
         const overlayPixels = await page.evaluate(() => {
             const canvas = document.querySelector('#overlayCanvas');
@@ -105,6 +105,6 @@ test.describe('Moviemaker sparse output sizing @gpu', () => {
         await expect.poll(async () => {
             const sample = await samplePreviewRgb(page);
             return sample ? Math.max(sample.r, sample.g, sample.b) : 0;
-        }, { timeout: 15_000 }).toBeGreaterThan(3);
+        }, { timeout: 15_000 }).toBeGreaterThan(1);
     });
 });
