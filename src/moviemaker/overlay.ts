@@ -152,6 +152,7 @@ export function drawMoviemakerOverlay(
     showStripLabels = false,
     displayWidth = videoWidth,
     displayHeight = videoHeight,
+    shapes: { type: string; vertices: StripPoint[]; thickness: number }[] = [],
 ): void {
     ctx.clearRect(0, 0, videoWidth, videoHeight);
     if (localPts.length === 0) return;
@@ -159,6 +160,26 @@ export function drawMoviemakerOverlay(
     if (showLeds) {
         const { layer, ox, oy } = getRingLayer(ctx, localPts, rotate, zoom, strips, ledDiameter, showStripLabels);
         ctx.drawImage(layer, translateX + ox, translateY + oy);
+        if (shapes.length > 0) {
+            const rad = rotate * Math.PI / 180;
+            const c = Math.cos(rad), s = Math.sin(rad);
+            ctx.save();
+            ctx.translate(translateX, translateY);
+            ctx.scale(zoom, zoom);
+            for (const shape of shapes) {
+                if (shape.vertices.length < 2) continue;
+                ctx.beginPath();
+                shape.vertices.forEach(([x, y], i) => {
+                    const tx = x * c - y * s, ty = x * s + y * c;
+                    if (i === 0) ctx.moveTo(tx, ty); else ctx.lineTo(tx, ty);
+                });
+                if (shape.type === 'el_panel') ctx.closePath();
+                ctx.strokeStyle = gfxColors.textStrong();
+                ctx.lineWidth = Math.max(1, shape.thickness / Math.max(zoom, 0.001));
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
     }
 
     const hudScale = getCanvasDisplayScale(videoWidth, videoHeight, displayWidth, displayHeight);

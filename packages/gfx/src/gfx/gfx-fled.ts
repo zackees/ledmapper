@@ -12,7 +12,7 @@ import { createGfx } from './gfx-core.js';
 import { createPlayer } from './player.js';
 import type { CreateGfxFromFledOptions, GfxWithPlayer } from './types.js';
 import type { ScreenmapJson } from '../types/domain.js';
-import { parse_screenmap_data_json } from '../common.js';
+import { parseScreenmapMultiStrip } from '../common.js';
 
 async function toUint8Array(input: Blob | ArrayBuffer | Uint8Array): Promise<Uint8Array> {
     if (input instanceof Uint8Array) return input;
@@ -29,11 +29,12 @@ export async function createGfxFromFled(opts: CreateGfxFromFledOptions): Promise
         throw new Error('createGfxFromFled: input is not a FLED-formatted file');
     }
     const screenmapJson = JSON.parse(firstParse.embeddedJson) as ScreenmapJson;
-    const ledCount = parse_screenmap_data_json(screenmapJson).length;
-    if (ledCount === 0) {
-        throw new Error('createGfxFromFled: embedded screenmap has zero points');
+    const mapCounts = parseScreenmapMultiStrip(firstParse.embeddedJson);
+    const channelCount = mapCounts.channelCount ?? mapCounts.totalCount;
+    if (channelCount === 0) {
+        throw new Error('createGfxFromFled: embedded screenmap has zero output channels');
     }
-    const parsed = parseRgbFrames(bytes, ledCount);
+    const parsed = parseRgbFrames(bytes, channelCount);
     if (parsed.frames.length === 0) {
         throw new Error('createGfxFromFled: no frames in payload (notMultiple=' + String(parsed.notMultiple) + ')');
     }
