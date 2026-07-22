@@ -12,6 +12,32 @@ export interface CanvasDisplayRect {
     height: number;
 }
 
+export interface CanvasDisplayScale {
+    x: number;
+    y: number;
+}
+
+/**
+ * Return the backing-to-display scale for canvas drawing that should stay
+ * constant in CSS pixels while the canvas backing store changes resolution.
+ * Invalid dimensions fall back to identity so callers can safely draw before
+ * the fitted display box has settled.
+ */
+export function getCanvasDisplayScale(
+    backingWidth: number,
+    backingHeight: number,
+    displayWidth: number,
+    displayHeight: number,
+): CanvasDisplayScale {
+    if (backingWidth <= 0 || backingHeight <= 0 || displayWidth <= 0 || displayHeight <= 0) {
+        return { x: 1, y: 1 };
+    }
+    return {
+        x: backingWidth / displayWidth,
+        y: backingHeight / displayHeight,
+    };
+}
+
 /**
  * Map a browser client-space pointer into a canvas backing-store coordinate.
  * Canvas CSS sizing is independent of its width/height attributes, so pointer
