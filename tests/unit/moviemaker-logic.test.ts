@@ -11,6 +11,10 @@ import {
     computeFps,
     estimateLedSize,
     overlayLedRadius,
+    resolvePointDiameterPx,
+    STABLE_POINT_DIAMETER_PX,
+    STABLE_POINT_DIAMETER_MIN_PX,
+    STABLE_POINT_DIAMETER_MAX_PX,
     scaleToMaxDimension,
     mapClientPointToCanvasBacking,
     getCanvasDisplayScale,
@@ -446,5 +450,26 @@ describe('overlayLedRadius', () => {
     it('ignores non-positive declared diameters', () => {
         assert.strictEqual(overlayLedRadius(pts, 1, 0), 5);
         assert.strictEqual(overlayLedRadius(pts, 1, -2), 5);
+    });
+});
+
+describe('resolvePointDiameterPx', () => {
+    it('uses a stable screen-space fallback independent of sparse spacing', () => {
+        const sparse = resolvePointDiameterPx(null, 0.1);
+        const wide = resolvePointDiameterPx(null, 100);
+        assert.strictEqual(sparse, STABLE_POINT_DIAMETER_PX);
+        assert.strictEqual(wide, STABLE_POINT_DIAMETER_PX);
+        assert.strictEqual(STABLE_POINT_DIAMETER_MIN_PX, 6);
+        assert.strictEqual(STABLE_POINT_DIAMETER_MAX_PX, 10);
+    });
+
+    it('preserves a valid declared world-space diameter', () => {
+        assert.strictEqual(resolvePointDiameterPx(4, 2), 8);
+    });
+
+    it('falls back for invalid declarations', () => {
+        assert.strictEqual(resolvePointDiameterPx(0, 2), STABLE_POINT_DIAMETER_PX);
+        assert.strictEqual(resolvePointDiameterPx(-1, 2), STABLE_POINT_DIAMETER_PX);
+        assert.strictEqual(resolvePointDiameterPx(Number.NaN, 2), STABLE_POINT_DIAMETER_PX);
     });
 });

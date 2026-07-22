@@ -11,7 +11,7 @@
  * editor view cancel out — only rotation affects the rendered layout.
  */
 
-import { WebGLRenderer, Scene, OrthographicCamera } from 'three';
+import { WebGLRenderer, Scene, OrthographicCamera, Shape, ShapeGeometry, Mesh, MeshBasicMaterial, DoubleSide } from 'three';
 import { createCircleTexture, rebuildPointsMesh } from '../three-utils';
 import type { PointsMeshResult, StripPoint } from '../types/domain';
 import { createAutoBloom } from '../auto-bloom';
@@ -23,7 +23,7 @@ import {
     IRIS_DIAMETER_GAIN,
     BLOOM_RENDER_PX,
 } from '../bloom-utils';
-import { estimateLedSize } from './transforms';
+import { estimateLedSize, resolvePointDiameterPx, STABLE_POINT_DIAMETER_MAX_PX } from './transforms';
 import { createLogger } from '../debug-log';
 
 const log = createLogger('preview');
@@ -32,6 +32,13 @@ const INV_255 = 1 / 255;
 
 // FastLED's aesthetic camera margin so edge LEDs aren't clipped.
 const AESTHETIC_MARGIN = 1.05;
+
+export interface PreviewShape {
+    type: 'el_wire' | 'el_panel';
+    offset: number;
+    vertices: StripPoint[];
+    thickness?: number;
+}
 
 /** Preview density envelope (issue #49 keeps the floor binding on dense maps). */
 const PREVIEW_PROFILE = {
@@ -100,6 +107,9 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
 
     let meshData: PointsMeshResult | null = null;
     let cachedPts: StripPoint[] | null = null;
+    let cachedPointChannelOffsets: number[] | null = null;
+    let cachedShapes: PreviewShape[] | null = null;
+    let shapeMeshes: { mesh: Mesh; material: MeshBasicMaterial; offset: number }[] = [];
     let cachedRotate: number | null = null;
     let cachedLedDiameter: number | null = null;
     let ledWorldRadius = 0.5;
@@ -108,7 +118,50 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
     // Base dot size (CSS px) before the iris diameter modulation is applied.
     let baseLedPx = 0.75;
 
-    function rebuild(localPts: StripPoint[], ledDiameter: number | null) {
+    function shapePolygon(shape: PreviewShape): StripPoint[] {
+        if (shape.type === 'el_panel') return shape.vertices;
+        const radius = (shape.thickness ?? 1) / 2;
+        const left: StripPoint[] = [];
+        const right: StripPoint[] = [];
+        for (let i = 0; i < shape.vertices.length; i++) {
+            const p = shape.vertices[i];
+            if (!p) continue;
+            const a = shape.vertices[Math.max(0, i - 1)] ?? p;
+            const b = shape.vertices[Math.min(shape.vertices.length - 1, i + 1)] ?? p;
+            const dx = b[0] - a[0], dy = b[1] - a[1];
+            const length = Math.hypot(dx, dy) || 1;
+            const nx = -dy / length * radius, ny = dx / length * radius;
+            left.push([p[0] + nx, p[1] + ny]);
+            right.push([p[0] - nx, p[1] - ny]);
+        }
+        return [...left, ...right.reverse()];
+    }
+
+    function rebuildShapes(shapes: PreviewShape[]) {
+        for (const entry of shapeMeshes) {
+            scene.remove(entry.mesh);
+            entry.mesh.geometry.dispose();
+            entry.material.dispose();
+        }
+        shapeMeshes = [];
+        for (const shape of shapes) {
+            const polygon = shapePolygon(shape);
+            const first = polygon[0];
+            if (!first || polygon.length < 3) continue;
+            const path = new Shape();
+            path.moveTo(first[0], first[1]);
+            for (const point of polygon.slice(1)) path.lineTo(point[0], point[1]);
+            path.closePath();
+            const geometry = new ShapeGeometry(path);
+            const material = new MeshBasicMaterial({ color: 0xffffff, transparent: true, side: DoubleSide });
+            const mesh = new Mesh(geometry, material);
+            mesh.renderOrder = 1;
+            scene.add(mesh);
+            shapeMeshes.push({ mesh, material, offset: shape.offset });
+        }
+    }
+
+    function rebuild(localPts: StripPoint[], ledDiameter: number | null, shapes: PreviewShape[]) {
         meshData = rebuildPointsMesh({
             scene,
             previous: meshData,
@@ -124,6 +177,7 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
             ? ledDiameter
             : ledSpacing;
         ledWorldRadius = dia / 2;
+        rebuildShapes(shapes);
     }
 
     /**
@@ -132,11 +186,12 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
      * Rotation is applied via mesh.rotation.z (same x/y math as the editor's
      * y-down transform since the camera maps world y downward).
      */
-    function fitCamera(localPts: StripPoint[], rotate: number) {
+    function fitCamera(localPts: StripPoint[], rotate: number, shapes: PreviewShape[], ledDiameter: number | null) {
         const rad = rotate * Math.PI / 180;
         const cos_r = Math.cos(rad), sin_r = Math.sin(rad);
         let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-        for (const [x0, y0] of localPts) {
+        const geometryPoints = [...localPts, ...shapes.flatMap((shape) => shape.vertices)];
+        for (const [x0, y0] of geometryPoints) {
             const x = x0 * cos_r - y0 * sin_r;
             const y = x0 * sin_r + y0 * cos_r;
             if (x < xmin) xmin = x;
@@ -146,8 +201,8 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         }
         const cx = (xmin + xmax) / 2;
         const cy = (ymin + ymax) / 2;
-        const extent = Math.max(xmax - xmin, ymax - ymin);
-        const half = Math.max((extent / 2 + ledWorldRadius) * AESTHETIC_MARGIN, 1e-6);
+        const extent = Math.max(xmax - xmin, ymax - ymin, 1e-6);
+        const half = Math.max((extent / 2 + (ledDiameter !== null ? ledWorldRadius : 0)) * AESTHETIC_MARGIN, 1e-6);
 
         // Store scene extent so auto-bloom range can use it.
         sceneExtent = Math.max(xmax - xmin, ymax - ymin, 1e-6);
@@ -160,29 +215,23 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
 
         if (!meshData) return;
         meshData.mesh.rotation.z = rad;
+        for (const entry of shapeMeshes) entry.mesh.rotation.z = rad;
         // PointsMaterial.size is in CSS pixels: the renderer multiplies the
         // size uniform by its pixelRatio internally, so the world→pixel
         // mapping must use the CSS pane size, not the drawing-buffer size.
         const worldToPx = side / (half * 2);
-        const physicalPx = ledWorldRadius * 2 * worldToPx;
-        // A physically-accurate dot goes sub-pixel — so the whole pane reads as
-        // black — when few LEDs span a large canvas (8 LEDs across 240cm gave a
-        // 0.6px dot; issue #287). Floor the on-screen size to a legible slice of
-        // the neighbour spacing: sparse maps get big friendly dots, the floor is
-        // capped at the spacing itself so dense grids never merge, and a dot
-        // that's physically larger always wins (we only ever enlarge). This is
-        // the same "stay visible regardless of physical size" stance the
-        // demo/player renderers already take.
-        const spacingPx = ledSpacing * worldToPx;
-        const visibleFloorPx = Math.min(Math.max(spacingPx * 0.35, 2.5), spacingPx, 16);
-        baseLedPx = Math.max(physicalPx, visibleFloorPx);
+        const physicalPx = resolvePointDiameterPx(ledDiameter, worldToPx);
+        // Undeclared sparse points use a stable CSS-pixel fallback so their
+        // visual size does not grow with arbitrary map spacing. Declared
+        // physical diameters remain authoritative.
+        baseLedPx = physicalPx;
         meshData.material.size = baseLedPx;
 
         // Reproportion the bloom kernel + density envelope to the rendered dots.
         bloom.setGeometry({
             ledPx: baseLedPx,
             panePx: side,
-            ledCount: localPts.length,
+            ledCount: localPts.length + shapeMeshes.length,
             ledSpacing,
             sceneExtent,
         });
@@ -199,9 +248,9 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
      *        spacing heuristic.
      */
     let dbgFrames = 0;
-    function render(localPts: StripPoint[], rotate: number, lastSample: { rgbPts: Uint8Array } | null, ledDiameter: number | null = null) {
-        if (localPts.length === 0 || !lastSample) {
-            if (dbgFrames < 3) { dbgFrames++; log.debug('render-skip', { pts: localPts.length, hasSample: !!lastSample }); }
+    function render(localPts: StripPoint[], rotate: number, lastSample: { rgbPts: Uint8Array } | null, ledDiameter: number | null = null, pointChannelOffsets: number[] = [], shapes: PreviewShape[] = []) {
+        if ((localPts.length === 0 && shapes.length === 0) || !lastSample) {
+            if (dbgFrames < 3) { dbgFrames++; log.debug('render-skip', { pts: localPts.length, shapes: shapes.length, hasSample: !!lastSample }); }
             renderer.clear();
             return;
         }
@@ -220,15 +269,17 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
                 meshInScene: scene.children.length > 0,
             });
         }
-        if (localPts !== cachedPts || ledDiameter !== cachedLedDiameter) {
+        if (localPts !== cachedPts || ledDiameter !== cachedLedDiameter || pointChannelOffsets !== cachedPointChannelOffsets || shapes !== cachedShapes) {
             cachedPts = localPts;
             cachedLedDiameter = ledDiameter;
-            rebuild(localPts, ledDiameter);
+            cachedPointChannelOffsets = pointChannelOffsets;
+            cachedShapes = shapes;
+            rebuild(localPts, ledDiameter, shapes);
             cachedRotate = null; // force camera refit
         }
         if (rotate !== cachedRotate) {
             cachedRotate = rotate;
-            fitCamera(localPts, rotate);
+            fitCamera(localPts, rotate, shapes, ledDiameter);
         }
 
         // Per-frame color update: Uint8 0-255 → Float32 0-1, every frame.
@@ -242,22 +293,37 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         // copy is ~3 floats per LED per frame; even a 64x64 quad map is a
         // trivial 12K writes.
         const src = lastSample.rgbPts;
-        if (!meshData) return;
-        {
+        if (meshData) {
             const arr = meshData.colorAttribute.array as Float32Array;
             const count = Math.min(localPts.length, Math.floor(src.length / 3));
             for (let i = 0; i < count; i++) {
                 const i3 = i * 3;
-                arr[i3    ] = (src[i3]    ?? 0) * INV_255;
-                arr[i3 + 1] = (src[i3 + 1] ?? 0) * INV_255;
-                arr[i3 + 2] = (src[i3 + 2] ?? 0) * INV_255;
+                const channel = pointChannelOffsets[i] ?? i;
+                const c3 = channel * 3;
+                arr[i3    ] = (src[c3]     ?? 0) * INV_255;
+                arr[i3 + 1] = (src[c3 + 1] ?? 0) * INV_255;
+                arr[i3 + 2] = (src[c3 + 2] ?? 0) * INV_255;
             }
             meshData.colorAttribute.needsUpdate = true;
         }
 
+        for (const entry of shapeMeshes) {
+            const c3 = entry.offset * 3;
+            entry.material.color.setRGB(
+                (src[c3] ?? 0) * INV_255,
+                (src[c3 + 1] ?? 0) * INV_255,
+                (src[c3 + 2] ?? 0) * INV_255,
+            );
+        }
+
         bloom.frame(src);
         // Iris diameter modulation: dots open up on bright frames in sparse maps.
-        meshData.material.size = baseLedPx * bloom.getDiameterScale();
+        if (meshData) {
+            const modulatedSize = baseLedPx * bloom.getDiameterScale();
+            meshData.material.size = ledDiameter === null
+                ? Math.min(modulatedSize, STABLE_POINT_DIAMETER_MAX_PX)
+                : modulatedSize;
+        }
         bloom.render();
     }
 
@@ -300,6 +366,12 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
             meshData.material.dispose();
             meshData = null;
         }
+        for (const entry of shapeMeshes) {
+            scene.remove(entry.mesh);
+            entry.mesh.geometry.dispose();
+            entry.material.dispose();
+        }
+        shapeMeshes = [];
         circleTexture.dispose();
         bloom.dispose();
         renderer.dispose();

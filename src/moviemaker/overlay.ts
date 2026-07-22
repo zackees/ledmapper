@@ -5,7 +5,7 @@
 import { getStripColors, stripStartEndLabels } from '../common';
 import { gfxColors } from '../ui/theme';
 import { createLabelRenderer } from '../label-render';
-import { getCanvasDisplayScale, overlayLedRadius } from './transforms';
+import { getCanvasDisplayScale, overlayLedRadius, STABLE_POINT_DIAMETER_PX } from './transforms';
 import { perfCount } from './perf';
 import type { ParsedStrip, StripPoint } from '../types/domain';
 
@@ -152,14 +152,21 @@ export function drawMoviemakerOverlay(
     showStripLabels = false,
     displayWidth = videoWidth,
     displayHeight = videoHeight,
-    shapes: { type: string; vertices: StripPoint[]; thickness: number }[] = [],
+    shapes: { type: string; vertices: StripPoint[]; thickness?: number }[] = [],
 ): void {
     ctx.clearRect(0, 0, videoWidth, videoHeight);
-    if (localPts.length === 0) return;
+    if (localPts.length === 0 && shapes.length === 0) return;
 
     if (showLeds) {
-        const { layer, ox, oy } = getRingLayer(ctx, localPts, rotate, zoom, strips, ledDiameter, showStripLabels);
-        ctx.drawImage(layer, translateX + ox, translateY + oy);
+        if (localPts.length > 0) {
+            // A missing declared diameter must not turn sparse spacing into a
+            // giant ring. Keep the fallback stable in displayed CSS pixels,
+            // then convert it into this canvas's backing-pixel coordinates.
+            const displayScale = getCanvasDisplayScale(videoWidth, videoHeight, displayWidth, displayHeight);
+            const effectiveDiameter = ledDiameter ?? STABLE_POINT_DIAMETER_PX * displayScale.x;
+            const { layer, ox, oy } = getRingLayer(ctx, localPts, rotate, zoom, strips, effectiveDiameter, showStripLabels);
+            ctx.drawImage(layer, translateX + ox, translateY + oy);
+        }
         if (shapes.length > 0) {
             const rad = rotate * Math.PI / 180;
             const c = Math.cos(rad), s = Math.sin(rad);
