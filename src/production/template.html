@@ -1,0 +1,30 @@
+<main class="production-page" aria-labelledby="production-title">
+    <header class="production-header">
+        <p class="production-eyebrow">Automated production API v1</p>
+        <h1 id="production-title">Video mapping production</h1>
+        <p class="production-summary">This status page is controlled by an unattended producer. It does not require interactive input.</p>
+    </header>
+
+    <section class="production-status" aria-live="polite">
+        <div class="production-status-row">
+            <span>Phase</span>
+            <strong id="production-phase">booting</strong>
+        </div>
+        <div class="production-progress-track" role="progressbar" aria-label="Production progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div id="production-progress-fill" class="production-progress-fill"></div>
+        </div>
+        <p id="production-progress-label" class="production-progress-label">0 / 0 frames</p>
+        <p id="production-error" class="production-error" hidden></p>
+    </section>
+
+    <section class="production-details">
+        <h2>Normalized job</h2>
+        <pre id="production-config" class="production-config"></pre>
+        <h2>Expected artifacts</h2>
+        <ul id="production-artifacts" class="production-artifacts"></ul>
+    </section>
+
+    <div id="production-render-mount" class="production-render-mount" aria-hidden="true"></div>
+    <input id="production-video-input" class="production-file-input" type="file" accept="video/mp4,.mp4" tabindex="-1" aria-hidden="true">
+    <input id="production-screenmap-input" class="production-file-input" type="file" accept="application/json,.json" tabindex="-1" aria-hidden="true">
+</main>

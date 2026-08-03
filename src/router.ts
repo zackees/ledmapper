@@ -23,6 +23,9 @@ const routes = [
     { path: '/shapeeditor/index.html',  tool: 'shapeeditor' },
     { path: '/screenmap/',              tool: 'screenmap' },
     { path: '/screenmap/index.html',    tool: 'screenmap' },
+    { path: '/produce',                 tool: 'production' },
+    { path: '/produce/',                tool: 'production' },
+    { path: '/produce/index.html',      tool: 'production' },
 ];
 
 interface ToolModule {
@@ -49,6 +52,9 @@ const toolConfig: Record<string, { module: () => Promise<ToolModule> }> = {
     screenmap: {
         module: () => import('./screenmap/screenmap'),
     },
+    production: {
+        module: () => import('./production/production'),
+    },
 };
 
 const titles: Record<string, string> = {
@@ -58,6 +64,7 @@ const titles: Record<string, string> = {
     movieplayer: 'Play',
     shapeeditor: 'ScreenMap Design',
     screenmap: 'Create',
+    production: 'Production',
 };
 
 const legacyRedirects: Record<string, string> = {

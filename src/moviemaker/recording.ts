@@ -56,6 +56,39 @@ export function embedFps(screenmapJson: string, fps: number): string {
     return screenmapJson;
 }
 
+export interface FledArtifact {
+    bytes: Uint8Array;
+    frameCount: number;
+    fps: number;
+    ledCount: number;
+    mimeType: 'application/vnd.fastled.video';
+}
+
+/** Build and validate a self-contained RGB8 FLED artifact without I/O. */
+export function buildFledArtifact(payload: Uint8Array, meta: {
+    frameCount: number;
+    fps: number;
+    ledCount: number;
+    screenmapJson: string;
+}): FledArtifact {
+    if (!Number.isInteger(meta.frameCount) || meta.frameCount <= 0
+        || !Number.isInteger(meta.ledCount) || meta.ledCount <= 0
+        || !Number.isFinite(meta.fps) || meta.fps <= 0) {
+        throw new Error('invalid FLED artifact metadata');
+    }
+    const expected = meta.frameCount * meta.ledCount * 3;
+    if (payload.byteLength !== expected) {
+        throw new Error(`FLED payload length mismatch: ${String(payload.byteLength)} !== ${String(expected)}`);
+    }
+    return {
+        bytes: prependFledHeader(payload, embedFps(meta.screenmapJson, meta.fps), PixelFormat.rgb8),
+        frameCount: meta.frameCount,
+        fps: meta.fps,
+        ledCount: meta.ledCount,
+        mimeType: 'application/vnd.fastled.video',
+    };
+}
+
 export function createRecording({ getSwal, getScreenmapJson, onSaved }: {
     getSwal?: () => Promise<SwalInstance>;
     /** Returns the current screenmap JSON string, or null if none loaded. */
@@ -122,7 +155,14 @@ export function createRecording({ getSwal, getScreenmapJson, onSaved }: {
                 }
                 return;
             }
-            const fledFile = prependFledHeader(flat, embedFps(screenmapJson, recordedFps), PixelFormat.rgb8);
+            const ledCount = flat.byteLength / (colorFrames.length * 3);
+            const artifact = buildFledArtifact(flat, {
+                frameCount: colorFrames.length,
+                fps: recordedFps,
+                ledCount,
+                screenmapJson,
+            });
+            const fledFile = artifact.bytes;
             log.info('save-fled', { frames: colorFrames.length, skipped: skippedFrames, fps: recordedFps, bytes: fledFile.byteLength });
             download_binary_as_file(fledFile, `video${String(downloadIndex)}.fled`);
             downloadIndex++;
