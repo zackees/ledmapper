@@ -269,11 +269,27 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _json(self, status: HTTPStatus, value: object) -> None:
         body = json.dumps(value, separators=(",", ":")).encode()
-        self.send_response(status); self.send_header("Content-Type", "application/json")
+        self.send_response(status); self._cors(); self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
 
     def _error(self, error: SidecarError) -> None:
         self._json(error.status, {"error": error.code})
+
+    def _cors(self) -> None:
+        origin = self.headers.get("Origin")
+        if origin in self.server.allowed_origins:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+
+    def do_OPTIONS(self) -> None:
+        if not self._guard(): return
+        origin = self.headers.get("Origin")
+        if origin not in self.server.allowed_origins:
+            self._error(SidecarError("UNEXPECTED_ORIGIN", HTTPStatus.FORBIDDEN)); return
+        self.send_response(HTTPStatus.NO_CONTENT); self._cors()
+        self.send_header("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        self.send_header("Access-Control-Max-Age", "600"); self.end_headers()
 
     def do_GET(self) -> None:
         if not self._guard(): return
@@ -281,7 +297,7 @@ class _Handler(BaseHTTPRequestHandler):
             route = self._route()
             if not route or len(route) != 3 or route[1] != "inputs": raise SidecarError("NOT_FOUND", HTTPStatus.NOT_FOUND)
             path, mime = self.server.sidecar.input(route[0], self._token(), route[2])
-            self.send_response(HTTPStatus.OK); self.send_header("Content-Type", mime)
+            self.send_response(HTTPStatus.OK); self._cors(); self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(path.stat().st_size)); self.end_headers()
             with path.open("rb") as source: shutil.copyfileobj(source, self.wfile, CHUNK_BYTES)
         except SidecarError as error: self._error(error)
