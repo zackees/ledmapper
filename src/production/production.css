@@ -1,0 +1,66 @@
+@reference "../styles/global.css";
+
+.production-page {
+    @apply mx-auto flex w-full max-w-4xl flex-col gap-6 p-6 md:p-10;
+}
+
+.production-header {
+    @apply border-b border-lm-border pb-5;
+}
+
+.production-eyebrow {
+    @apply mb-2 font-mono text-xs uppercase tracking-widest text-lm-accent;
+}
+
+.production-summary {
+    @apply m-0 max-w-2xl text-lm-text-secondary;
+}
+
+.production-status,
+.production-details {
+    @apply rounded-lm-lg border border-lm-border bg-lm-surface-1 p-5;
+}
+
+.production-status-row {
+    @apply mb-3 flex items-center justify-between gap-4;
+}
+
+.production-status-row strong {
+    @apply font-mono text-lm-accent;
+}
+
+.production-progress-track {
+    @apply h-2 overflow-hidden rounded-lm-pill bg-lm-surface-3;
+}
+
+.production-progress-fill {
+    @apply h-full bg-lm-accent;
+    width: 0;
+    transition: width var(--lm-dur) var(--lm-ease);
+}
+
+.production-progress-label {
+    @apply mt-2 mb-0 font-mono text-sm text-lm-text-muted;
+}
+
+.production-error {
+    @apply mt-4 mb-0 rounded-lm border border-mm-danger bg-lm-surface-2 p-3 font-mono text-sm text-mm-danger;
+}
+
+.production-config {
+    @apply max-h-80 overflow-auto rounded-lm bg-lm-bg p-4 font-mono text-xs text-lm-text-secondary;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.production-artifacts {
+    @apply m-0 list-inside list-disc p-0 font-mono text-sm text-lm-text-secondary;
+}
+
+.production-file-input,
+.production-render-mount {
+    @apply fixed pointer-events-none opacity-0;
+    width: 1px;
+    height: 1px;
+    inset: auto auto 0 0;
+}

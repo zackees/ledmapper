@@ -16,3 +16,8 @@ Ledmapper supports current stable iOS Safari and Android Chrome on phone-sized
 viewports in portrait and landscape. See the
 [mobile validation guide](docs/mobile-validation.md) for the automated matrix,
 physical-device release checklist, and evidence template.
+
+## Unattended production
+
+The Python/Playwright producer for versioned `/produce` jobs is documented in the
+[production CLI guide](docs/production-cli.md).
