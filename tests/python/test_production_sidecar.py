@@ -116,6 +116,10 @@ class HttpProtocolTests(unittest.TestCase):
         self.assertEqual(status, 201)
         self.assertEqual(json.loads(response)["byteSize"], len(payload))
 
+    def test_allowed_origin_receives_narrow_cors_preflight(self) -> None:
+        status, _ = self.request("OPTIONS", "/v1/jobs/alpha/inputs/video", headers={"Origin": "https://app.example"})
+        self.assertEqual(status, 204)
+
 
 if __name__ == "__main__":
     unittest.main()

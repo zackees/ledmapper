@@ -16,6 +16,7 @@ import {
     type ProductionState,
 } from './state';
 import { renderProduction } from './production-renderer';
+import { fetchSidecarInputs, type SidecarProductionTransport } from './transport';
 
 export const css = cssUrl;
 export const PRODUCTION_VIDEO_INPUT_SELECTOR = '#production-video-input';
@@ -36,6 +37,8 @@ export interface LmProductionApi {
     getState(): ProductionState;
     provideInput(input: ProductionInput): Promise<void>;
     provideInputFromElements(input: ProductionElementInput): Promise<void>;
+    /** Trusted automation-only input path; sidecar credentials are never URL parameters. */
+    provideInputFromSidecar(input: SidecarProductionTransport & ProductionElementInput): Promise<void>;
     start(): Promise<void>;
     cancel(): void;
 }
@@ -171,6 +174,16 @@ export function init(container: HTMLElement): () => void {
                 const selectedScreenmap = screenmapInput.files?.[0];
                 if (!selectedVideo || !selectedScreenmap) throw new Error('INPUT_FILES_MISSING');
                 await provideInput({ video: selectedVideo, screenmap: selectedScreenmap, sourceArchiveUrl });
+            } catch (error) {
+                fail(state, error);
+                renderStatus();
+                throw error;
+            }
+        },
+        provideInputFromSidecar: async (input) => {
+            try {
+                const files = await fetchSidecarInputs(input);
+                await provideInput({ ...files, sourceArchiveUrl: input.sourceArchiveUrl });
             } catch (error) {
                 fail(state, error);
                 renderStatus();
