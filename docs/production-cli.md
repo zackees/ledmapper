@@ -56,6 +56,19 @@ Choose the sidecar only when its remote-execution boundary or streaming behavior
 is measurable for your workload. For local Playwright jobs it adds deployment and
 network risk without reducing input transfer overhead.
 
+Run the reproducible memory comparison before choosing it for a large artifact:
+
+```bash
+python scripts/benchmark_production_sidecar.py --bytes 67108864
+```
+
+The JSON result compares a direct completed-artifact materialization with the
+same bounded sidecar upload and integrity finalization. `directPeakBytes` is
+expected to scale with the full artifact; `sidecarPeakBytes` stays near the
+configured chunk size. Remote execution is independently proven by the
+isolated Chromium/sidecar container test below. Static GitHub Pages jobs retain
+the direct transport by default.
+
 ## Isolated-container proof
 
 The Docker-backed Chromium proof has no producer-file bind mount. It starts a
