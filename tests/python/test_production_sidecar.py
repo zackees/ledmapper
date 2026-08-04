@@ -117,8 +117,25 @@ class HttpProtocolTests(unittest.TestCase):
         self.assertEqual(json.loads(response)["byteSize"], len(payload))
 
     def test_allowed_origin_receives_narrow_cors_preflight(self) -> None:
-        status, _ = self.request("OPTIONS", "/v1/jobs/alpha/inputs/video", headers={"Origin": "https://app.example"})
+        status, _ = self.request("OPTIONS", "/v1/jobs/alpha/inputs/video", headers={
+            "Origin": "https://app.example", "Access-Control-Request-Private-Network": "true",
+        })
         self.assertEqual(status, 204)
+
+    def test_private_bind_can_allow_a_named_container_route(self) -> None:
+        server = sidecar.SidecarHttpServer(
+            self.service, host="0.0.0.0", allow_private_bind=True,
+            allowed_hosts={"host.docker.internal"},
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        try:
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1])
+            connection.request("GET", "/v1/jobs/alpha/inputs/video", headers=self.auth(Host="host.docker.internal"))
+            response = connection.getresponse()
+            self.assertEqual(response.status, 200); response.read()
+            connection.close()
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
 
 
 if __name__ == "__main__":
