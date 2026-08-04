@@ -56,6 +56,19 @@ Choose the sidecar only when its remote-execution boundary or streaming behavior
 is measurable for your workload. For local Playwright jobs it adds deployment and
 network risk without reducing input transfer overhead.
 
+## Isolated-container proof
+
+The Docker-backed Chromium proof has no producer-file bind mount. It starts a
+private sidecar and browser containers, retrieves the registered inputs, uploads
+a FLED artifact, and verifies the completed SHA-256 metadata. The separate
+sidecar protocol tests cover its chunked streaming decoder and byte limits:
+
+```bash
+python scripts/test_production_sidecar_isolation.py
+```
+
+It requires Docker Desktop and pulls the pinned Playwright image on first run.
+
 ## Output
 
 The final archive uses DEFLATE compression level 1 and contains only:

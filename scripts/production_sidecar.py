@@ -289,6 +289,8 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.NO_CONTENT); self._cors()
         self.send_header("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        if self.headers.get("Access-Control-Request-Private-Network", "").lower() == "true":
+            self.send_header("Access-Control-Allow-Private-Network", "true")
         self.send_header("Access-Control-Max-Age", "600"); self.end_headers()
 
     def do_GET(self) -> None:
@@ -346,11 +348,16 @@ class _Handler(BaseHTTPRequestHandler):
 class SidecarHttpServer(ThreadingHTTPServer):
     daemon_threads = True
     def __init__(self, sidecar: ProductionSidecar, host: str = "127.0.0.1", port: int = 0,
-                 *, allow_private_bind: bool = False, allowed_origins: set[str] | None = None) -> None:
+                 *, allow_private_bind: bool = False, allowed_origins: set[str] | None = None,
+                 allowed_hosts: set[str] | None = None) -> None:
         if host not in {"127.0.0.1", "::1", "localhost"} and not allow_private_bind:
             raise ValueError("non-loopback bind requires allow_private_bind")
         self.sidecar = sidecar
-        self.allowed_hosts = {host.lower(), "localhost", "127.0.0.1", "::1"}
+        defaults = {host.lower(), "localhost", "127.0.0.1", "::1"}
+        configured = set() if allowed_hosts is None else {value.lower() for value in allowed_hosts}
+        if not all(value and ":" not in value and "/" not in value for value in configured):
+            raise ValueError("allowed_hosts must contain bare host names")
+        self.allowed_hosts = defaults | configured
         self.allowed_origins = set() if allowed_origins is None else set(allowed_origins)
         super().__init__((host, port), _Handler)
 
