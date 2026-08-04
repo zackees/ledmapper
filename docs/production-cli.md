@@ -29,6 +29,33 @@ python scripts/produce_video_mapping.py 'http://localhost:5173/produce/?v=1&inpu
 
 `--allow-private-network` changes only the input-archive network policy. The exact job route URL is still passed to Chromium. Use `--headed` to show Chromium for diagnostics and `--timeout SECONDS` to adjust the production deadline.
 
+## Direct versus sidecar transport
+
+Direct Playwright transport is the default and the recommended option whenever the
+producer controls Chromium. It injects local files and persists ordinary browser
+downloads; it starts no listener and keeps the GitHub Pages deployment completely
+static.
+
+The optional sidecar is for a browser running on another host/container or for
+jobs where streaming artifacts is necessary to avoid completed browser Blobs. A
+trusted automation controller, not the public `/produce` URL, supplies the
+sidecar `endpoint`, `jobId`, and capability token through
+`window.__lmProduction.provideInputFromSidecar(...)` and
+`window.__lmProduction.start({ sidecar: ... })`. Never put those values in a job
+URL, log them, or copy them into a manifest.
+
+`scripts/production_sidecar.py` is loopback-only by default. It serves only
+pre-registered `video` and `screenmap` inputs and accepts only fixed `fled` and
+`mp4` artifact names. It enforces short-lived per-job capabilities, configured
+origins, request/total-size limits, streaming uploads, hash/byte-count
+finalization, and cleanup after cancellation, expiry, or deletion. A non-loopback
+bind requires the explicit `--allow-private-bind` opt-in and a narrowly configured
+browser origin.
+
+Choose the sidecar only when its remote-execution boundary or streaming behavior
+is measurable for your workload. For local Playwright jobs it adds deployment and
+network risk without reducing input transfer overhead.
+
 ## Output
 
 The final archive uses DEFLATE compression level 1 and contains only:
