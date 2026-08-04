@@ -3,20 +3,23 @@ import { createBlurPipeline } from '../moviemaker/blur-pipeline';
 import { extractGatherToRgb } from '../moviemaker/offline-capture-frame';
 import { createLedPreview } from '../moviemaker/preview';
 import { buildVideoChannelMap, scaleToMaxDimension, transformToCenter } from '../moviemaker/transforms';
-import { buildFledArtifact } from '../moviemaker/recording';
+import { buildFledArtifact, embedFps } from '../moviemaker/recording';
+import { PixelFormat, prependFledHeader } from '../render/rgb-video';
 import { dimensionsForAspect } from '../render/canvas-recorder';
 import type { ProductionConfig } from './contract';
 import { drawProductionFrame } from './compositor';
 import { createMp4CanvasEncoder, type Mp4CanvasEncoder } from './mp4-encoder';
+import { createSidecarArtifactUpload, type SidecarProductionTransport } from './transport';
 
 export interface ProductionRenderArtifact {
     kind: 'fled' | 'mp4';
     filename: string;
-    blob: Blob;
+    blob?: Blob;
     mimeType: string;
     bytes: number;
     frameCount: number;
     fps: number;
+    sha256?: string;
 }
 
 export interface ProductionRenderResult {
@@ -31,6 +34,7 @@ export interface ProductionRenderOptions {
     mount: HTMLElement;
     isCancelled: () => boolean;
     onProgress: (done: number, total: number, stage: 'rendering' | 'encoding') => void;
+    sidecar?: SidecarProductionTransport;
 }
 
 function sourceName(file: File): string {
@@ -47,7 +51,7 @@ function concatFrames(frames: Uint8Array[]): Uint8Array {
 }
 
 export async function renderProduction(options: ProductionRenderOptions): Promise<ProductionRenderResult> {
-    const { config, video, screenmapText, mount, isCancelled, onProgress } = options;
+    const { config, video, screenmapText, mount, isCancelled, onProgress, sidecar } = options;
     const parsed = parseScreenmapMultiStrip(screenmapText);
     if (parsed.totalCount <= 0) throw new Error('INVALID_SCREENMAP');
 
@@ -102,9 +106,11 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
             preview.setAutoBloom(config.autoBloom);
             preview.setManualBloomStrength(config.bloomStrength);
         }
-        if (wantsMp4) {
-            encoder = await createMp4CanvasEncoder({ canvas: compositionCanvas, ...outputDimensions });
-        }
+        const fledUpload = wantsFled && sidecar ? createSidecarArtifactUpload(sidecar, 'fled') : null;
+        const mp4Upload = wantsMp4 && sidecar ? createSidecarArtifactUpload(sidecar, 'mp4') : null;
+        const fledWriter = fledUpload?.writable.getWriter();
+        if (fledWriter) await fledWriter.write(prependFledHeader(new Uint8Array(), embedFps(screenmapText, fps), PixelFormat.rgb8));
+        if (wantsMp4) encoder = await createMp4CanvasEncoder({ canvas: compositionCanvas, ...outputDimensions, writable: mp4Upload?.writable });
 
         const frames: Uint8Array[] = [];
         let done = 0;
@@ -117,7 +123,10 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
                 const gather = await pipeline.captureFrameSample(frame);
                 if (!gather) throw new Error('RENDER_FAILED');
                 const displaySample = extractGatherToRgb(gather);
-                if (wantsFled) frames.push(extractGatherToRgb(gather, channelMap).rgbPts);
+                if (wantsFled) {
+                    const rgb = extractGatherToRgb(gather, channelMap).rgbPts;
+                    if (fledWriter) await fledWriter.write(rgb); else frames.push(rgb);
+                }
                 if (wantsMp4 && compositionContext && encoder) {
                     preview?.render(points, config.previewRotate ? config.rotation : 0, displaySample, null);
                     drawProductionFrame({
@@ -143,6 +152,11 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
         const artifacts: ProductionRenderArtifact[] = [];
         const stem = sourceName(video);
         if (wantsFled) {
+            if (fledWriter && fledUpload) {
+                await fledWriter.close();
+                const uploaded = await fledUpload.complete();
+                artifacts.push({ kind: 'fled', filename: `${stem}.fled`, mimeType: 'application/vnd.fastled.video', bytes: uploaded.byteSize, sha256: uploaded.sha256, frameCount: done, fps });
+            } else {
             const fled = buildFledArtifact(concatFrames(frames), {
                 frameCount: done,
                 fps,
@@ -153,12 +167,16 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
             fledBytes.set(fled.bytes);
             const blob = new Blob([fledBytes.buffer], { type: fled.mimeType });
             artifacts.push({ kind: 'fled', filename: `${stem}.fled`, blob, mimeType: fled.mimeType, bytes: blob.size, frameCount: done, fps });
+            }
         }
         if (encoder) {
             onProgress(done, total, 'encoding');
             const blob = await encoder.finalize();
             encoder = null;
-            artifacts.push({ kind: 'mp4', filename: `${stem}.mp4`, blob, mimeType: 'video/mp4', bytes: blob.size, frameCount: done, fps });
+            if (mp4Upload) {
+                const uploaded = await mp4Upload.complete();
+                artifacts.push({ kind: 'mp4', filename: `${stem}.mp4`, mimeType: 'video/mp4', bytes: uploaded.byteSize, sha256: uploaded.sha256, frameCount: done, fps });
+            } else if (blob) artifacts.push({ kind: 'mp4', filename: `${stem}.mp4`, blob, mimeType: 'video/mp4', bytes: blob.size, frameCount: done, fps });
         }
         return {
             artifacts,
