@@ -16,7 +16,7 @@ import {
     type ProductionState,
 } from './state';
 import { renderProduction } from './production-renderer';
-import { fetchSidecarInputs, type SidecarProductionTransport } from './transport';
+import { completeSidecarJob, fetchSidecarInputs, normalizeSidecarTransport, type SidecarProductionTransport } from './transport';
 
 export const css = cssUrl;
 export const PRODUCTION_VIDEO_INPUT_SELECTOR = '#production-video-input';
@@ -39,7 +39,7 @@ export interface LmProductionApi {
     provideInputFromElements(input: ProductionElementInput): Promise<void>;
     /** Trusted automation-only input path; sidecar credentials are never URL parameters. */
     provideInputFromSidecar(input: SidecarProductionTransport & ProductionElementInput): Promise<void>;
-    start(): Promise<void>;
+    start(options?: { sidecar?: SidecarProductionTransport }): Promise<void>;
     cancel(): void;
 }
 
@@ -190,7 +190,7 @@ export function init(container: HTMLElement): () => void {
                 throw error;
             }
         },
-        start: async () => {
+        start: async (startOptions = {}) => {
             if (running) return running;
             if (!config || !video || screenmapText === null || state.phase !== 'ready') {
                 const error = new Error('JOB_NOT_READY');
@@ -203,6 +203,7 @@ export function init(container: HTMLElement): () => void {
             log.info('started', { output: config.output });
             running = (async () => {
                 try {
+                    const sidecar = startOptions.sidecar ? normalizeSidecarTransport(startOptions.sidecar) : undefined;
                     const result = await renderProduction({
                         config,
                         video,
@@ -214,17 +215,26 @@ export function init(container: HTMLElement): () => void {
                             updateProductionProgress(state, done, total);
                             renderStatus();
                         },
+                        sidecar,
                     });
                     if (cancelled || destroyed) throw new Error('CANCELLED');
                     if (state.inputMetadata) Object.assign(state.inputMetadata, result.input);
                     state.artifacts = result.artifacts.map(({ kind, filename, mimeType, bytes, frameCount, fps }) => ({
                         kind, filename, mimeType, byteSize: bytes, frameCount, fps,
                     }));
+                    if (sidecar) {
+                        const integrity: Record<string, { byteSize: number; sha256: string }> = {};
+                        for (const artifact of result.artifacts) {
+                            if (!artifact.sha256) throw new Error('SIDECAR_ARTIFACT_INVALID');
+                            integrity[artifact.kind] = { byteSize: artifact.bytes, sha256: artifact.sha256 };
+                        }
+                        await completeSidecarJob(sidecar, integrity);
+                    }
                     if (result.input.frameCount > 0) updateProductionProgress(state, result.input.frameCount, result.input.frameCount, result.input.fps);
                     // Artifact metadata must be visible before downloads begin so
                     // automation can validate every suggested filename.
                     renderStatus();
-                    for (const artifact of result.artifacts) download_blob_as_file(artifact.blob, artifact.filename);
+                    for (const artifact of result.artifacts) if (artifact.blob) download_blob_as_file(artifact.blob, artifact.filename);
                     transitionProductionPhase(state, 'completed');
                     log.info('completed', { artifacts: state.artifacts.map((artifact) => artifact.filename) });
                 } catch (error) {

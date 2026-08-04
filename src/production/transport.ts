@@ -43,3 +43,45 @@ export async function fetchSidecarInputs(value: SidecarProductionTransport): Pro
     ]);
     return { video, screenmap };
 }
+
+export interface SidecarArtifactUpload {
+    writable: WritableStream<Uint8Array>;
+    complete(): Promise<{ byteSize: number; sha256: string }>;
+}
+
+export async function completeSidecarJob(value: SidecarProductionTransport, artifacts: Record<string, { byteSize: number; sha256: string }>): Promise<void> {
+    const transport = normalizeSidecarTransport(value);
+    const response = await fetch(`${transport.endpoint}/v1/jobs/${encodeURIComponent(transport.jobId)}/complete`, {
+        method: 'POST', credentials: 'omit', headers: { Authorization: `Bearer ${transport.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ artifacts }),
+    });
+    if (!response.ok) throw new Error('SIDECAR_FINALIZATION_FAILED');
+}
+
+/**
+ * Start the HTTP request before any encoder bytes exist. WritableStream
+ * backpressure flows from fetch through MediaBunny/our render loop.
+ */
+export function createSidecarArtifactUpload(value: SidecarProductionTransport, kind: 'fled' | 'mp4'): SidecarArtifactUpload {
+    const transport = normalizeSidecarTransport(value);
+    const mimeType = kind === 'fled' ? 'application/vnd.fastled.video' : 'video/mp4';
+    const stream = new TransformStream<Uint8Array, Uint8Array>();
+    const init = {
+        method: 'PUT', body: stream.readable, credentials: 'omit' as const,
+        headers: { Authorization: `Bearer ${transport.token}`, 'Content-Type': mimeType },
+        duplex: 'half' as const,
+    } as RequestInit & { duplex: 'half' };
+    const response = fetch(`${transport.endpoint}/v1/jobs/${encodeURIComponent(transport.jobId)}/artifacts/${kind}`, init);
+    return {
+        writable: stream.writable,
+        async complete() {
+            const result = await response;
+            if (!result.ok) throw new Error('SIDECAR_ARTIFACT_FAILED');
+            const metadata = await result.json() as { byteSize?: unknown; sha256?: unknown };
+            if (!Number.isInteger(metadata.byteSize) || metadata.byteSize <= 0 || typeof metadata.sha256 !== 'string') {
+                throw new Error('SIDECAR_ARTIFACT_INVALID');
+            }
+            return { byteSize: metadata.byteSize, sha256: metadata.sha256 };
+        },
+    };
+}
