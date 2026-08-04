@@ -239,5 +239,32 @@ class ManifestAndOutputTests(unittest.TestCase):
         self.assertNotIn("playwright", producer.__dict__)
 
 
+class BrowserLaunchTests(unittest.TestCase):
+    def test_prefers_installed_chrome_for_h264_webcodecs(self) -> None:
+        calls = []
+
+        class Chromium:
+            def launch(self, **kwargs):
+                calls.append(kwargs)
+                return "chrome-browser"
+
+        browser = producer.launch_production_browser(type("Playwright", (), {"chromium": Chromium()})(), headed=False)
+        self.assertEqual(browser, "chrome-browser")
+        self.assertEqual(calls, [{"channel": "chrome", "headless": True}])
+
+    def test_falls_back_when_chrome_is_unavailable(self) -> None:
+        calls = []
+
+        class Chromium:
+            def launch(self, **kwargs):
+                calls.append(kwargs)
+                if kwargs.get("channel") == "chrome": raise RuntimeError("Chrome missing")
+                return "bundled-browser"
+
+        browser = producer.launch_production_browser(type("Playwright", (), {"chromium": Chromium()})(), headed=True)
+        self.assertEqual(browser, "bundled-browser")
+        self.assertEqual(calls, [{"channel": "chrome", "headless": False}, {"headless": False}])
+
+
 if __name__ == "__main__":
     unittest.main()

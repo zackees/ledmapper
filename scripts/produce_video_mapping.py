@@ -388,6 +388,15 @@ def _expected_extensions(output: str) -> tuple[str, ...]:
     return {"fled": (".fled",), "mp4": (".mp4",), "both": (".fled", ".mp4")}[output]
 
 
+def launch_production_browser(playwright: Any, *, headed: bool) -> Any:
+    """Prefer installed Chrome: bundled Chromium commonly lacks H.264 decode."""
+    options = {"headless": not headed}
+    try:
+        return playwright.chromium.launch(channel="chrome", **options)
+    except Exception:
+        return playwright.chromium.launch(**options)
+
+
 def run_browser_job(job: JobRequest, extracted: ExtractedInput, download_dir: Path,
                     *, timeout_seconds: float = 3600.0, headed: bool = False) -> tuple[dict[str, Any], list[Path]]:
     """Drive the production API. Playwright is intentionally imported lazily."""
@@ -404,7 +413,7 @@ def run_browser_job(job: JobRequest, extracted: ExtractedInput, download_dir: Pa
     download_dir.mkdir(parents=True, exist_ok=True)
     captured: list[Any] = []
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=not headed)
+        browser = launch_production_browser(playwright, headed=headed)
         try:
             page = browser.new_page(accept_downloads=True)
             page.on("download", lambda download: captured.append(download))
