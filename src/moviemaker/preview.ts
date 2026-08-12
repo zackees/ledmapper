@@ -36,6 +36,9 @@ const log = createLogger('preview');
 const AESTHETIC_MARGIN = 1.05;
 const HDR_BLOOM_LOW = 0.20;
 const HDR_BLOOM_MID = 0.55;
+/** High bracket is reserved for powerful highlights, not zero-threshold haze. */
+const HDR_HIGHLIGHT_THRESHOLD_DARK = 0.08;
+const HDR_HIGHLIGHT_THRESHOLD_BRIGHT = 0.16;
 
 export type HdrBloomCompositeMode = 'gpu-full' | 'cpu-full' | 'cpu-1024' | 'verify-full';
 
@@ -419,7 +422,7 @@ export function createLedPreview({
             );
         }
 
-        bloom.frame(src, mediaTimeMs);
+        const globalBloomBias = bloom.frame(src, mediaTimeMs);
         // Modest geometry-gated diameter modulation; dense layouts remain
         // stable to avoid subpixel aliasing bands across the LED lattice.
         const modulatedSize = baseLedPx * bloom.getDiameterScale();
@@ -432,13 +435,19 @@ export function createLedPreview({
             // Keep the sharp scene and all bloom brackets in linear RGBA16F.
             // The composite writes display-sRGB to the canvas exactly once.
             hdrGpuComposite.captureRaw(scene, camera);
+            hdrGpuComposite.setGlobalBloomBias(globalBloomBias);
             const strength = bloom.bloomPass.strength;
+            const threshold = bloom.bloomPass.threshold;
             const factors = [HDR_BLOOM_LOW, HDR_BLOOM_MID, 1];
             for (let bracket = 0; bracket < factors.length; bracket++) {
                 // Keep the high bracket at the requested full strength. The
                 // HDR compositor attenuates neutral (white-building) energy
                 // while retaining the high bracket's chromatic spill.
                 bloom.bloomPass.strength = strength * (factors[bracket] ?? 1);
+                bloom.bloomPass.threshold = bracket === 2
+                    ? HDR_HIGHLIGHT_THRESHOLD_DARK
+                        + (HDR_HIGHLIGHT_THRESHOLD_BRIGHT - HDR_HIGHLIGHT_THRESHOLD_DARK) * globalBloomBias
+                    : 0;
                 const texture = bloom.renderToTexture();
                 if (texture) hdrGpuComposite.captureBloom((bracket + 1) as 1 | 2 | 3, texture);
                 const bracketContext = hdrContexts[bracket + 1];
@@ -448,6 +457,7 @@ export function createLedPreview({
                 }
             }
             bloom.bloomPass.strength = strength;
+            bloom.bloomPass.threshold = threshold;
             hdrGpuComposite.render();
             if (hdrVerification === null && hdrVerificationContext && (mediaTimeMs ?? 0) >= 2000) {
                 const [raw, low, mid, high] = hdrContexts;
@@ -461,6 +471,7 @@ export function createLedPreview({
                         mid.getImageData(0, 0, hdrWidth, hdrHeight).data,
                         high.getImageData(0, 0, hdrWidth, hdrHeight).data,
                         hdrPixels,
+                        globalBloomBias,
                     );
                     hdrVerificationContext.drawImage(renderer.domElement, 0, 0);
                     const actual = hdrVerificationContext.getImageData(0, 0, hdrWidth, hdrHeight).data;
@@ -503,14 +514,20 @@ export function createLedPreview({
             renderer.render(scene, camera);
             rawContext.drawImage(renderer.domElement, 0, 0, hdrCpuWidth, hdrCpuHeight);
             const strength = bloom.bloomPass.strength;
+            const threshold = bloom.bloomPass.threshold;
             const factors = [HDR_BLOOM_LOW, HDR_BLOOM_MID, 1];
             for (let bracket = 0; bracket < factors.length; bracket++) {
                 bloom.bloomPass.strength = strength * (factors[bracket] ?? 1);
+                bloom.bloomPass.threshold = bracket === 2
+                    ? HDR_HIGHLIGHT_THRESHOLD_DARK
+                        + (HDR_HIGHLIGHT_THRESHOLD_BRIGHT - HDR_HIGHLIGHT_THRESHOLD_DARK) * globalBloomBias
+                    : 0;
                 bloom.render();
                 const bracketContext = hdrContexts[bracket + 1];
                 if (bracketContext) bracketContext.drawImage(renderer.domElement, 0, 0, hdrCpuWidth, hdrCpuHeight);
             }
             bloom.bloomPass.strength = strength;
+            bloom.bloomPass.threshold = threshold;
             const imageData = hdrOutputContext.createImageData(hdrCpuWidth, hdrCpuHeight);
             imageData.data.set(compositeHdrBloomRgba(
                 rawContext.getImageData(0, 0, hdrCpuWidth, hdrCpuHeight).data,
@@ -518,6 +535,7 @@ export function createLedPreview({
                 midContext.getImageData(0, 0, hdrCpuWidth, hdrCpuHeight).data,
                 highContext.getImageData(0, 0, hdrCpuWidth, hdrCpuHeight).data,
                 hdrPixels,
+                globalBloomBias,
             ));
             hdrOutputContext.putImageData(imageData, 0, 0);
             return;

@@ -20,7 +20,7 @@ import {
     computeBloomStrength,
     IRIS_LIGHT_LATENCY,
 } from './bloom-utils';
-import type { IrisState, BloomStrengthRange } from './types/domain';
+import type { IrisState, BloomStrengthRange, FrameBrightnessResult } from './types/domain';
 
 export function createBloomComposer({
     renderer,
@@ -72,8 +72,9 @@ export function updateBloomIris(
     range: BloomStrengthRange | null | undefined,
     manualStrength: number | null = null,
     nowMs = performance.now(),
-): void {
-    const { irisBrightness, litCount, totalCount } = computeFrameBrightness(rgbBytes);
+): FrameBrightnessResult {
+    const frameBrightness = computeFrameBrightness(rgbBytes);
+    const { irisBrightness, litCount, totalCount } = frameBrightness;
     const dtSeconds = typeof irisState.lastTimeMs === 'number'
         ? (nowMs - irisState.lastTimeMs) / 1000
         : 0;
@@ -99,4 +100,5 @@ export function updateBloomIris(
     } else {
         bloomPass.strength = computeBloomStrength(irisState.currentBrightness, litCount, totalCount, range ?? undefined);
     }
+    return frameBrightness;
 }

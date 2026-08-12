@@ -25,9 +25,6 @@ export const BLOOM_MAX_STRENGTH = 16;
 export const BLOOM_RADIUS = 1;
 export const BLOOM_THRESHOLD = 0.0;
 /** Maximum perceptual bloom contribution in a pixel with no sharp LED core. */
-export const DARK_BLOOM_SRGB_LIMIT = 0.18;
-const BLOOM_CHROMA_GATE_SRGB_LOW = 0.02;
-const BLOOM_CHROMA_GATE_SRGB_HIGH = 0.08;
 
 /** Video iris responds immediately; fast cuts need no perceptual delay. */
 export const IRIS_LIGHT_LATENCY = 0;
@@ -40,6 +37,9 @@ export const IRIS_ATTACK_TAU = 0.20;
 /** Slower redilation preserves the iris-like dark adaptation. */
 export const IRIS_DECAY_TAU = 1.20;
 export const IRIS_MAX_DT = 0.25;
+/** Global bloom exposure closes quickly, but reopens without frame-to-frame pumping. */
+export const BLOOM_EXPOSURE_ATTACK_TAU = 0.10;
+export const BLOOM_EXPOSURE_RELEASE_TAU = 0.45;
 
 export const AUTO_BLOOM_SPACING_REF = 0.10;
 
@@ -156,6 +156,32 @@ export function computeFrameBrightness(rgbBytes: Uint8Array | number[]): FrameBr
     };
 }
 
+/**
+ * Global exposure used to select among the bloom brackets. This deliberately
+ * does not use irisBrightness: the iris follows the highlight tail, whereas
+ * bloom selection must answer how bright the mapped scene is as a whole.
+ * Because rgbBytes contains only mapped LEDs, black canvas corners never make
+ * a rotated panel appear artificially dark.
+ */
+export function computeGlobalBloomBias({
+    avgBrightness,
+    litCount,
+    totalCount,
+}: FrameBrightnessResult): number {
+    if (totalCount <= 0) return 0;
+    const coverage = Math.min(Math.max(litCount / totalCount, 0), 1);
+    const globalLight = smoothstep(0.08, 0.42, avgBrightness);
+    const populatedScene = smoothstep(0.10, 0.65, coverage);
+    return Math.min(Math.max(globalLight * populatedScene, 0), 1);
+}
+
+export function stepBloomExposure(current: number, target: number, dtSeconds: number): number {
+    return stepIrisAttackDecay(current, target, dtSeconds, {
+        attackTau: BLOOM_EXPOSURE_ATTACK_TAU,
+        decayTau: BLOOM_EXPOSURE_RELEASE_TAU,
+    });
+}
+
 function smoothstep(edge0: number, edge1: number, value: number): number {
     const t = Math.min(Math.max((value - edge0) / Math.max(edge1 - edge0, 1e-9), 0), 1);
     return t * t * (3 - 2 * t);
@@ -260,6 +286,7 @@ export function compositeHdrBloomRgba(
     midRgba: Uint8ClampedArray,
     highRgba: Uint8ClampedArray,
     output = new Uint8ClampedArray(rawRgba.length),
+    globalBloomBias = 0,
 ): Uint8ClampedArray {
     const length = Math.min(rawRgba.length, lowRgba.length, midRgba.length, highRgba.length, output.length);
     for (let i = 0; i + 3 < length; i += 4) {
@@ -278,8 +305,9 @@ export function compositeHdrBloomRgba(
             (midRgba[i + 1] ?? 0) / 255,
             (midRgba[i + 2] ?? 0) / 255,
         );
-        const highWeight = 1 - smoothstep(0.035, 0.20, highRisk);
-        const midWeight = 1 - smoothstep(0.05, 0.24, midRisk);
+        const bias = Math.min(Math.max(globalBloomBias, 0), 1);
+        const highWeight = (1 - smoothstep(0.035, 0.20, highRisk)) * (1 - 0.85 * bias);
+        const midWeight = (1 - smoothstep(0.05, 0.24, midRisk)) * (1 - 0.65 * bias);
         const rawMax = Math.max(rr, rg, rb);
         const highMax = Math.max(
             (highRgba[i] ?? 0) / 255,
@@ -289,45 +317,59 @@ export function compositeHdrBloomRgba(
         const shadowWeight = shadowBloomWeight(rawMax, highMax);
         const rawLinear = [rr, rg, rb].map(srgbChannelToLinear);
         const selected = [0, 0, 0];
-        const midLinear = [0, 0, 0];
+        const highLinear = [0, 0, 0];
         for (let channel = 0; channel < 3; channel++) {
             const low = srgbChannelToLinear((lowRgba[i + channel] ?? 0) / 255);
             const mid = srgbChannelToLinear((midRgba[i + channel] ?? 0) / 255);
             const high = srgbChannelToLinear((highRgba[i + channel] ?? 0) / 255);
             const upper = mid + (high - mid) * highWeight;
             selected[channel] = low + (upper - low) * midWeight;
-            midLinear[channel] = mid;
+            highLinear[channel] = high;
         }
         const selectedAdded = selected.map((value, channel) =>
             Math.max(value - (rawLinear[channel] ?? 0), 0));
         const neutralBloom = Math.min(...selectedAdded);
-        const protectedNeutral = neutralBloom * shadowWeight;
-        const midAdded = midLinear.map((value, channel) =>
+        let protectedNeutral = neutralBloom * shadowWeight;
+        const highAdded = highLinear.map((value, channel) =>
             Math.max(value - (rawLinear[channel] ?? 0), 0));
-        const midAddedNeutral = Math.min(...midAdded);
-        const chromaticBloom = midAdded.map(value => Math.max(value - midAddedNeutral, 0));
-        const chromaEnergy = Math.max(...chromaticBloom);
+        const highNeutral = Math.min(...highAdded);
+        const highChroma = highAdded.map(value => Math.max(value - highNeutral, 0));
+        const highAddedEnergy = Math.max(...highAdded);
+        const chromaEnergy = Math.max(...highChroma);
+        const chromaPurity = chromaEnergy / Math.max(highAddedEnergy, 1e-9);
+        const sceneChromaScale = 1 - 0.35 * bias;
         const chromaGate = smoothstep(
-            srgbChannelToLinear(BLOOM_CHROMA_GATE_SRGB_LOW),
-            srgbChannelToLinear(BLOOM_CHROMA_GATE_SRGB_HIGH),
+            srgbChannelToLinear(0.015),
+            srgbChannelToLinear(0.07),
             chromaEnergy,
-        );
+        ) * smoothstep(0.08, 0.40, chromaPurity) * sceneChromaScale;
+        const chromaShoulder = srgbChannelToLinear(0.40);
+        const mappedChromaEnergy = chromaShoulder
+            * (1 - Math.exp(-chromaEnergy / Math.max(chromaShoulder, 1e-9)));
+        const chromaScale = chromaEnergy > 1e-9 ? mappedChromaEnergy / chromaEnergy : 0;
+        const chromaticBloom = highChroma.map(value => value * chromaScale * chromaGate);
+        const saturationProtection = smoothstep(0.15, 0.65, chromaPurity);
+        protectedNeutral *= 1 - 0.70 * saturationProtection;
+        const baseLimitSrgb = 0.18 + (0.11 - 0.18) * bias;
         const darkMask = 1 - smoothstep(0.02, 0.12, rawMax);
-        const addedBloom = chromaticBloom.map(value =>
-            protectedNeutral + value * chromaGate);
-        const addedEnergy = Math.max(...addedBloom);
-        const darkLimitLinear = srgbChannelToLinear(DARK_BLOOM_SRGB_LIMIT);
-        const addedLimit = 1 + (darkLimitLinear - 1) * darkMask;
-        const addedScale = addedEnergy > 1e-9
-            ? Math.min(1, addedLimit / addedEnergy)
-            : 0;
+        const neutralLimit = 1 + (srgbChannelToLinear(baseLimitSrgb) - 1) * darkMask;
+        const neutralHeadroom = Math.max(Math.min(
+            1 - (rawLinear[0] ?? 0),
+            1 - (rawLinear[1] ?? 0),
+            1 - (rawLinear[2] ?? 0),
+        ), 0);
+        const neutralAdded = Math.min(protectedNeutral, neutralLimit, neutralHeadroom);
+        let hueSafeScale = 1;
         for (let channel = 0; channel < 3; channel++) {
-            const base = rawLinear[channel] ?? 0;
-            const added = Math.min(
-                (addedBloom[channel] ?? 0) * addedScale,
-                Math.max(1 - base, 0),
-            );
-            output[i + channel] = linearChannelToSrgbByte(base + added);
+            const baseWithNeutral = (rawLinear[channel] ?? 0) + neutralAdded;
+            const chroma = chromaticBloom[channel] ?? 0;
+            if (chroma > 1e-9) hueSafeScale = Math.min(hueSafeScale, (1 - baseWithNeutral) / chroma);
+        }
+        hueSafeScale = Math.min(Math.max(hueSafeScale, 0), 1);
+        for (let channel = 0; channel < 3; channel++) {
+            const composite = (rawLinear[channel] ?? 0) + neutralAdded
+                + (chromaticBloom[channel] ?? 0) * hueSafeScale;
+            output[i + channel] = linearChannelToSrgbByte(composite);
         }
         output[i + 3] = 255;
     }

@@ -28,6 +28,8 @@ import {
     computeDiameterHeadroom,
     computeIrisDiameterScale,
     combineBloomBlowoutRisk,
+    computeGlobalBloomBias,
+    stepBloomExposure,
     BLOOM_MIN_STRENGTH,
 } from './bloom-utils';
 import type { BloomProfile, BloomRange } from './types/domain';
@@ -89,6 +91,7 @@ export function createAutoBloom({
 }: AutoBloomOptions) {
     const bloom = createBloomComposer({ renderer, scene, camera, width, height });
     const irisState = { currentBrightness: 0 };
+    const bloomExposureState: { current: number | null; lastTimeMs?: number } = { current: null };
 
     // Size-proportional kernel range + geometry-derived modulation depth.
     const sizeRange: BloomRange = { min: 0, max: 0 };
@@ -138,7 +141,21 @@ export function createAutoBloom({
             ? { min: effMin, max: effMax, blowoutRisk }
             : { min: effMin, max: effMax };
         const override = autoEnabled ? null : manualStrength;
-        updateBloomIris(bloom.bloomPass, irisState, rgbBytes, range, override, nowMs);
+        const frameBrightness = updateBloomIris(bloom.bloomPass, irisState, rgbBytes, range, override, nowMs);
+        // Manual bloom must be a fixed treatment. A changing global selector
+        // would otherwise keep altering the bracket mix despite fixed strength.
+        if (!autoEnabled) return 0;
+        const targetExposure = computeGlobalBloomBias(frameBrightness);
+        if (bloomExposureState.current === null || bloomExposureState.lastTimeMs === undefined) {
+            // Unlike the pupil-like iris, bloom selection has no useful
+            // adaptation from black on the first frame. Seed it at exposure.
+            bloomExposureState.current = targetExposure;
+        } else {
+            const dt = Math.max((nowMs - bloomExposureState.lastTimeMs) / 1000, 0);
+            bloomExposureState.current = stepBloomExposure(bloomExposureState.current, targetExposure, dt);
+        }
+        bloomExposureState.lastTimeMs = nowMs;
+        return bloomExposureState.current;
     }
 
     /** Render one frame: bloom composer, or the raw scene when bloom is off. */
@@ -160,6 +177,10 @@ export function createAutoBloom({
     function setAuto(enabled: boolean) {
         autoEnabled = enabled;
         if (enabled) manualStrength = null;
+        // Re-seed from the next media frame when modes change; carrying an
+        // automatic exposure history through manual mode causes a visible jump.
+        bloomExposureState.current = null;
+        delete bloomExposureState.lastTimeMs;
     }
 
     function setManualStrength(strength: number) {

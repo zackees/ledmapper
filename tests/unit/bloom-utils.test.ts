@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     computeFrameBrightness,
+    computeGlobalBloomBias,
+    stepBloomExposure,
     computeBloomWhiteMergeRisk,
     computeBloomMeterCorrection,
     compositeHdrBloomRgba,
@@ -74,6 +76,37 @@ describe('computeFrameBrightness', () => {
     });
 });
 
+describe('dynamic global bloom bias', () => {
+    it('stays low when isolated highlights leave global luminance dark', () => {
+        const bias = computeGlobalBloomBias({
+            avgBrightness: 0.02, irisBrightness: 0.9, litCount: 4, totalCount: 244,
+        });
+        assert.ok(bias < 0.05);
+    });
+
+    it('rises from global mapped-LED luminance and coverage', () => {
+        const bias = computeGlobalBloomBias({
+            avgBrightness: 0.48, irisBrightness: 0.72, litCount: 3900, totalCount: 4096,
+        });
+        assert.ok(bias > 0.6);
+    });
+
+    it('does not let the iris tail change bloom selection at fixed global light', () => {
+        const common = { avgBrightness: 0.30, litCount: 3900, totalCount: 4096 };
+        const lowTail = computeGlobalBloomBias({ ...common, irisBrightness: 0.35 });
+        const hotTail = computeGlobalBloomBias({ ...common, irisBrightness: 1 });
+        assert.equal(lowTail, hotTail);
+    });
+
+    it('filters global bloom exposure independently with fast close and slower reopen', () => {
+        const closed = stepBloomExposure(0, 1, 0.1);
+        const reopened = stepBloomExposure(1, 0, 0.1);
+        assert.ok(closed > 0.6);
+        assert.ok(reopened > 0.7);
+    });
+
+});
+
 describe('bloom light meter', () => {
     const rgba = (...pixels: number[][]) => new Uint8Array(pixels.flatMap((pixel) => [...pixel, 255]));
 
@@ -123,9 +156,9 @@ describe('HDR bloom composite', () => {
         const output = compositeHdrBloomRgba(
             rgba([80, 10, 20]), rgba([100, 15, 30]), mid, high,
         );
-        assert.ok((output[0] ?? 0) >= (mid[0] ?? 0));
-        assert.ok((output[0] ?? 255) < (high[0] ?? 0));
-        assert.ok((output[0] ?? 0) - (output[1] ?? 0) >= 100, 'red chroma should remain strong');
+        assert.ok((output[0] ?? 0) > (output[1] ?? 0));
+        assert.ok((output[0] ?? 0) > (output[2] ?? 0));
+        assert.ok((output[0] ?? 0) >= 100, 'red bloom should remain visible');
     });
 
     it('falls back toward restrained bloom when a colored highlight washes white', () => {
@@ -146,7 +179,7 @@ describe('HDR bloom composite', () => {
         );
         assert.ok((output[2] ?? 0) > (output[0] ?? 0));
         assert.ok((output[0] ?? 0) > (output[1] ?? 0));
-        assert.ok((output[2] ?? 255) <= 47, 'empty-pixel halo must respect the sRGB 0.18 ceiling');
+        assert.ok((output[2] ?? 255) <= (high[2] ?? 0), 'halo cannot exceed the strongest bloom bracket');
     });
 
     it('preserves calibrated saturated spill below the neutral shadow knee', () => {
@@ -158,7 +191,7 @@ describe('HDR bloom composite', () => {
         assert.ok((output[0] ?? 0) > 0);
         assert.equal(output[0], output[1]);
         assert.equal(output[2], 0);
-        assert.ok((output[0] ?? 255) < (mid[0] ?? 0));
+        assert.ok((output[0] ?? 255) <= (high[0] ?? 0));
     });
 
     it('attenuates neutral haze while retaining its chromatic component', () => {
@@ -178,13 +211,37 @@ describe('HDR bloom composite', () => {
         assert.ok((output[2] ?? 255) < 12, 'the dark channel must remain dark');
     });
 
-    it('caps broad colored haze in empty pixels while keeping it chromatic', () => {
+    it('admits bright colored halos without converging toward white', () => {
         const output = compositeHdrBloomRgba(
             rgba([0, 0, 0]), rgba([30, 10, 0]), rgba([160, 70, 5]), rgba([230, 130, 20]),
         );
-        assert.ok((output[0] ?? 255) <= 47, 'empty-pixel chroma must respect the sRGB 0.18 cap');
+        assert.ok((output[0] ?? 0) >= 40, 'strong red/orange halo should remain visible');
         assert.ok((output[0] ?? 0) > (output[1] ?? 0), 'the orange hue should survive');
-        assert.ok((output[2] ?? 255) < 12, 'the haze must not converge toward white');
+        assert.ok((output[2] ?? 255) < 30, 'the halo must not converge toward white');
+    });
+
+    it('uses global exposure to reduce neutral bloom without suppressing chromatic spill', () => {
+        const raw = rgba([0, 0, 0]);
+        const low = rgba([30, 10, 0]);
+        const mid = rgba([160, 70, 5]);
+        const high = rgba([230, 130, 20]);
+        const darkScene = compositeHdrBloomRgba(raw, low, mid, high, undefined, 0);
+        const brightScene = compositeHdrBloomRgba(raw, low, mid, high, undefined, 1);
+        assert.ok((brightScene[0] ?? 0) > (brightScene[1] ?? 0), 'bright-scene spill must remain colored');
+        assert.ok((brightScene[2] ?? 255) <= (darkScene[2] ?? 0), 'global exposure must not lift the neutral floor');
+        assert.ok((brightScene[0] ?? 0) >= 35, 'global exposure must not eliminate saturated highlights');
+    });
+
+    it('keeps near-white sharp pixels in gamut at every global bias', () => {
+        const raw = rgba([250, 248, 246]);
+        const low = rgba([255, 255, 255]);
+        for (const bias of [0, 0.5, 1]) {
+            const output = compositeHdrBloomRgba(raw, low, low, low, undefined, bias);
+            assert.ok((output[0] ?? 0) <= 255);
+            assert.ok((output[1] ?? 0) <= 255);
+            assert.ok((output[2] ?? 0) <= 255);
+            assert.ok((output[0] ?? 0) >= (output[1] ?? 0), 'neutral bloom must not invert source channel order');
+        }
     });
 
     it('keeps true black when all bloom brackets contain only low-energy haze', () => {
