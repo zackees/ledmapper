@@ -28,6 +28,13 @@ export async function createMp4CanvasEncoder({
         format: new Mp4OutputFormat(writable ? { fastStart: 'fragmented' } : {}),
         target,
     });
+    // Mediabunny otherwise stamps mvhd/tkhd/mdhd with Date.now(). That makes
+    // two byte-identical H.264 streams differ in exactly 12 MP4 header bytes.
+    // Pin the ISO-BMFF epoch value before start so local and streamed renders
+    // are reproducible as whole files, not merely as decoded video frames.
+    const muxer = output._muxer as unknown as { creationTime?: number };
+    if (typeof muxer.creationTime !== 'number') throw new Error('MP4_ENCODING_UNSUPPORTED');
+    muxer.creationTime = 0;
     const source = new CanvasSource(canvas, {
         codec: 'avc',
         bitrate: QUALITY_HIGH,

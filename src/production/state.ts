@@ -23,6 +23,14 @@ export interface ProductionInputMetadata {
     stripCount?: number;
     width?: number;
     height?: number;
+    hdrBloomVerification?: {
+        comparedBytes: number;
+        mismatchedBytes: number;
+        maxChannelDelta: number;
+        positiveDeltas: number;
+        negativeDeltas: number;
+        firstMismatch?: { byte: number; expected: number; actual: number };
+    } | null;
 }
 
 export interface ProductionProgress {
