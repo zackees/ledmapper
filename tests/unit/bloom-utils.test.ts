@@ -117,12 +117,15 @@ describe('bloom light meter', () => {
 describe('HDR bloom composite', () => {
     const rgba = (rgb: number[]) => new Uint8ClampedArray([...rgb, 255]);
 
-    it('keeps the high bloom bracket where color remains intact', () => {
+    it('keeps calibrated chromatic bloom where color remains intact', () => {
+        const mid = rgba([140, 25, 50]);
         const high = rgba([180, 40, 80]);
         const output = compositeHdrBloomRgba(
-            rgba([80, 10, 20]), rgba([100, 15, 30]), rgba([140, 25, 50]), high,
+            rgba([80, 10, 20]), rgba([100, 15, 30]), mid, high,
         );
-        assert.deepEqual(output, high);
+        assert.ok((output[0] ?? 0) >= (mid[0] ?? 0));
+        assert.ok((output[0] ?? 255) < (high[0] ?? 0));
+        assert.ok((output[0] ?? 0) - (output[1] ?? 0) >= 100, 'red chroma should remain strong');
     });
 
     it('falls back toward restrained bloom when a colored highlight washes white', () => {
@@ -131,16 +134,57 @@ describe('HDR bloom composite', () => {
             rgba([210, 15, 30]), low, rgba([248, 180, 185]), rgba([255, 255, 255]),
         );
         assert.ok((output[0] ?? 255) <= 230);
-        assert.ok((output[1] ?? 255) < 70);
-        assert.ok((output[2] ?? 255) < 85);
+        assert.ok((output[0] ?? 0) > (output[1] ?? 0));
+        assert.ok((output[0] ?? 0) > (output[2] ?? 0));
     });
 
-    it('uses the high bracket for a dark halo pixel', () => {
+    it('uses calibrated chroma for a dark halo pixel', () => {
+        const mid = rgba([23, 10, 35]);
         const high = rgba([35, 10, 60]);
         const output = compositeHdrBloomRgba(
-            rgba([0, 0, 0]), rgba([5, 2, 8]), rgba([18, 5, 30]), high,
+            rgba([0, 0, 0]), rgba([5, 2, 8]), mid, high,
         );
-        assert.deepEqual(output, high);
+        assert.ok((output[2] ?? 0) > (output[0] ?? 0));
+        assert.ok((output[0] ?? 0) > (output[1] ?? 0));
+        assert.ok((output[2] ?? 255) <= 47, 'empty-pixel halo must respect the sRGB 0.18 ceiling');
+    });
+
+    it('preserves calibrated saturated spill below the neutral shadow knee', () => {
+        const high = rgba([24, 24, 0]);
+        const mid = rgba([14, 14, 0]);
+        const output = compositeHdrBloomRgba(
+            rgba([0, 0, 0]), rgba([2, 2, 0]), mid, high,
+        );
+        assert.ok((output[0] ?? 0) > 0);
+        assert.equal(output[0], output[1]);
+        assert.equal(output[2], 0);
+        assert.ok((output[0] ?? 255) < (mid[0] ?? 0));
+    });
+
+    it('attenuates neutral haze while retaining its chromatic component', () => {
+        const output = compositeHdrBloomRgba(
+            rgba([0, 0, 0]), rgba([4, 3, 2]), rgba([18, 10, 6]), rgba([30, 14, 7]),
+        );
+        assert.ok((output[0] ?? 0) >= 12, 'red chromatic spill should survive');
+        assert.ok((output[2] ?? 255) <= 6, 'shared neutral haze should remain gated');
+    });
+
+    it('does not duplicate source chroma into a lifted shadow floor', () => {
+        const raw = rgba([80, 30, 5]);
+        const output = compositeHdrBloomRgba(
+            raw, rgba([82, 31, 6]), rgba([84, 33, 7]), rgba([88, 37, 10]),
+        );
+        assert.ok((output[0] ?? 255) < 90, 'source orange must not be re-added as bloom');
+        assert.ok((output[2] ?? 255) < 12, 'the dark channel must remain dark');
+    });
+
+    it('caps broad colored haze in empty pixels while keeping it chromatic', () => {
+        const output = compositeHdrBloomRgba(
+            rgba([0, 0, 0]), rgba([30, 10, 0]), rgba([160, 70, 5]), rgba([230, 130, 20]),
+        );
+        assert.ok((output[0] ?? 255) <= 47, 'empty-pixel chroma must respect the sRGB 0.18 cap');
+        assert.ok((output[0] ?? 0) > (output[1] ?? 0), 'the orange hue should survive');
+        assert.ok((output[2] ?? 255) < 12, 'the haze must not converge toward white');
     });
 
     it('keeps true black when all bloom brackets contain only low-energy haze', () => {
