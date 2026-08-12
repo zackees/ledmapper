@@ -129,8 +129,11 @@ describe('createFrameSequencer', () => {
 describe('embedFps', () => {
     it('adds the spec-defined video.fps key to v1 and v2 screenmap JSON', () => {
         const v1 = JSON.stringify({ map: { s: { x: [0], y: [0] } } });
-        const out1 = JSON.parse(embedFps(v1, 60)) as { map: unknown; video: { fps: number } };
+        const out1 = JSON.parse(embedFps(v1, 60)) as { map: unknown; video: { fps: number; color: Record<string, string> } };
         assert.equal(out1.video.fps, 60);
+        assert.deepEqual(out1.video.color, {
+            primaries: 'bt709', transfer: 'srgb', matrix: 'rgb', range: 'full',
+        });
         assert.ok(out1.map);
 
         const v2 = JSON.stringify({ version: 2, segments: [{ id: 's', x: [0], y: [0] }] });

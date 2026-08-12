@@ -36,6 +36,10 @@ const log = createLogger('preview');
 const AESTHETIC_MARGIN = 1.05;
 const HDR_BLOOM_LOW = 0.20;
 const HDR_BLOOM_MID = 0.55;
+// The existing control range was calibrated when bloom energy was added to an
+// already sRGB-encoded canvas. Linear-light addition is perceptually stronger,
+// especially in shadows, so translate the legacy control at this boundary.
+const LINEAR_HDR_BLOOM_STRENGTH_SCALE = 0.30;
 
 export type HdrBloomCompositeMode = 'gpu-full' | 'cpu-full' | 'cpu-1024' | 'verify-full';
 
@@ -346,7 +350,7 @@ export function createLedPreview({
      *        spacing heuristic.
      */
     let dbgFrames = 0;
-    function render(localPts: StripPoint[], rotate: number, lastSample: { rgbPts: Uint8Array } | null, ledDiameter: number | null = null, pointChannelOffsets: number[] = [], shapes: PreviewShape[] = [], mediaTimeMs?: number) {
+    function render(localPts: StripPoint[], rotate: number, lastSample: { rgbPts: Uint8Array; linearRgbPts?: Float32Array; [key: string]: unknown } | null, ledDiameter: number | null = null, pointChannelOffsets: number[] = [], shapes: PreviewShape[] = [], mediaTimeMs?: number) {
         if ((localPts.length === 0 && shapes.length === 0) || !lastSample) {
             if (dbgFrames < 3) { dbgFrames++; log.debug('render-skip', { pts: localPts.length, shapes: shapes.length, hasSample: !!lastSample }); }
             renderer.clear();
@@ -391,6 +395,7 @@ export function createLedPreview({
         // copy is ~3 floats per LED per frame; even a 64x64 quad map is a
         // trivial 12K writes.
         const src = lastSample.rgbPts;
+        const linearSrc = lastSample.linearRgbPts;
         if (meshData) {
             const arr = meshData.colorAttribute.array as Float32Array;
             const count = Math.min(localPts.length, Math.floor(src.length / 3));
@@ -402,9 +407,9 @@ export function createLedPreview({
                 // colors are linear working-space values, so passing bytes / 255
                 // directly makes Three apply the output transfer twice and
                 // dramatically lifts shadows (for example, 16 becomes ~71).
-                arr[i3    ] = SRGB8_TO_LINEAR[src[c3]     ?? 0] ?? 0;
-                arr[i3 + 1] = SRGB8_TO_LINEAR[src[c3 + 1] ?? 0] ?? 0;
-                arr[i3 + 2] = SRGB8_TO_LINEAR[src[c3 + 2] ?? 0] ?? 0;
+                arr[i3    ] = linearSrc?.[c3] ?? SRGB8_TO_LINEAR[src[c3]     ?? 0] ?? 0;
+                arr[i3 + 1] = linearSrc?.[c3 + 1] ?? SRGB8_TO_LINEAR[src[c3 + 1] ?? 0] ?? 0;
+                arr[i3 + 2] = linearSrc?.[c3 + 2] ?? SRGB8_TO_LINEAR[src[c3 + 2] ?? 0] ?? 0;
             }
             meshData.colorAttribute.needsUpdate = true;
         }
@@ -412,9 +417,9 @@ export function createLedPreview({
         for (const entry of shapeMeshes) {
             const c3 = entry.offset * 3;
             entry.material.color.setRGB(
-                SRGB8_TO_LINEAR[src[c3] ?? 0] ?? 0,
-                SRGB8_TO_LINEAR[src[c3 + 1] ?? 0] ?? 0,
-                SRGB8_TO_LINEAR[src[c3 + 2] ?? 0] ?? 0,
+                linearSrc?.[c3] ?? SRGB8_TO_LINEAR[src[c3] ?? 0] ?? 0,
+                linearSrc?.[c3 + 1] ?? SRGB8_TO_LINEAR[src[c3 + 1] ?? 0] ?? 0,
+                linearSrc?.[c3 + 2] ?? SRGB8_TO_LINEAR[src[c3 + 2] ?? 0] ?? 0,
             );
         }
 
@@ -428,27 +433,30 @@ export function createLedPreview({
                 : modulatedSize;
         }
         if (hdrGpuComposite && meshData) {
-            // The four RGBA8 snapshots stay entirely on the GPU. They preserve
-            // v1's byte-quantized bracket inputs and are overwritten next frame.
-            renderer.setRenderTarget(null);
-            renderer.render(scene, camera);
-            hdrGpuComposite.capture(0);
-            const rawContext = hdrContexts[0];
-            if (rawContext) rawContext.drawImage(renderer.domElement, 0, 0);
+            // Keep the sharp scene and all bloom brackets in linear RGBA16F.
+            // The composite writes display-sRGB to the canvas exactly once.
+            hdrGpuComposite.captureRaw(scene, camera);
             const strength = bloom.bloomPass.strength;
+            const linearStrength = strength * LINEAR_HDR_BLOOM_STRENGTH_SCALE;
             const factors = [HDR_BLOOM_LOW, HDR_BLOOM_MID, 1];
             for (let bracket = 0; bracket < factors.length; bracket++) {
-                bloom.bloomPass.strength = strength * (factors[bracket] ?? 1);
-                bloom.render();
-                hdrGpuComposite.capture((bracket + 1) as 1 | 2 | 3);
+                bloom.bloomPass.strength = linearStrength * (factors[bracket] ?? 1);
+                const texture = bloom.renderToTexture();
+                if (texture) hdrGpuComposite.captureBloom((bracket + 1) as 1 | 2 | 3, texture);
                 const bracketContext = hdrContexts[bracket + 1];
-                if (bracketContext) bracketContext.drawImage(renderer.domElement, 0, 0);
+                if (bracketContext) {
+                    bloom.render();
+                    bracketContext.drawImage(renderer.domElement, 0, 0);
+                }
             }
             bloom.bloomPass.strength = strength;
             hdrGpuComposite.render();
             if (hdrVerification === null && hdrVerificationContext && (mediaTimeMs ?? 0) >= 2000) {
                 const [raw, low, mid, high] = hdrContexts;
                 if (raw && low && mid && high) {
+                    renderer.setRenderTarget(null);
+                    renderer.render(scene, camera);
+                    raw.drawImage(renderer.domElement, 0, 0);
                     const reference = compositeHdrBloomRgba(
                         raw.getImageData(0, 0, hdrWidth, hdrHeight).data,
                         low.getImageData(0, 0, hdrWidth, hdrHeight).data,

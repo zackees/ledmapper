@@ -44,6 +44,13 @@ describe('extractGatherSample oobCount', () => {
         const { avgBri } = extractGatherSample(gather, 2, new Uint8Array(6));
         assert.equal(avgBri, 1); // the single in-bounds LED is full white
     });
+
+    it('keeps float gather values linear while making an RGB8 compatibility view', () => {
+        const gather = new Float32Array([0.25, 0.5, 0.75, 1]);
+        const result = extractGatherSample(gather, 1, new Uint8Array(3));
+        assert.deepEqual([...result.rgbPts], [137, 188, 225]);
+        assert.deepEqual(result.linearRgbPts ? [...result.linearRgbPts] : [], [0.25, 0.5, 0.75]);
+    });
 });
 
 describe('CPU transform matches the gather shader edge classification', () => {

@@ -151,6 +151,12 @@ export function createAutoBloom({
         bloom.render();
     }
 
+    /** Render bloom into the composer's RGBA16F linear-light target. */
+    function renderToTexture() {
+        if (!bloomEnabled) return null;
+        return bloom.renderToTexture();
+    }
+
     function setAuto(enabled: boolean) {
         autoEnabled = enabled;
         if (enabled) manualStrength = null;
@@ -182,6 +188,7 @@ export function createAutoBloom({
         getDiameterScale,
         frame,
         render,
+        renderToTexture,
         setAuto,
         setManualStrength,
         setEnabled,

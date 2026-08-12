@@ -10,6 +10,15 @@ describe('offline capture frame packing (#373)', () => {
         assert.equal(result.oobCount, 1);
     });
 
+    it('preserves linear samples for rendering and quantizes RGB8 for FLED', () => {
+        const gather = new Float32Array([0.25, 0.5, 0.75, 1, 1, 1, 1, 0]);
+        const result = extractGatherToRgb({ buffer: gather, numPts: 2 });
+        assert.ok(result.linearRgbPts);
+        assert.deepEqual([...result.linearRgbPts], [0.25, 0.5, 0.75, 0, 0, 0]);
+        assert.deepEqual([...result.rgbPts], [137, 188, 225, 0, 0, 0]);
+        assert.equal(result.oobCount, 1);
+    });
+
     it('writes mapped channels and rejects overflow or wrong frame sizes', () => {
         const result = extractGatherToRgb({ buffer: new Uint8Array([1, 2, 3, 255, 4, 5, 6, 255]), numPts: 2 }, new Int32Array([1, 0]));
         assert.deepEqual([...result.rgbPts], [4, 5, 6, 1, 2, 3]);

@@ -49,6 +49,15 @@ export function embedFps(screenmapJson: string, fps: number): string {
                 ? rec.video as Record<string, unknown>
                 : {};
             video.fps = fps;
+            // rgb8 payload bytes are display-referred. This makes their
+            // transfer and primaries explicit without changing the v1 binary
+            // header or breaking consumers that already treat them as RGB8.
+            video.color = {
+                primaries: 'bt709',
+                transfer: 'srgb',
+                matrix: 'rgb',
+                range: 'full',
+            };
             rec.video = video;
             return JSON.stringify(rec);
         }

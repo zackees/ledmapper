@@ -4,6 +4,7 @@
 
 import { centerAndFitPoints } from '../common';
 import type { StripPoint } from '../types/domain';
+import { linearChannelToSrgbByte, srgbChannelToLinear } from '../color-space';
 
 export interface CanvasDisplayRect {
     left: number;
@@ -172,20 +173,30 @@ export function samplePixels(readbackBuffer: Uint8Array, transformedPts: StripPo
  * Texel i corresponds to LED i; alpha 0 marks an out-of-bounds LED
  * (rendered black, excluded from the brightness average).
  */
-export function extractGatherSample(gatherBuffer: Uint8Array, numPts: number, rgbPts: Uint8Array): { rgbPts: Uint8Array; avgBri: number; oobCount: number } {
+export function extractGatherSample(gatherBuffer: Float32Array | Uint8Array, numPts: number, rgbPts: Uint8Array): { rgbPts: Uint8Array; linearRgbPts?: Float32Array; avgBri: number; oobCount: number } {
     let totalBri = 0;
     let inBoundsCount = 0;
+    const isLinear = gatherBuffer instanceof Float32Array;
+    const linearRgbPts = isLinear ? new Float32Array(numPts * 3) : undefined;
 
     for (let i = 0; i < numPts; i++) {
         const idx = i * 4;
         const o = i * 3;
-        if ((gatherBuffer[idx + 3] ?? 0) >= 128) {
-            const r = gatherBuffer[idx] ?? 0;
-            const g = gatherBuffer[idx + 1] ?? 0;
-            const b = gatherBuffer[idx + 2] ?? 0;
+        if ((gatherBuffer[idx + 3] ?? 0) >= (isLinear ? 0.5 : 128)) {
+            const lr = isLinear ? gatherBuffer[idx] ?? 0 : srgbChannelToLinear((gatherBuffer[idx] ?? 0) / 255);
+            const lg = isLinear ? gatherBuffer[idx + 1] ?? 0 : srgbChannelToLinear((gatherBuffer[idx + 1] ?? 0) / 255);
+            const lb = isLinear ? gatherBuffer[idx + 2] ?? 0 : srgbChannelToLinear((gatherBuffer[idx + 2] ?? 0) / 255);
+            const r = isLinear ? linearChannelToSrgbByte(lr) : gatherBuffer[idx] ?? 0;
+            const g = isLinear ? linearChannelToSrgbByte(lg) : gatherBuffer[idx + 1] ?? 0;
+            const b = isLinear ? linearChannelToSrgbByte(lb) : gatherBuffer[idx + 2] ?? 0;
             rgbPts[o]     = r;
             rgbPts[o + 1] = g;
             rgbPts[o + 2] = b;
+            if (linearRgbPts) {
+                linearRgbPts[o] = lr;
+                linearRgbPts[o + 1] = lg;
+                linearRgbPts[o + 2] = lb;
+            }
             totalBri += r + g + b;
             inBoundsCount++;
         } else {
@@ -198,7 +209,12 @@ export function extractGatherSample(gatherBuffer: Uint8Array, numPts: number, rg
     // Surface the out-of-bounds count: at zoom > 1 whole edge columns fall
     // outside the video and silently go dark in the preview AND in
     // recordings; nothing else in the UI can tell the user why (#250).
-    return { rgbPts, avgBri, oobCount: numPts - inBoundsCount };
+    return {
+        rgbPts,
+        ...(linearRgbPts ? { linearRgbPts } : {}),
+        avgBri,
+        oobCount: numPts - inBoundsCount,
+    };
 }
 
 /**

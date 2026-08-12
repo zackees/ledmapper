@@ -50,6 +50,13 @@ export function createBloomComposer({
         composer,
         bloomPass,
         render() { composer.render(); },
+        renderToTexture() {
+            const previous = composer.renderToScreen;
+            composer.renderToScreen = false;
+            composer.render();
+            composer.renderToScreen = previous;
+            return composer.readBuffer.texture;
+        },
         setSize(w: number, h: number) { composer.setSize(w, h); },
         dispose() {
             bloomPass.dispose();
