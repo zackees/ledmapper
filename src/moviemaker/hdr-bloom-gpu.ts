@@ -60,6 +60,12 @@ vec3 linearToSrgb(vec3 value) {
     return mix(higher, lower, cutoff);
 }
 
+float srgbToLinear(float value) {
+    return value <= 0.04045
+        ? value / 12.92
+        : pow((value + 0.055) / 1.055, 2.4);
+}
+
 float pixelWhiteMergeRisk(vec3 raw, vec3 bloomed) {
     float rawMax = max(max(raw.r, raw.g), raw.b);
     if (rawMax < 0.04) return 0.0;
@@ -97,12 +103,45 @@ void main() {
     float highWeight = 1.0 - v1Smoothstep(0.035, 0.20, highRisk);
     float midWeight = 1.0 - v1Smoothstep(0.05, 0.24, midRisk);
     vec3 upperLinear = mix(midLinear, highLinear, highWeight);
-    vec3 bloomCompositeLinear = mix(lowLinear, upperLinear, midWeight);
-    vec3 compositeLinear = mix(
-        rawLinear,
-        bloomCompositeLinear,
-        shadowBloomWeight(raw, high)
+    vec3 selectedLinear = mix(lowLinear, upperLinear, midWeight);
+
+    // Separate shared RGB energy (the component that pushes colors toward
+    // white) from chromatic energy. HDR bracket selection controls only the
+    // neutral component. Preserve the sharp frame, then add only the bloom's
+    // chromatic delta; treating the mid bracket's complete color as spill
+    // duplicates source chroma and lifts every inter-LED shadow.
+    vec3 selectedAdded = max(selectedLinear - rawLinear, vec3(0.0));
+    float neutralBloom = min(min(selectedAdded.r, selectedAdded.g), selectedAdded.b);
+    float protectedNeutral = neutralBloom * shadowBloomWeight(raw, high);
+
+    vec3 midAdded = max(midLinear - rawLinear, vec3(0.0));
+    float midAddedNeutral = min(min(midAdded.r, midAdded.g), midAdded.b);
+    vec3 chromaticBloom = max(midAdded - vec3(midAddedNeutral), vec3(0.0));
+    float chromaEnergy = max(max(chromaticBloom.r, chromaticBloom.g), chromaticBloom.b);
+
+    // In pixels with no sharp LED core, admit colored spill softly but cap the
+    // total additive bloom (neutral + chromatic) to a perceptual ceiling. Capping the two
+    // components independently still allowed their sum to redefine black.
+    // The ceiling fades out as sharp source energy appears.
+    float chromaGate = v1Smoothstep(
+        srgbToLinear(0.02),
+        srgbToLinear(0.08),
+        chromaEnergy
     );
+    float darkMask = 1.0 - v1Smoothstep(0.02, 0.12, max(max(raw.r, raw.g), raw.b));
+    vec3 addedBloom = vec3(protectedNeutral) + chromaticBloom * chromaGate;
+    float addedEnergy = max(max(addedBloom.r, addedBloom.g), addedBloom.b);
+    // Exposure limits are authored perceptually, then decoded for linear math.
+    // A previous literal 0.03968 looked innocuous in linear space but encodes
+    // to sRGB 0.22, visibly replacing black with a gray/colored floor.
+    float addedLimit = mix(1.0, srgbToLinear(0.18), darkMask);
+    float addedScale = addedEnergy > 1e-9
+        ? min(1.0, addedLimit / addedEnergy)
+        : 0.0;
+
+    vec3 bloomHeadroom = max(vec3(1.0) - rawLinear, vec3(0.0));
+    vec3 compositeLinear = rawLinear
+        + min(addedBloom * addedScale, bloomHeadroom);
 
     // The default framebuffer is the sole quantization boundary. Explicitly
     // apply the output transfer here; ShaderMaterial does not add it for us.

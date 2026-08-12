@@ -36,10 +36,6 @@ const log = createLogger('preview');
 const AESTHETIC_MARGIN = 1.05;
 const HDR_BLOOM_LOW = 0.20;
 const HDR_BLOOM_MID = 0.55;
-// The existing control range was calibrated when bloom energy was added to an
-// already sRGB-encoded canvas. Linear-light addition is perceptually stronger,
-// especially in shadows, so translate the legacy control at this boundary.
-const LINEAR_HDR_BLOOM_STRENGTH_SCALE = 0.30;
 
 export type HdrBloomCompositeMode = 'gpu-full' | 'cpu-full' | 'cpu-1024' | 'verify-full';
 
@@ -437,10 +433,12 @@ export function createLedPreview({
             // The composite writes display-sRGB to the canvas exactly once.
             hdrGpuComposite.captureRaw(scene, camera);
             const strength = bloom.bloomPass.strength;
-            const linearStrength = strength * LINEAR_HDR_BLOOM_STRENGTH_SCALE;
             const factors = [HDR_BLOOM_LOW, HDR_BLOOM_MID, 1];
             for (let bracket = 0; bracket < factors.length; bracket++) {
-                bloom.bloomPass.strength = linearStrength * (factors[bracket] ?? 1);
+                // Keep the high bracket at the requested full strength. The
+                // HDR compositor attenuates neutral (white-building) energy
+                // while retaining the high bracket's chromatic spill.
+                bloom.bloomPass.strength = strength * (factors[bracket] ?? 1);
                 const texture = bloom.renderToTexture();
                 if (texture) hdrGpuComposite.captureBloom((bracket + 1) as 1 | 2 | 3, texture);
                 const bracketContext = hdrContexts[bracket + 1];

@@ -18,11 +18,16 @@
  */
 
 import type { BloomAutoRangeInput, BloomRange, BloomParams, FrameBrightnessResult } from './types/domain';
+import { linearChannelToSrgbByte, srgbChannelToLinear } from './color-space';
 
 export const BLOOM_MIN_STRENGTH = 0.5;
 export const BLOOM_MAX_STRENGTH = 16;
 export const BLOOM_RADIUS = 1;
 export const BLOOM_THRESHOLD = 0.0;
+/** Maximum perceptual bloom contribution in a pixel with no sharp LED core. */
+export const DARK_BLOOM_SRGB_LIMIT = 0.18;
+const BLOOM_CHROMA_GATE_SRGB_LOW = 0.02;
+const BLOOM_CHROMA_GATE_SRGB_HIGH = 0.08;
 
 /** Video iris responds immediately; fast cuts need no perceptual delay. */
 export const IRIS_LIGHT_LATENCY = 0;
@@ -243,9 +248,11 @@ function shadowBloomWeight(rawMax: number, bloomMax: number): number {
 
 /**
  * Spatial HDR-style bloom composite. All four inputs contain the same sharp
- * LED base. Dark/halo pixels select the high bracket; LED cores progressively
- * fall back to medium or restrained bloom only where added light destroys
- * chroma or highlight headroom.
+ * LED base. HDR bracket selection attenuates only shared neutral RGB energy,
+ * which is the component that drives colored light toward white. Chromatic
+ * spill from the independently calibrated mid bracket remains available in
+ * dark halos and colored overlap regions, without letting a saturated linear
+ * channel flood the panel at the full neutral-metering strength.
  */
 export function compositeHdrBloomRgba(
     rawRgba: Uint8ClampedArray,
@@ -280,14 +287,47 @@ export function compositeHdrBloomRgba(
             (highRgba[i + 2] ?? 0) / 255,
         );
         const shadowWeight = shadowBloomWeight(rawMax, highMax);
+        const rawLinear = [rr, rg, rb].map(srgbChannelToLinear);
+        const selected = [0, 0, 0];
+        const midLinear = [0, 0, 0];
         for (let channel = 0; channel < 3; channel++) {
-            const raw = rawRgba[i + channel] ?? 0;
-            const low = lowRgba[i + channel] ?? 0;
-            const mid = midRgba[i + channel] ?? 0;
-            const high = highRgba[i + channel] ?? 0;
+            const low = srgbChannelToLinear((lowRgba[i + channel] ?? 0) / 255);
+            const mid = srgbChannelToLinear((midRgba[i + channel] ?? 0) / 255);
+            const high = srgbChannelToLinear((highRgba[i + channel] ?? 0) / 255);
             const upper = mid + (high - mid) * highWeight;
-            const bloomComposite = low + (upper - low) * midWeight;
-            output[i + channel] = Math.round(raw + (bloomComposite - raw) * shadowWeight);
+            selected[channel] = low + (upper - low) * midWeight;
+            midLinear[channel] = mid;
+        }
+        const selectedAdded = selected.map((value, channel) =>
+            Math.max(value - (rawLinear[channel] ?? 0), 0));
+        const neutralBloom = Math.min(...selectedAdded);
+        const protectedNeutral = neutralBloom * shadowWeight;
+        const midAdded = midLinear.map((value, channel) =>
+            Math.max(value - (rawLinear[channel] ?? 0), 0));
+        const midAddedNeutral = Math.min(...midAdded);
+        const chromaticBloom = midAdded.map(value => Math.max(value - midAddedNeutral, 0));
+        const chromaEnergy = Math.max(...chromaticBloom);
+        const chromaGate = smoothstep(
+            srgbChannelToLinear(BLOOM_CHROMA_GATE_SRGB_LOW),
+            srgbChannelToLinear(BLOOM_CHROMA_GATE_SRGB_HIGH),
+            chromaEnergy,
+        );
+        const darkMask = 1 - smoothstep(0.02, 0.12, rawMax);
+        const addedBloom = chromaticBloom.map(value =>
+            protectedNeutral + value * chromaGate);
+        const addedEnergy = Math.max(...addedBloom);
+        const darkLimitLinear = srgbChannelToLinear(DARK_BLOOM_SRGB_LIMIT);
+        const addedLimit = 1 + (darkLimitLinear - 1) * darkMask;
+        const addedScale = addedEnergy > 1e-9
+            ? Math.min(1, addedLimit / addedEnergy)
+            : 0;
+        for (let channel = 0; channel < 3; channel++) {
+            const base = rawLinear[channel] ?? 0;
+            const added = Math.min(
+                (addedBloom[channel] ?? 0) * addedScale,
+                Math.max(1 - base, 0),
+            );
+            output[i + channel] = linearChannelToSrgbByte(base + added);
         }
         output[i + 3] = 255;
     }
