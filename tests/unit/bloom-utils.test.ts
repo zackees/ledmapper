@@ -143,6 +143,24 @@ describe('HDR bloom composite', () => {
         assert.deepEqual(output, high);
     });
 
+    it('keeps true black when all bloom brackets contain only low-energy haze', () => {
+        const raw = rgba([0, 0, 0]);
+        const output = compositeHdrBloomRgba(
+            raw, rgba([1, 1, 1]), rgba([3, 3, 3]), rgba([5, 5, 5]),
+        );
+        assert.deepEqual(output, raw);
+    });
+
+    it('smoothly admits a stronger halo around an otherwise black pixel', () => {
+        const raw = rgba([0, 0, 0]);
+        const high = rgba([24, 12, 6]);
+        const output = compositeHdrBloomRgba(
+            raw, rgba([5, 2, 1]), rgba([12, 6, 3]), high,
+        );
+        assert.ok((output[0] ?? 0) > 0);
+        assert.ok((output[0] ?? 255) < (high[0] ?? 0));
+    });
+
 });
 
 describe('stepIrisAttackDecay', () => {

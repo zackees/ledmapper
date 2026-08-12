@@ -27,15 +27,26 @@ import {
 import { estimateLedSize, resolvePointDiameterPx, STABLE_POINT_DIAMETER_MAX_PX } from './transforms';
 import { createLogger } from '../debug-log';
 import type { BloomProfile } from '../types/domain';
+import { createGpuHdrBloomComposite } from './hdr-bloom-gpu';
+import { SRGB8_TO_LINEAR } from '../color-space';
 
 const log = createLogger('preview');
-
-const INV_255 = 1 / 255;
 
 // FastLED's aesthetic camera margin so edge LEDs aren't clipped.
 const AESTHETIC_MARGIN = 1.05;
 const HDR_BLOOM_LOW = 0.20;
 const HDR_BLOOM_MID = 0.55;
+
+export type HdrBloomCompositeMode = 'gpu-full' | 'cpu-full' | 'cpu-1024' | 'verify-full';
+
+export interface HdrBloomVerification {
+    comparedBytes: number;
+    mismatchedBytes: number;
+    maxChannelDelta: number;
+    positiveDeltas: number;
+    negativeDeltas: number;
+    firstMismatch?: { byte: number; expected: number; actual: number };
+}
 
 export interface PreviewShape {
     type: 'el_wire' | 'el_panel';
@@ -75,6 +86,7 @@ export function createLedPreview({
     bloomDiameterGain = IRIS_DIAMETER_GAIN,
     bloomUseBlowoutRisk = false,
     enableHdrBloom = false,
+    hdrBloomCompositeMode = 'gpu-full',
 }: {
     parent: HTMLElement;
     side?: number;
@@ -87,21 +99,29 @@ export function createLedPreview({
     bloomUseBlowoutRisk?: boolean;
     /** Composite three full-resolution bloom brackets over a sharp base. */
     enableHdrBloom?: boolean;
+    /** GPU is production; CPU modes retain the v1 oracle and 1024 experiment. */
+    hdrBloomCompositeMode?: HdrBloomCompositeMode;
 }) {
     // Render to a fixed backing-buffer size (independent of devicePixelRatio) so
     // bloom output is identical across platforms; capped at maxBufferSize. The
     // canvas downsamples to its CSS size, keeping circles crisp.
     const pixelRatio = Math.min(BLOOM_RENDER_PX, maxBufferSize) / side;
 
-    const renderer = new WebGLRenderer({ antialias: false, preserveDrawingBuffer: enableHdrBloom });
+    const verifiesGpuHdrComposite = enableHdrBloom && hdrBloomCompositeMode === 'verify-full';
+    const usesCpuHdrComposite = enableHdrBloom
+        && (hdrBloomCompositeMode === 'cpu-full' || hdrBloomCompositeMode === 'cpu-1024');
+    const renderer = new WebGLRenderer({ antialias: false, preserveDrawingBuffer: usesCpuHdrComposite });
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(side, side);
     renderer.setClearColor(0x000000, 1);
     renderer.domElement.style.display = 'block';
-    const hdrOutputCanvas = enableHdrBloom ? document.createElement('canvas') : null;
+    const hdrOutputCanvas = usesCpuHdrComposite ? document.createElement('canvas') : null;
     if (hdrOutputCanvas) {
-        hdrOutputCanvas.width = renderer.domElement.width;
-        hdrOutputCanvas.height = renderer.domElement.height;
+        const cpuCompositeSize = hdrBloomCompositeMode === 'cpu-1024'
+            ? Math.min(side, renderer.domElement.width)
+            : renderer.domElement.width;
+        hdrOutputCanvas.width = cpuCompositeSize;
+        hdrOutputCanvas.height = cpuCompositeSize;
         hdrOutputCanvas.style.width = `${String(side)}px`;
         hdrOutputCanvas.style.height = `${String(side)}px`;
         hdrOutputCanvas.style.display = 'block';
@@ -141,16 +161,31 @@ export function createLedPreview({
     });
     const hdrWidth = renderer.domElement.width;
     const hdrHeight = renderer.domElement.height;
-    const hdrCanvases = enableHdrBloom
+    const hdrCpuWidth = hdrOutputCanvas?.width ?? 0;
+    const hdrCpuHeight = hdrOutputCanvas?.height ?? 0;
+    const hdrCanvases = usesCpuHdrComposite || verifiesGpuHdrComposite
         ? Array.from({ length: 4 }, () => document.createElement('canvas'))
         : [];
     for (const canvas of hdrCanvases) {
-        canvas.width = hdrWidth;
-        canvas.height = hdrHeight;
+        canvas.width = verifiesGpuHdrComposite ? hdrWidth : hdrCpuWidth;
+        canvas.height = verifiesGpuHdrComposite ? hdrHeight : hdrCpuHeight;
     }
     const hdrContexts = hdrCanvases.map((canvas) => canvas.getContext('2d', { willReadFrequently: true }));
     const hdrOutputContext = hdrOutputCanvas?.getContext('2d') ?? null;
-    const hdrPixels = new Uint8ClampedArray(hdrWidth * hdrHeight * 4);
+    const hdrWorkWidth = verifiesGpuHdrComposite ? hdrWidth : hdrCpuWidth;
+    const hdrWorkHeight = verifiesGpuHdrComposite ? hdrHeight : hdrCpuHeight;
+    const hdrPixels = new Uint8ClampedArray(hdrWorkWidth * hdrWorkHeight * 4);
+    const hdrGpuComposite = enableHdrBloom
+        && (hdrBloomCompositeMode === 'gpu-full' || verifiesGpuHdrComposite)
+        ? createGpuHdrBloomComposite(renderer, hdrWidth, hdrHeight)
+        : null;
+    const hdrVerificationCanvas = verifiesGpuHdrComposite ? document.createElement('canvas') : null;
+    if (hdrVerificationCanvas) {
+        hdrVerificationCanvas.width = hdrWidth;
+        hdrVerificationCanvas.height = hdrHeight;
+    }
+    const hdrVerificationContext = hdrVerificationCanvas?.getContext('2d', { willReadFrequently: true }) ?? null;
+    let hdrVerification: HdrBloomVerification | null = null;
 
     let meshData: PointsMeshResult | null = null;
     let cachedPts: StripPoint[] | null = null;
@@ -363,9 +398,13 @@ export function createLedPreview({
                 const i3 = i * 3;
                 const channel = pointChannelOffsets[i] ?? i;
                 const c3 = channel * 3;
-                arr[i3    ] = (src[c3]     ?? 0) * INV_255;
-                arr[i3 + 1] = (src[c3 + 1] ?? 0) * INV_255;
-                arr[i3 + 2] = (src[c3 + 2] ?? 0) * INV_255;
+                // Gather bytes are display-encoded sRGB. Three.js vertex
+                // colors are linear working-space values, so passing bytes / 255
+                // directly makes Three apply the output transfer twice and
+                // dramatically lifts shadows (for example, 16 becomes ~71).
+                arr[i3    ] = SRGB8_TO_LINEAR[src[c3]     ?? 0] ?? 0;
+                arr[i3 + 1] = SRGB8_TO_LINEAR[src[c3 + 1] ?? 0] ?? 0;
+                arr[i3 + 2] = SRGB8_TO_LINEAR[src[c3 + 2] ?? 0] ?? 0;
             }
             meshData.colorAttribute.needsUpdate = true;
         }
@@ -373,9 +412,9 @@ export function createLedPreview({
         for (const entry of shapeMeshes) {
             const c3 = entry.offset * 3;
             entry.material.color.setRGB(
-                (src[c3] ?? 0) * INV_255,
-                (src[c3 + 1] ?? 0) * INV_255,
-                (src[c3 + 2] ?? 0) * INV_255,
+                SRGB8_TO_LINEAR[src[c3] ?? 0] ?? 0,
+                SRGB8_TO_LINEAR[src[c3 + 1] ?? 0] ?? 0,
+                SRGB8_TO_LINEAR[src[c3 + 2] ?? 0] ?? 0,
             );
         }
 
@@ -388,6 +427,67 @@ export function createLedPreview({
                 ? Math.min(modulatedSize, STABLE_POINT_DIAMETER_MAX_PX)
                 : modulatedSize;
         }
+        if (hdrGpuComposite && meshData) {
+            // The four RGBA8 snapshots stay entirely on the GPU. They preserve
+            // v1's byte-quantized bracket inputs and are overwritten next frame.
+            renderer.setRenderTarget(null);
+            renderer.render(scene, camera);
+            hdrGpuComposite.capture(0);
+            const rawContext = hdrContexts[0];
+            if (rawContext) rawContext.drawImage(renderer.domElement, 0, 0);
+            const strength = bloom.bloomPass.strength;
+            const factors = [HDR_BLOOM_LOW, HDR_BLOOM_MID, 1];
+            for (let bracket = 0; bracket < factors.length; bracket++) {
+                bloom.bloomPass.strength = strength * (factors[bracket] ?? 1);
+                bloom.render();
+                hdrGpuComposite.capture((bracket + 1) as 1 | 2 | 3);
+                const bracketContext = hdrContexts[bracket + 1];
+                if (bracketContext) bracketContext.drawImage(renderer.domElement, 0, 0);
+            }
+            bloom.bloomPass.strength = strength;
+            hdrGpuComposite.render();
+            if (hdrVerification === null && hdrVerificationContext && (mediaTimeMs ?? 0) >= 2000) {
+                const [raw, low, mid, high] = hdrContexts;
+                if (raw && low && mid && high) {
+                    const reference = compositeHdrBloomRgba(
+                        raw.getImageData(0, 0, hdrWidth, hdrHeight).data,
+                        low.getImageData(0, 0, hdrWidth, hdrHeight).data,
+                        mid.getImageData(0, 0, hdrWidth, hdrHeight).data,
+                        high.getImageData(0, 0, hdrWidth, hdrHeight).data,
+                        hdrPixels,
+                    );
+                    hdrVerificationContext.drawImage(renderer.domElement, 0, 0);
+                    const actual = hdrVerificationContext.getImageData(0, 0, hdrWidth, hdrHeight).data;
+                    let mismatchedBytes = 0;
+                    let maxChannelDelta = 0;
+                    let positiveDeltas = 0;
+                    let negativeDeltas = 0;
+                    let firstMismatch: HdrBloomVerification['firstMismatch'];
+                    for (let byte = 0; byte < reference.length; byte++) {
+                        const expected = reference[byte] ?? 0;
+                        const observed = actual[byte] ?? 0;
+                        const signedDelta = observed - expected;
+                        const delta = Math.abs(signedDelta);
+                        if (delta !== 0) {
+                            mismatchedBytes++;
+                            if (signedDelta > 0) positiveDeltas++; else negativeDeltas++;
+                            firstMismatch ??= { byte, expected, actual: observed };
+                        }
+                        if (delta > maxChannelDelta) maxChannelDelta = delta;
+                    }
+                    hdrVerification = {
+                        comparedBytes: reference.length,
+                        mismatchedBytes,
+                        maxChannelDelta,
+                        positiveDeltas,
+                        negativeDeltas,
+                        ...(firstMismatch ? { firstMismatch } : {}),
+                    };
+                    log.info('hdr-gpu-verification', hdrVerification);
+                }
+            }
+            return;
+        }
         const [rawContext, lowContext, midContext, highContext] = hdrContexts;
         if (hdrOutputContext && rawContext && lowContext && midContext && highContext && meshData) {
             // Full-resolution HDR bloom bracket: a sharp base plus low, medium,
@@ -395,22 +495,22 @@ export function createLedPreview({
             // in halos and uses restrained bloom only where LED cores wash out.
             renderer.setRenderTarget(null);
             renderer.render(scene, camera);
-            rawContext.drawImage(renderer.domElement, 0, 0);
+            rawContext.drawImage(renderer.domElement, 0, 0, hdrCpuWidth, hdrCpuHeight);
             const strength = bloom.bloomPass.strength;
             const factors = [HDR_BLOOM_LOW, HDR_BLOOM_MID, 1];
             for (let bracket = 0; bracket < factors.length; bracket++) {
                 bloom.bloomPass.strength = strength * (factors[bracket] ?? 1);
                 bloom.render();
                 const bracketContext = hdrContexts[bracket + 1];
-                if (bracketContext) bracketContext.drawImage(renderer.domElement, 0, 0);
+                if (bracketContext) bracketContext.drawImage(renderer.domElement, 0, 0, hdrCpuWidth, hdrCpuHeight);
             }
             bloom.bloomPass.strength = strength;
-            const imageData = hdrOutputContext.createImageData(hdrWidth, hdrHeight);
+            const imageData = hdrOutputContext.createImageData(hdrCpuWidth, hdrCpuHeight);
             imageData.data.set(compositeHdrBloomRgba(
-                rawContext.getImageData(0, 0, hdrWidth, hdrHeight).data,
-                lowContext.getImageData(0, 0, hdrWidth, hdrHeight).data,
-                midContext.getImageData(0, 0, hdrWidth, hdrHeight).data,
-                highContext.getImageData(0, 0, hdrWidth, hdrHeight).data,
+                rawContext.getImageData(0, 0, hdrCpuWidth, hdrCpuHeight).data,
+                lowContext.getImageData(0, 0, hdrCpuWidth, hdrCpuHeight).data,
+                midContext.getImageData(0, 0, hdrCpuWidth, hdrCpuHeight).data,
+                highContext.getImageData(0, 0, hdrCpuWidth, hdrCpuHeight).data,
                 hdrPixels,
             ));
             hdrOutputContext.putImageData(imageData, 0, 0);
@@ -451,6 +551,10 @@ export function createLedPreview({
         return bloom.getStrength();
     }
 
+    function getHdrBloomVerification() {
+        return hdrVerification;
+    }
+
     function dispose() {
         if (meshData) {
             scene.remove(meshData.mesh);
@@ -465,11 +569,12 @@ export function createLedPreview({
         }
         shapeMeshes = [];
         circleTexture.dispose();
+        hdrGpuComposite?.dispose();
         bloom.dispose();
         renderer.dispose();
         renderer.domElement.remove();
         hdrOutputCanvas?.remove();
     }
 
-    return { render, dispose, domElement: hdrOutputCanvas ?? renderer.domElement, setAutoBloom, setBloomEnabled, setManualBloomStrength, getCurrentBloomStrength };
+    return { render, dispose, domElement: hdrOutputCanvas ?? renderer.domElement, setAutoBloom, setBloomEnabled, setManualBloomStrength, getCurrentBloomStrength, getHdrBloomVerification };
 }

@@ -11,6 +11,7 @@ import { drawProductionFrame, productionOutputDimensions } from './compositor';
 import { createMp4CanvasEncoder, type Mp4CanvasEncoder } from './mp4-encoder';
 import { createSidecarArtifactUpload, type SidecarProductionTransport } from './transport';
 import { IRIS_ATTACK_TAU, IRIS_DIAMETER_GAIN } from '../bloom-utils';
+import type { HdrBloomCompositeMode } from '../moviemaker/preview';
 
 export interface ProductionRenderArtifact {
     kind: 'fled' | 'mp4';
@@ -25,7 +26,15 @@ export interface ProductionRenderArtifact {
 
 export interface ProductionRenderResult {
     artifacts: ProductionRenderArtifact[];
-    input: { ledCount: number; stripCount: number; width: number; height: number; fps: number; frameCount: number };
+    input: {
+        ledCount: number;
+        stripCount: number;
+        width: number;
+        height: number;
+        fps: number;
+        frameCount: number;
+        hdrBloomVerification?: ReturnType<ReturnType<typeof createLedPreview>['getHdrBloomVerification']>;
+    };
 }
 
 export interface ProductionRenderOptions {
@@ -42,6 +51,14 @@ export interface ProductionRenderOptions {
 // grids need a tighter envelope so bloom remains a halo rather than a wash.
 const PRODUCTION_BLOOM_PROFILE = { floor: 0.15, maxDense: 1.0, maxSparse: 1.6 };
 const IRIS_PREROLL_TIME_CONSTANTS = 4;
+
+function productionHdrCompositeMode(): HdrBloomCompositeMode {
+    if (!import.meta.env.DEV) return 'gpu-full';
+    const override: unknown = Reflect.get(import.meta.env, 'VITE_HDR_BLOOM_COMPOSITE_MODE');
+    return override === 'cpu-full' || override === 'cpu-1024' || override === 'verify-full'
+        ? override
+        : 'gpu-full';
+}
 
 /** Unrecorded frames needed to settle the opening exposure by >98%. */
 export function productionIrisPrerollFrames(outputFps: number): number {
@@ -151,6 +168,7 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
                 bloomDiameterGain: IRIS_DIAMETER_GAIN,
                 bloomUseBlowoutRisk: true,
                 enableHdrBloom: true,
+                hdrBloomCompositeMode: productionHdrCompositeMode(),
             });
             preview.setAutoBloom(config.autoBloom);
             preview.setManualBloomStrength(config.bloomStrength);
@@ -234,6 +252,7 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
             }
         }
         if (done !== total) throw new Error(`RENDER_INCOMPLETE:${String(done)}:${String(total)}`);
+        const hdrVerification = preview?.getHdrBloomVerification();
 
         const artifacts: ProductionRenderArtifact[] = [];
         const stem = sourceName(video);
@@ -266,7 +285,15 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
         }
         return {
             artifacts,
-            input: { ledCount: parsed.totalCount, stripCount: parsed.strips.length, width, height, fps, frameCount: done },
+            input: {
+                ledCount: parsed.totalCount,
+                stripCount: parsed.strips.length,
+                width,
+                height,
+                fps,
+                frameCount: done,
+                ...(hdrVerification ? { hdrBloomVerification: hdrVerification } : {}),
+            },
         };
     } finally {
         if (encoder) await encoder.cancel().catch(() => undefined);
