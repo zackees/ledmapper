@@ -241,6 +241,8 @@ export interface BloomParams {
 export interface IrisState {
     currentBrightness: number;
     lastTimeMs?: number;
+    brightnessHistory?: { timeMs: number; brightness: number }[];
+    delayedBrightness?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +459,8 @@ export interface VideoChannelStrip {
 /** Return value of computeFrameBrightness(). */
 export interface FrameBrightnessResult {
     avgBrightness: number;
+    /** Mean LED brightness after discarding the darkest framing/background quarter. */
+    irisBrightness: number;
     litCount: number;
     totalCount: number;
 }

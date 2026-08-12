@@ -22,9 +22,11 @@ import {
     PREVIEW_AUTO_MAX_SPARSE,
     IRIS_DIAMETER_GAIN,
     BLOOM_RENDER_PX,
+    compositeHdrBloomRgba,
 } from '../bloom-utils';
 import { estimateLedSize, resolvePointDiameterPx, STABLE_POINT_DIAMETER_MAX_PX } from './transforms';
 import { createLogger } from '../debug-log';
+import type { BloomProfile } from '../types/domain';
 
 const log = createLogger('preview');
 
@@ -32,6 +34,8 @@ const INV_255 = 1 / 255;
 
 // FastLED's aesthetic camera margin so edge LEDs aren't clipped.
 const AESTHETIC_MARGIN = 1.05;
+const HDR_BLOOM_LOW = 0.20;
+const HDR_BLOOM_MID = 0.55;
 
 export interface PreviewShape {
     type: 'el_wire' | 'el_panel';
@@ -63,18 +67,49 @@ const PREVIEW_PROFILE = {
  *   getCurrentBloomStrength: () => number,
  * }}
  */
-export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: { parent: HTMLElement; side?: number; maxBufferSize?: number }) {
+export function createLedPreview({
+    parent,
+    side = 400,
+    maxBufferSize = 1024,
+    bloomProfile = PREVIEW_PROFILE,
+    bloomDiameterGain = IRIS_DIAMETER_GAIN,
+    bloomUseBlowoutRisk = false,
+    enableHdrBloom = false,
+}: {
+    parent: HTMLElement;
+    side?: number;
+    maxBufferSize?: number;
+    /** Production can request a tighter dense-panel bloom envelope. */
+    bloomProfile?: BloomProfile;
+    /** Production output keeps physical LED diameters stable by using 0. */
+    bloomDiameterGain?: number;
+    /** Modulate bloom according to dot area and neighbour overlap. */
+    bloomUseBlowoutRisk?: boolean;
+    /** Composite three full-resolution bloom brackets over a sharp base. */
+    enableHdrBloom?: boolean;
+}) {
     // Render to a fixed backing-buffer size (independent of devicePixelRatio) so
     // bloom output is identical across platforms; capped at maxBufferSize. The
     // canvas downsamples to its CSS size, keeping circles crisp.
     const pixelRatio = Math.min(BLOOM_RENDER_PX, maxBufferSize) / side;
 
-    const renderer = new WebGLRenderer({ antialias: false });
+    const renderer = new WebGLRenderer({ antialias: false, preserveDrawingBuffer: enableHdrBloom });
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(side, side);
     renderer.setClearColor(0x000000, 1);
     renderer.domElement.style.display = 'block';
-    parent.appendChild(renderer.domElement);
+    const hdrOutputCanvas = enableHdrBloom ? document.createElement('canvas') : null;
+    if (hdrOutputCanvas) {
+        hdrOutputCanvas.width = renderer.domElement.width;
+        hdrOutputCanvas.height = renderer.domElement.height;
+        hdrOutputCanvas.style.width = `${String(side)}px`;
+        hdrOutputCanvas.style.height = `${String(side)}px`;
+        hdrOutputCanvas.style.display = 'block';
+        renderer.domElement.style.display = 'none';
+        parent.appendChild(hdrOutputCanvas);
+    } else {
+        parent.appendChild(renderer.domElement);
+    }
 
     // Log-only watchdog (issue #226) — see attachContextLossWatchdog doc.
     attachContextLossWatchdog({ canvas: renderer.domElement, tool: 'moviemaker-preview' });
@@ -98,12 +133,24 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
     const bloom = createAutoBloom({
         renderer, scene, camera,
         width: side, height: side,
-        profile: PREVIEW_PROFILE,
+        profile: bloomProfile,
         paramOverrides: { bloomResolution: side },
         minFloorMode: 'density',
-        useBlowoutRisk: false,
-        diameterGain: IRIS_DIAMETER_GAIN,
+        useBlowoutRisk: bloomUseBlowoutRisk,
+        diameterGain: bloomDiameterGain,
     });
+    const hdrWidth = renderer.domElement.width;
+    const hdrHeight = renderer.domElement.height;
+    const hdrCanvases = enableHdrBloom
+        ? Array.from({ length: 4 }, () => document.createElement('canvas'))
+        : [];
+    for (const canvas of hdrCanvases) {
+        canvas.width = hdrWidth;
+        canvas.height = hdrHeight;
+    }
+    const hdrContexts = hdrCanvases.map((canvas) => canvas.getContext('2d', { willReadFrequently: true }));
+    const hdrOutputContext = hdrOutputCanvas?.getContext('2d') ?? null;
+    const hdrPixels = new Uint8ClampedArray(hdrWidth * hdrHeight * 4);
 
     let meshData: PointsMeshResult | null = null;
     let cachedPts: StripPoint[] | null = null;
@@ -191,6 +238,17 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         const cos_r = Math.cos(rad), sin_r = Math.sin(rad);
         let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
         const geometryPoints = [...localPts, ...shapes.flatMap((shape) => shape.vertices)];
+        // Keep the unrotated panel dimensions as an oriented bounding box.
+        // The camera must fit the rotated AABB (diamond + black corners), but
+        // bloom coverage must be normalized against the active panel itself.
+        let obbXmin = Infinity, obbXmax = -Infinity, obbYmin = Infinity, obbYmax = -Infinity;
+        for (const [x, y] of geometryPoints) {
+            if (x < obbXmin) obbXmin = x;
+            if (x > obbXmax) obbXmax = x;
+            if (y < obbYmin) obbYmin = y;
+            if (y > obbYmax) obbYmax = y;
+        }
+        const orientedPanelExtent = Math.max(obbXmax - obbXmin, obbYmax - obbYmin, 1e-6);
         for (const [x0, y0] of geometryPoints) {
             const x = x0 * cos_r - y0 * sin_r;
             const y = x0 * sin_r + y0 * cos_r;
@@ -230,11 +288,16 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         // Reproportion the bloom kernel + density envelope to the rendered dots.
         bloom.setGeometry({
             ledPx: baseLedPx,
-            panePx: side,
+            // At 45° the camera's square contains four black corner triangles.
+            // Using `side` here makes the panel look artificially sparse and
+            // gives auto-bloom too much headroom. This is the OBB's actual
+            // rendered edge length within that camera instead.
+            panePx: worldToPx * orientedPanelExtent,
             ledCount: localPts.length + shapeMeshes.length,
             ledSpacing,
             sceneExtent,
         });
+
     }
 
     /**
@@ -248,7 +311,7 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
      *        spacing heuristic.
      */
     let dbgFrames = 0;
-    function render(localPts: StripPoint[], rotate: number, lastSample: { rgbPts: Uint8Array } | null, ledDiameter: number | null = null, pointChannelOffsets: number[] = [], shapes: PreviewShape[] = []) {
+    function render(localPts: StripPoint[], rotate: number, lastSample: { rgbPts: Uint8Array } | null, ledDiameter: number | null = null, pointChannelOffsets: number[] = [], shapes: PreviewShape[] = [], mediaTimeMs?: number) {
         if ((localPts.length === 0 && shapes.length === 0) || !lastSample) {
             if (dbgFrames < 3) { dbgFrames++; log.debug('render-skip', { pts: localPts.length, shapes: shapes.length, hasSample: !!lastSample }); }
             renderer.clear();
@@ -316,13 +379,42 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
             );
         }
 
-        bloom.frame(src);
-        // Iris diameter modulation: dots open up on bright frames in sparse maps.
+        bloom.frame(src, mediaTimeMs);
+        // Modest geometry-gated diameter modulation; dense layouts remain
+        // stable to avoid subpixel aliasing bands across the LED lattice.
+        const modulatedSize = baseLedPx * bloom.getDiameterScale();
         if (meshData) {
-            const modulatedSize = baseLedPx * bloom.getDiameterScale();
             meshData.material.size = ledDiameter === null
                 ? Math.min(modulatedSize, STABLE_POINT_DIAMETER_MAX_PX)
                 : modulatedSize;
+        }
+        const [rawContext, lowContext, midContext, highContext] = hdrContexts;
+        if (hdrOutputContext && rawContext && lowContext && midContext && highContext && meshData) {
+            // Full-resolution HDR bloom bracket: a sharp base plus low, medium,
+            // and high bloom. The spatial composite preserves the high bracket
+            // in halos and uses restrained bloom only where LED cores wash out.
+            renderer.setRenderTarget(null);
+            renderer.render(scene, camera);
+            rawContext.drawImage(renderer.domElement, 0, 0);
+            const strength = bloom.bloomPass.strength;
+            const factors = [HDR_BLOOM_LOW, HDR_BLOOM_MID, 1];
+            for (let bracket = 0; bracket < factors.length; bracket++) {
+                bloom.bloomPass.strength = strength * (factors[bracket] ?? 1);
+                bloom.render();
+                const bracketContext = hdrContexts[bracket + 1];
+                if (bracketContext) bracketContext.drawImage(renderer.domElement, 0, 0);
+            }
+            bloom.bloomPass.strength = strength;
+            const imageData = hdrOutputContext.createImageData(hdrWidth, hdrHeight);
+            imageData.data.set(compositeHdrBloomRgba(
+                rawContext.getImageData(0, 0, hdrWidth, hdrHeight).data,
+                lowContext.getImageData(0, 0, hdrWidth, hdrHeight).data,
+                midContext.getImageData(0, 0, hdrWidth, hdrHeight).data,
+                highContext.getImageData(0, 0, hdrWidth, hdrHeight).data,
+                hdrPixels,
+            ));
+            hdrOutputContext.putImageData(imageData, 0, 0);
+            return;
         }
         bloom.render();
     }
@@ -376,7 +468,8 @@ export function createLedPreview({ parent, side = 400, maxBufferSize = 1024 }: {
         bloom.dispose();
         renderer.dispose();
         renderer.domElement.remove();
+        hdrOutputCanvas?.remove();
     }
 
-    return { render, dispose, domElement: renderer.domElement, setAutoBloom, setBloomEnabled, setManualBloomStrength, getCurrentBloomStrength };
+    return { render, dispose, domElement: hdrOutputCanvas ?? renderer.domElement, setAutoBloom, setBloomEnabled, setManualBloomStrength, getCurrentBloomStrength };
 }

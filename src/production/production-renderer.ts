@@ -7,9 +7,10 @@ import { buildFledArtifact, embedFps } from '../moviemaker/recording';
 import { PixelFormat, prependFledHeader } from '../render/rgb-video';
 import { dimensionsForAspect } from '../render/canvas-recorder';
 import type { ProductionConfig } from './contract';
-import { drawProductionFrame } from './compositor';
+import { drawProductionFrame, productionOutputDimensions } from './compositor';
 import { createMp4CanvasEncoder, type Mp4CanvasEncoder } from './mp4-encoder';
 import { createSidecarArtifactUpload, type SidecarProductionTransport } from './transport';
+import { IRIS_ATTACK_TAU, IRIS_DIAMETER_GAIN } from '../bloom-utils';
 
 export interface ProductionRenderArtifact {
     kind: 'fled' | 'mp4';
@@ -35,6 +36,29 @@ export interface ProductionRenderOptions {
     isCancelled: () => boolean;
     onProgress: (done: number, total: number, stage: 'rendering' | 'encoding') => void;
     sidecar?: SidecarProductionTransport;
+}
+
+// Full-frame output magnifies the interactive preview considerably. Dense LED
+// grids need a tighter envelope so bloom remains a halo rather than a wash.
+const PRODUCTION_BLOOM_PROFILE = { floor: 0.15, maxDense: 1.0, maxSparse: 1.6 };
+const IRIS_PREROLL_TIME_CONSTANTS = 4;
+
+/** Unrecorded frames needed to settle the opening exposure by >98%. */
+export function productionIrisPrerollFrames(outputFps: number): number {
+    return Math.ceil(IRIS_PREROLL_TIME_CONSTANTS * IRIS_ATTACK_TAU * Math.max(outputFps, 1));
+}
+
+/** Constant-rate timestamps covered by one decoded source sample. */
+export function scheduleProductionFrames(timestamp: number, duration: number, nextTimestamp: number, outputFps: number): { timestamps: number[]; nextTimestamp: number } {
+    const frameDuration = 1 / outputFps;
+    const endTimestamp = timestamp + duration;
+    const timestamps: number[] = [];
+    let next = nextTimestamp;
+    while (next < endTimestamp - frameDuration * 1e-6) {
+        timestamps.push(next);
+        next += frameDuration;
+    }
+    return { timestamps, nextTimestamp: next };
 }
 
 function sourceName(file: File): string {
@@ -70,6 +94,7 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
         const total = stats.packetCount;
         const fps = stats.averagePacketRate;
         if (!Number.isFinite(fps) || fps <= 0 || total <= 0) throw new Error('VIDEO_METADATA_INVALID');
+        const outputFps = config.outputFps || fps;
 
         const sourceCanvas = document.createElement('canvas');
         sourceCanvas.className = 'production-render-canvas';
@@ -78,7 +103,16 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
         pipeline.setupForResolution(width, height);
         const points = transformToCenter(parsed.allPoints, width, height);
         pipeline.setSamplePoints(points, width, height);
-        pipeline.setSampleTransform(config.rotation, config.zoom, config.translateX * width, config.translateY * height);
+        // Panel rotation is presentation-only. Keep gather coordinates in the
+        // source's native orientation so the image remains vertically aligned
+        // when its physical LED panel is shown as a diamond. `rotation` is an
+        // explicit source-image rotation only.
+        pipeline.setSampleTransform(
+            config.rotation + config.panelRotation,
+            config.zoom,
+            config.translateX * width,
+            config.translateY * height,
+        );
         pipeline.updateUniforms({
             blurRadius: config.blurRadius,
             sigma: config.blurSigma,
@@ -90,7 +124,10 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
 
         const wantsMp4 = config.output !== 'fled';
         const wantsFled = config.output !== 'mp4';
-        const outputDimensions = dimensionsForAspect(config.aspect);
+        const outputDimensions = productionOutputDimensions(
+            dimensionsForAspect(config.aspect),
+            config.videoMode,
+        );
         const compositionCanvas = document.createElement('canvas');
         compositionCanvas.width = outputDimensions.width;
         compositionCanvas.height = outputDimensions.height;
@@ -102,7 +139,19 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
             previewMount = document.createElement('div');
             previewMount.className = 'production-preview-mount';
             mount.append(previewMount);
-            preview = createLedPreview({ parent: previewMount, side: Math.min(outputDimensions.width, outputDimensions.height) });
+            preview = createLedPreview({
+                parent: previewMount,
+                side: Math.min(outputDimensions.width, outputDimensions.height),
+                // True offline 2x AA: 2048 WebGL/bloom backing buffer, reduced
+                // once into the native 1024 mapped-video encoder canvas.
+                maxBufferSize: 2048,
+                bloomProfile: PRODUCTION_BLOOM_PROFILE,
+                // At native 1024 output the modest geometry-gated diameter
+                // iris no longer crosses a 1024->1080 resampling lattice.
+                bloomDiameterGain: IRIS_DIAMETER_GAIN,
+                bloomUseBlowoutRisk: true,
+                enableHdrBloom: true,
+            });
             preview.setAutoBloom(config.autoBloom);
             preview.setManualBloomStrength(config.bloomStrength);
         }
@@ -114,6 +163,11 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
 
         const frames: Uint8Array[] = [];
         let done = 0;
+        let mp4FrameCount = 0;
+        let irisSettled = false;
+        // MP4 cadence is scheduled independently of decoded-source cadence.
+        // This makes outputFps=60 exact for 25, 30, 50, or variable-rate input.
+        let nextMp4Timestamp = 0;
         const sink = new mb.VideoSampleSink(track);
         for await (const sample of sink.samples()) {
             let frame: VideoFrame | null = null;
@@ -128,17 +182,49 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
                     if (fledWriter) await fledWriter.write(rgb); else frames.push(rgb);
                 }
                 if (wantsMp4 && compositionContext && encoder) {
-                    preview?.render(points, config.previewRotate ? config.rotation : 0, displaySample, null);
+                    const timestamp = Number.isFinite(sample.timestamp) && sample.timestamp >= 0 ? sample.timestamp : done / fps;
+                    const duration = Number.isFinite(sample.duration) && sample.duration > 0 ? sample.duration : 1 / fps;
+                    const panelRotation = config.panelRotation || (config.previewRotate ? config.rotation : 0);
+                    // The offline loop runs faster than wall clock, so use
+                    // media time. Before encoding the first visible frame,
+                    // feed the same sample through an unrecorded pre-roll to
+                    // settle bloom and the global iris at its proper level.
+                    if (!irisSettled) {
+                        const intervalMs = 1000 / Math.max(outputFps, 1);
+                        for (let preRoll = productionIrisPrerollFrames(outputFps); preRoll > 0; preRoll--) {
+                            preview?.render(
+                                points, panelRotation, displaySample, null, [], [],
+                                timestamp * 1000 - preRoll * intervalMs,
+                            );
+                        }
+                        irisSettled = true;
+                    }
+                    // Sampling and output layout are independent: a diamond
+                    // panel can show an upright source video without rotating
+                    // its capture coordinates.
+                    preview?.render(points, panelRotation, displaySample, null, [], [], timestamp * 1000);
                     drawProductionFrame({
                         context: compositionContext,
                         source: sourceCanvas,
                         preview: preview?.domElement ?? null,
                         output: outputDimensions,
                         hidden: config.hidden,
+                        videoMode: config.videoMode,
                     });
-                    const timestamp = Number.isFinite(sample.timestamp) && sample.timestamp >= 0 ? sample.timestamp : done / fps;
-                    const duration = Number.isFinite(sample.duration) && sample.duration > 0 ? sample.duration : 1 / fps;
-                    await encoder.addFrame(timestamp, duration);
+                    if (config.outputFps === 0) {
+                        await encoder.addFrame(timestamp, duration);
+                        mp4FrameCount++;
+                    } else {
+                        // Hold each mapped frame until the next decoded frame;
+                        // this is deliberate frame repetition, not interpolation.
+                        if (done === 0) nextMp4Timestamp = timestamp;
+                        const schedule = scheduleProductionFrames(timestamp, duration, nextMp4Timestamp, outputFps);
+                        for (const outputTimestamp of schedule.timestamps) {
+                            await encoder.addFrame(outputTimestamp, 1 / outputFps);
+                            mp4FrameCount++;
+                        }
+                        nextMp4Timestamp = schedule.nextTimestamp;
+                    }
                 }
                 done++;
                 onProgress(done, total, 'rendering');
@@ -175,8 +261,8 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
             encoder = null;
             if (mp4Upload) {
                 const uploaded = await mp4Upload.complete();
-                artifacts.push({ kind: 'mp4', filename: `${stem}.mp4`, mimeType: 'video/mp4', bytes: uploaded.byteSize, sha256: uploaded.sha256, frameCount: done, fps });
-            } else if (blob) artifacts.push({ kind: 'mp4', filename: `${stem}.mp4`, blob, mimeType: 'video/mp4', bytes: blob.size, frameCount: done, fps });
+                artifacts.push({ kind: 'mp4', filename: `${stem}.mp4`, mimeType: 'video/mp4', bytes: uploaded.byteSize, sha256: uploaded.sha256, frameCount: mp4FrameCount, fps: outputFps });
+            } else if (blob) artifacts.push({ kind: 'mp4', filename: `${stem}.mp4`, blob, mimeType: 'video/mp4', bytes: blob.size, frameCount: mp4FrameCount, fps: outputFps });
         }
         return {
             artifacts,

@@ -24,12 +24,16 @@ export const BLOOM_MAX_STRENGTH = 16;
 export const BLOOM_RADIUS = 1;
 export const BLOOM_THRESHOLD = 0.0;
 
-export const IRIS_ATTACK_TAU = 0.08;
+/** Video iris responds immediately; fast cuts need no perceptual delay. */
+export const IRIS_LIGHT_LATENCY = 0;
+/** Dimming/constriction attack: quick enough for cuts, slow enough not to jitter. */
+export const IRIS_ATTACK_TAU = 0.20;
 // Reopen the iris ~10x slower than it constricts — the idiomatic auto-exposure
 // asymmetry, and close to human pupil dynamics (dilation much slower than
 // constriction). Fast attack protects against blowout; slow decay dilates
 // gradually in dark scenes.
-export const IRIS_DECAY_TAU = IRIS_ATTACK_TAU * 10;
+/** Slower redilation preserves the iris-like dark adaptation. */
+export const IRIS_DECAY_TAU = 1.20;
 export const IRIS_MAX_DT = 0.25;
 
 export const AUTO_BLOOM_SPACING_REF = 0.10;
@@ -66,8 +70,21 @@ export const DEMO_BLOOM_AREA_REF      = 0.0125;
 // (dots already filling the inter-LED spacing) self-rejects to ~no growth
 // without any special-casing. 0.8 = sparse dots grow up to 1.8x at full bright.
 export const IRIS_DIAMETER_GAIN = 0.8;
+export const IRIS_DILATION_MAX = 0.20;
+export const IRIS_CONSTRICTION_MAX = 0.40;
+export const IRIS_DIAMETER_PIVOT = 0.45;
 
 export const LIT_EPSILON = 0.01;
+/** Pareto tail: the brightest 20% controls highlight protection. */
+export const IRIS_PARETO_FRACTION = 0.20;
+/** High-resolution histogram with nonlinear bucket density near white. */
+export const IRIS_HISTOGRAM_BINS = 2048;
+export const IRIS_HISTOGRAM_GAMMA = 4;
+/** Power mean within the Pareto tail; >1 biases sustained near-white clusters. */
+export const IRIS_PARETO_POWER = 4;
+export const BLOOM_METER_TAIL_FRACTION = 0.10;
+export const BLOOM_METER_KNEE = 0.04;
+export const BLOOM_METER_FULL = 0.24;
 export const BLOOM_COVERAGE_REF = 0.02;
 export const BLOOM_AREA_REF = 0.025;
 export const BLOOM_RADIUS_MIN = 0.15;
@@ -92,17 +109,169 @@ export const BLOOM_RENDER_PX = 2048;
 
 export function computeFrameBrightness(rgbBytes: Uint8Array | number[]): FrameBrightnessResult {
     const totalCount = Math.floor(rgbBytes.length / 3);
-    if (totalCount === 0) return { avgBrightness: 0, litCount: 0, totalCount: 0 };
+    if (totalCount === 0) return { avgBrightness: 0, irisBrightness: 0, litCount: 0, totalCount: 0 };
 
     let totalBri = 0;
     let litCount = 0;
+    // The existing LED readback feeds a nonlinear high-resolution histogram.
+    // b^gamma allocates far more bucket precision near white, where bloom
+    // clipping changes rapidly. We then take a Pareto (top-20%) power mean:
+    // sustained highlight regions dominate, while a lone hot LED cannot close
+    // the global iris by itself. No additional framebuffer/readback is needed.
+    const binCounts = new Uint32Array(IRIS_HISTOGRAM_BINS);
+    const binPowerSums = new Float64Array(IRIS_HISTOGRAM_BINS);
     for (let i = 0; i < totalCount; i++) {
         const i3 = i * 3;
         const bri = ((rgbBytes[i3] ?? 0) + (rgbBytes[i3 + 1] ?? 0) + (rgbBytes[i3 + 2] ?? 0)) / (3 * 255);
         totalBri += bri;
+        const bin = Math.min(
+            IRIS_HISTOGRAM_BINS - 1,
+            Math.floor(Math.pow(bri, IRIS_HISTOGRAM_GAMMA) * (IRIS_HISTOGRAM_BINS - 1)),
+        );
+        binCounts[bin]++;
+        binPowerSums[bin] = (binPowerSums[bin] ?? 0) + Math.pow(bri, IRIS_PARETO_POWER);
         if (bri > LIT_EPSILON) litCount++;
     }
-    return { avgBrightness: totalBri / totalCount, litCount, totalCount };
+    let remaining = Math.max(1, Math.ceil(totalCount * IRIS_PARETO_FRACTION));
+    const tailCount = remaining;
+    let tailPowerSum = 0;
+    for (let bin = binCounts.length - 1; bin >= 0 && remaining > 0; bin--) {
+        const count = binCounts[bin] ?? 0;
+        const take = Math.min(count, remaining);
+        if (take > 0 && count > 0) {
+            tailPowerSum += (binPowerSums[bin] ?? 0) * (take / count);
+            remaining -= take;
+        }
+    }
+    return {
+        avgBrightness: totalBri / totalCount,
+        irisBrightness: Math.pow(tailPowerSum / tailCount, 1 / IRIS_PARETO_POWER),
+        litCount,
+        totalCount,
+    };
+}
+
+function smoothstep(edge0: number, edge1: number, value: number): number {
+    const t = Math.min(Math.max((value - edge0) / Math.max(edge1 - edge0, 1e-9), 0), 1);
+    return t * t * (3 - 2 * t);
+}
+
+/**
+ * Measure actual bloom-induced whitening by comparing aligned raw and bloomed
+ * low-resolution RGBA framebuffers. Brightening and colored mixing are kept;
+ * only loss of source chroma into near-white is treated as overexposure.
+ */
+export function computeBloomWhiteMergeRisk(
+    rawRgba: Uint8Array | number[],
+    bloomedRgba: Uint8Array | number[],
+    pixelIndices?: Uint32Array | number[],
+): number {
+    const pixelCount = Math.min(Math.floor(rawRgba.length / 4), Math.floor(bloomedRgba.length / 4));
+    if (pixelCount === 0) return 0;
+    const histogram = new Uint32Array(256);
+    let activeCount = 0;
+    const sampleCount = pixelIndices?.length ?? pixelCount;
+    for (let sample = 0; sample < sampleCount; sample++) {
+        const i = pixelIndices?.[sample] ?? sample;
+        if (i < 0 || i >= pixelCount) continue;
+        const i4 = i * 4;
+        const rr = (rawRgba[i4] ?? 0) / 255;
+        const rg = (rawRgba[i4 + 1] ?? 0) / 255;
+        const rb = (rawRgba[i4 + 2] ?? 0) / 255;
+        const br = (bloomedRgba[i4] ?? 0) / 255;
+        const bg = (bloomedRgba[i4 + 1] ?? 0) / 255;
+        const bb = (bloomedRgba[i4 + 2] ?? 0) / 255;
+        const rawMax = Math.max(rr, rg, rb);
+        if (rawMax < 0.04) continue;
+        activeCount++;
+        const rawMin = Math.min(rr, rg, rb);
+        const bloomMax = Math.max(br, bg, bb);
+        const bloomMin = Math.min(br, bg, bb);
+        const rawSaturation = rawMax > 0 ? (rawMax - rawMin) / rawMax : 0;
+        const bloomSaturation = bloomMax > 0 ? (bloomMax - bloomMin) / bloomMax : 0;
+        const chromaLoss = Math.max(rawSaturation - bloomSaturation, 0);
+        const nearWhite = smoothstep(0.72, 0.98, bloomMin);
+        const risk = nearWhite * chromaLoss;
+        histogram[Math.min(255, Math.floor(risk * 255))]++;
+    }
+    if (activeCount === 0) return 0;
+    let remaining = Math.max(1, Math.ceil(activeCount * BLOOM_METER_TAIL_FRACTION));
+    const tailCount = remaining;
+    let weighted = 0;
+    for (let bin = 255; bin >= 0 && remaining > 0; bin--) {
+        const take = Math.min(histogram[bin] ?? 0, remaining);
+        weighted += take * (bin / 255);
+        remaining -= take;
+    }
+    return weighted / tailCount;
+}
+
+/** Convert measured whitening risk into a bounded high-end correction. */
+export function computeBloomMeterCorrection(risk: number): number {
+    return smoothstep(BLOOM_METER_KNEE, BLOOM_METER_FULL, risk);
+}
+
+function pixelWhiteMergeRisk(
+    rr: number, rg: number, rb: number,
+    br: number, bg: number, bb: number,
+): number {
+    const rawMax = Math.max(rr, rg, rb);
+    if (rawMax < 0.04) return 0;
+    const rawMin = Math.min(rr, rg, rb);
+    const bloomMax = Math.max(br, bg, bb);
+    const bloomMin = Math.min(br, bg, bb);
+    const rawSaturation = (rawMax - rawMin) / Math.max(rawMax, 1e-9);
+    const bloomSaturation = (bloomMax - bloomMin) / Math.max(bloomMax, 1e-9);
+    const colorWash = smoothstep(0.72, 0.98, bloomMin)
+        * Math.max(rawSaturation - bloomSaturation, 0);
+    const clippedDetail = smoothstep(0.82, 0.995, bloomMax)
+        * smoothstep(0.03, 0.22, bloomMax - rawMax)
+        * smoothstep(0.30, 0.85, rawMax);
+    return Math.max(colorWash, clippedDetail * 0.65);
+}
+
+/**
+ * Spatial HDR-style bloom composite. All four inputs contain the same sharp
+ * LED base. Dark/halo pixels select the high bracket; LED cores progressively
+ * fall back to medium or restrained bloom only where added light destroys
+ * chroma or highlight headroom.
+ */
+export function compositeHdrBloomRgba(
+    rawRgba: Uint8ClampedArray,
+    lowRgba: Uint8ClampedArray,
+    midRgba: Uint8ClampedArray,
+    highRgba: Uint8ClampedArray,
+    output = new Uint8ClampedArray(rawRgba.length),
+): Uint8ClampedArray {
+    const length = Math.min(rawRgba.length, lowRgba.length, midRgba.length, highRgba.length, output.length);
+    for (let i = 0; i + 3 < length; i += 4) {
+        const rr = (rawRgba[i] ?? 0) / 255;
+        const rg = (rawRgba[i + 1] ?? 0) / 255;
+        const rb = (rawRgba[i + 2] ?? 0) / 255;
+        const highRisk = pixelWhiteMergeRisk(
+            rr, rg, rb,
+            (highRgba[i] ?? 0) / 255,
+            (highRgba[i + 1] ?? 0) / 255,
+            (highRgba[i + 2] ?? 0) / 255,
+        );
+        const midRisk = pixelWhiteMergeRisk(
+            rr, rg, rb,
+            (midRgba[i] ?? 0) / 255,
+            (midRgba[i + 1] ?? 0) / 255,
+            (midRgba[i + 2] ?? 0) / 255,
+        );
+        const highWeight = 1 - smoothstep(0.035, 0.20, highRisk);
+        const midWeight = 1 - smoothstep(0.05, 0.24, midRisk);
+        for (let channel = 0; channel < 3; channel++) {
+            const low = lowRgba[i + channel] ?? 0;
+            const mid = midRgba[i + channel] ?? 0;
+            const high = highRgba[i + channel] ?? 0;
+            const upper = mid + (high - mid) * highWeight;
+            output[i + channel] = Math.round(low + (upper - low) * midWeight);
+        }
+        output[i + 3] = 255;
+    }
+    return output;
 }
 
 export function stepIrisAttackDecay(
@@ -190,9 +359,20 @@ export function computeDiameterHeadroom(
 }
 
 /**
- * LED diameter multiplier (>= 1) for the current iris state. Grows with the
- * smoothed frame brightness, scaled by the geometric headroom so dense layouts
- * barely move while sparse ones open up.
+ * Combine total luminous-area risk with local neighbour overlap. Either a
+ * panel filled by many dots or dots whose halos reach their neighbours can
+ * wash out; the union keeps both signals in [0, 1].
+ */
+export function combineBloomBlowoutRisk(areaRisk: number, diameterHeadroom: number): number {
+    const area = Math.min(Math.max(areaRisk, 0), 1);
+    const overlap = 1 - Math.min(Math.max(diameterHeadroom, 0), 1);
+    return 1 - (1 - area) * (1 - overlap);
+}
+
+/**
+ * LED diameter multiplier for the current iris state. Dark-scene sensitivity
+ * grows only where spacing permits. Highlight-driven attenuation contracts
+ * globally; offline 2x framebuffer AA keeps that motion spatially stable.
  */
 export function computeIrisDiameterScale(
     headroom: number,
@@ -201,7 +381,13 @@ export function computeIrisDiameterScale(
 ): number {
     const h = Math.min(Math.max(headroom, 0), 1);
     const b = Math.min(Math.max(brightness, 0), 1);
-    return 1 + gain * h * b;
+    const g = Math.max(gain, 0);
+    if (b <= IRIS_DIAMETER_PIVOT) {
+        const sensitivity = 1 - b / IRIS_DIAMETER_PIVOT;
+        return 1 + g * h * IRIS_DILATION_MAX * sensitivity;
+    }
+    const overload = (b - IRIS_DIAMETER_PIVOT) / (1 - IRIS_DIAMETER_PIVOT);
+    return Math.max(0.2, 1 - g * IRIS_CONSTRICTION_MAX * Math.pow(overload, 0.75));
 }
 
 export function resolveLedDiameter(

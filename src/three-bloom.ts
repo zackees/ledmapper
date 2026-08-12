@@ -18,6 +18,7 @@ import {
     computeFrameBrightness,
     stepIrisAttackDecay,
     computeBloomStrength,
+    IRIS_LIGHT_LATENCY,
 } from './bloom-utils';
 import type { IrisState, BloomStrengthRange } from './types/domain';
 
@@ -65,12 +66,27 @@ export function updateBloomIris(
     manualStrength: number | null = null,
     nowMs = performance.now(),
 ): void {
-    const { avgBrightness, litCount, totalCount } = computeFrameBrightness(rgbBytes);
+    const { irisBrightness, litCount, totalCount } = computeFrameBrightness(rgbBytes);
     const dtSeconds = typeof irisState.lastTimeMs === 'number'
         ? (nowMs - irisState.lastTimeMs) / 1000
         : 0;
     irisState.lastTimeMs = nowMs;
-    irisState.currentBrightness = stepIrisAttackDecay(irisState.currentBrightness, avgBrightness, dtSeconds);
+    const history = irisState.brightnessHistory ??= [];
+    history.push({ timeMs: nowMs, brightness: irisBrightness });
+    const delayedTime = nowMs - IRIS_LIGHT_LATENCY * 1000;
+    let delayedBrightness = irisState.delayedBrightness ?? irisState.currentBrightness;
+    let latestEligible = -1;
+    for (let index = 0; index < history.length; index++) {
+        const sample = history[index];
+        if (sample && sample.timeMs <= delayedTime) latestEligible = index;
+        else break;
+    }
+    if (latestEligible >= 0) {
+        delayedBrightness = history[latestEligible]?.brightness ?? delayedBrightness;
+        history.splice(0, latestEligible + 1);
+    }
+    irisState.delayedBrightness = delayedBrightness;
+    irisState.currentBrightness = stepIrisAttackDecay(irisState.currentBrightness, delayedBrightness, dtSeconds);
     if (manualStrength !== null) {
         bloomPass.strength = manualStrength;
     } else {

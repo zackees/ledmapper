@@ -175,6 +175,45 @@ class UrlTests(unittest.TestCase):
         self.assertNotIn("secret", redacted)
 
 
+class BrowserLaunchTests(unittest.TestCase):
+    def test_prefers_chrome_for_h264_support(self) -> None:
+        calls = []
+        browser = object()
+
+        class Chromium:
+            def launch(self, **kwargs):
+                calls.append(kwargs)
+                return browser
+
+        result = producer.launch_production_browser(
+            type("Playwright", (), {"chromium": Chromium()})(), headed=False
+        )
+
+        self.assertIs(result, browser)
+        self.assertEqual(calls, [{"channel": "chrome", "headless": True}])
+
+    def test_falls_back_to_bundled_chromium_when_chrome_is_unavailable(self) -> None:
+        calls = []
+        browser = object()
+
+        class Chromium:
+            def launch(self, **kwargs):
+                calls.append(kwargs)
+                if kwargs.get("channel") == "chrome":
+                    raise RuntimeError("Chrome is unavailable")
+                return browser
+
+        result = producer.launch_production_browser(
+            type("Playwright", (), {"chromium": Chromium()})(), headed=True
+        )
+
+        self.assertIs(result, browser)
+        self.assertEqual(calls, [
+            {"channel": "chrome", "headless": False},
+            {"headless": False},
+        ])
+
+
 class ManifestAndOutputTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
