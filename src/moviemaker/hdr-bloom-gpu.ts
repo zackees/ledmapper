@@ -53,6 +53,13 @@ float pixelWhiteMergeRisk(vec3 raw, vec3 bloomed) {
     return max(colorWash, clippedDetail * 0.65);
 }
 
+float shadowBloomWeight(vec3 raw, vec3 bloomed) {
+    float rawMax = max(max(raw.r, raw.g), raw.b);
+    if (rawMax >= 0.04) return 1.0;
+    float bloomMax = max(max(bloomed.r, bloomed.g), bloomed.b);
+    return v1Smoothstep(0.025, 0.14, bloomMax);
+}
+
 void main() {
     vec3 raw = texture2D(rawFrame, vUv).rgb;
     vec3 low = texture2D(lowFrame, vUv).rgb;
@@ -63,7 +70,8 @@ void main() {
     float highWeight = 1.0 - v1Smoothstep(0.035, 0.20, highRisk);
     float midWeight = 1.0 - v1Smoothstep(0.05, 0.24, midRisk);
     vec3 upper = mix(mid, high, highWeight);
-    vec3 composite = mix(low, upper, midWeight);
+    vec3 bloomComposite = mix(low, upper, midWeight);
+    vec3 composite = mix(raw, bloomComposite, shadowBloomWeight(raw, high));
 
     // Match Uint8ClampedArray(Math.round(...)) before the RGBA8 framebuffer
     // conversion. Values are non-negative, so JS Math.round is floor(x+.5).

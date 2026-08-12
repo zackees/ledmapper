@@ -231,6 +231,17 @@ function pixelWhiteMergeRisk(
 }
 
 /**
+ * Suppress only low-energy bloom in true shadows. A bright local halo still
+ * reaches full strength, but the zero-threshold bloom pass can no longer turn
+ * black into a persistent gray veil merely because HDR selects its high
+ * bracket for pixels with no sharp LED core.
+ */
+function shadowBloomWeight(rawMax: number, bloomMax: number): number {
+    if (rawMax >= 0.04) return 1;
+    return smoothstep(0.025, 0.14, bloomMax);
+}
+
+/**
  * Spatial HDR-style bloom composite. All four inputs contain the same sharp
  * LED base. Dark/halo pixels select the high bracket; LED cores progressively
  * fall back to medium or restrained bloom only where added light destroys
@@ -262,12 +273,21 @@ export function compositeHdrBloomRgba(
         );
         const highWeight = 1 - smoothstep(0.035, 0.20, highRisk);
         const midWeight = 1 - smoothstep(0.05, 0.24, midRisk);
+        const rawMax = Math.max(rr, rg, rb);
+        const highMax = Math.max(
+            (highRgba[i] ?? 0) / 255,
+            (highRgba[i + 1] ?? 0) / 255,
+            (highRgba[i + 2] ?? 0) / 255,
+        );
+        const shadowWeight = shadowBloomWeight(rawMax, highMax);
         for (let channel = 0; channel < 3; channel++) {
+            const raw = rawRgba[i + channel] ?? 0;
             const low = lowRgba[i + channel] ?? 0;
             const mid = midRgba[i + channel] ?? 0;
             const high = highRgba[i + channel] ?? 0;
             const upper = mid + (high - mid) * highWeight;
-            output[i + channel] = Math.round(low + (upper - low) * midWeight);
+            const bloomComposite = low + (upper - low) * midWeight;
+            output[i + channel] = Math.round(raw + (bloomComposite - raw) * shadowWeight);
         }
         output[i + 3] = 255;
     }

@@ -28,10 +28,9 @@ import { estimateLedSize, resolvePointDiameterPx, STABLE_POINT_DIAMETER_MAX_PX }
 import { createLogger } from '../debug-log';
 import type { BloomProfile } from '../types/domain';
 import { createGpuHdrBloomComposite } from './hdr-bloom-gpu';
+import { SRGB8_TO_LINEAR } from '../color-space';
 
 const log = createLogger('preview');
-
-const INV_255 = 1 / 255;
 
 // FastLED's aesthetic camera margin so edge LEDs aren't clipped.
 const AESTHETIC_MARGIN = 1.05;
@@ -399,9 +398,13 @@ export function createLedPreview({
                 const i3 = i * 3;
                 const channel = pointChannelOffsets[i] ?? i;
                 const c3 = channel * 3;
-                arr[i3    ] = (src[c3]     ?? 0) * INV_255;
-                arr[i3 + 1] = (src[c3 + 1] ?? 0) * INV_255;
-                arr[i3 + 2] = (src[c3 + 2] ?? 0) * INV_255;
+                // Gather bytes are display-encoded sRGB. Three.js vertex
+                // colors are linear working-space values, so passing bytes / 255
+                // directly makes Three apply the output transfer twice and
+                // dramatically lifts shadows (for example, 16 becomes ~71).
+                arr[i3    ] = SRGB8_TO_LINEAR[src[c3]     ?? 0] ?? 0;
+                arr[i3 + 1] = SRGB8_TO_LINEAR[src[c3 + 1] ?? 0] ?? 0;
+                arr[i3 + 2] = SRGB8_TO_LINEAR[src[c3 + 2] ?? 0] ?? 0;
             }
             meshData.colorAttribute.needsUpdate = true;
         }
@@ -409,9 +412,9 @@ export function createLedPreview({
         for (const entry of shapeMeshes) {
             const c3 = entry.offset * 3;
             entry.material.color.setRGB(
-                (src[c3] ?? 0) * INV_255,
-                (src[c3 + 1] ?? 0) * INV_255,
-                (src[c3 + 2] ?? 0) * INV_255,
+                SRGB8_TO_LINEAR[src[c3] ?? 0] ?? 0,
+                SRGB8_TO_LINEAR[src[c3 + 1] ?? 0] ?? 0,
+                SRGB8_TO_LINEAR[src[c3 + 2] ?? 0] ?? 0,
             );
         }
 
