@@ -24,7 +24,15 @@ export const BLUR_FRAG = `
     uniform float maxBrightness;
     uniform float gamma;
     uniform vec2 direction;
+    uniform bool decodeSrgb;
     varying vec2 vUv;
+
+    vec3 srgbToLinear(vec3 value) {
+        bvec3 cutoff = lessThanEqual(value, vec3(0.04045));
+        vec3 lower = value / 12.92;
+        vec3 higher = pow((value + 0.055) / 1.055, vec3(2.4));
+        return mix(higher, lower, cutoff);
+    }
 
     float gaussianPdf(in float x, in float s) {
         return 0.39894 * exp(-0.5 * x * x / (s * s)) / s;
@@ -43,7 +51,9 @@ export const BLUR_FRAG = `
             vec2 sampleUv = vUv + direction * i * invSize;
             if (sampleUv.x >= 0.0 && sampleUv.x <= 1.0 &&
                 sampleUv.y >= 0.0 && sampleUv.y <= 1.0) {
-                diffuseSum += texture2D(tDiffuse, sampleUv).rgb * weight;
+                vec3 sampleColor = texture2D(tDiffuse, sampleUv).rgb;
+                if (decodeSrgb) sampleColor = srgbToLinear(sampleColor);
+                diffuseSum += sampleColor * weight;
             }
             weightSum += weight;
         }
@@ -66,8 +76,17 @@ export const BLUR_FRAG = `
 export const COPY_FRAG = `
     uniform sampler2D tDiffuse;
     varying vec2 vUv;
+
+    vec3 linearToSrgb(vec3 value) {
+        value = max(value, vec3(0.0));
+        bvec3 cutoff = lessThanEqual(value, vec3(0.0031308));
+        vec3 lower = value * 12.92;
+        vec3 higher = 1.055 * pow(value, vec3(1.0 / 2.4)) - 0.055;
+        return mix(higher, lower, cutoff);
+    }
+
     void main() {
-        gl_FragColor = texture2D(tDiffuse, vUv);
+        gl_FragColor = vec4(linearToSrgb(texture2D(tDiffuse, vUv).rgb), 1.0);
     }
 `;
 

@@ -41,8 +41,8 @@ import {
 import { normalizeScreenmap } from './screenmap.js';
 import { FpsMeter } from './fps.js';
 import type { BloomConfig, Screenmap } from './types.js';
+import { SRGB8_TO_LINEAR } from '../color-space.js';
 
-const INV_255 = 1 / 255;
 const DEFAULT_PANE_SIZE = 800;
 const DEFAULT_DIAMETER = 16;
 
@@ -209,18 +209,18 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
                     scratch[i3    ] = r;   // ToUint8 truncates the fraction — fine for bloom
                     scratch[i3 + 1] = g;
                     scratch[i3 + 2] = bl;
-                    arr[i3    ] = r  * INV_255;
-                    arr[i3 + 1] = g  * INV_255;
-                    arr[i3 + 2] = bl * INV_255;
+                    arr[i3    ] = SRGB8_TO_LINEAR[Math.round(r)] ?? 0;
+                    arr[i3 + 1] = SRGB8_TO_LINEAR[Math.round(g)] ?? 0;
+                    arr[i3 + 2] = SRGB8_TO_LINEAR[Math.round(bl)] ?? 0;
                 }
                 colorAttribute.needsUpdate = true;
                 bloom.frame(scratch);
             } else if (lastFrame && n > 0) {
                 for (let i = 0; i < n; i++) {
                     const i3 = i * 3;
-                    arr[i3    ] = (lastFrame[i3    ] ?? 0) * INV_255;
-                    arr[i3 + 1] = (lastFrame[i3 + 1] ?? 0) * INV_255;
-                    arr[i3 + 2] = (lastFrame[i3 + 2] ?? 0) * INV_255;
+                    arr[i3    ] = SRGB8_TO_LINEAR[lastFrame[i3] ?? 0] ?? 0;
+                    arr[i3 + 1] = SRGB8_TO_LINEAR[lastFrame[i3 + 1] ?? 0] ?? 0;
+                    arr[i3 + 2] = SRGB8_TO_LINEAR[lastFrame[i3 + 2] ?? 0] ?? 0;
                 }
                 colorAttribute.needsUpdate = true;
                 bloom.frame(lastFrame);
@@ -230,7 +230,12 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
                 const r = lastFrame?.[offset * 3] ?? 0;
                 const g = lastFrame?.[offset * 3 + 1] ?? 0;
                 const b = lastFrame?.[offset * 3 + 2] ?? 0;
-                shapeMaterials[i]!.color.setRGB(r * INV_255, g * INV_255, b * INV_255);
+                const material = shapeMaterials[i];
+                if (material) material.color.setRGB(
+                    SRGB8_TO_LINEAR[r] ?? 0,
+                    SRGB8_TO_LINEAR[g] ?? 0,
+                    SRGB8_TO_LINEAR[b] ?? 0,
+                );
             }
             if (pointsMaterial) pointsMaterial.size = diameter * bloom.getDiameterScale();
             bloom.render();
@@ -341,14 +346,15 @@ function expandPolyline(vertices: readonly (readonly [number, number])[], thickn
     const left: [number, number][] = [];
     const right: [number, number][] = [];
     for (let i = 0; i < vertices.length; i++) {
-        const a = vertices[Math.max(0, i - 1)]!;
-        const b = vertices[Math.min(vertices.length - 1, i + 1)]!;
+        const a = vertices[Math.max(0, i - 1)];
+        const b = vertices[Math.min(vertices.length - 1, i + 1)];
+        const p = vertices[i];
+        if (!a || !b || !p) continue;
         const dx = b[0] - a[0];
         const dy = b[1] - a[1];
         const len = Math.hypot(dx, dy) || 1;
         const nx = -dy / len * radius;
         const ny = dx / len * radius;
-        const p = vertices[i]!;
         left.push([p[0] + nx, p[1] + ny]);
         right.push([p[0] - nx, p[1] - ny]);
     }

@@ -24,11 +24,14 @@ import {
     DataTexture,
     RGBAFormat,
     FloatType,
+    HalfFloatType,
+    LinearSRGBColorSpace,
 } from 'three';
 import type { Texture } from 'three';
 import { BLUR_VERT, BLUR_FRAG, COPY_FRAG, GATHER_FRAG } from './shaders';
 import { perfCount } from './perf';
 import { attachContextLossWatchdog } from '../watchdogs';
+import { srgbChannelToLinear } from '../color-space';
 
 /**
  * Create a blur pipeline bound to the given canvas and video element.
@@ -62,6 +65,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         maxBrightness: { value: number };
         gamma: { value: number };
         direction: { value: Vector2 };
+        decodeSrgb: { value: boolean };
     }
     const blurUniforms: BlurShaderUniforms = {
         tDiffuse:   { value: null },
@@ -72,6 +76,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         maxBrightness: { value: 1.0 },
         gamma:      { value: 1.0 },
         direction:  { value: new Vector2(1, 0) },
+        decodeSrgb: { value: true },
     };
     const shaderMaterial = new ShaderMaterial({
         uniforms: blurUniforms as unknown as Record<string, { value: unknown }>,
@@ -124,14 +129,14 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
     // ── LED gather state ──────────────────────────────────────────────────
     let positionTexture: DataTexture | null = null;
     let gatherTargets: (WebGLRenderTarget | null)[] = [null, null];
-    let gatherBuffers: (Uint8Array | null)[] = [null, null];
+    let gatherBuffers: (Float32Array | null)[] = [null, null];
     const slotBusy = [false, false];
     let nextSlot = 0;
     let gatherW = 0, gatherH = 0;
     let gatherNumPts = 0;
     let lastPtsRef: number[][] | null = null;
     let lastPtsW = 0, lastPtsH = 0;
-    let latestSample: { buffer: Uint8Array; numPts: number } | null = null;
+    let latestSample: { buffer: Float32Array; numPts: number } | null = null;
     let sampleGeneration = 0;
 
     function invalidate() {
@@ -164,13 +169,17 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         blurTarget = new WebGLRenderTarget(w, h, {
             minFilter: LinearFilter,
             magFilter: LinearFilter,
+            type: HalfFloatType,
         });
+        blurTarget.texture.colorSpace = LinearSRGBColorSpace;
 
         if (outputTarget) outputTarget.dispose();
         outputTarget = new WebGLRenderTarget(w, h, {
             minFilter: LinearFilter,
             magFilter: LinearFilter,
+            type: HalfFloatType,
         });
+        outputTarget.texture.colorSpace = LinearSRGBColorSpace;
 
         if (videoTexture) videoTexture.dispose();
         if (videoPlayer) {
@@ -206,7 +215,9 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
         u.blurRadius.value = values.blurRadius;
         u.sigma.value = values.sigma;
         u.brightness.value = values.brightness;
-        u.maxBrightness.value = values.maxBrightness;
+        // The UI cap is a display-RGB percentage. The render targets are
+        // linear RGBA16F, so translate the cap before applying it there.
+        u.maxBrightness.value = srgbChannelToLinear(values.maxBrightness);
         u.gamma.value = values.gamma;
     }
 
@@ -218,6 +229,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
 
         u.tDiffuse.value = source;
         u.direction.value.set(1, 0);
+        u.decodeSrgb.value = true;
         u.brightness.value = 1.0;
         u.maxBrightness.value = 1.0;
         u.gamma.value = 1.0;
@@ -226,6 +238,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
 
         if (blurTarget) u.tDiffuse.value = blurTarget.texture;
         u.direction.value.set(0, 1);
+        u.decodeSrgb.value = false;
         u.brightness.value = savedBri;
         u.maxBrightness.value = savedMaxBri;
         u.gamma.value = savedGamma;
@@ -292,12 +305,15 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
             positionTexture.magFilter = NearestFilter;
 
             for (let s = 0; s < 2; s++) {
-                gatherTargets[s] = new WebGLRenderTarget(gatherW, gatherH, {
+                const gatherTarget = new WebGLRenderTarget(gatherW, gatherH, {
                     minFilter: NearestFilter,
                     magFilter: NearestFilter,
                     depthBuffer: false,
+                    type: FloatType,
                 });
-                gatherBuffers[s] = new Uint8Array(gatherW * gatherH * 4);
+                gatherTarget.texture.colorSpace = LinearSRGBColorSpace;
+                gatherTargets[s] = gatherTarget;
+                gatherBuffers[s] = new Float32Array(gatherW * gatherH * 4);
             }
         }
 
@@ -374,8 +390,8 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
     }
 
     /**
-     * @returns {{ buffer: Uint8Array, numPts: number }|null} Most recently
-     * resolved gather readback (RGBA per LED, alpha 0 = out of bounds).
+     * Most recently resolved linear-light gather readback (RGBA per LED,
+     * alpha 0 = out of bounds).
      */
     function getLatestSample() {
         return latestSample;
@@ -408,7 +424,7 @@ export function createBlurPipeline({ canvas, videoPlayer, initialUniforms }: { c
      * target/buffer). Returns null when the pipeline isn't ready or slot 0
      * is unexpectedly still in flight.
      */
-    async function captureFrameSample(frame: VideoFrame): Promise<{ buffer: Uint8Array; numPts: number } | null> {
+    async function captureFrameSample(frame: VideoFrame): Promise<{ buffer: Float32Array; numPts: number } | null> {
         if (!positionTexture || !outputTarget) return null;
         const slot = 0;
         if (slotBusy[slot]) return null;

@@ -60,7 +60,13 @@ consumers can slice frames without parsing JSON at all.
     "strip1": { "x": [0.0, 1.0], "y": [0.0, 0.0], "diameter": 0.25 }
   },
   "video": {
-    "fps": 60
+    "fps": 60,
+    "color": {
+      "primaries": "bt709",
+      "transfer": "srgb",
+      "matrix": "rgb",
+      "range": "full"
+    }
   }
 }
 ```
@@ -69,6 +75,12 @@ consumers can slice frames without parsing JSON at all.
 |---------------|----------|-----------------------------------------------------------------|
 | `map`         | yes      | Standard `ScreenMap` schema. LED count derives from the total point count across all strips. |
 | `video.fps`   | no       | Playback frame rate. Consumers default to 30 if absent (the rate every ledmapper recording used before the key was written; issue #256). The Mapped Video Maker writes the detected source rate. |
+| `video.color` | no       | Color encoding of RGB payloads. New `rgb8` recordings declare BT.709/sRGB primaries, the sRGB transfer function, RGB channel encoding (no YUV matrix), and full range. Absent metadata retains the historical interpretation of display-encoded RGB8. |
+
+`rgb8` is display-encoded, not linear-light data. Producers that process video
+in linear light must apply the declared transfer function and quantize once
+when writing the payload. A future linear or higher-precision payload requires
+a new `pixel_format` enum value; it must not be silently stored as `rgb8`.
 
 Authors **must not** write `video.format` — it would be a redundant second
 source of truth. Consumers **must** ignore any `video.format` key if

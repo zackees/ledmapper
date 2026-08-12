@@ -421,7 +421,7 @@ export interface BlurUniforms {
 
 /** Gather sample result from the GPU readback. */
 export interface GatherSample {
-    buffer: Uint8Array;
+    buffer: Float32Array | Uint8Array;
     numPts: number;
 }
 

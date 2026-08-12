@@ -1,11 +1,15 @@
 import {
-    FramebufferTexture,
+    HalfFloatType,
+    LinearFilter,
+    LinearSRGBColorSpace,
     Mesh,
-    NearestFilter,
     OrthographicCamera,
     PlaneGeometry,
     Scene,
     ShaderMaterial,
+    WebGLRenderTarget,
+    type Camera,
+    type Texture,
     type WebGLRenderer,
 } from 'three';
 
@@ -18,10 +22,21 @@ void main() {
 }
 `;
 
+const copyFragmentShader = /* glsl */`
+precision highp float;
+
+uniform sampler2D sourceFrame;
+varying vec2 vUv;
+
+void main() {
+    gl_FragColor = texture2D(sourceFrame, vUv);
+}
+`;
+
 /**
- * GPU equivalent of compositeHdrBloomRgba(). Inputs are deliberately captured
- * as RGBA8 framebuffer textures: v1 made its decisions from already-quantized
- * canvas bytes, so retaining that quantization is required for byte identity.
+ * HDR bloom is selected and composited in linear light. Selection thresholds
+ * remain perceptual sRGB values so the established v1 highlight behavior is
+ * preserved, but no bracket is quantized until the final canvas write.
  */
 export const HDR_BLOOM_COMPOSITE_FRAGMENT_SHADER = /* glsl */`
 precision highp float;
@@ -35,6 +50,14 @@ varying vec2 vUv;
 float v1Smoothstep(float edge0, float edge1, float value) {
     float t = clamp((value - edge0) / max(edge1 - edge0, 1e-9), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
+}
+
+vec3 linearToSrgb(vec3 value) {
+    value = max(value, vec3(0.0));
+    bvec3 cutoff = lessThanEqual(value, vec3(0.0031308));
+    vec3 lower = value * 12.92;
+    vec3 higher = 1.055 * pow(value, vec3(1.0 / 2.4)) - 0.055;
+    return mix(higher, lower, cutoff);
 }
 
 float pixelWhiteMergeRisk(vec3 raw, vec3 bloomed) {
@@ -61,29 +84,38 @@ float shadowBloomWeight(vec3 raw, vec3 bloomed) {
 }
 
 void main() {
-    vec3 raw = texture2D(rawFrame, vUv).rgb;
-    vec3 low = texture2D(lowFrame, vUv).rgb;
-    vec3 mid = texture2D(midFrame, vUv).rgb;
-    vec3 high = texture2D(highFrame, vUv).rgb;
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec3 lowLinear = texture2D(lowFrame, vUv).rgb;
+    vec3 midLinear = texture2D(midFrame, vUv).rgb;
+    vec3 highLinear = texture2D(highFrame, vUv).rgb;
+
+    vec3 raw = linearToSrgb(rawLinear);
+    vec3 mid = linearToSrgb(midLinear);
+    vec3 high = linearToSrgb(highLinear);
     float highRisk = pixelWhiteMergeRisk(raw, high);
     float midRisk = pixelWhiteMergeRisk(raw, mid);
     float highWeight = 1.0 - v1Smoothstep(0.035, 0.20, highRisk);
     float midWeight = 1.0 - v1Smoothstep(0.05, 0.24, midRisk);
-    vec3 upper = mix(mid, high, highWeight);
-    vec3 bloomComposite = mix(low, upper, midWeight);
-    vec3 composite = mix(raw, bloomComposite, shadowBloomWeight(raw, high));
+    vec3 upperLinear = mix(midLinear, highLinear, highWeight);
+    vec3 bloomCompositeLinear = mix(lowLinear, upperLinear, midWeight);
+    vec3 compositeLinear = mix(
+        rawLinear,
+        bloomCompositeLinear,
+        shadowBloomWeight(raw, high)
+    );
 
-    // Match Uint8ClampedArray(Math.round(...)) before the RGBA8 framebuffer
-    // conversion. Values are non-negative, so JS Math.round is floor(x+.5).
-    composite = floor(composite * 255.0 + 0.5) / 255.0;
-    gl_FragColor = vec4(composite, 1.0);
+    // The default framebuffer is the sole quantization boundary. Explicitly
+    // apply the output transfer here; ShaderMaterial does not add it for us.
+    gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
 }
 `;
 
 export interface GpuHdrBloomComposite {
-    /** Capture the currently displayed framebuffer into one RGBA8 bracket. */
-    capture: (bracket: 0 | 1 | 2 | 3) => void;
-    /** Draw only the final v1 composite into the displayed framebuffer. */
+    /** Render the unbloomed LED scene into a persistent RGBA16F bracket. */
+    captureRaw: (scene: Scene, camera: Camera) => void;
+    /** Copy one linear RGBA16F bloom result into its persistent bracket. */
+    captureBloom: (bracket: 1 | 2 | 3, source: Texture) => void;
+    /** Composite the four linear brackets and write display-sRGB to canvas. */
     render: () => void;
     dispose: () => void;
 }
@@ -94,18 +126,29 @@ export function createGpuHdrBloomComposite(
     height: number,
 ): GpuHdrBloomComposite {
     const frames = Array.from({ length: 4 }, () => {
-        const texture = new FramebufferTexture(width, height);
-        texture.minFilter = NearestFilter;
-        texture.magFilter = NearestFilter;
-        texture.generateMipmaps = false;
-        return texture;
+        const target = new WebGLRenderTarget(width, height, {
+            type: HalfFloatType,
+            minFilter: LinearFilter,
+            magFilter: LinearFilter,
+            depthBuffer: false,
+        });
+        target.texture.colorSpace = LinearSRGBColorSpace;
+        target.texture.generateMipmaps = false;
+        return target;
+    });
+    const copyMaterial = new ShaderMaterial({
+        uniforms: { sourceFrame: { value: null as Texture | null } },
+        vertexShader,
+        fragmentShader: copyFragmentShader,
+        depthTest: false,
+        depthWrite: false,
     });
     const material = new ShaderMaterial({
         uniforms: {
-            rawFrame: { value: frames[0] },
-            lowFrame: { value: frames[1] },
-            midFrame: { value: frames[2] },
-            highFrame: { value: frames[3] },
+            rawFrame: { value: frames[0]?.texture },
+            lowFrame: { value: frames[1]?.texture },
+            midFrame: { value: frames[2]?.texture },
+            highFrame: { value: frames[3]?.texture },
         },
         vertexShader,
         fragmentShader: HDR_BLOOM_COMPOSITE_FRAGMENT_SHADER,
@@ -114,23 +157,34 @@ export function createGpuHdrBloomComposite(
         transparent: false,
     });
     const geometry = new PlaneGeometry(2, 2);
-    const scene = new Scene();
-    scene.add(new Mesh(geometry, material));
+    const copyScene = new Scene();
+    copyScene.add(new Mesh(geometry, copyMaterial));
+    const compositeScene = new Scene();
+    compositeScene.add(new Mesh(geometry, material));
     const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
     camera.position.z = 1;
 
     return {
-        capture(bracket) {
-            const texture = frames[bracket];
-            if (texture) renderer.copyFramebufferToTexture(texture);
+        captureRaw(scene, sourceCamera) {
+            renderer.setRenderTarget(frames[0] ?? null);
+            renderer.clear();
+            renderer.render(scene, sourceCamera);
+        },
+        captureBloom(bracket, source) {
+            const sourceUniform = copyMaterial.uniforms.sourceFrame;
+            if (sourceUniform) sourceUniform.value = source;
+            renderer.setRenderTarget(frames[bracket] ?? null);
+            renderer.clear();
+            renderer.render(copyScene, camera);
         },
         render() {
             renderer.setRenderTarget(null);
-            renderer.render(scene, camera);
+            renderer.render(compositeScene, camera);
         },
         dispose() {
-            for (const texture of frames) texture.dispose();
+            for (const frame of frames) frame.dispose();
             geometry.dispose();
+            copyMaterial.dispose();
             material.dispose();
         },
     };

@@ -41,8 +41,8 @@ import {
 import { normalizeScreenmap } from './screenmap';
 import { FpsMeter } from './fps';
 import type { BloomConfig, Screenmap } from './types';
+import { SRGB8_TO_LINEAR } from '../color-space';
 
-const INV_255 = 1 / 255;
 const DEFAULT_PANE_SIZE = 800;
 const DEFAULT_DIAMETER = 16;
 
@@ -205,18 +205,18 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
                     scratch[i3    ] = r;   // ToUint8 truncates the fraction — fine for bloom
                     scratch[i3 + 1] = g;
                     scratch[i3 + 2] = bl;
-                    arr[i3    ] = r  * INV_255;
-                    arr[i3 + 1] = g  * INV_255;
-                    arr[i3 + 2] = bl * INV_255;
+                    arr[i3    ] = SRGB8_TO_LINEAR[Math.round(r)] ?? 0;
+                    arr[i3 + 1] = SRGB8_TO_LINEAR[Math.round(g)] ?? 0;
+                    arr[i3 + 2] = SRGB8_TO_LINEAR[Math.round(bl)] ?? 0;
                 }
                 colorAttribute.needsUpdate = true;
                 bloom.frame(scratch);
             } else if (lastFrame && n > 0) {
                 for (let i = 0; i < n; i++) {
                     const i3 = i * 3;
-                    arr[i3    ] = (lastFrame[i3    ] ?? 0) * INV_255;
-                    arr[i3 + 1] = (lastFrame[i3 + 1] ?? 0) * INV_255;
-                    arr[i3 + 2] = (lastFrame[i3 + 2] ?? 0) * INV_255;
+                    arr[i3    ] = SRGB8_TO_LINEAR[lastFrame[i3] ?? 0] ?? 0;
+                    arr[i3 + 1] = SRGB8_TO_LINEAR[lastFrame[i3 + 1] ?? 0] ?? 0;
+                    arr[i3 + 2] = SRGB8_TO_LINEAR[lastFrame[i3 + 2] ?? 0] ?? 0;
                 }
                 colorAttribute.needsUpdate = true;
                 bloom.frame(lastFrame);
@@ -227,7 +227,11 @@ export function createGfxCore(opts: CreateGfxCoreOptions): GfxCore {
                 const g = lastFrame?.[offset * 3 + 1] ?? 0;
                 const b = lastFrame?.[offset * 3 + 2] ?? 0;
                 const material = shapeMaterials[i];
-                if (material) material.color.setRGB(r * INV_255, g * INV_255, b * INV_255);
+                if (material) material.color.setRGB(
+                    SRGB8_TO_LINEAR[r] ?? 0,
+                    SRGB8_TO_LINEAR[g] ?? 0,
+                    SRGB8_TO_LINEAR[b] ?? 0,
+                );
             }
             if (pointsMaterial) pointsMaterial.size = diameter * bloom.getDiameterScale();
             bloom.render();
