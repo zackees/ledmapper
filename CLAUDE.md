@@ -178,3 +178,26 @@ For iterating on UI/behavior changes: **`.claude/skills/ui-dev-loop/SKILL.md`**.
 ## Running Playwright tests (blessed command — required)
 
 **Never run `playwright` / `npx playwright test` directly.** Always use `npm run test:integration [-- <spec-or-pattern>]` (`scripts/run-playwright.mjs`) — a `PreToolUse` hook (`.claude/hooks/check-playwright.py`) blocks direct invocations and errors with this same instruction. The blessed runner: reuses an already-running dev server (starts one only if needed, and only tears down the one it started itself), caps `--workers` to a safe default (an unconstrained local run was observed to silently die mid-run — see `.claude/skills/ui-dev-loop/SKILL.md`), and tees full output to a gitignored `.temp/logs/playwright-*.log` while printing a compact tail instead of the full firehose. Runs everything by default; pass a spec name/pattern to scope it, e.g. `npm run test:integration -- moviemaker`. Add `-- --verbose` to stream full output live instead of the tail summary.
+
+## Agent production-video requests
+
+When asked to take a local MP4 (including a file under `E:\video`), apply a
+screenmap, record it, and show the result, use the unattended production CLI
+instead of trying to drive the interactive recorder. Package exactly the input
+MP4 and a file named `screenmap.json` into an input ZIP, serve that ZIP locally,
+run `scripts/produce_video_mapping.py` with `--allow-private-network`, extract
+the output ZIP, and open the emitted MP4 with `Start-Process`.
+
+For a 16×16 LED grid, use `public/screenmaps/16x16_serpentine.json` unless the
+user requests the non-serpentine wiring order. Production MP4s support these
+query modes:
+
+- `videoMode=side-by-side` (the default): source video on the left and mapped LED preview on the right.
+- `videoMode=mapped-led`: mapped LED preview fills the whole output; use this when the user asks for the mapped LED video itself.
+
+Use `outputFps=30` or `outputFps=60` when the user requests a specific MP4
+frame rate. Higher-than-source rates repeat mapped frames while retaining the
+source duration; they do not perform motion interpolation.
+
+Auto bloom is enabled by default in production (`autoBloom=1` implicitly). Do
+not add `autoBloom=0` unless the user explicitly asks to turn bloom off.

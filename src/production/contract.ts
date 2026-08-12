@@ -4,12 +4,18 @@ export const MAX_PRODUCTION_INPUT_URL_LENGTH = 4_096;
 
 export type ProductionOutput = 'fled' | 'mp4' | 'both';
 export type ProductionAspect = 'square' | 'portrait' | 'landscape';
+/** Visual layout used by an MP4 production render. */
+export type ProductionVideoMode = 'side-by-side' | 'mapped-led';
+/** `0` preserves source timing; explicit values control MP4 cadence. */
+export type ProductionOutputFps = 0 | 30 | 60;
 
 export interface ProductionConfig {
     v: 1;
     input: string;
     output: ProductionOutput;
     rotation: number;
+    /** Visual rotation of the mapped LED panel in the output composition. */
+    panelRotation: number;
     zoom: number;
     translateX: number;
     translateY: number;
@@ -24,6 +30,9 @@ export interface ProductionConfig {
     bloomStrength: number;
     previewRotate: boolean;
     aspect: ProductionAspect;
+    videoMode: ProductionVideoMode;
+    outputFps: ProductionOutputFps;
+    /** Legacy compatibility flag; prefer videoMode=mapped-led for an LED-only MP4. */
     hidden: boolean;
 }
 
@@ -54,10 +63,10 @@ export class ProductionContractError extends Error {
 }
 
 const ALLOWED_KEYS = new Set([
-    'v', 'input', 'output', 'rotation', 'zoom', 'translateX', 'translateY',
+    'v', 'input', 'output', 'rotation', 'panelRotation', 'zoom', 'translateX', 'translateY',
     'blurRadius', 'blurSigma', 'brightness', 'gamma', 'limitBrightness',
     'maxBrightness', 'maxResolution', 'autoBloom', 'bloomStrength',
-    'previewRotate', 'aspect', 'hidden',
+    'previewRotate', 'aspect', 'videoMode', 'outputFps', 'hidden',
 ]);
 
 function required(params: URLSearchParams, name: string): string {
@@ -148,6 +157,7 @@ export function parseProductionQuery(search: string): ProductionConfig {
         input: parseInputUrl(required(params, 'input')),
         output: strictEnum(params, 'output', ['fled', 'mp4', 'both']),
         rotation: strictNumber(params, 'rotation', 0, -180, 180),
+        panelRotation: strictNumber(params, 'panelRotation', 0, -180, 180),
         zoom: strictNumber(params, 'zoom', 1, 0.15, 3),
         translateX: strictNumber(params, 'translateX', 0.5, 0, 1),
         translateY: strictNumber(params, 'translateY', 0.5, 0, 1),
@@ -162,6 +172,10 @@ export function parseProductionQuery(search: string): ProductionConfig {
         bloomStrength: strictNumber(params, 'bloomStrength', 2.475, 0.3, 9),
         previewRotate: strictBoolean(params, 'previewRotate', false),
         aspect: strictEnum(params, 'aspect', ['square', 'portrait', 'landscape'], 'square'),
+        videoMode: strictEnum(params, 'videoMode', ['side-by-side', 'mapped-led'], 'side-by-side'),
+        outputFps: strictEnum(params, 'outputFps', ['source', '30', '60'], 'source') === 'source'
+            ? 0
+            : Number(params.get('outputFps')) as ProductionOutputFps,
         hidden: strictBoolean(params, 'hidden', false),
     };
 }

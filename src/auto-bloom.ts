@@ -27,6 +27,7 @@ import {
     bloomParamsForLedSize,
     computeDiameterHeadroom,
     computeIrisDiameterScale,
+    combineBloomBlowoutRisk,
     BLOOM_MIN_STRENGTH,
 } from './bloom-utils';
 import type { BloomProfile, BloomRange } from './types/domain';
@@ -110,23 +111,23 @@ export function createAutoBloom({
         bloom.bloomPass.radius = params.radius;
         sizeRange.min = params.minStrength;
         sizeRange.max = params.maxStrength;
-        blowoutRisk = params.blowoutRisk;
         densityRange = computeAutoBloomRange({ ledSpacing, sceneExtent, profile });
         diameterHeadroom = computeDiameterHeadroom(ledPx, panePx, ledSpacing, sceneExtent);
+        blowoutRisk = combineBloomBlowoutRisk(params.blowoutRisk, diameterHeadroom);
     }
 
-    /**
-     * LED diameter multiplier (>= 1) for the current iris state. The dots open
-     * up as the (smoothed) frame brightens, scaled by the geometric headroom so
-     * dense layouts stay put. Only active in auto mode with the bloom pass on.
-     */
+    /** Geometry-gated diameter response for the current smoothed iris state. */
     function getDiameterScale() {
         if (diameterGain <= 0 || !bloomEnabled || !autoEnabled) return 1;
         return computeIrisDiameterScale(diameterHeadroom, irisState.currentBrightness, diameterGain);
     }
 
     /** Update the iris/strength from one frame's RGB bytes. */
-    function frame(rgbBytes: Uint8Array | number[]) {
+    /**
+     * Update bloom from a frame. Offline production may pass the media clock
+     * so the iris follows video time rather than a tight encode-loop clock.
+     */
+    function frame(rgbBytes: Uint8Array | number[], nowMs = performance.now()) {
         // Conservative combination: neither ceiling is exceeded, and the floor
         // stays strictly positive without rising above the ceiling.
         const effMax = Math.min(sizeRange.max, densityRange.max);
@@ -137,7 +138,7 @@ export function createAutoBloom({
             ? { min: effMin, max: effMax, blowoutRisk }
             : { min: effMin, max: effMax };
         const override = autoEnabled ? null : manualStrength;
-        updateBloomIris(bloom.bloomPass, irisState, rgbBytes, range, override);
+        updateBloomIris(bloom.bloomPass, irisState, rgbBytes, range, override, nowMs);
     }
 
     /** Render one frame: bloom composer, or the raw scene when bloom is off. */

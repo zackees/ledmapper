@@ -2,6 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     computeFrameBrightness,
+    computeBloomWhiteMergeRisk,
+    computeBloomMeterCorrection,
+    compositeHdrBloomRgba,
     stepIrisAttackDecay,
     computeBloomStrength,
     resolveLedDiameter,
@@ -9,7 +12,11 @@ import {
     bloomParamsForLedSize,
     computeDiameterHeadroom,
     computeIrisDiameterScale,
+    combineBloomBlowoutRisk,
     IRIS_DIAMETER_GAIN,
+    IRIS_DILATION_MAX,
+    IRIS_CONSTRICTION_MAX,
+    IRIS_DIAMETER_PIVOT,
     BLOOM_MIN_STRENGTH,
     BLOOM_MAX_STRENGTH,
     BLOOM_RADIUS,
@@ -18,18 +25,20 @@ import {
     BLOOM_AREA_REF,
     IRIS_ATTACK_TAU,
     IRIS_DECAY_TAU,
+    IRIS_LIGHT_LATENCY,
     IRIS_MAX_DT,
 } from '../../src/bloom-utils';
 
 describe('computeFrameBrightness', () => {
     it('returns zeros for an empty frame', () => {
         const r = computeFrameBrightness(new Uint8Array(0));
-        assert.deepEqual(r, { avgBrightness: 0, litCount: 0, totalCount: 0 });
+        assert.deepEqual(r, { avgBrightness: 0, irisBrightness: 0, litCount: 0, totalCount: 0 });
     });
 
     it('full white frame → avg 1, all lit', () => {
         const r = computeFrameBrightness(new Uint8Array([255, 255, 255, 255, 255, 255]));
         assert.ok(Math.abs(r.avgBrightness - 1) < 1e-9);
+        assert.ok(Math.abs(r.irisBrightness - 1) < 1e-9);
         assert.equal(r.litCount, 2);
         assert.equal(r.totalCount, 2);
     });
@@ -47,9 +56,101 @@ describe('computeFrameBrightness', () => {
         assert.equal(r.litCount, 1);
         assert.equal(r.totalCount, 3);
     });
+
+    it('uses a Pareto upper-tail metric to protect clustered highlights', () => {
+        const bytes: number[] = [];
+        for (let i = 0; i < 8; i++) bytes.push(0, 0, 0);
+        for (let i = 0; i < 2; i++) bytes.push(255, 255, 255);
+        const r = computeFrameBrightness(new Uint8Array(bytes));
+        assert.equal(r.avgBrightness, 0.2);
+        assert.equal(r.irisBrightness, 1);
+    });
+
+    it('does not let one isolated hot LED fully dominate the Pareto tail', () => {
+        const bytes: number[] = [255, 255, 255];
+        for (let i = 0; i < 9; i++) bytes.push(64, 64, 64);
+        const r = computeFrameBrightness(new Uint8Array(bytes));
+        assert.ok(r.irisBrightness > 0.8 && r.irisBrightness < 0.9);
+    });
+});
+
+describe('bloom light meter', () => {
+    const rgba = (...pixels: number[][]) => new Uint8Array(pixels.flatMap((pixel) => [...pixel, 255]));
+
+    it('does not penalize colored brightening or color-preserving bloom', () => {
+        const raw = rgba([180, 20, 20], [20, 40, 180]);
+        const bloom = rgba([255, 60, 60], [50, 80, 255]);
+        assert.equal(computeBloomWhiteMergeRisk(raw, bloom), 0);
+    });
+
+    it('detects colored source pixels merging into white', () => {
+        const raw = rgba([220, 20, 40], [30, 40, 220]);
+        const bloom = rgba([255, 255, 255], [250, 250, 255]);
+        assert.ok(computeBloomWhiteMergeRisk(raw, bloom) > 0.8);
+    });
+
+    it('does not treat an already-white source as bloom whitening', () => {
+        const white = rgba([255, 255, 255]);
+        assert.equal(computeBloomWhiteMergeRisk(white, white), 0);
+    });
+
+    it('can restrict the meter to LED-center pixel indices', () => {
+        const raw = new Uint8Array([
+            255, 0, 0, 255,
+            255, 0, 0, 255,
+        ]);
+        const bloom = new Uint8Array([
+            255, 255, 255, 255,
+            255, 0, 0, 255,
+        ]);
+        assert.ok(computeBloomWhiteMergeRisk(raw, bloom) > 0);
+        assert.equal(computeBloomWhiteMergeRisk(raw, bloom, [1]), 0);
+    });
+
+    it('applies correction only beyond the whitening knee', () => {
+        assert.equal(computeBloomMeterCorrection(0), 0);
+        assert.ok(computeBloomMeterCorrection(0.14) > 0 && computeBloomMeterCorrection(0.14) < 1);
+        assert.equal(computeBloomMeterCorrection(1), 1);
+    });
+});
+
+describe('HDR bloom composite', () => {
+    const rgba = (rgb: number[]) => new Uint8ClampedArray([...rgb, 255]);
+
+    it('keeps the high bloom bracket where color remains intact', () => {
+        const high = rgba([180, 40, 80]);
+        const output = compositeHdrBloomRgba(
+            rgba([80, 10, 20]), rgba([100, 15, 30]), rgba([140, 25, 50]), high,
+        );
+        assert.deepEqual(output, high);
+    });
+
+    it('falls back toward restrained bloom when a colored highlight washes white', () => {
+        const low = rgba([225, 30, 45]);
+        const output = compositeHdrBloomRgba(
+            rgba([210, 15, 30]), low, rgba([248, 180, 185]), rgba([255, 255, 255]),
+        );
+        assert.ok((output[0] ?? 255) <= 230);
+        assert.ok((output[1] ?? 255) < 70);
+        assert.ok((output[2] ?? 255) < 85);
+    });
+
+    it('uses the high bracket for a dark halo pixel', () => {
+        const high = rgba([35, 10, 60]);
+        const output = compositeHdrBloomRgba(
+            rgba([0, 0, 0]), rgba([5, 2, 8]), rgba([18, 5, 30]), high,
+        );
+        assert.deepEqual(output, high);
+    });
+
 });
 
 describe('stepIrisAttackDecay', () => {
+    it('uses a fast video-iris response with slower dilation', () => {
+        assert.equal(IRIS_LIGHT_LATENCY, 0);
+        assert.equal(IRIS_ATTACK_TAU, 0.20);
+        assert.equal(IRIS_DECAY_TAU, 1.20);
+    });
     it('matches the FastLED attack-decay formula on a rising input', () => {
         const dt = 0.033;
         const expected = 1 + (0 - 1) * Math.exp(-dt / IRIS_ATTACK_TAU);
@@ -66,8 +167,8 @@ describe('stepIrisAttackDecay', () => {
         const dt = 0.05;
         const rise = stepIrisAttackDecay(0, 1, dt);       // dark → blowout
         const fall = 1 - stepIrisAttackDecay(1, 0, dt);   // bright → dark
-        assert.ok(rise > 0.4, `attack should track most of the step, got ${rise}`);
-        assert.ok(fall < 0.1, `decay should move only slightly, got ${fall}`);
+        assert.ok(rise > 0.1, `attack should begin tracking the step, got ${rise}`);
+        assert.ok(fall < 0.05, `decay should move only slightly, got ${fall}`);
         assert.ok(rise > 4 * fall, 'attack must be much faster than decay');
     });
 
@@ -217,28 +318,43 @@ describe('computeDiameterHeadroom', () => {
     });
 });
 
+describe('combineBloomBlowoutRisk', () => {
+    it('stays open for sparse, low-area dots', () => {
+        assert.equal(combineBloomBlowoutRisk(0, 1), 0);
+    });
+
+    it('fully protects dots that reach their neighbours', () => {
+        assert.equal(combineBloomBlowoutRisk(0, 0), 1);
+    });
+
+    it('combines area and overlap as independent washout risks', () => {
+        assert.equal(combineBloomBlowoutRisk(0.5, 0.5), 0.75);
+    });
+});
+
 describe('computeIrisDiameterScale', () => {
-    it('is identity (1x) in the dark regardless of headroom', () => {
-        assert.equal(computeIrisDiameterScale(1, 0), 1);
-        assert.equal(computeIrisDiameterScale(0.5, 0), 1);
+    it('limits dark-scene sensitivity growth by geometric headroom', () => {
+        assert.equal(computeIrisDiameterScale(1, 0), 1 + IRIS_DIAMETER_GAIN * IRIS_DILATION_MAX);
+        assert.equal(computeIrisDiameterScale(0.5, 0), 1 + IRIS_DIAMETER_GAIN * IRIS_DILATION_MAX / 2);
     });
 
-    it('is identity (1x) with no headroom regardless of brightness', () => {
-        assert.equal(computeIrisDiameterScale(0, 1), 1);
+    it('is neutral at the exposure pivot', () => {
+        assert.equal(computeIrisDiameterScale(1, IRIS_DIAMETER_PIVOT), 1);
     });
 
-    it('full headroom + full brightness → 1 + gain', () => {
-        assert.ok(Math.abs(computeIrisDiameterScale(1, 1) - (1 + IRIS_DIAMETER_GAIN)) < 1e-12);
+    it('contracts globally at full Pareto-tail exposure', () => {
+        const expected = 1 - IRIS_DIAMETER_GAIN * IRIS_CONSTRICTION_MAX;
+        assert.equal(computeIrisDiameterScale(1, 1), expected);
+        assert.equal(computeIrisDiameterScale(0, 1), expected);
     });
 
-    it('scales linearly in both headroom and brightness', () => {
-        const s = computeIrisDiameterScale(0.5, 0.5, 0.8);
-        assert.ok(Math.abs(s - (1 + 0.8 * 0.25)) < 1e-12);
+    it('begins attenuation before the upper tail fully clips', () => {
+        assert.ok(computeIrisDiameterScale(0, 0.75) < 0.8);
     });
 
-    it('never shrinks below 1 and clamps out-of-range inputs', () => {
-        assert.ok(computeIrisDiameterScale(-1, 2) >= 1);
-        assert.ok(computeIrisDiameterScale(5, 5) <= 1 + IRIS_DIAMETER_GAIN + 1e-9);
+    it('clamps out-of-range inputs safely', () => {
+        assert.equal(computeIrisDiameterScale(-1, -1), 1);
+        assert.equal(computeIrisDiameterScale(5, 5), 1 - IRIS_DIAMETER_GAIN * IRIS_CONSTRICTION_MAX);
     });
 });
 

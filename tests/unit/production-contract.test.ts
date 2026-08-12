@@ -24,6 +24,7 @@ describe('production v1 query contract', () => {
             input: 'https://example.com/job.zip',
             output: 'both',
             rotation: 0,
+            panelRotation: 0,
             zoom: 1,
             translateX: 0.5,
             translateY: 0.5,
@@ -38,19 +39,24 @@ describe('production v1 query contract', () => {
             bloomStrength: 2.475,
             previewRotate: false,
             aspect: 'square',
+            videoMode: 'side-by-side',
+            outputFps: 0,
             hidden: false,
         });
     });
 
     void test('accepts inclusive boundaries and strict booleans', () => {
-        const config = parseProductionQuery(`${REQUIRED}&rotation=-180&zoom=3&translateX=0&translateY=1&blurRadius=0&blurSigma=100&brightness=0&gamma=10&limitBrightness=1&maxBrightness=1&maxResolution=0&autoBloom=0&bloomStrength=.3&previewRotate=1&aspect=portrait&hidden=1`);
+        const config = parseProductionQuery(`${REQUIRED}&rotation=-180&panelRotation=-45&zoom=3&translateX=0&translateY=1&blurRadius=0&blurSigma=100&brightness=0&gamma=10&limitBrightness=1&maxBrightness=1&maxResolution=0&autoBloom=0&bloomStrength=.3&previewRotate=1&aspect=portrait&videoMode=mapped-led&outputFps=60&hidden=1`);
         assert.equal(config.rotation, -180);
+        assert.equal(config.panelRotation, -45);
         assert.equal(config.zoom, 3);
         assert.equal(config.translateX, 0);
         assert.equal(config.translateY, 1);
         assert.equal(config.limitBrightness, true);
         assert.equal(config.maxResolution, 0);
         assert.equal(config.autoBloom, false);
+        assert.equal(config.videoMode, 'mapped-led');
+        assert.equal(config.outputFps, 60);
         assert.equal(config.hidden, true);
     });
 
@@ -64,6 +70,8 @@ describe('production v1 query contract', () => {
         assert.equal(contractError(REQUIRED.replace('v=1', 'v=2')).code, 'UNSUPPORTED_VERSION');
         assert.equal(contractError(REQUIRED.replace('output=both', 'output=webm')).code, 'INVALID_ENUM');
         assert.equal(contractError(`${REQUIRED}&maxResolution=500`).code, 'INVALID_ENUM');
+        assert.equal(contractError(`${REQUIRED}&videoMode=picture-in-picture`).code, 'INVALID_ENUM');
+        assert.equal(contractError(`${REQUIRED}&outputFps=24`).code, 'INVALID_ENUM');
     });
 
     void test('rejects partial, non-finite, and out-of-range numbers', () => {
