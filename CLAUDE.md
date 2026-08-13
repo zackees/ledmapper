@@ -201,3 +201,137 @@ source duration; they do not perform motion interpolation.
 
 Auto bloom is enabled by default in production (`autoBloom=1` implicitly). Do
 not add `autoBloom=0` unless the user explicitly asks to turn bloom off.
+
+### Production-video development and HDR-bloom review loop
+
+Use the unattended producer as the source of truth for visual changes.  Do not
+try to reproduce a production render by manually operating the interactive
+recorder: it is slower, less repeatable, and makes frame-to-frame comparison
+harder.
+
+#### Inputs, maps, and output locations
+
+- Source material normally lives in `E:\\video` (short clips in
+  `E:\\video\\short`). Keep user source videos read-only.
+- Put finished mapped MP4s, comparison MP4s, and their final output ZIPs in
+  `E:\\video\\short_out`. Do not leave a final result only in a temporary
+  directory.
+- A per-job temporary directory is appropriate for the input ZIP and for
+  extracting the producer ZIP. Remove it after its final artifacts have been
+  streamed/copied to `short_out`.
+- Use the requested map verbatim. Common dense maps are
+  `public/screenmaps/32x32_quad_serpentine.json` and
+  `public/screenmaps/64x64_quad_serpentine.json`; use
+  `16x16_serpentine.json` for the standard 16x16 wiring. For a diamond panel,
+  use `panelRotation=-45` to rotate only the LED shape while keeping the
+  source video upright. Do not use legacy `previewRotate=1` unless deliberately
+  testing the legacy combined image/panel rotation.
+
+#### Generate one deterministic render
+
+1. Make an input ZIP containing *only* the chosen `.mp4` and a copy of the
+   chosen map named exactly `screenmap.json` at the same archive level.
+2. Serve that ZIP from a local HTTP server and construct a `/produce/` job URL
+   with `v=1`, a percent-encoded `input` URL, `output=mp4`, and the desired
+   rendering parameters. Local runs must pass `--allow-private-network`.
+3. Run `python scripts/produce_video_mapping.py <job-url> --output-dir
+   <final-output-dir> --allow-private-network`. It emits a deterministic
+   `<source>-ledmapper-v1.zip`; extract the MP4 directly to `short_out` and
+   give it a descriptive, versioned name such as
+   `<source>-mapped-64x64-60fps-hdr-bloom-v2.mp4`.
+4. Open the resulting MP4 with `Start-Process` for review. Never claim a
+   visual improvement without opening the output and checking representative
+   frames, especially frame 0, bright highlights, skin/midtones, and deep
+   shadows.
+
+Use `videoMode=mapped-led` for the actual mapped output; it is a 1024x1024
+video. Use `videoMode=side-by-side` to get the source on the left and mapped
+preview on the right. Add `outputFps=60` when requested; this preserves source
+duration by repeating mapped frames rather than synthesizing motion. Auto bloom
+is on by default. `rotation` rotates source sampling, while `panelRotation`
+rotates only the panel shape.
+
+#### Side-by-side comparison and splice review
+
+For source-versus-render review, use the producer's `videoMode=side-by-side`.
+For an A/B comparison between two mapped renders, normalize both to the same
+1024x1024 geometry/fps and create a visual-only horizontal splice with ffmpeg:
+
+```powershell
+ffmpeg -y -i <baseline.mp4> -i <candidate.mp4> `
+  -filter_complex "[0:v][1:v]hstack=inputs=2[v]" -map "[v]" -an `
+  -c:v libx264 -crf 18 -pix_fmt yuv420p <name>-baseline-left-vs-candidate-right.mp4
+Start-Process <name>-baseline-left-vs-candidate-right.mp4
+```
+
+The baseline always goes left and the candidate right. Keep both individual
+inputs as well as the splice in `short_out`, and use stable versioned names so
+the review history remains inspectable. If durations differ, trim to the common
+duration before `hstack`; do not let ffmpeg silently freeze the last frame.
+
+#### HDR-bloom tuning protocol
+
+The current quality baseline is the full-resolution GPU HDR composite: a sharp
+unbloomed scene plus low/mid/high bloom brackets in linear `RGBA16F`, followed
+by one shader composite and one display-sRGB quantization at the canvas. The
+GPU implementation is in `src/moviemaker/hdr-bloom-gpu.ts`; the CPU composite
+is an oracle/fallback, not the preferred production path. Keep output at
+1024x1024. If anti-aliasing is under investigation, render the framebuffer at
+2x per axis and downsample in the framebuffer before video readback; do not
+increase the delivered video resolution.
+
+When improving this pipeline, work from a fixed source/map/fps and create a
+new A/B splice after every meaningful change. Judge the result at known
+timestamps rather than from a single still. The target is colorful highlight
+bleed that retains hue and local contrast, not a uniformly brighter image.
+
+- Preserve the unbloomed sharp base. Treat bloom as added light, not as a
+  replacement for source detail.
+- Keep the working buffers linear and float/half-float; convert source sRGB
+  values to linear once, composite there, and encode display-sRGB exactly once
+  at output. A missing or double transfer conversion lifts shadows severely.
+- Use multiple bloom brackets. Select or attenuate them from both local
+  white-merge risk (raw LED color versus its bloomed value) and a robust global
+  bright-tail/Pareto statistic. Avoid simple mean luminance: black corners of a
+  rotated diamond panel make it falsely report a dark scene and over-open the
+  bloom/iris response.
+- Separate neutral bloom from chromatic bloom. Limit shared RGB/neutral energy
+  before it drives colored highlights toward white, but retain a hue-preserving
+  chromatic component with a uniform-vector shoulder and a single headroom
+  scale. Never independently clip RGB channels, which desaturates halos.
+- Favor protecting highlights over brightening shadows. Midtone halos and
+  lifted blacks are regressions even if the image appears more luminous.
+- Do not rely on aggressive global LED-diameter/iris contraction for exposure.
+  Dense grids develop aliasing bands and unstable darkness. Use bloom-bracket
+  selection/strength as the primary control; any diameter modulation must be
+  subtle, geometry-aware, and temporally smoothed.
+- Prime temporal exposure/iris state by feeding repeated copies of the first
+  source frame before capture begins, so frame 0 starts settled rather than
+  briefly over-bright. Use asymmetric smoothing: contraction on sudden
+  brightness should be controlled but not jittery; reopening after a dim scene
+  should be slower.
+
+Record the exact job URL parameters, map, source filename, renderer mode, and
+candidate-versus-baseline observations alongside each visual experiment. This
+makes the same workflow useful for color-management, rotation, sampling, and
+future rendering changes—not only HDR bloom.
+
+#### HDR-bloom issue precedents
+
+Read these before retuning bloom or iris behavior; each captures a failure mode
+that visual A/B review must continue to guard against:
+
+- [#49](https://github.com/zackees/ledmapper/issues/49): dense maps made bloom
+  imperceptible because the automatic envelope attenuated it too far.
+- [#51](https://github.com/zackees/ledmapper/issues/51): the auto-bloom range
+  and iris attack/decay must be able to reach the visually validated manual
+  sweet spot.
+- [#53](https://github.com/zackees/ledmapper/issues/53): large LED diameters
+  can create wide halos that wash out a panel.
+- [#55](https://github.com/zackees/ledmapper/issues/55): iris behavior must be
+  geometry-aware so sparse/small dots retain bloom without destabilizing dense
+  layouts.
+- [#255](https://github.com/zackees/ledmapper/issues/255) and
+  [#256](https://github.com/zackees/ledmapper/issues/256): rendering changes
+  must preserve source-frame cadence and verified output FPS; visual quality is
+  not enough if recording drops or duplicates frames unexpectedly.
