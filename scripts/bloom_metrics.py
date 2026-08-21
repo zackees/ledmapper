@@ -168,6 +168,24 @@ def black_floor(rgb: np.ndarray) -> float:
     return float((luma(rgb) < 16).mean())
 
 
+def veil_fraction(candidate: np.ndarray, reference: np.ndarray,
+                  dark: float = 8.0, lifted: float = 24.0) -> float:
+    """G2: fraction of *genuinely dark* pixels the candidate lifted.
+
+    Measured against the minimal-bloom reference, not against another
+    strategy. Round 1 showed why: the shipped default crushes real lit LEDs
+    at the panel edge to black, so comparing black-pixel *counts* between two
+    strategies rewards crushing and penalizes a candidate for restoring
+    content that is genuinely lit in the source. Only pixels that are dark in
+    the reference can be veiled; lifting a pixel the reference shows as lit is
+    restoration, not veil.
+    """
+    ref_dark = luma(reference) < dark
+    if ref_dark.sum() < 100:
+        return 0.0
+    return float((luma(candidate)[ref_dark] > lifted).mean())
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("candidate", type=Path)
@@ -199,17 +217,19 @@ def main() -> int:
     result["G1_white_bloom_aliveness_T2"] = round(g1, 3)
     result["G1_pass"] = g1 > 1.0
 
-    # G2: black floor at T0/T5 (vs baseline when given, else vs reference)
-    compare = args.baseline or args.reference
+    # G2: veil — genuinely dark pixels (per the minimal-bloom reference) that
+    # the candidate lifted. Never a strategy-vs-strategy black-pixel count.
     g2: dict[str, object] = {}
     g2_pass = True
-    for key in ("T0", "T5"):
-        cand = black_floor(frame_at(args.candidate, probes[key], width, height))
-        base = black_floor(frame_at(compare, probes[key], width, height))
-        g2[key] = {"candidate": round(cand, 4), "compare": round(base, 4)}
-        if cand < base - 0.03:  # candidate lit up pixels that should stay black
+    for key in ("T0", "T4", "T5"):
+        cand_frame = frame_at(args.candidate, probes[key], width, height)
+        ref_frame = frame_at(args.reference, probes[key], width, height)
+        veil = veil_fraction(cand_frame, ref_frame)
+        g2[key] = {"veil": round(veil, 4),
+                   "black_frac": round(black_floor(cand_frame), 4)}
+        if veil > 0.05:
             g2_pass = False
-    result["G2_black_floor"] = g2
+    result["G2_veil"] = g2
     result["G2_pass"] = g2_pass
 
     # G3: temporal stability in the steady window + frame-0 settledness

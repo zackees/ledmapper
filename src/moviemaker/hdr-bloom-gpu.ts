@@ -13,6 +13,7 @@ import {
     type WebGLRenderer,
 } from 'three';
 import {
+    CPU_ORACLE_HDR_BLOOM_STRATEGY,
     DEFAULT_HDR_BLOOM_STRATEGY,
     HDR_BLOOM_STRATEGIES,
     resolveHdrBloomStrategy,
@@ -41,14 +42,15 @@ void main() {
 `;
 
 /**
- * The default strategy's composite shader.
+ * The CPU-oracle strategy's composite shader.
  *
- * Every strategy's shader (including this one) now lives in
- * `hdr-bloom-strategies.ts`. This re-export keeps the historical import path
- * working for callers and tests that only care about the shipped default.
+ * Every strategy's shader now lives in `hdr-bloom-strategies.ts`. This
+ * re-export keeps the historical import path working. It is bound to the
+ * oracle strategy rather than to whatever is currently default, because its
+ * consumers compare it against the CPU composite in `bloom-utils.ts`.
  */
 export const HDR_BLOOM_COMPOSITE_FRAGMENT_SHADER =
-    HDR_BLOOM_STRATEGIES[DEFAULT_HDR_BLOOM_STRATEGY].fragmentShader;
+    HDR_BLOOM_STRATEGIES[CPU_ORACLE_HDR_BLOOM_STRATEGY].fragmentShader;
 
 export interface GpuHdrBloomComposite {
     /** Bracket-capture parameters owned by the active strategy. */

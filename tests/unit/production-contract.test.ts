@@ -37,7 +37,7 @@ describe('production v1 query contract', () => {
             maxResolution: 480,
             autoBloom: true,
             bloomStrength: 2.475,
-            bloomStrategy: 'chroma-shoulder',
+            bloomStrategy: 'norm-tonescale-guarded',
             previewRotate: false,
             aspect: 'square',
             videoMode: 'side-by-side',
@@ -67,8 +67,8 @@ describe('production v1 query contract', () => {
             'white-core-chroma',
         );
         assert.equal(
-            parseProductionQuery(`${REQUIRED}&bloomStrategy=linear-hdr`).bloomStrategy,
-            'linear-hdr',
+            parseProductionQuery(`${REQUIRED}&bloomStrategy=chroma-shoulder`).bloomStrategy,
+            'chroma-shoulder',
         );
     });
 

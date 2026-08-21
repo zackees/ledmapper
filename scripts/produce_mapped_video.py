@@ -344,7 +344,9 @@ def grid_label(screenmap: Path) -> str:
             return token
     try:
         data = json.loads(screenmap.read_text(encoding="utf-8"))
+        # v1 keeps strips under "map"; v2 keeps them in a "segments" list.
         count = sum(len(strip.get("x", [])) for strip in data.get("map", {}).values())
+        count += sum(len(segment.get("x", [])) for segment in data.get("segments", []))
         return f"{count}led"
     except (OSError, ValueError, AttributeError):
         return stem
@@ -371,6 +373,8 @@ def produce_one(
         options["outputFps"] = str(args.output_fps)
     if not args.auto_bloom:
         options["autoBloom"] = "0"
+    if args.bloom_strength is not None:
+        options["bloomStrength"] = f"{args.bloom_strength:g}"
     if strategy != DEFAULT_STRATEGY:
         options["bloomStrategy"] = strategy
 
@@ -524,6 +528,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         dest="auto_bloom",
         action="store_false",
         help="disable the default HDR auto bloom",
+    )
+    parser.add_argument(
+        "--bloom-strength",
+        type=float,
+        default=None,
+        help=(
+            "manual bloom strength (0.3-9). Combine with --no-auto-bloom and 0.3 "
+            "to render the minimal-bloom reference used by bloom_metrics.py"
+        ),
     )
     parser.add_argument(
         "--strategy",

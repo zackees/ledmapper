@@ -60,11 +60,38 @@ export const HDR_BLOOM_STRATEGY_NAMES = [
     'white-core-chroma',
     'sliding-window',
     'wide-surround-chroma',
+    'surround-white-safe',
+    'norm-tonescale',
+    'surround-white-glow',
+    'norm-tonescale-guarded',
+    'norm-tonescale-sharp',
+    'norm-surround-hue',
 ] as const;
 
 export type HdrBloomStrategyName = (typeof HDR_BLOOM_STRATEGY_NAMES)[number];
 
-export const DEFAULT_HDR_BLOOM_STRATEGY: HdrBloomStrategyName = 'chroma-shoulder';
+/**
+ * The shipped composite.
+ *
+ * Promoted from `chroma-shoulder` after the issue #493 evaluation. Measured on
+ * fluid_eyes3 (64x64, mapped-led) against a minimal-bloom reference, it fixes
+ * the dead-white-highlight failure (white-bloom aliveness -2.5 -> +3.3),
+ * raises hue fidelity of added bloom energy 3.4x (0.089 -> 0.302), raises
+ * chroma retention (0.63 -> 0.90) and holds core sharpness and a zero shadow
+ * veil. Confirmed on a hold-out clip and on the sparse ring map, where the
+ * previous default nearly lost the ring entirely.
+ */
+export const DEFAULT_HDR_BLOOM_STRATEGY: HdrBloomStrategyName = 'norm-tonescale-guarded';
+
+/**
+ * The one strategy `bloom-utils.compositeHdrBloomRgba` mirrors.
+ *
+ * Deliberately NOT tied to the default: the CPU oracle exists to verify the
+ * GPU path against a known twin, and it mirrors chroma-shoulder specifically.
+ * Promoting a new default must not silently repoint the oracle at an algorithm
+ * it does not implement.
+ */
+export const CPU_ORACLE_HDR_BLOOM_STRATEGY: HdrBloomStrategyName = 'chroma-shoulder';
 
 /** Bracket setup used by every strategy that did not customize it. */
 const STANDARD_BRACKETS: HdrBloomBracketConfig = {
@@ -610,6 +637,442 @@ void main() {
 }
 `;
 
+/**
+ * wide-surround-chroma, with its blown-core neutral penalty made conditional.
+ *
+ * The parent strategy suppresses neutral bloom wherever a pixel is bright and
+ * desaturated, on the theory that neutral energy is what drove it white. But a
+ * genuinely white LED is bright and desaturated by definition, so that penalty
+ * also fires on white sources that never washed out — issue #493 failure mode
+ * (b). The two-component ocular glare model says the near-halo tracks the
+ * source's own chromaticity: a white LED's halo is legitimately white.
+ *
+ * The penalty is therefore gated on `surroundPurity` — how much hue the
+ * surrounding region actually has to offer. Where the surround is colourful,
+ * the substitution is real and the neutral penalty still applies. Where the
+ * surround is itself neutral, the pixel is genuinely white and keeps its glow.
+ */
+const SURROUND_WHITE_SAFE_SHADER = PRELUDE + /* glsl */`
+float saturationOf(vec3 value) {
+    float m = maxChannel(value);
+    if (m < 1e-9) return 0.0;
+    return (m - minChannel(value)) / m;
+}
+
+void main() {
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec3 midLinear = texture2D(midFrame, vUv).rgb;
+    vec3 wideLinear = texture2D(highFrame, vUv).rgb;
+
+    vec3 raw = linearToSrgb(rawLinear);
+    float rawMax = maxChannel(raw);
+    float rawSaturation = saturationOf(raw);
+
+    vec3 midAdded = max(midLinear - rawLinear, vec3(0.0));
+    vec3 wideAdded = max(wideLinear - rawLinear, vec3(0.0));
+
+    vec3 surround = max(wideAdded - midAdded, vec3(0.0));
+    float surroundEnergy = maxChannel(surround);
+    vec3 surroundChroma = max(surround - vec3(minChannel(surround)), vec3(0.0));
+    float surroundChromaEnergy = maxChannel(surroundChroma);
+    float surroundPurity = surroundChromaEnergy / max(surroundEnergy, 1e-9);
+    vec3 surroundDirection = surroundChromaEnergy > 1e-9
+        ? surroundChroma / surroundChromaEnergy
+        : vec3(0.0);
+
+    vec3 localChroma = max(midAdded - vec3(minChannel(midAdded)), vec3(0.0));
+    float localChromaEnergy = maxChannel(localChroma);
+    vec3 localDirection = localChromaEnergy > 1e-9
+        ? localChroma / localChromaEnergy
+        : vec3(0.0);
+
+    float blownOut = v1Smoothstep(0.55, 0.92, rawMax)
+        * (1.0 - v1Smoothstep(0.05, 0.22, rawSaturation));
+    // Only borrow the surround's hue when it HAS one. Blending toward a null
+    // direction is what silently drained white cores in the parent strategy.
+    float surroundRescue = blownOut * v1Smoothstep(0.06, 0.30, surroundPurity);
+
+    vec3 chromaDirection = normalize(mix(localDirection, surroundDirection, surroundRescue)
+        + vec3(1e-6));
+    float directionPurity = mix(
+        localChromaEnergy / max(maxChannel(midAdded), 1e-9),
+        surroundPurity,
+        surroundRescue
+    );
+
+    float neutralBloom = minChannel(midAdded);
+    float sceneScale = mix(1.0, 0.35, globalBloomBias);
+    float protectedNeutral = neutralBloom * sceneScale;
+    if (rawMax < 0.04) {
+        protectedNeutral *= v1Smoothstep(0.025, 0.14, maxChannel(linearToSrgb(midLinear)));
+    }
+
+    float chromaEnergy = maxChannel(midAdded) * directionPurity
+        * mix(1.0, 0.65, globalBloomBias);
+    float chromaShoulder = srgbToLinear(0.40);
+    float mappedChromaEnergy = chromaShoulder
+        * (1.0 - exp(-chromaEnergy / max(chromaShoulder, 1e-9)));
+    float chromaGate = v1Smoothstep(srgbToLinear(0.010), srgbToLinear(0.055), chromaEnergy);
+    vec3 chromaticBloom = chromaDirection * mappedChromaEnergy * chromaGate;
+
+    protectedNeutral *= mix(1.0, 0.30, v1Smoothstep(0.15, 0.65, directionPurity));
+    // Gated on the rescue, not on blownOut: a white core with a white surround
+    // keeps its full neutral halo.
+    protectedNeutral *= mix(1.0, 0.45, surroundRescue);
+
+    float darkMask = 1.0 - v1Smoothstep(0.02, 0.12, rawMax);
+    float baseLimitSrgb = mix(0.18, 0.11, globalBloomBias);
+    float neutralLimit = mix(1.0, srgbToLinear(baseLimitSrgb), darkMask);
+    float neutralHeadroom = max(minChannel(vec3(1.0) - rawLinear), 0.0);
+    float neutralAdded = min(min(protectedNeutral, neutralLimit), neutralHeadroom);
+
+    vec3 baseWithNeutral = rawLinear + vec3(neutralAdded);
+    vec3 available = max(vec3(1.0) - baseWithNeutral, vec3(0.0));
+    float hueSafeScale = 1.0;
+    if (chromaticBloom.r > 1e-9) hueSafeScale = min(hueSafeScale, available.r / chromaticBloom.r);
+    if (chromaticBloom.g > 1e-9) hueSafeScale = min(hueSafeScale, available.g / chromaticBloom.g);
+    if (chromaticBloom.b > 1e-9) hueSafeScale = min(hueSafeScale, available.b / chromaticBloom.b);
+    vec3 compositeLinear = baseWithNeutral + chromaticBloom * clamp(hueSafeScale, 0.0, 1.0);
+
+    gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
+}
+`;
+
+/**
+ * The modern display-transform pattern, applied to bloom compositing.
+ *
+ * No white-merge detector exists here, so none can false-positive on a white
+ * pixel. Bloom is accumulated as added light in linear space, then ONE
+ * achromatic axis — the max-RGB norm — is tone-compressed and RGB is rebuilt
+ * from the untouched channel ratio. Because no channel is ever compressed
+ * independently, hue cannot rotate and a colored halo cannot converge to white
+ * as it brightens. Desaturation becomes an explicit, bounded "path to white"
+ * applied only as the norm approaches display maximum.
+ *
+ * Follows OpenDRT's max-RGB-norm tonescale + dechroma, Khronos PBR Neutral's
+ * hue-invariant shoulder, and ACES 2.0's rule that chroma compression should
+ * ease off where purity is already high.
+ */
+const NORM_TONESCALE_SHADER = PRELUDE + /* glsl */`
+void main() {
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec3 lowLinear = texture2D(lowFrame, vUv).rgb;
+    vec3 midLinear = texture2D(midFrame, vUv).rgb;
+    vec3 highLinear = texture2D(highFrame, vUv).rgb;
+
+    // Bloom is added light. Energy-proportional across brackets, never a
+    // replacement for the sharp base (Frostbite/COD linear-light discipline).
+    vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.45
+        + max(midLinear - rawLinear, vec3(0.0)) * 0.35
+        + max(highLinear - rawLinear, vec3(0.0)) * 0.30;
+
+    // A halo with no sharp core behind it must not become a scene-wide veil.
+    float rawMaxSrgb = maxChannel(linearToSrgb(rawLinear));
+    if (rawMaxSrgb < 0.04) {
+        added *= v1Smoothstep(0.025, 0.14, maxChannel(linearToSrgb(highLinear)));
+    }
+    added *= mix(1.0, 0.55, globalBloomBias);
+
+    vec3 scene = rawLinear + added;
+    float norm = maxChannel(scene);
+    if (norm < 1e-9) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    // Tone-compress the single norm axis; rebuild colour from the ratio.
+    float knee = 0.55;
+    float toned = norm <= knee
+        ? norm
+        : knee + (1.0 - knee) * (1.0 - exp(-(norm - knee) / max(1.0 - knee, 1e-9)));
+    vec3 toneMapped = (scene / norm) * toned;
+
+    // Explicit path-to-white: only near display max, and eased off where the
+    // colour is already pure so saturated halos resist whitening longest.
+    float purity = (norm - minChannel(scene)) / max(norm, 1e-9);
+    float dechroma = v1Smoothstep(0.85, 1.60, norm) * mix(0.40, 0.12, purity);
+    vec3 finalLinear = mix(toneMapped, vec3(toned), dechroma);
+
+    gl_FragColor = vec4(clamp(linearToSrgb(finalLinear), 0.0, 1.0), 1.0);
+}
+`;
+
+/**
+ * surround-white-safe, plus an explicit glow allowance for neutral sources.
+ *
+ * Round 2 measured that the surround gate alone barely moves this content: the
+ * energy that actually starves a white highlight is the global one. In a bright
+ * scene `sceneScale` cuts ALL neutral bloom to 35%, and neutral energy is the
+ * only bloom a white LED can have — a coloured LED still has its chroma path.
+ * The global exposure control is therefore applied asymmetrically: it keeps
+ * full authority over coloured pixels (where runaway neutral energy is what
+ * drives hue to white) and relaxes for bright neutral sources, whose halo is
+ * legitimately white. Bounded by `rawMax`, so shadows are untouched.
+ */
+const SURROUND_WHITE_GLOW_SHADER = PRELUDE + /* glsl */`
+float saturationOf(vec3 value) {
+    float m = maxChannel(value);
+    if (m < 1e-9) return 0.0;
+    return (m - minChannel(value)) / m;
+}
+
+void main() {
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec3 midLinear = texture2D(midFrame, vUv).rgb;
+    vec3 wideLinear = texture2D(highFrame, vUv).rgb;
+
+    vec3 raw = linearToSrgb(rawLinear);
+    float rawMax = maxChannel(raw);
+    float rawSaturation = saturationOf(raw);
+
+    vec3 midAdded = max(midLinear - rawLinear, vec3(0.0));
+    vec3 wideAdded = max(wideLinear - rawLinear, vec3(0.0));
+
+    vec3 surround = max(wideAdded - midAdded, vec3(0.0));
+    float surroundEnergy = maxChannel(surround);
+    vec3 surroundChroma = max(surround - vec3(minChannel(surround)), vec3(0.0));
+    float surroundChromaEnergy = maxChannel(surroundChroma);
+    float surroundPurity = surroundChromaEnergy / max(surroundEnergy, 1e-9);
+    vec3 surroundDirection = surroundChromaEnergy > 1e-9
+        ? surroundChroma / surroundChromaEnergy
+        : vec3(0.0);
+
+    vec3 localChroma = max(midAdded - vec3(minChannel(midAdded)), vec3(0.0));
+    float localChromaEnergy = maxChannel(localChroma);
+    vec3 localDirection = localChromaEnergy > 1e-9
+        ? localChroma / localChromaEnergy
+        : vec3(0.0);
+
+    float blownOut = v1Smoothstep(0.55, 0.92, rawMax)
+        * (1.0 - v1Smoothstep(0.05, 0.22, rawSaturation));
+    float surroundRescue = blownOut * v1Smoothstep(0.06, 0.30, surroundPurity);
+
+    vec3 chromaDirection = normalize(mix(localDirection, surroundDirection, surroundRescue)
+        + vec3(1e-6));
+    float directionPurity = mix(
+        localChromaEnergy / max(maxChannel(midAdded), 1e-9),
+        surroundPurity,
+        surroundRescue
+    );
+
+    // A bright, low-saturation SOURCE pixel: a white LED, not a washed-out one.
+    float neutralSource = v1Smoothstep(0.22, 0.62, rawMax)
+        * (1.0 - v1Smoothstep(0.05, 0.20, rawSaturation));
+
+    float neutralBloom = minChannel(midAdded);
+    // Relax the global exposure cut for genuinely white sources only.
+    float sceneScale = mix(mix(1.0, 0.35, globalBloomBias), 1.0, neutralSource * 0.80);
+    float protectedNeutral = neutralBloom * sceneScale;
+    if (rawMax < 0.04) {
+        protectedNeutral *= v1Smoothstep(0.025, 0.14, maxChannel(linearToSrgb(midLinear)));
+    }
+
+    float chromaEnergy = maxChannel(midAdded) * directionPurity
+        * mix(1.0, 0.65, globalBloomBias);
+    float chromaShoulder = srgbToLinear(0.40);
+    float mappedChromaEnergy = chromaShoulder
+        * (1.0 - exp(-chromaEnergy / max(chromaShoulder, 1e-9)));
+    float chromaGate = v1Smoothstep(srgbToLinear(0.010), srgbToLinear(0.055), chromaEnergy);
+    vec3 chromaticBloom = chromaDirection * mappedChromaEnergy * chromaGate;
+
+    protectedNeutral *= mix(1.0, 0.30, v1Smoothstep(0.15, 0.65, directionPurity));
+    protectedNeutral *= mix(1.0, 0.45, surroundRescue);
+
+    float darkMask = 1.0 - v1Smoothstep(0.02, 0.12, rawMax);
+    // The neutral ceiling also has to lift for a white source, or the glow is
+    // restored by sceneScale and then immediately clamped away again.
+    float baseLimitSrgb = mix(mix(0.18, 0.11, globalBloomBias), 0.30, neutralSource);
+    float neutralLimit = mix(1.0, srgbToLinear(baseLimitSrgb), darkMask);
+    float neutralHeadroom = max(minChannel(vec3(1.0) - rawLinear), 0.0);
+    float neutralAdded = min(min(protectedNeutral, neutralLimit), neutralHeadroom);
+
+    vec3 baseWithNeutral = rawLinear + vec3(neutralAdded);
+    vec3 available = max(vec3(1.0) - baseWithNeutral, vec3(0.0));
+    float hueSafeScale = 1.0;
+    if (chromaticBloom.r > 1e-9) hueSafeScale = min(hueSafeScale, available.r / chromaticBloom.r);
+    if (chromaticBloom.g > 1e-9) hueSafeScale = min(hueSafeScale, available.g / chromaticBloom.g);
+    if (chromaticBloom.b > 1e-9) hueSafeScale = min(hueSafeScale, available.b / chromaticBloom.b);
+    vec3 compositeLinear = baseWithNeutral + chromaticBloom * clamp(hueSafeScale, 0.0, 1.0);
+
+    gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
+}
+`;
+
+/**
+ * norm-tonescale with the veil closed.
+ *
+ * Round 2 measured the unguarded version lifting 64% of genuinely dark pixels
+ * and dropping saturation to 0.38. Both come from the same cause: a
+ * zero-threshold bloom pass deposits *neutral* energy everywhere, which floods
+ * shadows and raises every pixel's min channel (destroying purity before the
+ * tonescale ever runs). The norm tonescale is kept — it is what prevents hue
+ * rotation at the bright end — but the neutral component of added light is now
+ * attenuated by how much sharp light actually stands behind the pixel, which
+ * is the one thing the unguarded version had no opinion about.
+ */
+const NORM_TONESCALE_GUARDED_SHADER = PRELUDE + /* glsl */`
+void main() {
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec3 lowLinear = texture2D(lowFrame, vUv).rgb;
+    vec3 midLinear = texture2D(midFrame, vUv).rgb;
+    vec3 highLinear = texture2D(highFrame, vUv).rgb;
+
+    vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.45
+        + max(midLinear - rawLinear, vec3(0.0)) * 0.35
+        + max(highLinear - rawLinear, vec3(0.0)) * 0.30;
+
+    float rawMax = maxChannel(linearToSrgb(rawLinear));
+
+    // Split added light. Chromatic residual is what makes a halo read as
+    // coloured and can never push a pixel toward white, so it passes freely.
+    // Shared neutral energy is the veil-former and the whitening agent, so it
+    // is the only part gated by how lit this pixel already is.
+    float addedNeutral = minChannel(added);
+    vec3 addedChroma = max(added - vec3(addedNeutral), vec3(0.0));
+    float neutralGate = v1Smoothstep(0.02, 0.30, rawMax);
+    vec3 guardedAdded = addedChroma + vec3(addedNeutral * neutralGate);
+    guardedAdded *= mix(1.0, 0.55, globalBloomBias);
+
+    vec3 scene = rawLinear + guardedAdded;
+    float norm = maxChannel(scene);
+    if (norm < 1e-9) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    float knee = 0.55;
+    float toned = norm <= knee
+        ? norm
+        : knee + (1.0 - knee) * (1.0 - exp(-(norm - knee) / max(1.0 - knee, 1e-9)));
+    vec3 toneMapped = (scene / norm) * toned;
+
+    float purity = (norm - minChannel(scene)) / max(norm, 1e-9);
+    float dechroma = v1Smoothstep(0.85, 1.60, norm) * mix(0.40, 0.12, purity);
+    vec3 finalLinear = mix(toneMapped, vec3(toned), dechroma);
+
+    gl_FragColor = vec4(clamp(linearToSrgb(finalLinear), 0.0, 1.0), 1.0);
+}
+`;
+
+/**
+ * norm-tonescale-guarded, retuned for LED-core contrast.
+ *
+ * The guarded version's one measured weakness against the surround family was
+ * core similarity: its widest bracket carries the most energy at the lowest
+ * spatial frequency, which softens the sharp LED dot it sits on. Weight shifts
+ * toward the tight bracket and the tonescale knee moves up, so midtones pass
+ * through linearly and only true highlights roll off.
+ */
+const NORM_TONESCALE_SHARP_SHADER = PRELUDE + /* glsl */`
+void main() {
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec3 lowLinear = texture2D(lowFrame, vUv).rgb;
+    vec3 midLinear = texture2D(midFrame, vUv).rgb;
+    vec3 highLinear = texture2D(highFrame, vUv).rgb;
+
+    vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.55
+        + max(midLinear - rawLinear, vec3(0.0)) * 0.30
+        + max(highLinear - rawLinear, vec3(0.0)) * 0.20;
+
+    float rawMax = maxChannel(linearToSrgb(rawLinear));
+    float addedNeutral = minChannel(added);
+    vec3 addedChroma = max(added - vec3(addedNeutral), vec3(0.0));
+    float neutralGate = v1Smoothstep(0.02, 0.30, rawMax);
+    vec3 guardedAdded = addedChroma + vec3(addedNeutral * neutralGate);
+    guardedAdded *= mix(1.0, 0.55, globalBloomBias);
+
+    vec3 scene = rawLinear + guardedAdded;
+    float norm = maxChannel(scene);
+    if (norm < 1e-9) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    float knee = 0.68;
+    float toned = norm <= knee
+        ? norm
+        : knee + (1.0 - knee) * (1.0 - exp(-(norm - knee) / max(1.0 - knee, 1e-9)));
+    vec3 toneMapped = (scene / norm) * toned;
+
+    float purity = (norm - minChannel(scene)) / max(norm, 1e-9);
+    float dechroma = v1Smoothstep(0.85, 1.60, norm) * mix(0.40, 0.12, purity);
+    vec3 finalLinear = mix(toneMapped, vec3(toned), dechroma);
+
+    gl_FragColor = vec4(clamp(linearToSrgb(finalLinear), 0.0, 1.0), 1.0);
+}
+`;
+
+/**
+ * The two round-3 winners combined.
+ *
+ * norm-tonescale-guarded prevents whitening on the way up; the surround family
+ * repairs a core that arrived already white in the source. They address
+ * different halves of the problem, so this borrows the annulus hue reference
+ * and applies it to the norm tonescale's channel ratio — brightness still
+ * comes from the tone-compressed norm, only the hue is rotated, and only where
+ * the pixel is blown out and the surround actually has a hue to lend.
+ */
+const NORM_SURROUND_HUE_SHADER = PRELUDE + /* glsl */`
+void main() {
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec3 lowLinear = texture2D(lowFrame, vUv).rgb;
+    vec3 midLinear = texture2D(midFrame, vUv).rgb;
+    vec3 highLinear = texture2D(highFrame, vUv).rgb;
+
+    vec3 midAdded = max(midLinear - rawLinear, vec3(0.0));
+    vec3 highAdded = max(highLinear - rawLinear, vec3(0.0));
+
+    vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.45
+        + midAdded * 0.35
+        + highAdded * 0.30;
+
+    float rawMax = maxChannel(linearToSrgb(rawLinear));
+    float addedNeutral = minChannel(added);
+    vec3 addedChroma = max(added - vec3(addedNeutral), vec3(0.0));
+    float neutralGate = v1Smoothstep(0.02, 0.30, rawMax);
+    vec3 guardedAdded = addedChroma + vec3(addedNeutral * neutralGate);
+    guardedAdded *= mix(1.0, 0.55, globalBloomBias);
+
+    vec3 scene = rawLinear + guardedAdded;
+    float norm = maxChannel(scene);
+    if (norm < 1e-9) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    // Annulus hue: light from around the pixel, with the core's own (already
+    // achromatic) contribution removed.
+    vec3 surround = max(highAdded - midAdded, vec3(0.0));
+    float surroundEnergy = maxChannel(surround);
+    float surroundPurity = surroundEnergy > 1e-9
+        ? (surroundEnergy - minChannel(surround)) / surroundEnergy
+        : 0.0;
+    float rawSaturation = maxChannel(rawLinear) > 1e-9
+        ? (maxChannel(rawLinear) - minChannel(rawLinear)) / maxChannel(rawLinear)
+        : 0.0;
+    float blownOut = v1Smoothstep(0.55, 0.92, rawMax)
+        * (1.0 - v1Smoothstep(0.05, 0.22, rawSaturation));
+    float rescue = blownOut * v1Smoothstep(0.06, 0.30, surroundPurity) * 0.6;
+
+    vec3 sceneRatio = scene / norm;
+    vec3 surroundRatio = surroundEnergy > 1e-9 ? surround / surroundEnergy : sceneRatio;
+    // Brightness stays with the norm; only the ratio (hue) is borrowed.
+    vec3 ratio = mix(sceneRatio, surroundRatio, rescue);
+
+    float knee = 0.55;
+    float toned = norm <= knee
+        ? norm
+        : knee + (1.0 - knee) * (1.0 - exp(-(norm - knee) / max(1.0 - knee, 1e-9)));
+    vec3 toneMapped = ratio * toned;
+
+    float purity = (norm - minChannel(scene)) / max(norm, 1e-9);
+    float dechroma = v1Smoothstep(0.85, 1.60, norm) * mix(0.40, 0.12, purity);
+    vec3 finalLinear = mix(toneMapped, vec3(toned), dechroma);
+
+    gl_FragColor = vec4(clamp(linearToSrgb(finalLinear), 0.0, 1.0), 1.0);
+}
+`;
+
 export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy> = {
     'chroma-shoulder': {
         name: 'chroma-shoulder',
@@ -691,6 +1154,102 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
             highThresholdBright: 0,
         },
         fragmentShader: WIDE_SURROUND_CHROMA_SHADER,
+        supportsCpuOracle: false,
+    },
+    'surround-white-safe': {
+        name: 'surround-white-safe',
+        label: 'surround-white-safe (r2)',
+        description:
+            'wide-surround-chroma with the blown-core neutral penalty gated on '
+            + 'surround purity, so a genuinely white LED keeps its white halo.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1, 3.2],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+        },
+        fragmentShader: SURROUND_WHITE_SAFE_SHADER,
+        supportsCpuOracle: false,
+    },
+    'norm-tonescale': {
+        name: 'norm-tonescale',
+        label: 'norm-tonescale (r2)',
+        description:
+            'Max-RGB-norm tonescale with hue-preserving ratio reconstruction and a '
+            + 'bounded path-to-white. No white-merge heuristic exists to misfire.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1, 2.2],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+        },
+        fragmentShader: NORM_TONESCALE_SHADER,
+        supportsCpuOracle: false,
+    },
+    'surround-white-glow': {
+        name: 'surround-white-glow',
+        label: 'surround-white-glow (r3)',
+        description:
+            'surround-white-safe plus an asymmetric global-exposure relaxation and '
+            + 'neutral ceiling for bright neutral sources, so white LEDs glow fully.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1, 3.2],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+        },
+        fragmentShader: SURROUND_WHITE_GLOW_SHADER,
+        supportsCpuOracle: false,
+    },
+    'norm-tonescale-guarded': {
+        name: 'norm-tonescale-guarded',
+        label: 'norm-tonescale-guarded (r3)',
+        description:
+            'norm-tonescale with the neutral component of added light gated by local '
+            + 'sharp energy, closing the shadow veil that sank the unguarded version.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1, 2.2],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+        },
+        fragmentShader: NORM_TONESCALE_GUARDED_SHADER,
+        supportsCpuOracle: false,
+    },
+    'norm-tonescale-sharp': {
+        name: 'norm-tonescale-sharp',
+        label: 'norm-tonescale-sharp (r4)',
+        description:
+            'norm-tonescale-guarded weighted toward the tight bracket with a higher '
+            + 'tonescale knee, trading halo width for LED-core contrast.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1, 2.2],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+        },
+        fragmentShader: NORM_TONESCALE_SHARP_SHADER,
+        supportsCpuOracle: false,
+    },
+    'norm-surround-hue': {
+        name: 'norm-surround-hue',
+        label: 'norm-surround-hue (r4)',
+        description:
+            'norm-tonescale-guarded plus the annulus hue reference: brightness from '
+            + 'the tone-compressed norm, hue borrowed from the surround on blown cores.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1, 3.2],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+        },
+        fragmentShader: NORM_SURROUND_HUE_SHADER,
         supportsCpuOracle: false,
     },
 };

@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 
 import { HDR_BLOOM_COMPOSITE_FRAGMENT_SHADER } from '../../src/moviemaker/hdr-bloom-gpu';
 import {
+    CPU_ORACLE_HDR_BLOOM_STRATEGY,
     DEFAULT_HDR_BLOOM_STRATEGY,
     HDR_BLOOM_STRATEGIES,
     HDR_BLOOM_STRATEGY_NAMES,
@@ -23,21 +24,24 @@ void describe('HDR bloom strategies', () => {
         }
     });
 
-    void test('the legacy export stays bound to the default strategy', () => {
+    void test('the legacy export stays bound to the CPU-oracle strategy', () => {
+        // Bound to the oracle, not the default: its consumers diff it against
+        // compositeHdrBloomRgba, so promoting a new default must not repoint
+        // it at an algorithm the CPU composite does not implement.
         assert.equal(
             HDR_BLOOM_COMPOSITE_FRAGMENT_SHADER,
-            HDR_BLOOM_STRATEGIES[DEFAULT_HDR_BLOOM_STRATEGY].fragmentShader,
+            HDR_BLOOM_STRATEGIES[CPU_ORACLE_HDR_BLOOM_STRATEGY].fragmentShader,
         );
     });
 
-    void test('only the default strategy claims a CPU oracle', () => {
+    void test('only the CPU-oracle strategy claims oracle support', () => {
         // compositeHdrBloomRgba mirrors one algorithm. Any other strategy
         // claiming oracle support would make verify-full diff two different
         // algorithms and report a meaningless mismatch.
         for (const name of HDR_BLOOM_STRATEGY_NAMES) {
             assert.equal(
                 resolveHdrBloomStrategy(name).supportsCpuOracle,
-                name === DEFAULT_HDR_BLOOM_STRATEGY,
+                name === CPU_ORACLE_HDR_BLOOM_STRATEGY,
                 `${name} has the wrong oracle claim`,
             );
         }
@@ -61,24 +65,38 @@ void describe('HDR bloom strategies', () => {
             assert.equal(highThresholdDark, 0);
             assert.equal(highThresholdBright, 0);
         }
-        const current = resolveHdrBloomStrategy(DEFAULT_HDR_BLOOM_STRATEGY).brackets;
-        assert.equal(current.highThresholdDark, 0.08);
-        assert.equal(current.highThresholdBright, 0.16);
+        const oracle = resolveHdrBloomStrategy(CPU_ORACLE_HDR_BLOOM_STRATEGY).brackets;
+        assert.equal(oracle.highThresholdDark, 0.08);
+        assert.equal(oracle.highThresholdBright, 0.16);
+        // The promoted default reads its surround, so it must not share the
+        // oracle's single-scale brackets.
+        assert.ok(resolveHdrBloomStrategy(DEFAULT_HDR_BLOOM_STRATEGY).brackets.radiusScales[2] > 1);
     });
 
-    void test('only wide-surround-chroma separates the brackets spatially', () => {
+    void test('only surround-based strategies separate the brackets spatially', () => {
         // Equal radii make the brackets near-scalar multiples of one another,
         // so no selection among them can recover hue none of them carries.
-        // That is the whole point of this strategy, and the reason the others
-        // cannot fix a blown white core by selection alone.
-        assert.ok(resolveHdrBloomStrategy('wide-surround-chroma').brackets.radiusScales[2] > 1);
+        // Every strategy that reads hue from the region AROUND a pixel needs a
+        // genuinely wider bracket; the selection-only strategies must keep the
+        // historical single scale so their renders stay reproducible.
+        const spatiallySeparated = new Set([
+            'wide-surround-chroma', 'surround-white-safe', 'norm-tonescale',
+            'surround-white-glow', 'norm-tonescale-guarded',
+            'norm-tonescale-sharp', 'norm-surround-hue',
+        ]);
         for (const name of HDR_BLOOM_STRATEGY_NAMES) {
-            if (name === 'wide-surround-chroma') continue;
-            assert.deepEqual(
-                [...resolveHdrBloomStrategy(name).brackets.radiusScales],
-                [1, 1, 1],
-                `${name} should keep the historical single-scale brackets`,
-            );
+            const { radiusScales } = resolveHdrBloomStrategy(name).brackets;
+            if (spatiallySeparated.has(name)) {
+                assert.ok(
+                    radiusScales[2] > 1,
+                    `${name} needs a genuinely wider high bracket to read its surround`,
+                );
+            } else {
+                assert.deepEqual(
+                    [...radiusScales], [1, 1, 1],
+                    `${name} should keep the historical single-scale brackets`,
+                );
+            }
         }
     });
 
