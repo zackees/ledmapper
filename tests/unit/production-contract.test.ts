@@ -37,6 +37,7 @@ describe('production v1 query contract', () => {
             maxResolution: 480,
             autoBloom: true,
             bloomStrength: 2.475,
+            bloomStrategy: 'chroma-shoulder',
             previewRotate: false,
             aspect: 'square',
             videoMode: 'side-by-side',
@@ -60,6 +61,17 @@ describe('production v1 query contract', () => {
         assert.equal(config.hidden, true);
     });
 
+    void test('selects an HDR bloom strategy by name', () => {
+        assert.equal(
+            parseProductionQuery(`${REQUIRED}&bloomStrategy=white-core-chroma`).bloomStrategy,
+            'white-core-chroma',
+        );
+        assert.equal(
+            parseProductionQuery(`${REQUIRED}&bloomStrategy=linear-hdr`).bloomStrategy,
+            'linear-hdr',
+        );
+    });
+
     void test('rejects missing, duplicate, and unknown parameters', () => {
         assert.equal(contractError('input=https://example.com/a.zip&output=fled').code, 'MISSING_PARAMETER');
         assert.equal(contractError(`${REQUIRED}&output=fled`).code, 'DUPLICATE_PARAMETER');
@@ -72,6 +84,7 @@ describe('production v1 query contract', () => {
         assert.equal(contractError(`${REQUIRED}&maxResolution=500`).code, 'INVALID_ENUM');
         assert.equal(contractError(`${REQUIRED}&videoMode=picture-in-picture`).code, 'INVALID_ENUM');
         assert.equal(contractError(`${REQUIRED}&outputFps=24`).code, 'INVALID_ENUM');
+        assert.equal(contractError(`${REQUIRED}&bloomStrategy=nope`).code, 'INVALID_ENUM');
     });
 
     void test('rejects partial, non-finite, and out-of-range numbers', () => {

@@ -169,6 +169,7 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
                 bloomUseBlowoutRisk: true,
                 enableHdrBloom: true,
                 hdrBloomCompositeMode: productionHdrCompositeMode(),
+                hdrBloomStrategy: config.bloomStrategy,
             });
             preview.setAutoBloom(config.autoBloom);
             preview.setManualBloomStrength(config.bloomStrength);

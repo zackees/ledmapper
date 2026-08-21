@@ -1,3 +1,9 @@
+import {
+    DEFAULT_HDR_BLOOM_STRATEGY,
+    HDR_BLOOM_STRATEGY_NAMES,
+    type HdrBloomStrategyName,
+} from '../moviemaker/hdr-bloom-strategies';
+
 export const PRODUCTION_CONTRACT_VERSION = 1 as const;
 export const MAX_PRODUCTION_QUERY_LENGTH = 8_192;
 export const MAX_PRODUCTION_INPUT_URL_LENGTH = 4_096;
@@ -28,6 +34,8 @@ export interface ProductionConfig {
     maxResolution: 0 | 240 | 360 | 480 | 720 | 960;
     autoBloom: boolean;
     bloomStrength: number;
+    /** Which HDR bloom composite algorithm to render with. */
+    bloomStrategy: HdrBloomStrategyName;
     previewRotate: boolean;
     aspect: ProductionAspect;
     videoMode: ProductionVideoMode;
@@ -66,7 +74,7 @@ const ALLOWED_KEYS = new Set([
     'v', 'input', 'output', 'rotation', 'panelRotation', 'zoom', 'translateX', 'translateY',
     'blurRadius', 'blurSigma', 'brightness', 'gamma', 'limitBrightness',
     'maxBrightness', 'maxResolution', 'autoBloom', 'bloomStrength',
-    'previewRotate', 'aspect', 'videoMode', 'outputFps', 'hidden',
+    'previewRotate', 'aspect', 'videoMode', 'outputFps', 'hidden', 'bloomStrategy',
 ]);
 
 function required(params: URLSearchParams, name: string): string {
@@ -170,6 +178,12 @@ export function parseProductionQuery(search: string): ProductionConfig {
         maxResolution: maxResolution as ProductionConfig['maxResolution'],
         autoBloom: strictBoolean(params, 'autoBloom', true),
         bloomStrength: strictNumber(params, 'bloomStrength', 2.475, 0.3, 9),
+        bloomStrategy: strictEnum(
+            params,
+            'bloomStrategy',
+            HDR_BLOOM_STRATEGY_NAMES,
+            DEFAULT_HDR_BLOOM_STRATEGY,
+        ),
         previewRotate: strictBoolean(params, 'previewRotate', false),
         aspect: strictEnum(params, 'aspect', ['square', 'portrait', 'landscape'], 'square'),
         videoMode: strictEnum(params, 'videoMode', ['side-by-side', 'mapped-led'], 'side-by-side'),
