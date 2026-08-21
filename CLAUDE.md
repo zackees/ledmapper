@@ -182,8 +182,14 @@ For iterating on UI/behavior changes: **`.claude/skills/ui-dev-loop/SKILL.md`**.
 ## Agent production-video requests
 
 When asked to take a local MP4 (including a file under `E:\video`), apply a
-screenmap, record it, and show the result, use the unattended production CLI
-instead of trying to drive the interactive recorder. Package exactly the input
+screenmap, record it, and show the result, prefer the one-command wrapper
+`scripts/produce_mapped_video.py` — see `.claude/skills/produce-mapped-video/SKILL.md`.
+It performs the whole packaging/serving/producing/naming/splicing sequence
+described below. Fall back to the manual steps only when the wrapper's options
+do not cover the request.
+
+The manual workflow, which the wrapper automates: use the unattended production
+CLI instead of trying to drive the interactive recorder. Package exactly the input
 MP4 and a file named `screenmap.json` into an input ZIP, serve that ZIP locally,
 run `scripts/produce_video_mapping.py` with `--allow-private-network`, extract
 the output ZIP, and open the emitted MP4 with `Start-Process`.
