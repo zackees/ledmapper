@@ -168,6 +168,30 @@ def black_floor(rgb: np.ndarray) -> float:
     return float((luma(rgb) < 16).mean())
 
 
+def whiteout_ratio(rgb: np.ndarray, blur_radius: int = 12) -> float:
+    """S4: dot-merge inside the frame's hottest region (#493 acrylic model).
+
+    Frosted acrylic at full drive shows one glowing pane, not separated dots.
+    Region = pixels whose blurred luma is within 60% of the frame's blurred
+    peak. Ratio = P25 / P90 of raw luma inside that region: gaps between LED
+    cores drag P25 down, so separated dots score low and a merged white-out
+    approaches 1.0. Nan when the frame has no meaningfully bright region.
+    """
+    y = luma(rgb)
+    field = box_blur(y[..., None], blur_radius)[..., 0]
+    peak = field.max()
+    if peak < 40:
+        return float("nan")
+    region = field > peak * 0.6
+    if region.sum() < 200:
+        return float("nan")
+    values = y[region]
+    p90 = np.percentile(values, 90)
+    if p90 < 1e-9:
+        return float("nan")
+    return float(np.percentile(values, 25) / p90)
+
+
 def veil_fraction(candidate: np.ndarray, reference: np.ndarray,
                   dark: float = 8.0, lifted: float = 24.0) -> float:
     """G2: fraction of *genuinely dark* pixels the candidate lifted.
@@ -251,10 +275,18 @@ def main() -> int:
         result[f"S1_hue_fidelity_{key}"] = round(hue_fidelity(cand, ref), 4)
         result[f"S2_satavg_{key}"] = round(saturation_avg(cand), 4)
 
-    # S3 at T4
+    # S3 at T4 (dim/mid content only — inside a bright region the acrylic
+    # directive requires dots to MERGE, so core sharpness is not scored there)
     cand = frame_at(args.candidate, probes["T4"], width, height)
     ref = frame_at(args.reference, probes["T4"], width, height)
     result["S3_core_similarity_T4"] = round(core_similarity(cand, ref), 4)
+
+    # S4: white-out ratio at the white peak (acrylic directive). Reported for
+    # the reference too, so the reader sees how much merging bloom added.
+    cand_t2 = frame_at(args.candidate, probes["T2"], width, height)
+    ref_t2 = frame_at(args.reference, probes["T2"], width, height)
+    result["S4_whiteout_T2"] = round(whiteout_ratio(cand_t2), 4)
+    result["S4_whiteout_T2_reference"] = round(whiteout_ratio(ref_t2), 4)
 
     result["gates_pass"] = bool(result["G1_pass"] and result["G2_pass"] and result["G3_pass"])
 

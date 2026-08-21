@@ -291,8 +291,13 @@ new A/B splice after every meaningful change. Judge the result at known
 timestamps rather than from a single still. The target is colorful highlight
 bleed that retains hue and local contrast, not a uniformly brighter image.
 
-- Preserve the unbloomed sharp base. Treat bloom as added light, not as a
-  replacement for source detail.
+- Model the panel as LEDs behind a frosted acrylic diffuser (#493 revised
+  directive). Diffusion grows with drive level: dim/mid content keeps a sharp
+  base with bloom as added light, but a fully driven white region must white
+  out into one continuous pane — separated dots inside full-white content are
+  a defect, not detail preservation. Colored light keeps its hue past
+  threshold (hue-locked norm limiting, never per-channel clipping); unlit
+  panel stays black.
 - Keep the working buffers linear and float/half-float; convert source sRGB
   values to linear once, composite there, and encode display-sRGB exactly once
   at output. A missing or double transfer conversion lifts shadows severely.

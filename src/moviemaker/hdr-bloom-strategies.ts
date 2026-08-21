@@ -66,6 +66,8 @@ export const HDR_BLOOM_STRATEGY_NAMES = [
     'norm-tonescale-guarded',
     'norm-tonescale-sharp',
     'norm-surround-hue',
+    'legacy-additive',
+    'acrylic-overflow',
 ] as const;
 
 export type HdrBloomStrategyName = (typeof HDR_BLOOM_STRATEGY_NAMES)[number];
@@ -73,15 +75,19 @@ export type HdrBloomStrategyName = (typeof HDR_BLOOM_STRATEGY_NAMES)[number];
 /**
  * The shipped composite.
  *
- * Promoted from `chroma-shoulder` after the issue #493 evaluation. Measured on
- * fluid_eyes3 (64x64, mapped-led) against a minimal-bloom reference, it fixes
- * the dead-white-highlight failure (white-bloom aliveness -2.5 -> +3.3),
- * raises hue fidelity of added bloom energy 3.4x (0.089 -> 0.302), raises
- * chroma retention (0.63 -> 0.90) and holds core sharpness and a zero shadow
- * veil. Confirmed on a hold-out clip and on the sparse ring map, where the
- * previous default nearly lost the ring entirely.
+ * Promoted after the issue #493 frosted-acrylic directive: the panel must
+ * behave like LEDs behind a frosted acrylic diffuser — glow grows steeply
+ * with drive level, a fully driven white region whites out into one pane
+ * (matching the legacy additive bloom's diffusion response), while colored
+ * light keeps its hue past threshold instead of clipping per-channel to
+ * white, and unlit panel stays black. Measured on fluid_eyes3 (64x64,
+ * mapped-led) against a minimal-bloom reference: white-out ratio 0.473
+ * (legacy 0.466, norm-tonescale-guarded 0.426), white-bloom aliveness +4.25,
+ * hue fidelity 0.246/0.382 vs legacy's 0.070/0.074, zero shadow veil vs
+ * legacy's 0.752. Confirmed on the color_bubble_swirl hold-out clip
+ * (hue fidelity 0.789/0.815) and the sparse ring_24 map.
  */
-export const DEFAULT_HDR_BLOOM_STRATEGY: HdrBloomStrategyName = 'norm-tonescale-guarded';
+export const DEFAULT_HDR_BLOOM_STRATEGY: HdrBloomStrategyName = 'acrylic-overflow';
 
 /**
  * The one strategy `bloom-utils.compositeHdrBloomRgba` mirrors.
@@ -1073,6 +1079,107 @@ void main() {
 }
 `;
 
+/**
+ * The legacy look, reconstructed as a reference tile.
+ *
+ * Plain additive bloom with a per-channel clamp — the pre-HDR composite whose
+ * diffusion response the frosted-acrylic directive (#493) names as the target:
+ * glow grows steeply with drive level and a fully driven region whites out.
+ * It also reproduces the legacy defect on purpose: past threshold, a pure
+ * red/green/blue core overflows, the saturated channels clip first, and the
+ * residue turns white. Kept so every acrylic candidate can be A/B'd against
+ * the look it is supposed to match-except-for-the-defect.
+ */
+const LEGACY_ADDITIVE_SHADER = PRELUDE + /* glsl */`
+void main() {
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec3 lowLinear = texture2D(lowFrame, vUv).rgb;
+    vec3 midLinear = texture2D(midFrame, vUv).rgb;
+    vec3 highLinear = texture2D(highFrame, vUv).rgb;
+
+    vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.50
+        + max(midLinear - rawLinear, vec3(0.0)) * 0.40
+        + max(highLinear - rawLinear, vec3(0.0)) * 0.35;
+    added *= mix(1.0, 0.55, globalBloomBias);
+
+    // Per-channel clamp: the defect under study, preserved faithfully.
+    vec3 compositeLinear = min(rawLinear + added, vec3(1.0));
+    gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
+}
+`;
+
+/**
+ * The frosted-acrylic diffuser composite (#493 revised directive).
+ *
+ * Keeps legacy bloom's energy and spatial response; changes only what happens
+ * past the threshold brightness. Overflow is never clipped per channel —
+ * the pixel's hue ratio is held fixed, and as local drive approaches full the
+ * wide scatter lobe is fed extra energy, so excess light goes OUTWARD into
+ * diffusion instead of UPWARD into clipping. A blown red LED floods a wide
+ * red glow; a blown white region whites out; same mechanism, no special case.
+ * True shadows keep a low-energy gate so isolated dark panel stays black,
+ * while gaps inside a hot region fill in — which is exactly the white-out.
+ */
+const ACRYLIC_OVERFLOW_SHADER = PRELUDE + /* glsl */`
+void main() {
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec3 lowLinear = texture2D(lowFrame, vUv).rgb;
+    vec3 midLinear = texture2D(midFrame, vUv).rgb;
+    vec3 highLinear = texture2D(highFrame, vUv).rgb;
+
+    vec3 highAdded = max(highLinear - rawLinear, vec3(0.0));
+    vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.50
+        + max(midLinear - rawLinear, vec3(0.0)) * 0.40
+        + highAdded * 0.35;
+    added *= mix(1.0, 0.55, globalBloomBias);
+
+    // Neutral/chroma split as in norm-tonescale-guarded: chroma passes
+    // freely, neutral energy is the veil-former. But the acrylic model needs
+    // the gate OPEN inside hot regions — gaps between fully driven LEDs must
+    // fill (that IS the white-out) — so litness is extended by hot-region
+    // membership, read from the wide lobe's magnitude.
+    float rawMax = maxChannel(linearToSrgb(rawLinear));
+    float addedNeutral = minChannel(added);
+    vec3 addedChroma = max(added - vec3(addedNeutral), vec3(0.0));
+    // Hot-region membership opens the neutral gate only where the local glow
+    // is itself neutral: a white region's gaps fill white (the white-out),
+    // while a red region's gaps are filled by addedChroma alone and stay red.
+    float wideMax = maxChannel(highAdded);
+    float widePurity = wideMax > 1e-9
+        ? (wideMax - minChannel(highAdded)) / wideMax
+        : 0.0;
+    float hotRegion = v1Smoothstep(0.45, 0.85, maxChannel(linearToSrgb(highLinear)))
+        * (1.0 - v1Smoothstep(0.25, 0.60, widePurity));
+    float neutralGate = max(v1Smoothstep(0.02, 0.30, rawMax), hotRegion);
+    vec3 scene = rawLinear + addedChroma + vec3(addedNeutral * neutralGate);
+    float norm = maxChannel(scene);
+
+    // Diffuser flare: past the threshold brightness, pour extra energy in.
+    // Magnitude comes from the wide lobe; DIRECTION is the pixel's own hue
+    // ratio, so a blown red core flares red rather than the lobe's mixture.
+    float flare = v1Smoothstep(0.70, 1.35, norm);
+    if (norm > 1e-9) {
+        scene += (scene / norm) * wideMax * flare * 0.9;
+    }
+    norm = maxChannel(scene);
+
+    if (norm < 1e-9) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    // Hue-locked limiting instead of the legacy per-channel clamp: a soft
+    // shoulder on the single norm axis, RGB rebuilt from the untouched ratio.
+    float knee = 0.80;
+    float toned = norm <= knee
+        ? norm
+        : knee + (1.0 - knee) * (1.0 - exp(-(norm - knee) / max(1.0 - knee, 1e-9)));
+    vec3 compositeLinear = (scene / norm) * min(toned, 1.0);
+
+    gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
+}
+`;
+
 export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy> = {
     'chroma-shoulder': {
         name: 'chroma-shoulder',
@@ -1250,6 +1357,38 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
             highThresholdBright: 0,
         },
         fragmentShader: NORM_SURROUND_HUE_SHADER,
+        supportsCpuOracle: false,
+    },
+    'legacy-additive': {
+        name: 'legacy-additive',
+        label: 'legacy-additive (acrylic ref)',
+        description:
+            'Reconstruction of the pre-HDR additive bloom, per-channel clamp and '
+            + 'all. The acrylic directive\'s reference for diffusion response.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1.6, 3.2],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+        },
+        fragmentShader: LEGACY_ADDITIVE_SHADER,
+        supportsCpuOracle: false,
+    },
+    'acrylic-overflow': {
+        name: 'acrylic-overflow',
+        label: 'acrylic-overflow (r5)',
+        description:
+            'Legacy bloom energy with hue-locked overflow: past threshold, excess '
+            + 'light goes outward into the wide lobe instead of clipping to white.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1.6, 3.2],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+        },
+        fragmentShader: ACRYLIC_OVERFLOW_SHADER,
         supportsCpuOracle: false,
     },
 };
