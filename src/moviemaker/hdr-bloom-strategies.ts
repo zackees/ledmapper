@@ -1211,7 +1211,17 @@ void main() {
     vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.50
         + max(midLinear - rawLinear, vec3(0.0)) * 0.40
         + highAdded * 0.35;
-    added *= mix(1.0, 0.55, globalBloomBias);
+    // The acrylic PSF is intensity-independent, but the auto-bloom iris
+    // collapses capture strength toward its floor as the frame brightens —
+    // exactly when a fully driven panel should white out into an enormous
+    // spread. Bracket blurs are linear in strength, so the collapse is
+    // inverted here. Gated per-pixel on LOCAL drive, not just the global
+    // bias: a bright frame's genuinely hot regions get the gain (the sun
+    // whites out) while dim surround in the same frame keeps its dots —
+    // global mean luminance alone is the trap CLAUDE.md warns about.
+    float localDrive = maxChannel(linearToSrgb(rawLinear + added));
+    float paneRegion = v1Smoothstep(0.55, 0.90, localDrive);
+    added *= 1.0 + 1.8 * globalBloomBias * paneRegion;
 
     float rawMax = maxChannel(linearToSrgb(rawLinear));
     float addedNeutral = minChannel(added);
@@ -1228,8 +1238,11 @@ void main() {
     // toward the mid-bracket field wherever the region is hot — for neutral
     // regions via hotNeutral, for saturated regions via the same drive signal
     // without the purity condition (a fully driven red pane merges red).
-    float hotDrive = v1Smoothstep(0.45, 0.85, maxChannel(linearToSrgb(midLinear)));
-    vec3 base = mix(rawLinear, midLinear, hotDrive * 0.85);
+    // The drive signal follows the bias-corrected field, not the collapsed
+    // capture, so a full-white frame actually reaches pane territory.
+    float hotDrive = v1Smoothstep(0.45, 0.85,
+        maxChannel(linearToSrgb(rawLinear + added * 0.55)));
+    vec3 base = mix(rawLinear, rawLinear + added * 0.55, hotDrive * 0.90);
 
     vec3 scene = base + addedChroma + vec3(addedNeutral * neutralGate);
     float norm = maxChannel(scene);

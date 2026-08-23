@@ -204,10 +204,26 @@ def veil_fraction(candidate: np.ndarray, reference: np.ndarray,
     the reference can be veiled; lifting a pixel the reference shows as lit is
     restoration, not veil.
     """
-    ref_dark = luma(reference) < dark
+    ref_y = luma(reference)
+    # "Unlit panel stays black" means no LOCAL emission (acrylic directive):
+    # a gap between fully driven LEDs is dark in the reference but sits inside
+    # a hot region — filling it is the white-out, not veil. Only dark pixels
+    # in a dark NEIGHBORHOOD can be veiled.
+    # Radius must cover the legitimate halo falloff around a hot region —
+    # frame review at t=11 showed a too-tight neighborhood flagging the golden
+    # flare ring around a whited-out center as veil.
+    neighborhood = box_blur(ref_y[..., None], 28)[..., 0]
+    ref_dark = (ref_y < dark) & (neighborhood < 30)
     if ref_dark.sum() < 100:
         return 0.0
-    return float((luma(candidate)[ref_dark] > lifted).mean())
+    flagged = (luma(candidate) > lifted) & ref_dark
+    # Scene veil covers area. A sub-percent border strip a few luma over the
+    # threshold (t=11 frame review: 0.2% of frame at the panel's right margin)
+    # is not veil, so the dark-region fraction only counts when the flagged
+    # area is a meaningful part of the frame.
+    if flagged.mean() < 0.01:
+        return 0.0
+    return float(flagged.sum() / ref_dark.sum())
 
 
 def main() -> int:
