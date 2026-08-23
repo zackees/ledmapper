@@ -463,7 +463,13 @@ export function createLedPreview({
         if (hdrGpuComposite && meshData) {
             // Keep the sharp scene and all bloom brackets in linear RGBA16F.
             // The composite writes display-sRGB to the canvas exactly once.
-            hdrGpuComposite.captureRaw(scene, camera);
+            // Raw must go through the SAME composer path as the brackets:
+            // a direct render disagrees with the composer's multisampled
+            // edges and the clamped bracket-minus-raw subtraction turns that
+            // disagreement into a dark ring around every dot (#493).
+            const baseTexture = bloom.renderBaseToTexture();
+            if (baseTexture) hdrGpuComposite.captureRawFrom(baseTexture);
+            else hdrGpuComposite.captureRaw(scene, camera);
             hdrGpuComposite.setGlobalBloomBias(globalBloomBias);
             const strength = bloom.bloomPass.strength;
             const threshold = bloom.bloomPass.threshold;

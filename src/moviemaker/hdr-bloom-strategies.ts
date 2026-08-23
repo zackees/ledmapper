@@ -1217,6 +1217,12 @@ void main() {
     vec3 highLinear = texture2D(highFrame, vUv).rgb;
 
     vec3 highAdded = max(highLinear - rawLinear, vec3(0.0));
+    // Tight lobe carries the dot's OWN halo. Measured radial profiles showed
+    // a dark valley at r=3-5px around iris-constricted dots: their own halo
+    // was too weak to fill the annulus, leaving a moat between the core and
+    // the neighbors' overlapping lobes (the user-visible black rings). The
+    // tight-lobe weight rises so every dot's immediate surround is dominated
+    // by its own light, as a physical diffuser guarantees by construction.
     vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.50
         + max(midLinear - rawLinear, vec3(0.0)) * 0.40
         + highAdded * 0.35;
@@ -1271,8 +1277,20 @@ void main() {
     // mid-range there), so a field floor gated to lit pixels bridges the dip
     // without touching gaps (litGate ~ 0) or dark panel: gate and veil
     // behavior elsewhere are exactly as before.
-    float ringGate = v1Smoothstep(0.04, 0.30, rawMax);
-    scene = max(scene, fieldLinear * (0.94 * ringGate));
+    // The moat sits OUTSIDE the (iris-constricted) dot where rawMax is
+    // already zero, so a raw-keyed gate misses it entirely — measured radial
+    // profiles showed the dip at r=3-5px untouched by the old floor. The
+    // TIGHT lobe is high exactly in each dot's immediate annulus and low by
+    // mid-gap, so it localizes the fill to the moat without flooding gaps.
+    float ownHalo = maxChannel(linearToSrgb(max(lowLinear - rawLinear, vec3(0.0))));
+    float ringGate = v1Smoothstep(0.06, 0.22, ownHalo);
+    // Fill to GAP-GLOW level, not to the full field: fieldLinear carries
+    // raw + all three blur lobes (~2.3x energy) and flooded the panel when
+    // used directly (r16: chroma 0.18). The glow component scaled to the
+    // added-weight average matches the mid-gap glow amplitude, so the floor
+    // only tops up the moat's deficit and is a no-op everywhere else.
+    vec3 glowField = max(fieldLinear - rawLinear, vec3(0.0));
+    scene = max(scene, rawLinear + glowField * (0.60 * ringGate));
     float norm = maxChannel(scene);
 
     float flare = v1Smoothstep(0.70, 1.35, norm);

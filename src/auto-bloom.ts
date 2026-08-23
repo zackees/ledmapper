@@ -174,6 +174,11 @@ export function createAutoBloom({
         return bloom.renderToTexture();
     }
 
+    /** Raw scene through the composer path (see three-bloom.ts). */
+    function renderBaseToTexture() {
+        return bloom.renderBaseToTexture();
+    }
+
     function setAuto(enabled: boolean) {
         autoEnabled = enabled;
         if (enabled) manualStrength = null;
@@ -210,6 +215,7 @@ export function createAutoBloom({
         frame,
         render,
         renderToTexture,
+        renderBaseToTexture,
         setAuto,
         setManualStrength,
         setEnabled,

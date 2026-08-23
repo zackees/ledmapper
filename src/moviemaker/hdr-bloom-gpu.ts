@@ -61,6 +61,13 @@ export interface GpuHdrBloomComposite {
     setBloomStrength: (strength: number) => void;
     /** Render the unbloomed LED scene into a persistent RGBA16F bracket. */
     captureRaw: (scene: Scene, camera: Camera) => void;
+    /**
+     * Copy an externally rendered raw frame into the raw bracket. Used to
+     * capture raw through the same composer path as the bloomed brackets, so
+     * bracket-minus-raw is a pure blur (no MSAA edge disagreement -> no
+     * black rings, #493).
+     */
+    captureRawFrom: (source: Texture) => void;
     /** Copy one linear RGBA16F bloom result into its persistent bracket. */
     captureBloom: (bracket: 1 | 2 | 3, source: Texture) => void;
     setGlobalBloomBias: (bias: number) => void;
@@ -133,6 +140,13 @@ export function createGpuHdrBloomComposite(
             const sourceUniform = copyMaterial.uniforms.sourceFrame;
             if (sourceUniform) sourceUniform.value = source;
             renderer.setRenderTarget(frames[bracket] ?? null);
+            renderer.clear();
+            renderer.render(copyScene, camera);
+        },
+        captureRawFrom(source) {
+            const sourceUniform = copyMaterial.uniforms.sourceFrame;
+            if (sourceUniform) sourceUniform.value = source;
+            renderer.setRenderTarget(frames[0] ?? null);
             renderer.clear();
             renderer.render(copyScene, camera);
         },
