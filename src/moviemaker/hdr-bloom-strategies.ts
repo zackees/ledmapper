@@ -1219,8 +1219,17 @@ void main() {
     // bias: a bright frame's genuinely hot regions get the gain (the sun
     // whites out) while dim surround in the same frame keeps its dots —
     // global mean luminance alone is the trap CLAUDE.md warns about.
-    float localDrive = maxChannel(linearToSrgb(rawLinear + added));
-    float paneRegion = v1Smoothstep(0.55, 0.90, localDrive);
+    // Gate on the FIELD (the wide lobe is spatially broad by construction),
+    // not the pixel's own drive: apparent spread grows because a halo's dim
+    // tails cross the visibility threshold, and those tail pixels are exactly
+    // the ones an own-drive gate excludes. With a field gate the whole tail
+    // of a hot region is amplified, so an explosion's halo edge extends
+    // instead of only its core brightening. This also counters the iris
+    // ATTACK (tau 0.10-0.20s): the metering constricts within frames of a
+    // flash, and globalBloomBias — smoothed on the same fast attack — carries
+    // the inversion in step with it.
+    float fieldDrive = maxChannel(linearToSrgb(highLinear));
+    float paneRegion = v1Smoothstep(0.30, 0.80, fieldDrive);
     added *= 1.0 + 1.8 * globalBloomBias * paneRegion;
 
     float rawMax = maxChannel(linearToSrgb(rawLinear));
@@ -1549,7 +1558,10 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
         brackets: {
             factors: [0.20, 0.55, 1],
             strengthScale: 1,
-            radiusScales: [1, 1.6, 3.2],
+            // Wide reach extended (3.2 -> 4.4): amplitude gain cannot spread
+            // light past the kernel's support, and explosion halos were
+            // visibly truncated at the old radius.
+            radiusScales: [1, 1.6, 4.4],
             highThresholdDark: 0,
             highThresholdBright: 0,
         },
