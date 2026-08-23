@@ -24,7 +24,6 @@ import json
 import os
 import re
 import shutil
-import signal
 import ssl
 import subprocess
 import sys
@@ -34,6 +33,8 @@ import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
+
+import psutil
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PRODUCER = REPO_ROOT / "scripts" / "produce_video_mapping.py"
@@ -289,30 +290,40 @@ def probe_dev_server(port: int) -> str | None:
 
 
 def kill_process_tree(process: subprocess.Popen) -> None:
-    """Terminate a spawned process AND its descendants.
+    """Terminate a spawned process AND its descendants, via psutil.
 
     The dev server is an npm shim that spawns node, which spawns Vite, which
-    spawns esbuild. On Windows, terminating the parent orphans that whole tree
-    and leaves it burning CPU forever (the failure this session demonstrated),
-    so the tree must be killed explicitly.
+    spawns esbuild. Terminating only the parent orphans that whole tree and
+    leaves it burning CPU forever (a failure this repo has hit on Windows), so
+    every descendant is enumerated and killed through the psutil process API —
+    one code path on every OS, no taskkill/killpg shell divergence.
+
+    Children are listed BEFORE the parent dies (a dead parent can no longer be
+    asked for them), then everything gets terminate() → wait → kill() for the
+    stragglers. Races where a process exits mid-walk are expected and ignored.
     """
     if process.poll() is not None:
         return
-    if sys.platform == "win32":
-        subprocess.run(
-            ["taskkill", "/T", "/F", "/PID", str(process.pid)],
-            capture_output=True,
-            check=False,
-        )
-    else:
-        try:
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            process.terminate()
     try:
-        process.wait(timeout=10)
+        root = psutil.Process(process.pid)
+        targets = [*root.children(recursive=True), root]
+    except psutil.NoSuchProcess:
+        return
+    for target in targets:
+        try:
+            target.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    _gone, alive = psutil.wait_procs(targets, timeout=10)
+    for target in alive:
+        try:
+            target.kill()
+        except psutil.NoSuchProcess:
+            pass
+    try:
+        process.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        process.kill()
+        pass
 
 
 def start_dev_server(port: int) -> tuple[str, subprocess.Popen | None]:
@@ -337,7 +348,6 @@ def start_dev_server(port: int) -> tuple[str, subprocess.Popen | None]:
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
-        start_new_session=sys.platform != "win32",
     )
     # Whatever happens after this point — success, exception, Ctrl-C — the
     # interpreter must not exit with the tree still running.
