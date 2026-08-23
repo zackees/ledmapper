@@ -1216,89 +1216,34 @@ void main() {
     vec3 midLinear = texture2D(midFrame, vUv).rgb;
     vec3 highLinear = texture2D(highFrame, vUv).rgb;
 
-    vec3 highAdded = max(highLinear - rawLinear, vec3(0.0));
-    // Tight lobe carries the dot's OWN halo. Measured radial profiles showed
-    // a dark valley at r=3-5px around iris-constricted dots: their own halo
-    // was too weak to fill the annulus, leaving a moat between the core and
-    // the neighbors' overlapping lobes (the user-visible black rings). The
-    // tight-lobe weight rises so every dot's immediate surround is dominated
-    // by its own light, as a physical diffuser guarantees by construction.
-    vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.50
-        + max(midLinear - rawLinear, vec3(0.0)) * 0.40
-        + highAdded * 0.35;
-    // The acrylic PSF is intensity-independent, but the auto-bloom iris
-    // collapses capture strength toward its floor as the frame brightens —
-    // exactly when a fully driven panel should white out into an enormous
-    // spread. Bracket blurs are linear in strength, so the collapse is
-    // inverted here. Gated per-pixel on LOCAL drive, not just the global
-    // bias: a bright frame's genuinely hot regions get the gain (the sun
-    // whites out) while dim surround in the same frame keeps its dots —
-    // global mean luminance alone is the trap CLAUDE.md warns about.
-    // Gate on the FIELD (the wide lobe is spatially broad by construction),
-    // not the pixel's own drive: apparent spread grows because a halo's dim
-    // tails cross the visibility threshold, and those tail pixels are exactly
-    // the ones an own-drive gate excludes. With a field gate the whole tail
-    // of a hot region is amplified, so an explosion's halo edge extends
-    // instead of only its core brightening. This also counters the iris
-    // ATTACK (tau 0.10-0.20s): the metering constricts within frames of a
-    // flash, and globalBloomBias — smoothed on the same fast attack — carries
-    // the inversion in step with it.
-    float fieldDrive = maxChannel(linearToSrgb(highLinear));
-    float paneRegion = v1Smoothstep(0.30, 0.80, fieldDrive);
-    added *= 1.0 + 1.8 * globalBloomBias * paneRegion;
+    // Seam-free composite: scene = max(raw, field * drive), with drive built
+    // ONLY from smooth blurred signals. Ring post-mortem: every raw-keyed
+    // gate (white-merge risk, litness, hot-drive, ring floors) mints a seam
+    // at some dot edge; max() of the sharp base against a smoothly-driven
+    // field cannot dip-and-recover, so rings are impossible by construction.
+    vec3 field = lowLinear * 0.34 + midLinear * 0.36 + highLinear * 0.30;
+    float fieldMax = maxChannel(linearToSrgb(field * 0.45));
 
-    float rawMax = maxChannel(linearToSrgb(rawLinear));
-    float addedNeutral = minChannel(added);
-    vec3 addedChroma = max(added - vec3(addedNeutral), vec3(0.0));
-    float wideMax = maxChannel(highAdded);
-    float widePurity = wideMax > 1e-9
-        ? (wideMax - minChannel(highAdded)) / wideMax
-        : 0.0;
-    float hotNeutral = v1Smoothstep(0.45, 0.85, maxChannel(linearToSrgb(highLinear)))
-        * (1.0 - v1Smoothstep(0.25, 0.60, widePurity));
-    float neutralGate = max(v1Smoothstep(0.02, 0.30, rawMax), hotNeutral);
+    // Admission by field amplitude (the fixed-PSF visibility threshold):
+    // faint far spill stays invisible (no veil, dark panel stays black),
+    // real glow shows. Smooth by construction — field is a blur.
+    float admit = v1Smoothstep(0.027, 0.115, fieldMax);
 
-    // Pane: the diffuser blurs cores as much as it fills gaps. Blend the base
-    // toward the TRUE blur field wherever the region is hot. The field is the
-    // weighted blur textures themselves, NOT raw + (blur - raw): the clamped
-    // subtraction dips to zero in a thin annulus at each dot's anti-aliased
-    // edge (blur < raw there), which rendered as faint black rings around the
-    // pixels once the field gain brightened the mid-gap glow. The raw blur
-    // textures carry the core's energy smoothly across that annulus.
-    vec3 fieldLinear = lowLinear * 0.34 + midLinear * 0.36 + highLinear * 0.30;
-    float hotDrive = v1Smoothstep(0.45, 0.85,
-        maxChannel(linearToSrgb(rawLinear + added * 0.55)));
-    vec3 base = mix(rawLinear, max(fieldLinear, rawLinear * 0.35), hotDrive * 0.90);
+    // Pane response: hot dense field opens toward full transmission and
+    // inverts the iris collapse (bright frames), so full drive whites out.
+    float hot = v1Smoothstep(0.45, 0.85, fieldMax);
+    float drive = 0.48 * admit * (1.0 + 0.55 * hot)
+        * (1.0 + 1.6 * globalBloomBias * hot);
 
-    vec3 scene = base + addedChroma + vec3(addedNeutral * neutralGate);
-    // Ring fill: the clamped per-bracket subtraction zeroes the added glow in
-    // a thin annulus at each dot's anti-aliased edge, which read as faint black
-    // rings around mid-range pixels. Those annulus pixels are LIT (raw is
-    // mid-range there), so a field floor gated to lit pixels bridges the dip
-    // without touching gaps (litGate ~ 0) or dark panel: gate and veil
-    // behavior elsewhere are exactly as before.
-    // The moat sits OUTSIDE the (iris-constricted) dot where rawMax is
-    // already zero, so a raw-keyed gate misses it entirely — measured radial
-    // profiles showed the dip at r=3-5px untouched by the old floor. The
-    // TIGHT lobe is high exactly in each dot's immediate annulus and low by
-    // mid-gap, so it localizes the fill to the moat without flooding gaps.
-    float ownHalo = maxChannel(linearToSrgb(max(lowLinear - rawLinear, vec3(0.0))));
-    float ringGate = v1Smoothstep(0.06, 0.22, ownHalo);
-    // Fill to GAP-GLOW level, not to the full field: fieldLinear carries
-    // raw + all three blur lobes (~2.3x energy) and flooded the panel when
-    // used directly (r16: chroma 0.18). The glow component scaled to the
-    // added-weight average matches the mid-gap glow amplitude, so the floor
-    // only tops up the moat's deficit and is a no-op everywhere else.
-    vec3 glowField = max(fieldLinear - rawLinear, vec3(0.0));
-    scene = max(scene, rawLinear + glowField * (0.60 * ringGate));
+    // Chroma restoration: spatial mixing pulls the field toward neutral;
+    // restore the chroma vector, keep full neutral only inside the pane so
+    // the white-out still whites out. All inputs smooth.
+    float fieldNeutral = minChannel(field);
+    vec3 fieldChroma = field - vec3(fieldNeutral);
+    vec3 glowColor = vec3(fieldNeutral * mix(0.62, 1.0, hot)) + fieldChroma * 1.45;
+
+    vec3 scene = max(rawLinear, glowColor * drive);
     float norm = maxChannel(scene);
-
-    float flare = v1Smoothstep(0.70, 1.35, norm);
-    if (norm > 1e-9) {
-        scene += (scene / norm) * wideMax * flare * 0.9;
-    }
-    norm = maxChannel(scene);
-
     if (norm < 1e-9) {
         gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
         return;

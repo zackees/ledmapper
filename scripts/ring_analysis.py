@@ -78,9 +78,12 @@ def analyze_frame(rgb: np.ndarray, grid: int) -> dict:
             cell = y[y0:y1, x0:x1]
             cy, cx = np.unravel_index(np.argmax(cell), cell.shape)
             core = float(cell[cy, cx])
-            # Only mid-range dots: dark dots have no glow to ring against and
-            # blown regions are supposed to merge.
-            if core < 40 or core > 235:
+            # Skip only dark dots (no glow to ring against). Bright cores
+            # stay in: the user sees moats around bright dots in bright
+            # fields, and a genuinely merged white-out region profiles flat
+            # and scores 0 anyway — the old >235 cap was a blind spot that
+            # excluded most dots of exactly the frames that ring.
+            if core < 40:
                 continue
             cya, cxa = y0 + cy, x0 + cx
             r0, r1 = int(cya - half - 2), int(cya + half + 3)
