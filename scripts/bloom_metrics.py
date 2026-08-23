@@ -333,7 +333,24 @@ def main() -> int:
                 curve[f"{key}_{name}"] = round(float(added[mask].mean()), 2)
     result["S5_diffusion_curve"] = curve
 
-    result["gates_pass"] = bool(result["G1_pass"] and result["G2_pass"] and result["G3_pass"])
+    # G4: bright-region merge (the #493 "forehead case"). Delegates to
+    # whiteout_gate so the producer-side screening catches the regression the
+    # interactive preview does not exhibit (production bloom profile caps
+    # dense strength at 1.0 vs the preview's 4.0).
+    from whiteout_gate import analyze_frame as merge_analyze  # noqa: PLC0415
+    merge_stats = merge_analyze(frame_at(args.candidate, probes["T2"], width, height), 64)
+    for key in ("T3", "T6"):
+        stats_k = merge_analyze(frame_at(args.candidate, probes[key], width, height), 64)
+        if (stats_k["qualifying_dots"] or 0) > (merge_stats["qualifying_dots"] or 0):
+            merge_stats = stats_k
+    result["G4_merge"] = {k: merge_stats[k] for k in ("qualifying_dots", "mean_merge")}
+    result["G4_pass"] = bool(
+        (merge_stats["qualifying_dots"] or 0) < 12
+        or (merge_stats["mean_merge"] or 0) >= 0.55
+    )
+
+    result["gates_pass"] = bool(result["G1_pass"] and result["G2_pass"]
+                                and result["G3_pass"] and result["G4_pass"])
 
     print(json.dumps(result, indent=2))
     if args.json:
