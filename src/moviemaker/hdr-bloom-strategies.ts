@@ -1256,6 +1256,14 @@ void main() {
     vec3 base = mix(rawLinear, max(fieldLinear, rawLinear * 0.35), hotDrive * 0.90);
 
     vec3 scene = base + addedChroma + vec3(addedNeutral * neutralGate);
+    // Ring fill: the clamped per-bracket subtraction zeroes the added glow in
+    // a thin annulus at each dot's anti-aliased edge, which read as faint black
+    // rings around mid-range pixels. Those annulus pixels are LIT (raw is
+    // mid-range there), so a field floor gated to lit pixels bridges the dip
+    // without touching gaps (litGate ~ 0) or dark panel: gate and veil
+    // behavior elsewhere are exactly as before.
+    float ringGate = v1Smoothstep(0.04, 0.30, rawMax);
+    scene = max(scene, fieldLinear * (0.94 * ringGate));
     float norm = maxChannel(scene);
 
     float flare = v1Smoothstep(0.70, 1.35, norm);
