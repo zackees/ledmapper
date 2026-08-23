@@ -28,6 +28,7 @@ import { estimateLedSize, resolvePointDiameterPx, STABLE_POINT_DIAMETER_MAX_PX }
 import { createLogger } from '../debug-log';
 import type { BloomProfile } from '../types/domain';
 import { createGpuHdrBloomComposite } from './hdr-bloom-gpu';
+import { createAcrylicPsfPipeline, type AcrylicPsfPipeline } from './acrylic-psf-gpu';
 import {
     DEFAULT_HDR_BLOOM_STRATEGY,
     resolveHdrBloomStrategy,
@@ -202,6 +203,14 @@ export function createLedPreview({
         && (hdrBloomCompositeMode === 'gpu-full' || verifiesGpuHdrComposite)
         ? createGpuHdrBloomComposite(renderer, hdrWidth, hdrHeight, hdrBloomStrategy)
         : null;
+    // Strategies flagged customPsf capture their brackets through the owned
+    // acrylic PSF pipeline (vec4 emission+coverage fields) instead of
+    // UnrealBloom. Created lazily beside the composite so both share
+    // renderer dimensions.
+    const acrylicPsf: AcrylicPsfPipeline | null =
+        hdrGpuComposite && hdrGpuComposite.brackets.customPsf
+            ? createAcrylicPsfPipeline(renderer, hdrWidth, hdrHeight)
+            : null;
     const hdrVerificationCanvas = verifiesGpuHdrComposite ? document.createElement('canvas') : null;
     if (hdrVerificationCanvas) {
         hdrVerificationCanvas.width = hdrWidth;
@@ -465,6 +474,17 @@ export function createLedPreview({
                 factors, strengthScale, radiusScales, highThresholdDark, highThresholdBright,
             } = hdrGpuComposite.brackets;
             const scaledStrength = strength * strengthScale;
+            if (acrylicPsf) {
+                // Owned pipeline: pure emission+coverage fields; the strategy
+                // shader applies strength itself via the uniform.
+                const psfBrackets = acrylicPsf.render(hdrGpuComposite.rawTexture);
+                hdrGpuComposite.captureBloom(1, psfBrackets.low);
+                hdrGpuComposite.captureBloom(2, psfBrackets.mid);
+                hdrGpuComposite.captureBloom(3, psfBrackets.high);
+                hdrGpuComposite.setBloomStrength(scaledStrength);
+                hdrGpuComposite.render();
+                return;
+            }
             const radius = bloom.bloomPass.radius;
             for (let bracket = 0; bracket < factors.length; bracket++) {
                 // Keep the high bracket at the requested full strength. The

@@ -55,6 +55,10 @@ export const HDR_BLOOM_COMPOSITE_FRAGMENT_SHADER =
 export interface GpuHdrBloomComposite {
     /** Bracket-capture parameters owned by the active strategy. */
     brackets: HdrBloomBracketConfig;
+    /** The captured raw-emission texture (input for a custom PSF pipeline). */
+    rawTexture: Texture;
+    /** Feed the effective bloom strength to strategies that scale in-shader. */
+    setBloomStrength: (strength: number) => void;
     /** Render the unbloomed LED scene into a persistent RGBA16F bracket. */
     captureRaw: (scene: Scene, camera: Camera) => void;
     /** Copy one linear RGBA16F bloom result into its persistent bracket. */
@@ -97,6 +101,7 @@ export function createGpuHdrBloomComposite(
             midFrame: { value: frames[2]?.texture },
             highFrame: { value: frames[3]?.texture },
             globalBloomBias: { value: 0 },
+            bloomStrength: { value: 1 },
         },
         vertexShader,
         fragmentShader: strategy.fragmentShader,
@@ -114,6 +119,11 @@ export function createGpuHdrBloomComposite(
 
     return {
         brackets: strategy.brackets,
+        rawTexture: frames[0]!.texture,
+        setBloomStrength(strength) {
+            const uniform = material.uniforms.bloomStrength;
+            if (uniform) uniform.value = Math.max(strength, 0);
+        },
         captureRaw(scene, sourceCamera) {
             renderer.setRenderTarget(frames[0] ?? null);
             renderer.clear();

@@ -36,6 +36,13 @@ export interface HdrBloomBracketConfig {
     highThresholdDark: number;
     /** High-bracket bloom threshold at globalBloomBias 1. */
     highThresholdBright: number;
+    /**
+     * Capture brackets with the custom acrylic PSF pipeline instead of
+     * UnrealBloom: vec4(emission, coverage) fields at compounding sigmas,
+     * pure (no strength/threshold baked in). The composite receives strength
+     * via the bloomStrength uniform, so the shader alone reproduces a render.
+     */
+    customPsf?: boolean;
 }
 
 export interface HdrBloomStrategy {
@@ -70,6 +77,7 @@ export const HDR_BLOOM_STRATEGY_NAMES = [
     'acrylic-overflow',
     'acrylic-pane',
     'acrylic-psf',
+    'acrylic-native',
 ] as const;
 
 export type HdrBloomStrategyName = (typeof HDR_BLOOM_STRATEGY_NAMES)[number];
@@ -123,6 +131,7 @@ uniform sampler2D lowFrame;
 uniform sampler2D midFrame;
 uniform sampler2D highFrame;
 uniform float globalBloomBias;
+uniform float bloomStrength;
 varying vec2 vUv;
 
 float v1Smoothstep(float edge0, float edge1, float value) {
@@ -1347,6 +1356,76 @@ void main() {
 }
 `;
 
+/**
+ * The owned-pipeline acrylic composite (#493, round 9).
+ *
+ * Consumes the custom PSF pipeline's vec4(emission, coverage) brackets
+ * (acrylic-psf-gpu.ts) instead of UnrealBloom RGB blurs. Coverage is what the
+ * old pipeline structurally lacked: dividing blurred emission by blurred
+ * coverage gives the true average color/brightness of nearby lit panel,
+ * undiluted by the black gaps — so the glow field has no rim dip (rings are
+ * impossible by construction), halo hue is the real local hue, and the
+ * pane/white-out reads from genuine lit-area density rather than luminance
+ * proxies. Energy admission keeps the fixed-PSF visibility-threshold physics:
+ * the ENERGY field decides where glow shows, the NORMALIZED field decides
+ * what it looks like.
+ */
+const ACRYLIC_NATIVE_SHADER = PRELUDE + /* glsl */`
+void main() {
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec4 lowField = texture2D(lowFrame, vUv);
+    vec4 midField = texture2D(midFrame, vUv);
+    vec4 highField = texture2D(highFrame, vUv);
+
+    // Energy: spread emission, scaled by the strategy-owned strength uniform
+    // (brackets are pure fields; nothing was baked in at capture).
+    vec3 energy = (lowField.rgb * 0.50 + midField.rgb * 0.40 + highField.rgb * 0.35)
+        * bloomStrength;
+    float energyMax = maxChannel(linearToSrgb(energy));
+
+    // Normalized field: average color/brightness of nearby lit panel,
+    // undiluted by black gaps. Weighted toward the tight lobes so local hue
+    // dominates, with the wide lobe contributing reach.
+    vec3 emissionSum = lowField.rgb * 0.45 + midField.rgb * 0.35 + highField.rgb * 0.20;
+    float coverageSum = lowField.a * 0.45 + midField.a * 0.35 + highField.a * 0.20;
+    vec3 litColor = emissionSum / max(coverageSum, 1e-3);
+
+    // Coverage density and heat drive the pane response.
+    float coverage = clamp(coverageSum, 0.0, 1.0);
+    float heat = v1Smoothstep(0.35, 0.85, maxChannel(linearToSrgb(litColor)))
+        * v1Smoothstep(0.25, 0.70, coverage);
+
+    // Iris inversion: the metering collapses capture strength as the frame
+    // brightens; invert it inside genuinely hot, dense regions.
+    energy *= 1.0 + 1.8 * globalBloomBias * heat;
+    energyMax = maxChannel(linearToSrgb(energy));
+
+    // Visibility-threshold admission on ENERGY; appearance from the
+    // normalized field. The glow level follows the energy amplitude but its
+    // color/brightness ceiling is the true lit color, so rims are seamless
+    // and halos carry the local hue at honest saturation.
+    float admit = v1Smoothstep(0.012, 0.10, energyMax)
+        * mix(0.80, 1.0, heat);
+    vec3 glow = litColor * admit * clamp(
+        maxChannel(energy) / max(maxChannel(litColor) * 0.30, 1e-4), 0.0, 1.0);
+
+    vec3 scene = max(rawLinear, glow);
+    float norm = maxChannel(scene);
+    if (norm < 1e-9) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    float knee = 0.80;
+    float toned = norm <= knee
+        ? norm
+        : knee + (1.0 - knee) * (1.0 - exp(-(norm - knee) / max(1.0 - knee, 1e-9)));
+    vec3 compositeLinear = (scene / norm) * min(toned, 1.0);
+
+    gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
+}
+`;
+
 export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy> = {
     'chroma-shoulder': {
         name: 'chroma-shoulder',
@@ -1593,6 +1672,24 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
             highThresholdBright: 0,
         },
         fragmentShader: ACRYLIC_PSF_SHADER,
+        supportsCpuOracle: false,
+    },
+    'acrylic-native': {
+        name: 'acrylic-native',
+        label: 'acrylic-native (r9 owned pipeline)',
+        description:
+            'Owned PSF pipeline: coverage-normalized emission fields replace '
+            + 'UnrealBloom, so halos carry undiluted local hue and rims cannot '
+            + 'ring; energy admission keeps the visibility-threshold physics.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1.6, 4.4],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+            customPsf: true,
+        },
+        fragmentShader: ACRYLIC_NATIVE_SHADER,
         supportsCpuOracle: false,
     },
 };
