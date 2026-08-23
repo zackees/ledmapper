@@ -98,10 +98,15 @@ lifted blacks, aliasing bands on dense grids, an unsettled frame 0).
   is available.
 - Rendering H.264 needs Google Chrome installed; Playwright's bundled Chromium
   can report `MP4_ENCODING_UNSUPPORTED`.
-- The dev server runs on a fixed port (`--dev-port`, default 5199) and is left
-  running so the next invocation reuses it. This is deliberate:
-  `dev-server.mjs` detects an existing server only by probing the port, so the
-  default OS-assigned port would leak one Vite process per run.
+- The dev server runs on a fixed port (`--dev-port`, default 5199). A server
+  that is already answering on that port is reused and never touched. A server
+  the run spawned itself is killed — whole process tree (npm → node → Vite →
+  esbuild), via `taskkill /T` on Windows — when the run exits, including on
+  Ctrl-C and crashes (atexit). Pass `--keep-server` on batch workflows to
+  leave a spawned server warm for the next invocation; kill it yourself when
+  the batch is done. Orphaned node/esbuild trees from the old always-leave-it
+  behavior were observed burning CPU indefinitely, which is why teardown is
+  the default.
 - The producer refuses to overwrite an existing package, so the script renders
   into a temp directory and copies both the MP4 and the ZIP into the output
   directory itself. Temp state is always cleaned up.

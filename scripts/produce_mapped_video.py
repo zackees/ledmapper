@@ -17,17 +17,21 @@ See docs/production-cli.md for the underlying job-URL parameters.
 from __future__ import annotations
 
 import argparse
+import atexit
 import functools
 import http.server
 import json
 import os
 import re
 import shutil
+import signal
+import ssl
 import subprocess
 import sys
 import tempfile
 import threading
 import urllib.parse
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -261,14 +265,68 @@ def stitch(source: Path, mapped: Path, destination: Path) -> Path:
 # ------------------------------------------------------------ dev server
 
 
-def start_dev_server(port: int) -> tuple[str, subprocess.Popen | None]:
-    """Start or reuse the dev server, returning its URL.
+def probe_dev_server(port: int) -> str | None:
+    """Return the URL of a dev server already answering on `port`, else None.
 
-    `dev-server.mjs` detects an existing server purely by probing the port, so a
-    fixed port must be requested — the default port 0 picks a fresh random port
-    every time and would leak one Vite process per run. The process is
-    deliberately left running so the next invocation reuses it.
+    Never trust process lists for this — only an actual HTTP response proves a
+    usable server, and only a probe made BEFORE we spawn anything tells us
+    whether the server is ours to tear down afterwards.
     """
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    for scheme in ("https", "http"):
+        url = f"{scheme}://localhost:{port}"
+        try:
+            with urllib.request.urlopen(  # noqa: S310 - fixed loopback URL
+                url, timeout=1.5, context=context if scheme == "https" else None
+            ) as response:
+                response.read(64)
+            return url
+        except OSError:
+            continue
+    return None
+
+
+def kill_process_tree(process: subprocess.Popen) -> None:
+    """Terminate a spawned process AND its descendants.
+
+    The dev server is an npm shim that spawns node, which spawns Vite, which
+    spawns esbuild. On Windows, terminating the parent orphans that whole tree
+    and leaves it burning CPU forever (the failure this session demonstrated),
+    so the tree must be killed explicitly.
+    """
+    if process.poll() is not None:
+        return
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(process.pid)],
+            capture_output=True,
+            check=False,
+        )
+    else:
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            process.terminate()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
+def start_dev_server(port: int) -> tuple[str, subprocess.Popen | None]:
+    """Start or reuse the dev server, returning (url, owned process | None).
+
+    A server that already answers on `port` is reused and NOT owned — we never
+    tear down what we did not start. Otherwise one is spawned and returned as
+    owned; run() kills its whole tree on exit unless --keep-server asks for it
+    to stay warm for a batch of invocations.
+    """
+    existing = probe_dev_server(port)
+    if existing is not None:
+        return existing, None
+
     npm = shutil.which("npm") or shutil.which("npm.cmd")
     if not npm:
         raise ProduceError("npm not found on PATH.")
@@ -279,7 +337,11 @@ def start_dev_server(port: int) -> tuple[str, subprocess.Popen | None]:
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        start_new_session=sys.platform != "win32",
     )
+    # Whatever happens after this point — success, exception, Ctrl-C — the
+    # interpreter must not exit with the tree still running.
+    atexit.register(kill_process_tree, process)
     stdout = process.stdout
     assert stdout is not None
     for raw in stdout:
@@ -451,15 +513,31 @@ def run(args: argparse.Namespace) -> int:
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    dev_url, _process = start_dev_server(args.dev_port)
-    print(f"dev server: {dev_url}", file=sys.stderr)
+    dev_url, owned_server = start_dev_server(args.dev_port)
+    print(
+        f"dev server: {dev_url}"
+        + (" (spawned)" if owned_server else " (reusing existing)"),
+        file=sys.stderr,
+    )
 
-    renders: list[tuple[str, Path]] = []
-    for strategy in strategies:
-        print(f"--- rendering strategy: {strategy}", file=sys.stderr)
-        renders.append((strategy, produce_one(
-            args, video, screenmap, output_dir, dev_url, strategy,
-        )))
+    try:
+        renders: list[tuple[str, Path]] = []
+        for strategy in strategies:
+            print(f"--- rendering strategy: {strategy}", file=sys.stderr)
+            renders.append((strategy, produce_one(
+                args, video, screenmap, output_dir, dev_url, strategy,
+            )))
+    finally:
+        # Well-behaved by default: a server this invocation spawned dies with
+        # it, tree and all. --keep-server opts a batch workflow into reuse;
+        # a reused (not owned) server is always left untouched.
+        if owned_server is not None:
+            if args.keep_server:
+                # Deliberate opt-in to a warm server: release the atexit
+                # safety net registered at spawn time.
+                atexit.unregister(kill_process_tree)
+            else:
+                kill_process_tree(owned_server)
 
     artifacts = [path for _, path in renders]
     for path in artifacts:
@@ -571,6 +649,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=int,
         default=5199,
         help="fixed dev-server port so repeated runs reuse one server",
+    )
+    parser.add_argument(
+        "--keep-server",
+        action="store_true",
+        help=(
+            "leave a dev server THIS run spawned alive for the next invocation "
+            "(batch workflows). Default is to kill its whole process tree on "
+            "exit; a server that was already running is always left untouched"
+        ),
     )
     return parser.parse_args(argv)
 
