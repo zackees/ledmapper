@@ -1386,14 +1386,28 @@ void main() {
     // Normalized field: average color/brightness of nearby lit panel,
     // undiluted by black gaps. Weighted toward the tight lobes so local hue
     // dominates, with the wide lobe contributing reach.
-    vec3 emissionSum = lowField.rgb * 0.45 + midField.rgb * 0.35 + highField.rgb * 0.20;
-    float coverageSum = lowField.a * 0.45 + midField.a * 0.35 + highField.a * 0.20;
+    // Hue comes from the TIGHT lobes only: a halo should carry the hue of
+    // the LEDs it surrounds, and the 1/8-res wide lobe mixes half the panel
+    // toward neutral (measured as S1 0.13 in native2). The wide lobe still
+    // contributes energy and reach below.
+    vec3 emissionSum = lowField.rgb * 0.70 + midField.rgb * 0.30;
+    float coverageSum = lowField.a * 0.70 + midField.a * 0.30;
     vec3 litColor = emissionSum / max(coverageSum, 1e-3);
 
-    // Coverage density and heat drive the pane response.
-    float coverage = clamp(coverageSum, 0.0, 1.0);
+    // Heat: bright lit color AND a densely lit neighborhood. Coverage must
+    // come from the WIDE lobe — the tight lobes see a dense grid as ~25%
+    // covered (the dot duty cycle), which kept heat at zero and strangled
+    // all glow in bright scenes (native3 frames: crisp dots, black gaps).
     float heat = v1Smoothstep(0.35, 0.85, maxChannel(linearToSrgb(litColor)))
-        * v1Smoothstep(0.25, 0.70, coverage);
+        * v1Smoothstep(0.30, 0.75, highField.a);
+
+    // Chroma restoration (transplanted from acrylic-pane r13): spatial mixing
+    // averages neighboring hues toward neutral, which turned bright scenes
+    // milky in first light. Boost the chroma vector, thin the shared neutral
+    // outside hot regions, keep full neutral inside them (the white-out).
+    float litNeutral = minChannel(litColor);
+    vec3 litChroma = litColor - vec3(litNeutral);
+    litColor = vec3(litNeutral * mix(0.55, 1.0, heat)) + litChroma * 1.55;
 
     // Iris inversion: the metering collapses capture strength as the frame
     // brightens; invert it inside genuinely hot, dense regions.
@@ -1401,13 +1415,13 @@ void main() {
     energyMax = maxChannel(linearToSrgb(energy));
 
     // Visibility-threshold admission on ENERGY; appearance from the
-    // normalized field. The glow level follows the energy amplitude but its
-    // color/brightness ceiling is the true lit color, so rims are seamless
-    // and halos carry the local hue at honest saturation.
-    float admit = v1Smoothstep(0.012, 0.10, energyMax)
+    // normalized field. The glow tracks energy amplitude linearly until it
+    // reaches the true lit color (its physical ceiling) — the early clamp of
+    // first light flattened every gap onto the ceiling and read as milk.
+    float admit = v1Smoothstep(0.012, 0.14, energyMax)
         * mix(0.80, 1.0, heat);
     vec3 glow = litColor * admit * clamp(
-        maxChannel(energy) / max(maxChannel(litColor) * 0.30, 1e-4), 0.0, 1.0);
+        maxChannel(energy) / max(maxChannel(litColor) * 0.75, 1e-4), 0.0, 1.0);
 
     vec3 scene = max(rawLinear, glow);
     float norm = maxChannel(scene);
