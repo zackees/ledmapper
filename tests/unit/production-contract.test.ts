@@ -37,7 +37,7 @@ describe('production v1 query contract', () => {
             maxResolution: 480,
             autoBloom: true,
             bloomStrength: 2.475,
-            bloomStrategy: 'acrylic-overflow',
+            bloomStrategy: 'acrylic-pane',
             previewRotate: false,
             aspect: 'square',
             videoMode: 'side-by-side',

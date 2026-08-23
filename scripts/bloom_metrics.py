@@ -288,6 +288,23 @@ def main() -> int:
     result["S4_whiteout_T2"] = round(whiteout_ratio(cand_t2), 4)
     result["S4_whiteout_T2_reference"] = round(whiteout_ratio(ref_t2), 4)
 
+    # S5: diffusion response curve — added glow as a function of local drive
+    # level (acrylic model: diffusion must GROW with drive, steeply at the top).
+    # Local drive = blurred reference luma (the panel's own emitted energy);
+    # added = candidate minus reference. Report mean added glow per drive bin
+    # so a flat response (bounded halo) is visible even when totals look fine.
+    curve: dict[str, float] = {}
+    for key in ("T2", "T3", "T6"):
+        cand_f = frame_at(args.candidate, probes[key], width, height)
+        ref_f = frame_at(args.reference, probes[key], width, height)
+        drive = box_blur(luma(ref_f)[..., None], 12)[..., 0]
+        added = np.clip(luma(cand_f) - luma(ref_f), 0, None)
+        for lo, hi, name in ((2, 40, "dim"), (40, 120, "mid"), (120, 256, "high")):
+            mask = (drive >= lo) & (drive < hi)
+            if mask.sum() >= 200:
+                curve[f"{key}_{name}"] = round(float(added[mask].mean()), 2)
+    result["S5_diffusion_curve"] = curve
+
     result["gates_pass"] = bool(result["G1_pass"] and result["G2_pass"] and result["G3_pass"])
 
     print(json.dumps(result, indent=2))

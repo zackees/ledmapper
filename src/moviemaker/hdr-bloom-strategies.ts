@@ -68,6 +68,8 @@ export const HDR_BLOOM_STRATEGY_NAMES = [
     'norm-surround-hue',
     'legacy-additive',
     'acrylic-overflow',
+    'acrylic-pane',
+    'acrylic-psf',
 ] as const;
 
 export type HdrBloomStrategyName = (typeof HDR_BLOOM_STRATEGY_NAMES)[number];
@@ -85,9 +87,13 @@ export type HdrBloomStrategyName = (typeof HDR_BLOOM_STRATEGY_NAMES)[number];
  * (legacy 0.466, norm-tonescale-guarded 0.426), white-bloom aliveness +4.25,
  * hue fidelity 0.246/0.382 vs legacy's 0.070/0.074, zero shadow veil vs
  * legacy's 0.752. Confirmed on the color_bubble_swirl hold-out clip
- * (hue fidelity 0.789/0.815) and the sparse ring_24 map.
+ * (hue fidelity 0.789/0.815) and the sparse ring_24 map. Round 6 added the
+ * pane mechanism on top (drive-dependent core softening) after frame review
+ * showed fully driven regions still reading as sharp dots over glow; the
+ * strengthened constants merge the hot core into one pane while keeping the
+ * zero veil and the hue machinery intact.
  */
-export const DEFAULT_HDR_BLOOM_STRATEGY: HdrBloomStrategyName = 'acrylic-overflow';
+export const DEFAULT_HDR_BLOOM_STRATEGY: HdrBloomStrategyName = 'acrylic-pane';
 
 /**
  * The one strategy `bloom-utils.compositeHdrBloomRgba` mirrors.
@@ -1180,6 +1186,135 @@ void main() {
 }
 `;
 
+/**
+ * acrylic-overflow plus the pane mechanism (#493, round 6).
+ *
+ * acrylic-overflow fills the gaps between LEDs but leaves the sharp cores
+ * fully distinct, so a fully driven region still reads as bright dots on a
+ * glowing field rather than one pane. Physically the diffuser blurs the
+ * cores exactly as much as it feeds the gaps — the pane IS the cores and
+ * gaps converging on the same transmitted field. So inside hot regions this
+ * strategy also blends the base itself toward the mid-bracket field
+ * (drive-dependent core softening). Dim and mid content keeps its sharp
+ * base: the softening is gated by the same purity-conditional hot-region
+ * signal as the neutral gap fill, so it engages only where the directive
+ * wants dots to merge.
+ */
+const ACRYLIC_PANE_SHADER = PRELUDE + /* glsl */`
+void main() {
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec3 lowLinear = texture2D(lowFrame, vUv).rgb;
+    vec3 midLinear = texture2D(midFrame, vUv).rgb;
+    vec3 highLinear = texture2D(highFrame, vUv).rgb;
+
+    vec3 highAdded = max(highLinear - rawLinear, vec3(0.0));
+    vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.50
+        + max(midLinear - rawLinear, vec3(0.0)) * 0.40
+        + highAdded * 0.35;
+    added *= mix(1.0, 0.55, globalBloomBias);
+
+    float rawMax = maxChannel(linearToSrgb(rawLinear));
+    float addedNeutral = minChannel(added);
+    vec3 addedChroma = max(added - vec3(addedNeutral), vec3(0.0));
+    float wideMax = maxChannel(highAdded);
+    float widePurity = wideMax > 1e-9
+        ? (wideMax - minChannel(highAdded)) / wideMax
+        : 0.0;
+    float hotNeutral = v1Smoothstep(0.45, 0.85, maxChannel(linearToSrgb(highLinear)))
+        * (1.0 - v1Smoothstep(0.25, 0.60, widePurity));
+    float neutralGate = max(v1Smoothstep(0.02, 0.30, rawMax), hotNeutral);
+
+    // Pane: the diffuser blurs cores as much as it fills gaps. Blend the base
+    // toward the mid-bracket field wherever the region is hot — for neutral
+    // regions via hotNeutral, for saturated regions via the same drive signal
+    // without the purity condition (a fully driven red pane merges red).
+    float hotDrive = v1Smoothstep(0.45, 0.85, maxChannel(linearToSrgb(midLinear)));
+    vec3 base = mix(rawLinear, midLinear, hotDrive * 0.85);
+
+    vec3 scene = base + addedChroma + vec3(addedNeutral * neutralGate);
+    float norm = maxChannel(scene);
+
+    float flare = v1Smoothstep(0.70, 1.35, norm);
+    if (norm > 1e-9) {
+        scene += (scene / norm) * wideMax * flare * 0.9;
+    }
+    norm = maxChannel(scene);
+
+    if (norm < 1e-9) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    float knee = 0.80;
+    float toned = norm <= knee
+        ? norm
+        : knee + (1.0 - knee) * (1.0 - exp(-(norm - knee) / max(1.0 - knee, 1e-9)));
+    vec3 compositeLinear = (scene / norm) * min(toned, 1.0);
+
+    gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
+}
+`;
+
+/**
+ * The physically-grounded acrylic model (#493, round 7).
+ *
+ * The optics literature (Spencer '95 glare; Talvala '07 veiling glare; the
+ * photographic star-size law) says a diffuser's kernel is INTENSITY-
+ * INDEPENDENT: "diffusion grows with drive level" is an emergent effect of a
+ * fixed, wide-tailed linear PSF whose dim tails cross the visible threshold
+ * farther out as the source brightens, with apparent radius growing roughly
+ * with log(intensity). The drive-dependent gates and flare terms of the
+ * earlier acrylic strategies approximate this; here the mechanism is the real
+ * one:
+ *
+ * - a fixed three-Gaussian kernel (the brackets at radius scales 1/1.6/3.2)
+ *   with physically dim tails (weights fall off with radius);
+ * - pure linear superposition, no drive-dependent gates — a fully driven
+ *   region's gaps receive enough summed neighbor spill to saturate (the
+ *   white-out emerges), dim content's spill stays faint by linearity;
+ * - one true-shadow guard so panel with no local emission stays black; and
+ * - hue-locked norm limiting at the display boundary, which converts the
+ *   linear overflow into the clipped-pane look without rotating hue.
+ */
+const ACRYLIC_PSF_SHADER = PRELUDE + /* glsl */`
+void main() {
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec3 lowLinear = texture2D(lowFrame, vUv).rgb;
+    vec3 midLinear = texture2D(midFrame, vUv).rgb;
+    vec3 highLinear = texture2D(highFrame, vUv).rgb;
+
+    // Fixed PSF: narrow core lobe, mid lobe, wide dim tail. Linear, no gates.
+    vec3 spill = max(lowLinear - rawLinear, vec3(0.0)) * 0.55
+        + max(midLinear - rawLinear, vec3(0.0)) * 0.30
+        + max(highLinear - rawLinear, vec3(0.0)) * 0.18;
+    spill *= mix(1.0, 0.55, globalBloomBias);
+
+    // True-shadow guard: with no meaningful local emission the acrylic is
+    // dark. This is the only nonlinearity before the display boundary.
+    float rawMax = maxChannel(linearToSrgb(rawLinear));
+    if (rawMax < 0.04) {
+        spill *= v1Smoothstep(0.030, 0.11, maxChannel(linearToSrgb(highLinear)));
+    }
+
+    vec3 scene = rawLinear + spill;
+    float norm = maxChannel(scene);
+    if (norm < 1e-9) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    // Display boundary: hue-locked soft clip. Mostly linear until near max so
+    // the emergent threshold behavior of the PSF tails is preserved.
+    float knee = 0.92;
+    float toned = norm <= knee
+        ? norm
+        : knee + (1.0 - knee) * (1.0 - exp(-(norm - knee) / max(1.0 - knee, 1e-9)));
+    vec3 compositeLinear = (scene / norm) * min(toned, 1.0);
+
+    gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
+}
+`;
+
 export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy> = {
     'chroma-shoulder': {
         name: 'chroma-shoulder',
@@ -1389,6 +1524,40 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
             highThresholdBright: 0,
         },
         fragmentShader: ACRYLIC_OVERFLOW_SHADER,
+        supportsCpuOracle: false,
+    },
+    'acrylic-pane': {
+        name: 'acrylic-pane',
+        label: 'acrylic-pane (r6)',
+        description:
+            'acrylic-overflow plus drive-dependent core softening: inside hot '
+            + 'regions the base blends toward the diffused field, so fully driven '
+            + 'dots merge into one pane instead of staying sharp over a glow.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1.6, 3.2],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+        },
+        fragmentShader: ACRYLIC_PANE_SHADER,
+        supportsCpuOracle: false,
+    },
+    'acrylic-psf': {
+        name: 'acrylic-psf',
+        label: 'acrylic-psf (r7)',
+        description:
+            'Fixed intensity-independent three-lobe PSF, pure linear superposition, '
+            + 'hue-locked clip at display: the white-out and glow growth emerge from '
+            + 'the physics instead of drive-dependent gates.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1.6, 3.2],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+        },
+        fragmentShader: ACRYLIC_PSF_SHADER,
         supportsCpuOracle: false,
     },
 };
