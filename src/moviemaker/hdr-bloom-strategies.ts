@@ -1244,14 +1244,16 @@ void main() {
     float neutralGate = max(v1Smoothstep(0.02, 0.30, rawMax), hotNeutral);
 
     // Pane: the diffuser blurs cores as much as it fills gaps. Blend the base
-    // toward the mid-bracket field wherever the region is hot — for neutral
-    // regions via hotNeutral, for saturated regions via the same drive signal
-    // without the purity condition (a fully driven red pane merges red).
-    // The drive signal follows the bias-corrected field, not the collapsed
-    // capture, so a full-white frame actually reaches pane territory.
+    // toward the TRUE blur field wherever the region is hot. The field is the
+    // weighted blur textures themselves, NOT raw + (blur - raw): the clamped
+    // subtraction dips to zero in a thin annulus at each dot's anti-aliased
+    // edge (blur < raw there), which rendered as faint black rings around the
+    // pixels once the field gain brightened the mid-gap glow. The raw blur
+    // textures carry the core's energy smoothly across that annulus.
+    vec3 fieldLinear = lowLinear * 0.34 + midLinear * 0.36 + highLinear * 0.30;
     float hotDrive = v1Smoothstep(0.45, 0.85,
         maxChannel(linearToSrgb(rawLinear + added * 0.55)));
-    vec3 base = mix(rawLinear, rawLinear + added * 0.55, hotDrive * 0.90);
+    vec3 base = mix(rawLinear, max(fieldLinear, rawLinear * 0.35), hotDrive * 0.90);
 
     vec3 scene = base + addedChroma + vec3(addedNeutral * neutralGate);
     float norm = maxChannel(scene);

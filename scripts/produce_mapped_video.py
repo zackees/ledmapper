@@ -447,6 +447,10 @@ def produce_one(
         options["autoBloom"] = "0"
     if args.bloom_strength is not None:
         options["bloomStrength"] = f"{args.bloom_strength:g}"
+    if args.blur_radius is not None:
+        options["blurRadius"] = f"{args.blur_radius:g}"
+    if args.blur_sigma is not None:
+        options["blurSigma"] = f"{args.blur_sigma:g}"
     if strategy != DEFAULT_STRATEGY:
         options["bloomStrategy"] = strategy
 
@@ -625,6 +629,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "manual bloom strength (0.3-9). Combine with --no-auto-bloom and 0.3 "
             "to render the minimal-bloom reference used by bloom_metrics.py"
         ),
+    )
+    parser.add_argument(
+        "--blur-radius",
+        type=float,
+        default=None,
+        help="source pre-sample blur radius (producer default 3; 1 = minimum above off; 0 = off)",
+    )
+    parser.add_argument(
+        "--blur-sigma",
+        type=float,
+        default=None,
+        help="source pre-sample blur sigma (producer default 3)",
     )
     parser.add_argument(
         "--strategy",
