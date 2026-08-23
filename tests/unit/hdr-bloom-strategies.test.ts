@@ -84,7 +84,7 @@ void describe('HDR bloom strategies', () => {
             'surround-white-glow', 'norm-tonescale-guarded',
             'norm-tonescale-sharp', 'norm-surround-hue',
             'legacy-additive', 'acrylic-overflow', 'acrylic-pane', 'acrylic-psf',
-            'acrylic-native',
+            'acrylic-native', 'hdr-reference',
         ]);
         for (const name of HDR_BLOOM_STRATEGY_NAMES) {
             const { radiusScales } = resolveHdrBloomStrategy(name).brackets;

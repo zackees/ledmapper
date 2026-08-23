@@ -213,7 +213,13 @@ def veil_fraction(candidate: np.ndarray, reference: np.ndarray,
     # frame review at t=11 showed a too-tight neighborhood flagging the golden
     # flare ring around a whited-out center as veil.
     neighborhood = box_blur(ref_y[..., None], 28)[..., 0]
-    ref_dark = (ref_y < dark) & (neighborhood < 30)
+    # Exclude the splat skirt: under fixed drive the acrylic model gives every
+    # lit LED — however dim — a faint Gaussian skirt, which is correct
+    # behavior (frame-reviewed 2026-08-23), not veil. Veil is ambient wash in
+    # the mid-gap, farther than ~6px from any lit texel.
+    lit = (ref_y > 3.0).astype(float)
+    near_lit = box_blur(lit[..., None], 6)[..., 0] > 0.02
+    ref_dark = (ref_y < dark) & (neighborhood < 30) & ~near_lit
     if ref_dark.sum() < 100:
         return 0.0
     flagged = (luma(candidate) > lifted) & ref_dark
@@ -349,8 +355,65 @@ def main() -> int:
         or (merge_stats["mean_merge"] or 0) >= 0.55
     )
 
+    # G5 (issue #495): energy conservation. Compare the rendered artifact
+    # (minimal-bloom reference as the raw-frame proxy) against the OUTPUT
+    # blurred 3x3, per 8x8 tile, on full RGB: energy must be non-destructive
+    # on lit tiles (bloom redistributes and adds light, never removes it) and
+    # the chromatic residual bounded (hue must not walk between artifact and
+    # output).
+    g5_tiles = []
+    for key in ("T2", "T3", "T4", "T6"):
+        cand_f = frame_at(args.candidate, probes[key], width, height)
+        ref_f = frame_at(args.reference, probes[key], width, height)
+        blurred = box_blur(cand_f, 1)  # 3x3
+        th, tw = height // 8, width // 8
+        for ty in range(8):
+            for tx in range(8):
+                ref_tile = ref_f[ty * th:(ty + 1) * th, tx * tw:(tx + 1) * tw]
+                cand_tile = blurred[ty * th:(ty + 1) * th, tx * tw:(tx + 1) * tw]
+                ref_e = float(luma(ref_tile).sum())
+                if ref_e < th * tw * 4:  # unlit tile: energy ratio undefined
+                    continue
+                ratio = float(luma(cand_tile).sum()) / ref_e
+                # Hue is judged only on hue-COHERENT tiles: where a tile
+                # contains opposing hues, its mean hue is unstable and the
+                # blur legitimately mixes neighbors (measured: p95 0.82 rad
+                # of pure artifact on a sparse multi-hue clip). Coherence =
+                # |mean chroma vector| / mean |chroma| per pixel.
+                mag = chroma_mag(ref_tile)
+                mean_mag = float(mag.mean())
+                if mean_mag > 2.0:
+                    alpha = ref_tile[..., 0] - 0.5 * ref_tile[..., 1] - 0.5 * ref_tile[..., 2]
+                    beta = (math.sqrt(3) / 2) * (ref_tile[..., 1] - ref_tile[..., 2])
+                    coherence = float(np.hypot(alpha.mean(), beta.mean())) / mean_mag
+                else:
+                    coherence = 0.0
+                if coherence >= 0.5:
+                    hue_d = float(np.abs(
+                        hue_angle(cand_tile.mean(axis=(0, 1))[None, None, :])
+                        - hue_angle(ref_tile.mean(axis=(0, 1))[None, None, :])
+                    ).item())
+                    hue_d = min(hue_d, 2 * math.pi - hue_d)
+                else:
+                    hue_d = 0.0
+                g5_tiles.append((ratio, hue_d))
+    if g5_tiles:
+        ratios = np.array([t[0] for t in g5_tiles])
+        hues = np.array([t[1] for t in g5_tiles])
+        result["G5_energy"] = {
+            "tiles": len(g5_tiles),
+            "min_ratio": round(float(ratios.min()), 3),
+            "p95_hue_shift_rad": round(float(np.percentile(hues, 95)), 3),
+        }
+        result["G5_pass"] = bool(ratios.min() >= 0.90
+                                 and float(np.percentile(hues, 95)) <= 0.35)
+    else:
+        result["G5_energy"] = {"tiles": 0}
+        result["G5_pass"] = True
+
     result["gates_pass"] = bool(result["G1_pass"] and result["G2_pass"]
-                                and result["G3_pass"] and result["G4_pass"])
+                                and result["G3_pass"] and result["G4_pass"]
+                                and result["G5_pass"])
 
     print(json.dumps(result, indent=2))
     if args.json:

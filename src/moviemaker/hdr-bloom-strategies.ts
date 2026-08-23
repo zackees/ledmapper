@@ -78,6 +78,7 @@ export const HDR_BLOOM_STRATEGY_NAMES = [
     'acrylic-pane',
     'acrylic-psf',
     'acrylic-native',
+    'hdr-reference',
 ] as const;
 
 export type HdrBloomStrategyName = (typeof HDR_BLOOM_STRATEGY_NAMES)[number];
@@ -1230,13 +1231,9 @@ void main() {
         + max(midLinear - rawLinear, vec3(0.0)) * 0.26
         + max(highLinear - rawLinear, vec3(0.0)) * 0.12;
 
-    // Iris inversion stays (smooth field signal only): the metering collapses
-    // capture strength as frames brighten, exactly when full drive should
-    // flare into the pane.
-    float fieldMax = maxChannel(linearToSrgb(added));
-    float hot = v1Smoothstep(0.45, 0.85, fieldMax);
-    added *= 1.0 + 1.3 * globalBloomBias * hot;
-
+    // Phase 0 of #496 removed the iris-inversion gain that used to live
+    // here: it was compensating for the production profile's 4x strength
+    // handicap, which is gone. Capture strength is now trusted.
     vec3 scene = rawLinear + added;
     float norm = maxChannel(scene);
     if (norm < 1e-9) {
@@ -1255,6 +1252,9 @@ void main() {
     // dark frame the eye/panel shows faint halos (weak toe — the lone white
     // peak keeps its skirt), in a bright frame faint spill reads as veil and
     // gets crushed (strong toe). Uniform per frame, so it cannot seam.
+    // Toe calibrated iris-free (p0b vs p0c A/B): 0.010 wins on every gate
+    // (S4 0.518 vs 0.482, G1 38 vs 27, G4 0.907 vs 0.888) — with the splat
+    // skirt recognized as correct behavior, the strong toe bought nothing.
     float toeK = 0.010;
     float toned = (norm * norm) / (norm + toeK);
     float knee = 0.80;
@@ -1405,6 +1405,66 @@ void main() {
     float toned = norm <= knee
         ? norm
         : knee + (1.0 - knee) * (1.0 - exp(-(norm - knee) / max(1.0 - knee, 1e-9)));
+    vec3 compositeLinear = (scene / norm) * min(toned, 1.0);
+
+    gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
+}
+`;
+
+/**
+ * The #496 Phase-2 reference composite, on the owned PSF pipeline.
+ *
+ * Iris-free world: capture strength is a fixed geometry treatment, so the
+ * composite owns exposure entirely. Structure:
+ *  - pure additive HDR splats from the owned pipeline's emission fields
+ *    (unclamped, equal-weight-per-channel blurs, splat-weighted lobes);
+ *  - COVERAGE admission — the drive-independent veil control the amplitude
+ *    toe could never be: glow shows where lit panel exists nearby (so driven
+ *    regions merge and halos live at any brightness) and is suppressed where
+ *    the neighborhood is unlit (so dark panel stays black at any strength).
+ *    Coverage is a blur, so admission cannot ring;
+ *  - one hue-locked tone map on the norm axis (small toe + shoulder), RGB
+ *    rebuilt from the untouched ratio.
+ */
+const HDR_REFERENCE_SHADER = PRELUDE + /* glsl */`
+void main() {
+    vec3 rawLinear = texture2D(rawFrame, vUv).rgb;
+    vec4 lowField = texture2D(lowFrame, vUv);
+    vec4 midField = texture2D(midFrame, vUv);
+    vec4 highField = texture2D(highFrame, vUv);
+
+    vec3 added = (lowField.rgb * 0.55 + midField.rgb * 0.32 + highField.rgb * 0.13)
+        * bloomStrength * 4.2;
+    // ADMISSION coverage uses only the deep lobes: the tight lobe's alpha
+    // still carries per-dot structure at 1/2 res, and admitting on it
+    // reintroduced rings (0.63 flagged) — the one thing this architecture
+    // must never do. The 1/4 and 1/8 res lobes are smooth at dot scale.
+    float coverage = midField.a * 0.45 + highField.a * 0.55;
+    float addedMax = maxChannel(linearToSrgb(added));
+    // Measured scale (coverage diagnostic on the fully driven sun frame):
+    // panel interior sits at 0.16-0.30, p50 0.196 — the alpha dilutes through
+    // the pyramid by the dot duty cycle. The band must saturate by ~0.16.
+    // Admission: lit-neighborhood (drive-weighted coverage) OR strong light
+    // (amplitude escape — the fixed-PSF visibility threshold). The escape is
+    // what lets an isolated blazing source keep its halo skirt: its coverage
+    // is tiny (small area) but its spill amplitude is high, while dim-driven
+    // veil zones have low amplitude AND low coverage.
+    float admit = max(v1Smoothstep(0.10, 0.22, coverage),
+        v1Smoothstep(0.06, 0.20, addedMax));
+
+    vec3 scene = rawLinear + added * admit;
+    float norm = maxChannel(scene);
+    if (norm < 1e-9) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    float toeK = 0.010;
+    float toned = (norm * norm) / (norm + toeK);
+    float knee = 0.80;
+    toned = toned <= knee
+        ? toned
+        : knee + (1.0 - knee) * (1.0 - exp(-(toned - knee) / max(1.0 - knee, 1e-9)));
     vec3 compositeLinear = (scene / norm) * min(toned, 1.0);
 
     gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
@@ -1674,6 +1734,24 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
             customPsf: true,
         },
         fragmentShader: ACRYLIC_NATIVE_SHADER,
+        supportsCpuOracle: false,
+    },
+    'hdr-reference': {
+        name: 'hdr-reference',
+        label: 'hdr-reference (#496 P2)',
+        description:
+            'Reference composite on the owned pipeline: additive HDR splats, '
+            + 'coverage-admitted glow (drive-independent veil control), one '
+            + 'hue-locked norm tone map.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1.6, 3.2],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+            customPsf: true,
+        },
+        fragmentShader: HDR_REFERENCE_SHADER,
         supportsCpuOracle: false,
     },
 };

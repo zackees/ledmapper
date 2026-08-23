@@ -56,7 +56,12 @@ varying vec2 vUv;
 
 void main() {
     vec3 emission = texture2D(sourceFrame, vUv).rgb;
-    float coverage = smoothstep(0.001, 0.01, max(max(emission.r, emission.g), emission.b));
+    // Alpha carries DRIVE LEVEL, not binary occupancy (#496 Phase 3 semantic,
+    // arrived early): binary coverage measured identical values over dimly
+    // lit and fully driven neighborhoods (0.231 vs 0.239), so it could not
+    // discriminate veil from pane. Drive-weighted alpha saturates at 30%
+    // drive: dim panel admits dim glow, driven panel admits the white-out.
+    float coverage = clamp(max(max(emission.r, emission.g), emission.b) / 0.30, 0.0, 1.0);
     gl_FragColor = vec4(emission, coverage);
 }
 `;
@@ -129,7 +134,11 @@ export function createAcrylicPsfPipeline(
             b: makeTarget(w, h),
             texel: new Vector2(1 / w, 1 / h),
             /** Extra blur iterations at this level (each = one H+V pass). */
-            iterations: divisor === 2 ? 1 : 2,
+            // Level 0 widened (1 -> 3 iterations): a too-narrow tight lobe
+            // leaves deep valleys between splats that the ring detector flags
+            // (dip-recover between neighboring dots). UnrealBloom's brackets
+            // never had this because each summed five mips.
+            iterations: divisor === 2 ? 4 : 2,
         };
     });
 
