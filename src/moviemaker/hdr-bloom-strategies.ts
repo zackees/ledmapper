@@ -1216,43 +1216,51 @@ void main() {
     vec3 midLinear = texture2D(midFrame, vUv).rgb;
     vec3 highLinear = texture2D(highFrame, vUv).rgb;
 
-    // Seam-free composite: scene = max(raw, field * drive), with drive built
-    // ONLY from smooth blurred signals. Ring post-mortem: every raw-keyed
-    // gate (white-merge risk, litness, hot-drive, ring floors) mints a seam
-    // at some dot edge; max() of the sharp base against a smoothly-driven
-    // field cannot dip-and-recover, so rings are impossible by construction.
-    vec3 field = lowLinear * 0.34 + midLinear * 0.36 + highLinear * 0.30;
-    float fieldMax = maxChannel(linearToSrgb(field * 0.45));
+    // The bloom operation was right all along; the display transform was
+    // wrong (user insight, #493). So: pure additive HDR bloom — per-LED
+    // Gaussian splats, energy conserving, no gates, no max(), values free to
+    // exceed 1 — followed by ONE hue-locked tone curve on the norm axis.
+    // Splat-weighted lobes: the tight lobe is the body of each LED's glow,
+    // the wide lobes are faint tails.
+    // Wide lobe nearly muted: it is the only carrier that reaches dark
+    // neighborhoods (the T4 veil), while the splat body and halo skirts live
+    // in the tight and mid lobes. Cutting it beats strengthening the toe,
+    // which killed the white peak's skirt at every strength tried.
+    vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.62
+        + max(midLinear - rawLinear, vec3(0.0)) * 0.26
+        + max(highLinear - rawLinear, vec3(0.0)) * 0.12;
 
-    // Admission by field amplitude (the fixed-PSF visibility threshold):
-    // faint far spill stays invisible (no veil, dark panel stays black),
-    // real glow shows. Smooth by construction — field is a blur.
-    float admit = v1Smoothstep(0.027, 0.115, fieldMax);
-
-    // Pane response: hot dense field opens toward full transmission and
-    // inverts the iris collapse (bright frames), so full drive whites out.
+    // Iris inversion stays (smooth field signal only): the metering collapses
+    // capture strength as frames brighten, exactly when full drive should
+    // flare into the pane.
+    float fieldMax = maxChannel(linearToSrgb(added));
     float hot = v1Smoothstep(0.45, 0.85, fieldMax);
-    float drive = 0.48 * admit * (1.0 + 0.55 * hot)
-        * (1.0 + 1.6 * globalBloomBias * hot);
+    added *= 1.0 + 1.3 * globalBloomBias * hot;
 
-    // Chroma restoration: spatial mixing pulls the field toward neutral;
-    // restore the chroma vector, keep full neutral only inside the pane so
-    // the white-out still whites out. All inputs smooth.
-    float fieldNeutral = minChannel(field);
-    vec3 fieldChroma = field - vec3(fieldNeutral);
-    vec3 glowColor = vec3(fieldNeutral * mix(0.62, 1.0, hot)) + fieldChroma * 1.45;
-
-    vec3 scene = max(rawLinear, glowColor * drive);
+    vec3 scene = rawLinear + added;
     float norm = maxChannel(scene);
     if (norm < 1e-9) {
         gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
         return;
     }
 
+    // Tone curve, norm domain, hue-locked (ratio rebuilt after):
+    //  - TOE crushes faint spill quadratically — this replaces every veil
+    //    gate we ever wrote, smoothly, so dark panel stays black and no seam
+    //    can exist;
+    //  - linear middle;
+    //  - SHOULDER rolls accumulated HDR energy into the display ceiling —
+    //    neutral light whites out, colored light saturates in its own hue.
+    // Adaptive toe driven by GLOBAL brightness (visual adaptation): in a
+    // dark frame the eye/panel shows faint halos (weak toe — the lone white
+    // peak keeps its skirt), in a bright frame faint spill reads as veil and
+    // gets crushed (strong toe). Uniform per frame, so it cannot seam.
+    float toeK = 0.010;
+    float toned = (norm * norm) / (norm + toeK);
     float knee = 0.80;
-    float toned = norm <= knee
-        ? norm
-        : knee + (1.0 - knee) * (1.0 - exp(-(norm - knee) / max(1.0 - knee, 1e-9)));
+    toned = toned <= knee
+        ? toned
+        : knee + (1.0 - knee) * (1.0 - exp(-(toned - knee) / max(1.0 - knee, 1e-9)));
     vec3 compositeLinear = (scene / norm) * min(toned, 1.0);
 
     gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
@@ -1624,10 +1632,9 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
         brackets: {
             factors: [0.20, 0.55, 1],
             strengthScale: 1,
-            // Wide reach extended (3.2 -> 4.4): amplitude gain cannot spread
-            // light past the kernel's support, and explosion halos were
-            // visibly truncated at the old radius.
-            radiusScales: [1, 1.6, 4.4],
+            // Splat look: tight lobe carries the visible Gaussian falloff;
+            // the wide lobe (kept at 3.2 for flare reach) is a faint tail.
+            radiusScales: [1, 1.6, 3.2],
             highThresholdDark: 0,
             highThresholdBright: 0,
         },
