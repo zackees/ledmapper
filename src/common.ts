@@ -262,6 +262,10 @@ function isCompleteRegularGrid(pts: StripPoint[]): boolean {
     return seen.size === pts.length;
 }
 
+// NOTE: this fit (including isCompleteRegularGrid and the integer-pitch
+// quantization) is replicated in scripts/produce_mapped_video.py
+// (compute_source_crop) to crop the source to the sampled region — keep
+// the two in sync.
 export function computeCenterFitScale(
     pts: StripPoint[],
     width: number,

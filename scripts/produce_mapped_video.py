@@ -21,6 +21,7 @@ import atexit
 import functools
 import http.server
 import json
+import math
 import os
 import re
 import shutil
@@ -135,6 +136,160 @@ def probe_fps(path: Path) -> float:
     numerator, _, denominator = result.stdout.strip().partition("/")
     divisor = float(denominator or 1)
     return float(numerator) / divisor if divisor else 30.0
+
+
+def probe_display_dimensions(path: Path) -> tuple[int, int]:
+    """Return (width, height) in DISPLAY orientation.
+
+    ffmpeg's filters run after auto-rotation, and the renderer sizes itself
+    from the display dimensions too, so a ±90° rotation side-data entry swaps
+    the coded width/height.
+    """
+    _, ffprobe = ffmpeg_tools()
+    # -show_streams rather than a side-data -show_entries selector: the
+    # static-ffmpeg ffprobe rejects the 'stream_side_data' section name.
+    result = subprocess.run(
+        [ffprobe, "-v", "error", "-select_streams", "v:0",
+         "-show_streams", "-of", "json", str(path)],
+        capture_output=True, text=True, check=True,
+    )
+    stream = json.loads(result.stdout)["streams"][0]
+    width, height = int(stream["width"]), int(stream["height"])
+    rotation = 0
+    for side in stream.get("side_data_list", []):
+        if "rotation" in side:
+            rotation = int(float(side["rotation"]))
+    if abs(rotation) % 180 == 90:
+        width, height = height, width
+    return width, height
+
+
+# ----------------------------------------------------- source crop geometry
+#
+# Replicates the renderer's sampling placement so the source can be cropped to
+# exactly the region the LED panel samples. Mirrors, and MUST stay in sync
+# with: scaleToMaxDimension + transformToCenter (src/moviemaker/transforms.ts),
+# computeCenterFitScale / isCompleteRegularGrid (src/common.ts), and the
+# gather transform p = R(rot)·pt·zoom + center (src/moviemaker/shaders.ts,
+# fed rotation + panelRotation by src/production/production-renderer.ts).
+
+
+def _js_round(value: float) -> int:
+    """JS Math.round: floor(x + 0.5), unlike Python's banker's rounding."""
+    return math.floor(value + 0.5)
+
+
+def _scale_to_max_dimension(native_w: int, native_h: int, max_dim: int) -> tuple[int, int]:
+    if max_dim <= 0 or max(native_w, native_h) <= max_dim:
+        return native_w, native_h
+    scale = max_dim / max(native_w, native_h)
+    return max(1, _js_round(native_w * scale)), max(1, _js_round(native_h * scale))
+
+
+def _screenmap_points(screenmap: Path) -> list[tuple[float, float]]:
+    data = json.loads(screenmap.read_text(encoding="utf-8"))
+    points: list[tuple[float, float]] = []
+    strips = list(data.get("map", {}).values()) + list(data.get("segments", []))
+    for strip in strips:
+        points.extend(zip(strip.get("x", []), strip.get("y", [])))
+    if not points:
+        raise ProduceError(f"screenmap has no points: {screenmap}")
+    return points
+
+
+def _is_complete_regular_grid(points: list[tuple[float, float]]) -> bool:
+    if len(points) < 4:
+        return False
+    xs = sorted({x for x, _ in points})
+    ys = sorted({y for _, y in points})
+    if len(xs) < 2 or len(ys) < 2 or len(xs) * len(ys) != len(points):
+        return False
+
+    def uniform(values: list[float]) -> bool:
+        pitch = values[1] - values[0]
+        return (pitch > sys.float_info.epsilon
+                and abs(pitch - round(pitch)) <= 1e-9
+                and all(abs(values[i] - values[i - 1] - pitch) <= 1e-9
+                        for i in range(2, len(values))))
+
+    return uniform(xs) and uniform(ys) and len(set(points)) == len(points)
+
+
+def _center_fit_scale(points: list[tuple[float, float]], width: int, height: int,
+                      margin: float = 20, pixel_align: bool = True) -> float:
+    span_x = max(x for x, _ in points) - min(x for x, _ in points)
+    span_y = max(y for _, y in points) - min(y for _, y in points)
+    avail_w = margin * width if margin <= 1 else width - 2 * margin
+    avail_h = margin * height if margin <= 1 else height - 2 * margin
+    scale_x = avail_w / span_x if span_x > 0 else avail_w
+    scale_y = avail_h / span_y if span_y > 0 else avail_h
+    continuous = min(scale_x, scale_y)
+    if not pixel_align or not _is_complete_regular_grid(points) or continuous < 1:
+        return continuous
+    lower = max(1, math.floor(continuous))
+    upper = math.ceil(continuous)
+    span = max(span_x, span_y)
+    if (upper - continuous <= continuous - lower
+            and (upper - continuous) * span <= 1 + sys.float_info.epsilon):
+        return upper
+    return lower
+
+
+def compute_source_crop(video: Path, screenmap: Path, rotate_deg: float,
+                        zoom: float = 1.0, max_resolution: int = 480,
+                        ) -> tuple[int, int, int, int]:
+    """The (x, y, w, h) native-pixel region the mapped render samples.
+
+    The bounding box of the transformed LED sample positions, extended by half
+    an LED pitch so each LED's full cell is covered, mapped back from decoded
+    to native display coordinates.
+    """
+    native_w, native_h = probe_display_dimensions(video)
+    decoded_w, decoded_h = _scale_to_max_dimension(native_w, native_h, max_resolution)
+    points = _screenmap_points(screenmap)
+    scale = _center_fit_scale(points, decoded_w, decoded_h)
+
+    center_x = (min(x for x, _ in points) + max(x for x, _ in points)) / 2
+    center_y = (min(y for _, y in points) + max(y for _, y in points)) / 2
+    radians = math.radians(rotate_deg)
+    cos_r, sin_r = math.cos(radians), math.sin(radians)
+    transformed = []
+    for x, y in points:
+        px = (x - center_x) * scale
+        py = (y - center_y) * scale
+        transformed.append((
+            (px * cos_r - py * sin_r) * zoom,
+            (px * sin_r + py * cos_r) * zoom,
+        ))
+
+    xs_sorted = sorted({x for x, _ in points})
+    pitch_units = xs_sorted[1] - xs_sorted[0] if _is_complete_regular_grid(points) else 0.0
+    extend = 0.5 * pitch_units * scale * zoom
+
+    min_x = min(x for x, _ in transformed) - extend
+    max_x = max(x for x, _ in transformed) + extend
+    min_y = min(y for _, y in transformed) - extend
+    max_y = max(y for _, y in transformed) + extend
+
+    factor_x = native_w / decoded_w
+    factor_y = native_h / decoded_h
+    x0 = max(0, math.floor((decoded_w / 2 + min_x) * factor_x))
+    y0 = max(0, math.floor((decoded_h / 2 + min_y) * factor_y))
+    x1 = min(native_w, math.ceil((decoded_w / 2 + max_x) * factor_x))
+    y1 = min(native_h, math.ceil((decoded_h / 2 + max_y) * factor_y))
+    if x1 - x0 < 2 or y1 - y0 < 2:
+        raise ProduceError(f"degenerate source crop {x0},{y0}..{x1},{y1} for {video.name}")
+    return x0, y0, x1 - x0, y1 - y0
+
+
+COLOR_TAGS = [
+    # Explicit color tags: an untagged re-encode makes players guess (often
+    # bt601) and decode desaturated with shifted hues — the user-caught
+    # dual-render defect. The producer's own MP4 is tagged tv/bt709; every
+    # ffmpeg composition must match it.
+    "-colorspace", "bt709", "-color_primaries", "bt709",
+    "-color_trc", "bt709", "-color_range", "tv",
+]
 
 
 def _font_argument() -> str:
@@ -514,15 +669,7 @@ def produce_one(
                  "[1:v]setsar=1[m];[s][m]hstack=inputs=2[v]",
                  "-map", "[v]", "-an", "-shortest",
                  "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p",
-        "-colorspace", "bt709", "-color_primaries", "bt709",
-        "-color_trc", "bt709", "-color_range", "tv",
-                 # Explicit color tags: an untagged re-encode makes players
-                 # guess (often bt601) and decode desaturated with shifted
-                 # hues — the user-caught dual-render defect. The producer's
-                 # own MP4 is tagged tv/bt709; every ffmpeg composition must
-                 # match it.
-                 "-colorspace", "bt709", "-color_primaries", "bt709",
-                 "-color_trc", "bt709", "-color_range", "tv",
+                 *COLOR_TAGS,
                  str(dual)],
                 check=True,
             )
@@ -530,7 +677,59 @@ def produce_one(
         else:
             # CLAUDE.md requires the producer package to land beside the MP4.
             shutil.copyfile(package, output_dir / f"{mapped.stem}-ledmapper-v1.zip")
+        if args.crop_source:
+            emit_cropped_artifacts(args, video, screenmap, output_dir, mapped)
     return mapped
+
+
+def emit_cropped_artifacts(
+    args: argparse.Namespace,
+    video: Path,
+    screenmap: Path,
+    output_dir: Path,
+    mapped: Path,
+) -> tuple[Path, Path]:
+    """Emit the bound-box-cropped source and the wide crop dual.
+
+    The cropped source is the region of the source the panel actually samples
+    (LED bounding box + half a pitch), scaled to the mapped render's geometry.
+    The crop dual hstacks it against the mapped render, so both halves share
+    identical dimensions (~2048x1024 for the standard square panel).
+    """
+    ffmpeg, _ = ffmpeg_tools()
+    crop_x, crop_y, crop_w, crop_h = compute_source_crop(
+        video, screenmap, args.rotation + args.panel_rotation,
+    )
+    mapped_w, mapped_h = probe_display_dimensions(mapped)
+    print(
+        f"source crop: {crop_w}x{crop_h}+{crop_x}+{crop_y} -> {mapped_w}x{mapped_h}",
+        file=sys.stderr,
+    )
+    cropped = output_dir / f"{mapped.stem}-source-crop.mp4"
+    subprocess.run(
+        [ffmpeg, "-y", "-v", "error", "-i", str(video),
+         "-vf",
+         f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y},"
+         f"scale={mapped_w}:{mapped_h}:flags=lanczos,setsar=1",
+         "-an", "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p",
+         *COLOR_TAGS,
+         str(cropped)],
+        check=True,
+    )
+    print(cropped)
+    dual_crop = output_dir / f"{mapped.stem}-dual-crop.mp4"
+    subprocess.run(
+        [ffmpeg, "-y", "-v", "error",
+         "-i", str(cropped), "-i", str(mapped),
+         "-filter_complex", "[0:v]setsar=1[s];[1:v]setsar=1[m];[s][m]hstack=inputs=2[v]",
+         "-map", "[v]", "-an", "-shortest",
+         "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p",
+         *COLOR_TAGS,
+         str(dual_crop)],
+        check=True,
+    )
+    print(dual_crop)
+    return cropped, dual_crop
 
 
 def run(args: argparse.Namespace) -> int:
@@ -548,8 +747,16 @@ def run(args: argparse.Namespace) -> int:
                 f"unknown bloom strategy '{strategy}'. Known: {', '.join(STRATEGY_NAMES)}"
             )
     wants_compare = args.compare or len(strategies) > 1
-    if args.stitch or wants_compare:
+    if args.crop_source and args.video_mode != "mapped-led":
+        raise ProduceError(
+            "--crop-source pairs the cropped source with the mapped render; "
+            "it requires --video-mode mapped-led"
+        )
+    if args.stitch or wants_compare or args.crop_source:
         ffmpeg_tools()  # Fail fast, before spending minutes on renders.
+    if args.crop_source:
+        # Fail fast on degenerate geometry too, for the same reason.
+        compute_source_crop(video, screenmap, args.rotation + args.panel_rotation)
     if wants_compare and len(strategies) > 3:
         raise ProduceError(
             "comparison grids hold the source plus at most 3 strategies; "
@@ -716,6 +923,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "(never copied to the destination); the destination receives the "
             "plain mapped MP4 plus a dual side-by-side MP4 (source in the "
             "left third at 512x1024, mapped square 1024x1024 on the right)"
+        ),
+    )
+    parser.add_argument(
+        "--crop-source",
+        action="store_true",
+        help=(
+            "additionally emit the source video cropped to the region the "
+            "panel samples (the LED bounding box + half a pitch), scaled to "
+            "the mapped render's geometry, plus a -dual-crop.mp4 hstack of "
+            "cropped source | mapped render (~2048x1024). Requires "
+            "--video-mode mapped-led"
         ),
     )
     parser.add_argument(
