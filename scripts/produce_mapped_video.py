@@ -207,6 +207,8 @@ def compare_grid(tiles: list[tuple[str, Path]], destination: Path) -> Path:
         "-filter_complex", filtergraph,
         "-map", "[v]", "-an",
         "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-colorspace", "bt709", "-color_primaries", "bt709",
+        "-color_trc", "bt709", "-color_range", "tv",
         str(destination),
     ]
     subprocess.run(command, check=True)
@@ -512,6 +514,15 @@ def produce_one(
                  "[1:v]setsar=1[m];[s][m]hstack=inputs=2[v]",
                  "-map", "[v]", "-an", "-shortest",
                  "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-colorspace", "bt709", "-color_primaries", "bt709",
+        "-color_trc", "bt709", "-color_range", "tv",
+                 # Explicit color tags: an untagged re-encode makes players
+                 # guess (often bt601) and decode desaturated with shifted
+                 # hues — the user-caught dual-render defect. The producer's
+                 # own MP4 is tagged tv/bt709; every ffmpeg composition must
+                 # match it.
+                 "-colorspace", "bt709", "-color_primaries", "bt709",
+                 "-color_trc", "bt709", "-color_range", "tv",
                  str(dual)],
                 check=True,
             )
