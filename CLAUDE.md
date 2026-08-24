@@ -347,7 +347,11 @@ bleed that retains hue and local contrast, not a uniformly brighter image.
   composite hack (iris inversion, white-merge risk) existed to fight it.
 - Validate every composite change with scripts/bloom_gates.py (G1 halo, G2
   veil, G3 temporal, G4 merge, G5 energy, ring detector) against a
-  minimal-bloom reference render; the thresholds are a ratchet. AI picture
+  minimal-bloom reference render; the thresholds are a ratchet. For spatial
+  tuning, also pass the aligned crop plus `--spatial-times` (far-field
+  cross-hue upper bound) and `--mid-frequency-times` (coherent-neighbour fill
+  lower bound). A candidate must stay inside both bounds: removing bloom is
+  not a chroma win if complex surfaces fall back to isolated dots. AI picture
   evaluators (prompt in the #496 record) are the perceptual double-check.
 
 Record the exact job URL parameters, map, source filename, renderer mode, and

@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """Unified bloom gate runner (#496 Phase 1).
 
-Runs the complete mechanical gate suite against one candidate render:
+Runs the complete mechanical gate suite against one candidate render. The
+base suite covers halo, veil, temporal stability, merge, energy, rings, and
+stream color metadata. Optional aligned-source probes add the two-sided
+spatial corridor: chroma retention and mid-frequency neighbour fill are the
+lower bounds, while far-field cross-hue pull is the upper bound.
 
-  - bloom_metrics.py  — G1 halo aliveness, G2 veil, G3 temporal, G4 merge,
-                        G5 energy (#495), S-scores
-  - ring_analysis.py  — black-ring detector at the stress probes
-  - whiteout_gate.py  — bright-region merge on any extra probe times
-
-Exit code 0 only when EVERY gate passes. This is the ratchet from #496:
-thresholds only tighten; a red gate blocks the change.
+Exit code 0 only when EVERY selected gate passes. This is the ratchet from
+#496: thresholds only tighten; a red gate blocks the change.
 
 Usage:
   python scripts/bloom_gates.py CANDIDATE.mp4 --reference MINIMAL.mp4
+      [--source-crop SOURCE_CROP.mp4]
+      [--spatial-times 11] [--mid-frequency-times 2 7 12 17 22 27]
       [--ring-times 4.6 10.0 15.4] [--merge-times ...] [--probes ...]
 """
 
@@ -41,11 +42,16 @@ def main() -> int:
     parser.add_argument("--merge-times", type=float, nargs="*", default=[])
     parser.add_argument("--probes", default=None)
     parser.add_argument("--source-crop", type=Path, default=None,
-                        help="aligned source crop for the spatial chroma-leak gate")
+                        help="aligned source crop for spatial/chroma/fill gates")
     parser.add_argument("--spatial-times", type=float, nargs="*", default=[])
+    parser.add_argument("--mid-frequency-times", type=float, nargs="*", default=[])
     args = parser.parse_args()
-    if bool(args.source_crop) != bool(args.spatial_times):
-        parser.error("--source-crop and --spatial-times must be supplied together")
+    quality_times = sorted(set(args.spatial_times + args.mid_frequency_times))
+    if bool(args.source_crop) != bool(quality_times):
+        parser.error(
+            "--source-crop and at least one spatial/mid-frequency time must "
+            "be supplied together"
+        )
 
     verdicts: dict[str, bool] = {}
     report: dict[str, object] = {}
@@ -82,12 +88,12 @@ def main() -> int:
     report["color_profile"] = json.loads(out) if out.strip().startswith("{") else {}
     verdicts["color_profile"] = code == 0
 
-    if args.source_crop and args.spatial_times:
+    if args.source_crop and quality_times:
         cmd = [
             sys.executable, str(SCRIPTS / "chroma_retention_gate.py"),
             str(args.source_crop), str(args.candidate),
         ]
-        for time in args.spatial_times:
+        for time in quality_times:
             cmd += ["-t", str(time)]
         code, out = run(cmd)
         report["chroma_retention"] = (
@@ -95,17 +101,31 @@ def main() -> int:
         )
         verdicts["chroma_retention"] = code == 0
 
-        cmd = [
-            sys.executable, str(SCRIPTS / "spatial_chroma_leak_gate.py"),
-            str(args.source_crop), str(args.reference), str(args.candidate),
-        ]
-        for time in args.spatial_times:
-            cmd += ["-t", str(time)]
-        code, out = run(cmd)
-        report["spatial_chroma_leak"] = (
-            json.loads(out) if out.strip().startswith("{") else {}
-        )
-        verdicts["spatial_chroma_leak"] = code == 0
+        if args.spatial_times:
+            cmd = [
+                sys.executable, str(SCRIPTS / "spatial_chroma_leak_gate.py"),
+                str(args.source_crop), str(args.reference), str(args.candidate),
+            ]
+            for time in args.spatial_times:
+                cmd += ["-t", str(time)]
+            code, out = run(cmd)
+            report["spatial_chroma_leak"] = (
+                json.loads(out) if out.strip().startswith("{") else {}
+            )
+            verdicts["spatial_chroma_leak"] = code == 0
+
+        if args.mid_frequency_times:
+            cmd = [
+                sys.executable, str(SCRIPTS / "mid_frequency_bloom_gate.py"),
+                str(args.source_crop), str(args.reference), str(args.candidate),
+            ]
+            for time in args.mid_frequency_times:
+                cmd += ["-t", str(time)]
+            code, out = run(cmd)
+            report["mid_frequency_fill"] = (
+                json.loads(out) if out.strip().startswith("{") else {}
+            )
+            verdicts["mid_frequency_fill"] = code == 0
 
     report["verdicts"] = verdicts
     report["ALL_GATES_PASS"] = all(verdicts.values())

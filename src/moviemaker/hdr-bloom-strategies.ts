@@ -47,9 +47,10 @@ export interface HdrBloomBracketConfig {
      * Per-mip contribution for UnrealBloom's five spatial bands.
      *
      * The first two bands are local (roughly the LED and its immediate
-     * axial/diagonal neighbours at production resolution); levels 3-5 are
-     * coarse, low-frequency fields. Omitted means the historical all-mip
-     * response. Custom-PSF strategies ignore this setting.
+     * axial/diagonal neighbours at production resolution); level 3 is a
+     * mid-frequency bridge; levels 4-5 are coarse, low-frequency fields.
+     * Omitted means the historical all-mip response. Custom-PSF strategies
+     * ignore this setting.
      */
     unrealMipWeights?: readonly [number, number, number, number, number];
 }
@@ -1276,6 +1277,25 @@ void main() {
     // holds inside the G6 bound).
     added *= mix(mix(0.46, 0.12, globalBloomBias), 1.0, shadowMask);
 
+    // Chroma guard at lit LED cores. The restrained third mip is useful in
+    // negative space, but its mid-frequency field can still land blue/cyan
+    // energy on a red or magenta core. Preserve bloom parallel to the core's
+    // own RGB direction and attenuate only the hue-disagreeing remainder.
+    // Gaps have rawLinear == 0, so their newly restored neighbour fill is
+    // untouched; neutral and low-purity cores also bypass the guard.
+    float coreMax = maxChannel(rawLinear);
+    if (coreMax > 1e-6) {
+        float corePurity = 1.0 - minChannel(rawLinear) / coreMax;
+        float coreDrive = v1Smoothstep(0.06, 0.30, maxChannel(linearToSrgb(rawLinear)));
+        float chromaGuard = v1Smoothstep(0.25, 0.65, corePurity) * coreDrive;
+        vec3 coreDirection = rawLinear / coreMax;
+        float parallelAmount = dot(added, coreDirection)
+            / max(dot(coreDirection, coreDirection), 1e-6);
+        vec3 parallelBloom = max(parallelAmount, 0.0) * coreDirection;
+        vec3 guardedBloom = parallelBloom + (added - parallelBloom) * 0.20;
+        added = max(mix(added, guardedBloom, chromaGuard), vec3(0.0));
+    }
+
     // Phase 0 of #496 removed the iris-inversion gain that used to live
     // here: it was compensating for the production profile's 4x strength
     // handicap, which is gone. Capture strength is now trusted.
@@ -1784,8 +1804,9 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
             'acrylic-overflow plus drive-dependent core softening: inside hot '
             + 'regions the base blends toward the diffused field, so fully driven '
             + 'dots merge into one pane instead of staying sharp over a glow. '
-            + 'Only UnrealBloom mips 1-2 contribute, preventing coarse scene-wide '
-            + 'color wash while retaining axial and diagonal neighbour diffusion.',
+            + 'UnrealBloom mips 1-2 plus a restrained mip 3 contribute, restoring '
+            + 'midtone surface fill while mips 4-5 remain disabled to prevent '
+            + 'coarse scene-wide color wash.',
         brackets: {
             factors: [0.20, 0.55, 1],
             strengthScale: 1,
@@ -1794,12 +1815,14 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
             radiusScales: [1, 1.6, 3.2],
             highThresholdDark: 0,
             highThresholdBright: 0,
-            // Removing three bands would otherwise discard ~56% of the
-            // historical kernel energy. Re-invest it in the two local bands:
+            // Removing the two coarsest bands discards the scene-scale field.
+            // Most energy stays concentrated in the two local bands:
             // level 1 covers each LED body/immediate skirt; level 2 reaches
-            // the nearest axial and diagonal neighbours without a frame-wide
-            // residual field.
-            unrealMipWeights: [2.85, 1.5, 0, 0, 0],
+            // the nearest axial and diagonal neighbours. A restrained level 3
+            // restores the lower-quartile gap fill needed by complex faces,
+            // while the spatial chroma-leak gate keeps its far-field pull below
+            // the red-petal/blue-neighbour ceiling.
+            unrealMipWeights: [2.85, 1.5, 0.25, 0, 0],
         },
         fragmentShader: ACRYLIC_PANE_SHADER,
         supportsCpuOracle: false,
