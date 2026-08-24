@@ -11,7 +11,7 @@ hand, and instead of driving the interactive recorder (which is slower, not
 repeatable, and hard to compare frame-to-frame).
 
 ```bash
-python scripts/produce_mapped_video.py 'E:\video\short\fluid_swirls.mp4'
+uv run python scripts/produce_mapped_video.py 'E:\video\short\fluid_swirls.mp4'
 ```
 
 That single command starts or reuses the dev server, packages the MP4 plus the
@@ -73,7 +73,7 @@ experiment can be re-rendered by name. The CLI reads the registry directly, so
 
 ```bash
 # Baseline vs two candidates, as a labelled 2x2 grid with the source top-left.
-python scripts/produce_mapped_video.py 'E:\video\short\fluid_swirls.mp4' \
+uv run python scripts/produce_mapped_video.py 'E:\video\short\fluid_swirls.mp4' \
   --strategy chroma-shoulder --strategy white-core-chroma \
   --strategy wide-surround-chroma --version v2-wide
 ```

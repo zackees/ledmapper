@@ -9,7 +9,7 @@ the source-left / mapped-right comparison splice.
 
 Example:
 
-    python scripts/produce_mapped_video.py E:\\video\\short\\fluid_swirls.mp4
+    uv run python scripts/produce_mapped_video.py E:\\video\\short\\fluid_swirls.mp4
 
 See docs/production-cli.md for the underlying job-URL parameters.
 """
@@ -87,9 +87,8 @@ def ffmpeg_tools() -> tuple[str, str]:
     ffprobe = shutil.which("ffprobe")
     if not ffmpeg or not ffprobe:
         raise ProduceError(
-            "ffmpeg/ffprobe not found. Install the static binaries with "
-            "`python -m pip install static-ffmpeg`, or put ffmpeg on PATH, "
-            "or rerun with --no-stitch."
+            "ffmpeg/ffprobe not found. Run `uv sync` and launch this tool with "
+            "`uv run`, put ffmpeg on PATH, or rerun with --no-stitch."
         )
     return ffmpeg, ffprobe
 

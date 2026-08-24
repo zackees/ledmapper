@@ -405,7 +405,7 @@ def run_browser_job(job: JobRequest, extracted: ExtractedInput, download_dir: Pa
     except ImportError as exc:
         raise ProducerError(
             "PLAYWRIGHT_UNAVAILABLE",
-            "Install scripts/requirements-production.txt and run: python -m playwright install chromium",
+            "Run: uv sync && uv run playwright install chromium",
             5,
         ) from exc
 

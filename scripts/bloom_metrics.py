@@ -15,7 +15,7 @@ These metrics prune and shortlist candidates. They never declare a winner;
 the pairwise A/B splice review remains the verdict.
 
 Usage:
-  python scripts/bloom_metrics.py CANDIDATE.mp4 --reference MINIMAL.mp4 \
+  uv run python scripts/bloom_metrics.py CANDIDATE.mp4 --reference MINIMAL.mp4 \
       [--baseline BASELINE.mp4] [--json out.json]
 """
 

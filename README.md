@@ -27,7 +27,7 @@ both the 1024×1024 mapped render and a 1536×1024 review video to
 `E:\video\short_out`:
 
 ```powershell
-python scripts/produce_mapped_video.py "E:\video\short\clip.mp4" `
+uv run python scripts/produce_mapped_video.py "E:\video\short\clip.mp4" `
   --video-mode mapped-led --panel-rotation 0 --strategy acrylic-pane `
   --version batch --final-artifact --no-stitch --no-open
 ```

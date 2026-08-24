@@ -1,7 +1,0 @@
-playwright==1.58.2
-# Optional: only needed for produce_mapped_video.py's comparison splice.
-static-ffmpeg==3.0
-# Optional: only needed for bloom_metrics.py (the #493 surrogate-loss screener).
-numpy==2.3.2
-# produce_mapped_video.py: cross-platform process-tree teardown of the dev server.
-psutil==7.2.2

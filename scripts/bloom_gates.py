@@ -11,7 +11,7 @@ Exit code 0 only when EVERY selected gate passes. This is the ratchet from
 #496: thresholds only tighten; a red gate blocks the change.
 
 Usage:
-  python scripts/bloom_gates.py CANDIDATE.mp4 --reference MINIMAL.mp4
+  uv run python scripts/bloom_gates.py CANDIDATE.mp4 --reference MINIMAL.mp4
       [--source-crop SOURCE_CROP.mp4]
       [--spatial-times 11] [--mid-frequency-times 2 7 12 17 22 27]
       [--ring-times 4.6 10.0 15.4] [--merge-times ...] [--probes ...]

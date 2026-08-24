@@ -4,11 +4,12 @@ The supported unattended producer downloads a job's input ZIP, validates and ext
 
 ## Install
 
-Python 3.10 or newer is required. Use a dedicated virtual environment where practical:
+Python 3.11 or newer and [uv](https://docs.astral.sh/uv/) are required. uv
+creates and manages the project-local virtual environment:
 
 ```bash
-python -m pip install -r scripts/requirements-production.txt
-python -m playwright install chromium
+uv sync
+uv run playwright install chromium
 ```
 
 For direct H.264 MP4 output, install Google Chrome as well. The producer prefers its codec-capable `chrome` channel, then falls back to Playwright's bundled Chromium when Chrome is unavailable. The fallback can report `VIDEO_DECODE_UNSUPPORTED` or `MP4_ENCODING_UNSUPPORTED` where proprietary H.264 support is absent.
@@ -16,7 +17,7 @@ For direct H.264 MP4 output, install Google Chrome as well. The producer prefers
 ## Run
 
 ```bash
-python scripts/produce_video_mapping.py \
+uv run python scripts/produce_video_mapping.py \
   'https://www.ledmapper.com/produce/?v=1&input=https%3A%2F%2Fexample.com%2Fjob.zip&output=both' \
   --output-dir ./output
 ```
@@ -26,7 +27,7 @@ The input ZIP must contain exactly one `.mp4` and one case-sensitive `screenmap.
 For unattended safety, input URLs with credentials and hosts resolving to loopback, private, link-local, reserved, or otherwise non-public addresses are rejected. A trusted local development workflow may opt in explicitly:
 
 ```bash
-python scripts/produce_video_mapping.py 'http://localhost:5173/produce/?v=1&input=http%3A%2F%2Flocalhost%3A8000%2Fjob.zip&output=fled' --output-dir ./output --allow-private-network
+uv run python scripts/produce_video_mapping.py 'http://localhost:5173/produce/?v=1&input=http%3A%2F%2Flocalhost%3A8000%2Fjob.zip&output=fled' --output-dir ./output --allow-private-network
 ```
 
 `--allow-private-network` changes only the input-archive network policy. The exact job route URL is still passed to Chromium. Use `--headed` to show Chromium for diagnostics and `--timeout SECONDS` to adjust the production deadline.
@@ -83,7 +84,7 @@ network risk without reducing input transfer overhead.
 Run the reproducible memory comparison before choosing it for a large artifact:
 
 ```bash
-python scripts/benchmark_production_sidecar.py --bytes 67108864
+uv run python scripts/benchmark_production_sidecar.py --bytes 67108864
 ```
 
 The JSON result compares a direct completed-artifact materialization with the
@@ -101,7 +102,7 @@ a FLED artifact, and verifies the completed SHA-256 metadata. The separate
 sidecar protocol tests cover its chunked streaming decoder and byte limits:
 
 ```bash
-python scripts/test_production_sidecar_isolation.py
+uv run python scripts/test_production_sidecar_isolation.py
 ```
 
 It requires Docker Desktop and pulls the pinned Playwright image on first run.
@@ -120,7 +121,7 @@ The output ZIP is built in the destination directory and atomically replaced onl
 The executable direct-production regression packages the repository's H.264 fixture and screenmap, serves both local inputs, starts the application, and verifies the output package contains exactly one nonempty MP4. It requires a locally installed Google Chrome:
 
 ```bash
-python scripts/test_production_direct_mp4.py
+uv run python scripts/test_production_direct_mp4.py
 ```
 
 ## Python unit tests
@@ -128,5 +129,5 @@ python scripts/test_production_direct_mp4.py
 The archive, URL/network-policy, redaction, manifest, and output-ZIP helpers are testable without Playwright installed:
 
 ```bash
-python -m unittest discover -s tests/python -v
+uv run python -m unittest discover -s tests/python -v
 ```

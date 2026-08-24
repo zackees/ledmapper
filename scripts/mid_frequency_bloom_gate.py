@@ -30,7 +30,7 @@ approved candidate's weakest lower-quartile fill is 0.0617 versus at most
 0.0188 for the de-biased candidate.
 
 Usage:
-  python scripts/mid_frequency_bloom_gate.py SOURCE_CROP.mp4 CONTROL.mp4 \
+  uv run python scripts/mid_frequency_bloom_gate.py SOURCE_CROP.mp4 CONTROL.mp4 \
       CANDIDATE.mp4 -t 2 -t 7 -t 12
 """
 

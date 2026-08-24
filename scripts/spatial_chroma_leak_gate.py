@@ -27,7 +27,7 @@ merge. This gate is deliberately one-sided: reducing bloom cannot be called a
 spatial-chroma win unless those existing gates also pass.
 
 Usage:
-  python scripts/spatial_chroma_leak_gate.py SOURCE_CROP.mp4 CONTROL.mp4 \
+  uv run python scripts/spatial_chroma_leak_gate.py SOURCE_CROP.mp4 CONTROL.mp4 \
       CANDIDATE.mp4 -t 11
 """
 

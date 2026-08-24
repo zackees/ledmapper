@@ -11,6 +11,7 @@ FastLED Video Mapper (www.ledmapper.com) — a web-based tool suite for mapping 
 ```bash
 # One-time setup
 npm install
+uv sync
 
 # Start dev server (OS-selected free port)
 npm run dev
@@ -215,7 +216,7 @@ mapped output to occupy the remaining two-thirds, use the wrapper's existing
 `--final-artifact` mode with `videoMode=mapped-led`:
 
 ```powershell
-python scripts/produce_mapped_video.py "E:\video\short\clip.mp4" `
+uv run python scripts/produce_mapped_video.py "E:\video\short\clip.mp4" `
   --video-mode mapped-led --panel-rotation 0 --strategy acrylic-pane `
   --version batch --final-artifact --no-stitch --no-open
 ```
@@ -266,7 +267,7 @@ harder.
 2. Serve that ZIP from a local HTTP server and construct a `/produce/` job URL
    with `v=1`, a percent-encoded `input` URL, `output=mp4`, and the desired
    rendering parameters. Local runs must pass `--allow-private-network`.
-3. Run `python scripts/produce_video_mapping.py <job-url> --output-dir
+3. Run `uv run python scripts/produce_video_mapping.py <job-url> --output-dir
    <final-output-dir> --allow-private-network`. It emits a deterministic
    `<source>-ledmapper-v1.zip`; extract the MP4 directly to `short_out` and
    give it a descriptive, versioned name such as

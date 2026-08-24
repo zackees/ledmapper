@@ -21,7 +21,7 @@ Method, per analyzed frame:
     --min-merge (dots visibly separated where the pane should be).
 
 Usage:
-  python scripts/whiteout_gate.py RENDER.mp4 -t 0.05 [-t 3.0 ...]
+  uv run python scripts/whiteout_gate.py RENDER.mp4 -t 0.05 [-t 3.0 ...]
       [--grid 64] [--min-merge 0.55] [--min-dots 12] [--json out.json]
 
 Exit code 1 when any analyzed frame fails.

@@ -32,7 +32,7 @@ without relying on a post-composite saturation boost. Thresholds only ratchet
 up.
 
 Usage:
-  python scripts/chroma_retention_gate.py SOURCE_CROP.mp4 MAPPED.mp4
+  uv run python scripts/chroma_retention_gate.py SOURCE_CROP.mp4 MAPPED.mp4
       -t 4.0 [-t ...] [--min-retention 0.55] [--min-chroma-ratio 0.62]
       [--json out.json]
 

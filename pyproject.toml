@@ -1,0 +1,26 @@
+[project]
+name = "ledmapper-tools"
+version = "1.0.0"
+description = "Python production and bloom-evaluation tools for ledmapper"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy==2.3.2",
+    "playwright==1.62.0",
+    "psutil==7.2.2",
+    "static-ffmpeg==3.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12,<1",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py311"
+extend-exclude = [".venv", "node_modules", "dist"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"sys.path.insert".msg = "Run Python tools with `uv run` and use package-local imports; do not mutate sys.path."

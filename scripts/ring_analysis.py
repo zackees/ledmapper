@@ -9,7 +9,7 @@ dot, and reports the ring depth so the artifact is caught by analysis instead
 of by the user's eyes.
 
 Usage:
-  python scripts/ring_analysis.py RENDER.mp4 -t 3.0 -t 9.0 [--grid 64]
+  uv run python scripts/ring_analysis.py RENDER.mp4 -t 3.0 -t 9.0 [--grid 64]
       [--annotate out.png]
 
 Exit code 1 when any analyzed frame's ring score exceeds the threshold.

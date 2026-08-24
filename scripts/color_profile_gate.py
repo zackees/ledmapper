@@ -15,7 +15,7 @@ and mean saturation delta within tolerance) — the mix may compose, never
 regrade.
 
 Usage:
-  python scripts/color_profile_gate.py FILE [FILE ...]
+  uv run python scripts/color_profile_gate.py FILE [FILE ...]
       [--pair MAPPED DUAL] [--json out.json]
 
 Exit code 1 when any file lacks the required tags or a pair diverges.
