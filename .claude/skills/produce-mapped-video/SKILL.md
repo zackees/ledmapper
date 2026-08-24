@@ -29,7 +29,8 @@ source-left / mapped-right splice, and opens the result.
 | Layout | `mapped-led` (1024x1024, panel fills frame) | `--video-mode side-by-side` |
 | Cadence | source timing preserved | `--output-fps 30\|60` |
 | Auto bloom | on | `--no-auto-bloom` |
-| Bloom strategy | `chroma-shoulder` | `--strategy <name>` (repeatable) |
+| Bloom strategy | `acrylic-pane` | `--strategy <name>` (repeatable) |
+| Final review layout | off | `--final-artifact` (source 1/3, mapped 2/3) |
 | Splice | built | `--no-stitch` |
 | Output | `E:\video\short_out` | `--output-dir <path>` |
 | Opens result | yes | `--no-open` |
@@ -45,10 +46,23 @@ Pass `--version v3-<what-changed>` on every experiment so the review history in
 - **"show me it next to the original"** — the default splice already does this.
   `--video-mode side-by-side` is different: it bakes the two panes into the
   producer's own render rather than splicing two finished MP4s.
+- **"original in the left third, mapped output in the remaining two-thirds"** —
+  add `--final-artifact --no-stitch`. It emits the plain 1024×1024 mapped MP4
+  plus a 1536×1024 `-dual.mp4`: the source is aspect-fitted/letterboxed into
+  512×1024 and the mapped render fills the remaining 1024×1024. Do not combine
+  this request with `--crop-source`, which emits separate 50/50 crop artifacts.
 - **"16x16 grid"** — `--map public/screenmaps/16x16_serpentine.json`.
 - **A/B of two renders** — run twice with different `--version` tags and
   `--no-stitch`, then splice the two mapped MP4s (baseline left, candidate
   right) per the HDR-bloom protocol in `CLAUDE.md`.
+
+For a full final-artifact regeneration of `E:\video\short`, run the wrapper once
+per `.mp4` with `--video-mode mapped-led --panel-rotation 0 --strategy
+acrylic-pane --version batch --final-artifact --no-stitch --no-open`. The batch
+must leave `E:\video\short` untouched. For the current 24-source inventory,
+verify exactly 24 mapped MP4s and 24 `-dual.mp4` files in `short_out`, no ZIPs or
+crop artifacts, 1536×1024 dual geometry, matching duration/FPS, and bt709/tv
+tags.
 
 ## Comparing HDR bloom strategies
 
@@ -71,7 +85,7 @@ Every tile is labelled and letterboxed to a common cell, so a 9:16 source and a
 
 | Strategy | What it does |
 |---|---|
-| `chroma-shoulder` | Shipped default; the baseline every candidate is judged against. |
+| `chroma-shoulder` | Historical hue-locked shoulder baseline retained for comparisons. |
 | `linear-hdr` | Resurrected 2c51e78 — first fully-linear composite, pure bracket selection. |
 | `chroma-capped` | Resurrected 68d2550 — mid-bracket chroma, one shared energy ceiling. |
 | `white-core-chroma` | Gates white-merge suppression by raw saturation. |

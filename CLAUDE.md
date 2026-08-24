@@ -208,6 +208,32 @@ source duration; they do not perform motion interpolation.
 Auto bloom is enabled by default in production (`autoBloom=1` implicitly). Do
 not add `autoBloom=0` unless the user explicitly asks to turn bloom off.
 
+### Final one-third source / two-thirds mapped artifact
+
+When the user wants the original to occupy one-third of the viewport and the
+mapped output to occupy the remaining two-thirds, use the wrapper's existing
+`--final-artifact` mode with `videoMode=mapped-led`:
+
+```powershell
+python scripts/produce_mapped_video.py "E:\video\short\clip.mp4" `
+  --video-mode mapped-led --panel-rotation 0 --strategy acrylic-pane `
+  --version batch --final-artifact --no-stitch --no-open
+```
+
+This emits the plain 1024×1024 mapped MP4 plus `-dual.mp4`, a 1536×1024 review
+video with the original aspect-fitted and letterboxed into a 512×1024 left pane
+and the mapped render filling the 1024×1024 right pane. `--no-stitch` suppresses
+the wrapper's separate 50/50 comparison. Do not add `--crop-source` for this
+request: it emits additional `-source-crop.mp4` and 2048×1024 `-dual-crop.mp4`
+artifacts, which are useful for sampling-alignment review but are not the
+one-third/two-thirds final layout.
+
+For a full `E:\video\short` regeneration, clear only the files inside
+`E:\video\short_out`, keep every source video read-only, and invoke that command
+once for each source MP4. Verify 24 mapped plus 24 `-dual.mp4` outputs for the
+current 24-clip inventory, zero ZIPs/crop artifacts, 1536×1024 dual geometry,
+matching source duration/FPS, and bt709/tv color tags.
+
 ### Production-video development and HDR-bloom review loop
 
 Use the unattended producer as the source of truth for visual changes.  Do not

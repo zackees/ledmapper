@@ -22,6 +22,27 @@ import {
 } from './bloom-utils';
 import type { IrisState, BloomStrengthRange, FrameBrightnessResult } from './types/domain';
 
+export type BloomMipWeights = readonly [number, number, number, number, number];
+
+/**
+ * Select which UnrealBloom spatial bands contribute to the final field.
+ *
+ * Tint colors are used instead of the pass's `bloomFactors`: Three's radius
+ * control mirrors every factor toward `1.2 - factor`, so a zero factor starts
+ * contributing again whenever radius is non-zero. A zero tint is the only
+ * radius-independent way to remove a mip without forking UnrealBloomPass.
+ */
+export function setBloomMipWeights(
+    bloomPass: UnrealBloomPass,
+    weights: BloomMipWeights | undefined,
+): void {
+    const active = weights ?? [1, 1, 1, 1, 1];
+    for (let index = 0; index < bloomPass.bloomTintColors.length; index++) {
+        const weight = Math.max(active[index] ?? 0, 0);
+        bloomPass.bloomTintColors[index]?.setScalar(weight);
+    }
+}
+
 export function createBloomComposer({
     renderer,
     scene,
