@@ -1227,9 +1227,39 @@ void main() {
     // neighborhoods (the T4 veil), while the splat body and halo skirts live
     // in the tight and mid lobes. Cutting it beats strengthening the toe,
     // which killed the white peak's skirt at every strength tried.
-    vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.70
-        + max(midLinear - rawLinear, vec3(0.0)) * 0.29
-        + max(highLinear - rawLinear, vec3(0.0)) * 0.14;
+    vec3 lowAdded = max(lowLinear - rawLinear, vec3(0.0));
+    // Low-resolution shadow mask (user direction, 2026-08-24): in deep-
+    // contrast content the LOW-FREQUENCY lobes poison the black floor —
+    // measured: a source with 20% true blacks rendered with zero pixels
+    // under 8 luma while the minimal-bloom reference kept them. The tight
+    // lobe's pure blur component is smooth at dot scale (no ring risk) and
+    // low wherever the local neighborhood is genuinely dark, so it gates the
+    // mid/wide lobes: deep shadows keep only the tight splat skirt, driven
+    // regions keep the full stack (their tight field is hot, mask ~ 1).
+    float nearDrive = maxChannel(linearToSrgb(lowAdded * 3.0));
+    // Band raised (0.16 -> 0.30): UnrealBloom's 'tight' bracket still
+    // carries the full five-mip pyramid, whose far tail otherwise opens the
+    // mask from across the frame (measured: a bright starburst center
+    // flooding perimeter blacks through this exact path).
+    float shadowMask = v1Smoothstep(0.34, 0.62, nearDrive);
+    vec3 added = lowAdded * 0.70
+        + (max(midLinear - rawLinear, vec3(0.0)) * 0.29
+            + max(highLinear - rawLinear, vec3(0.0)) * 0.14) * shadowMask;
+    // The tight bracket still carries the same five-mip far tail (UnrealBloom
+    // structure), so deep-shadow pools also attenuate the whole stack: an
+    // extreme bright center otherwise lifts frame corners through the tight
+    // bracket alone (measured +28 luma P5 at the starburst frame).
+    // Bias-scaled: the brighter the frame, the harder its mip tails flood,
+    // so deep-shadow pools defend proportionally (physical acrylic scatters
+    // at pitch scale — frame-wide spread is kernel artifact, not physics).
+    // Dark-frame floor gentler (0.15 -> 0.38): a dim frame's spill is weak
+    // by construction, and the white peak's halo skirt lives in pool
+    // territory of exactly such frames (G1 measured 42 -> 0.96 at 0.15).
+    // Bias slope softened (dark end 0.38, bright end 0.06): the steeper
+    // slope amplified frame-to-frame bias jitter into steady-scene flicker
+    // (G3 2.4 > 2.0). Bright-frame pools still defend (starburst delta
+    // holds inside the G6 bound).
+    added *= mix(mix(0.42, 0.14, globalBloomBias), 1.0, shadowMask);
 
     // Phase 0 of #496 removed the iris-inversion gain that used to live
     // here: it was compensating for the production profile's 4x strength
@@ -1252,11 +1282,20 @@ void main() {
     // dark frame the eye/panel shows faint halos (weak toe — the lone white
     // peak keeps its skirt), in a bright frame faint spill reads as veil and
     // gets crushed (strong toe). Uniform per frame, so it cannot seam.
-    // Toe calibrated iris-free (p0b vs p0c A/B): 0.010 wins on every gate
-    // (S4 0.518 vs 0.482, G1 38 vs 27, G4 0.907 vs 0.888) — with the splat
-    // skirt recognized as correct behavior, the strong toe bought nothing.
-    float toeK = 0.010;
+    // Shadow-adaptive toe, driven by the SAME smooth mask as the lobe gate
+    // (one mask, no seams): genuinely dark neighborhoods get a strong toe
+    // that crushes residual skirt spill back to black, driven regions keep
+    // the weak toe that every bright-side gate calibrated (p0b A/B).
+    // Pools must land AT the minimal-bloom floor, not below it — G5 caught
+    // tiles at 60% of reference energy. Half the crush suffices for G6's
+    // wide margins.
+    float toeK = mix(0.045, 0.010, shadowMask);
     float toned = (norm * norm) / (norm + toeK);
+    // Bloom only ever ADDS: the curve must never take a pixel below its own
+    // sharp core (the pool toe was crushing dim LED cores to ~5% of the
+    // reference — a destructive tile G5 rightly rejects). Binding only
+    // inside cores, where output = raw = reference; gaps have raw ~ 0.
+    toned = max(toned, min(norm, maxChannel(rawLinear)));
     float knee = 0.80;
     toned = toned <= knee
         ? toned
