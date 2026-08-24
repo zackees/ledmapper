@@ -496,8 +496,29 @@ def produce_one(
                 raise ProduceError(f"expected exactly one MP4 in {package}, found {names}")
             with archive.open(names[0]) as src, mapped.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
-        # CLAUDE.md requires the producer package to land beside the MP4.
-        shutil.copyfile(package, output_dir / f"{mapped.stem}-ledmapper-v1.zip")
+        if args.final_artifact:
+            # Final-render mode: the ZIP is a working file and stays in temp.
+            # The destination receives the mapped MP4 plus the dual render —
+            # source in the left third (512x1024), mapped square (1024x1024)
+            # on the right.
+            ffmpeg, _ = ffmpeg_tools()
+            dual = output_dir / f"{mapped.stem}-dual.mp4"
+            subprocess.run(
+                [ffmpeg, "-y", "-v", "error",
+                 "-i", str(video), "-i", str(mapped),
+                 "-filter_complex",
+                 "[0:v]scale=512:1024:force_original_aspect_ratio=decrease,"
+                 "pad=512:1024:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[s];"
+                 "[1:v]setsar=1[m];[s][m]hstack=inputs=2[v]",
+                 "-map", "[v]", "-an", "-shortest",
+                 "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p",
+                 str(dual)],
+                check=True,
+            )
+            print(dual)
+        else:
+            # CLAUDE.md requires the producer package to land beside the MP4.
+            shutil.copyfile(package, output_dir / f"{mapped.stem}-ledmapper-v1.zip")
     return mapped
 
 
@@ -675,6 +696,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=int,
         default=5199,
         help="fixed dev-server port so repeated runs reuse one server",
+    )
+    parser.add_argument(
+        "--final-artifact",
+        action="store_true",
+        help=(
+            "final-render mode: the producer ZIP stays in the temp directory "
+            "(never copied to the destination); the destination receives the "
+            "plain mapped MP4 plus a dual side-by-side MP4 (source in the "
+            "left third at 512x1024, mapped square 1024x1024 on the right)"
+        ),
     )
     parser.add_argument(
         "--keep-server",

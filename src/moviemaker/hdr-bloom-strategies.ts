@@ -1241,7 +1241,12 @@ void main() {
     // carries the full five-mip pyramid, whose far tail otherwise opens the
     // mask from across the frame (measured: a bright starburst center
     // flooding perimeter blacks through this exact path).
-    float shadowMask = v1Smoothstep(0.34, 0.62, nearDrive);
+    // Softened (0.34 -> 0.24 onset): the first cut was too harsh — glow
+    // died too abruptly at pool borders (user review of the dataset run).
+    // Wide, gradual band: the harshness was the ABRUPT transition, not the
+    // pool depth — onset eased to 0.26 but full glow only by 0.72, so the
+    // cut is a long gentle ramp while deep pools stay defended.
+    float shadowMask = v1Smoothstep(0.26, 0.72, nearDrive);
     vec3 added = lowAdded * 0.70
         + (max(midLinear - rawLinear, vec3(0.0)) * 0.29
             + max(highLinear - rawLinear, vec3(0.0)) * 0.14) * shadowMask;
@@ -1259,7 +1264,7 @@ void main() {
     // slope amplified frame-to-frame bias jitter into steady-scene flicker
     // (G3 2.4 > 2.0). Bright-frame pools still defend (starburst delta
     // holds inside the G6 bound).
-    added *= mix(mix(0.42, 0.14, globalBloomBias), 1.0, shadowMask);
+    added *= mix(mix(0.48, 0.15, globalBloomBias), 1.0, shadowMask);
 
     // Phase 0 of #496 removed the iris-inversion gain that used to live
     // here: it was compensating for the production profile's 4x strength
@@ -1289,7 +1294,7 @@ void main() {
     // Pools must land AT the minimal-bloom floor, not below it — G5 caught
     // tiles at 60% of reference energy. Half the crush suffices for G6's
     // wide margins.
-    float toeK = mix(0.045, 0.010, shadowMask);
+    float toeK = mix(0.042, 0.010, shadowMask);
     float toned = (norm * norm) / (norm + toeK);
     // Bloom only ever ADDS: the curve must never take a pixel below its own
     // sharp core (the pool toe was crushing dim LED cores to ~5% of the
