@@ -46,9 +46,9 @@ export interface HdrBloomBracketConfig {
     /**
      * Per-mip contribution for UnrealBloom's five spatial bands.
      *
-     * The first two bands are local (roughly the LED and its immediate
-     * axial/diagonal neighbours at production resolution); level 3 is a
-     * mid-frequency bridge; levels 4-5 are coarse, low-frequency fields.
+     * Mips 0-1 are local (roughly the LED and its immediate axial/diagonal
+     * neighbours at production resolution); mip 2 is a mid-frequency bridge;
+     * mips 3-4 are coarse, low-frequency fields.
      * Omitted means the historical all-mip response. Custom-PSF strategies
      * ignore this setting.
      */
@@ -1287,12 +1287,12 @@ void main() {
     if (coreMax > 1e-6) {
         float corePurity = 1.0 - minChannel(rawLinear) / coreMax;
         float coreDrive = v1Smoothstep(0.06, 0.30, maxChannel(linearToSrgb(rawLinear)));
-        float chromaGuard = v1Smoothstep(0.25, 0.65, corePurity) * coreDrive;
+        float chromaGuard = v1Smoothstep(0.15, 0.50, corePurity) * coreDrive;
         vec3 coreDirection = rawLinear / coreMax;
         float parallelAmount = dot(added, coreDirection)
             / max(dot(coreDirection, coreDirection), 1e-6);
         vec3 parallelBloom = max(parallelAmount, 0.0) * coreDirection;
-        vec3 guardedBloom = parallelBloom + (added - parallelBloom) * 0.20;
+        vec3 guardedBloom = parallelBloom;
         added = max(mix(added, guardedBloom, chromaGuard), vec3(0.0));
     }
 
@@ -1804,9 +1804,9 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
             'acrylic-overflow plus drive-dependent core softening: inside hot '
             + 'regions the base blends toward the diffused field, so fully driven '
             + 'dots merge into one pane instead of staying sharp over a glow. '
-            + 'UnrealBloom mips 1-2 plus a restrained mip 3 contribute, restoring '
-            + 'midtone surface fill while mips 4-5 remain disabled to prevent '
-            + 'coarse scene-wide color wash.',
+            + 'Strong retained mips 0-2 restore visible, hue-preserving local '
+            + 'surface fill while coarse mips 3-4 remain disabled '
+            + 'to prevent coarse scene-wide color wash.',
         brackets: {
             factors: [0.20, 0.55, 1],
             strengthScale: 1,
@@ -1815,14 +1815,17 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
             radiusScales: [1, 1.6, 3.2],
             highThresholdDark: 0,
             highThresholdBright: 0,
-            // Removing the two coarsest bands discards the scene-scale field.
-            // Most energy stays concentrated in the two local bands:
-            // level 1 covers each LED body/immediate skirt; level 2 reaches
-            // the nearest axial and diagonal neighbours. A restrained level 3
-            // restores the lower-quartile gap fill needed by complex faces,
-            // while the spatial chroma-leak gate keeps its far-field pull below
-            // the red-petal/blue-neighbour ceiling.
-            unrealMipWeights: [2.85, 1.5, 0.25, 0, 0],
+            // IMPORTANT REGRESSION MEMORY (AQNF face + AQOQ petals, 2026-08-24):
+            // the washout defect came from the BOTTOM/COARSE pyramid (mips 3-4),
+            // not from local bloom. Zeroing mips 3-4 fixed the scene-wide veil.
+            // We then overcorrected by de-biasing mips 0-2 and by treating local
+            // cross-hue influence as though it were the old global contamination;
+            // faces fell back to isolated dots and the A/B delta became nearly
+            // imperceptible. Do not repeat that correction. Keep all retained
+            // mips strong: mip 0 covers the LED body/skirt, mip 1 covers axial
+            // and diagonal neighbours, and mip 2 bridges coherent local surfaces.
+            // Only mips 3-4 are the prohibited full-frame low-frequency field.
+            unrealMipWeights: [2.85, 4.00, 1.50, 0, 0],
         },
         fragmentShader: ACRYLIC_PANE_SHADER,
         supportsCpuOracle: false,

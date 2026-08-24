@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gate low-frequency cross-hue bloom using a source, control, and candidate.
+"""Gate damaging cross-hue bloom using a source, control, and candidate.
 
 This catches the defect visible in the AQOQHb... kaleidoscope clip at t=11:
 red/reddish-brown petal interiors are pulled toward the blue/cyan field several
@@ -9,13 +9,18 @@ The gate works on the 64x64 LED lattice:
 
 * Source cells select coherent red/orange targets whose immediate 8-connected
   neighbourhood (cardinal AND diagonal neighbours) still belongs to the petal.
-* A Chebyshev-radius 3..8 annulus supplies the contrasting far-field colour.
+* A Chebyshev-radius 3..8 annulus supplies the contrasting surround colour.
 * The minimal-bloom render is the control, removing sampling, tone-map, and
   codec differences that are not caused by the candidate bloom.
 * RGB is converted to sum-normalized chromaticity. The candidate-control delta
-  is projected toward the far-field colour. The absolute projection is the
-  low-frequency energy delta; the fractional projection additionally reports
-  how far the target moved along the path to the annulus.
+  is projected toward the surround colour. That projection remains a useful
+  diagnostic, but it is NOT a default rejection threshold: after coarse mips
+  3-4 were removed, mips 0-2 intentionally carry colour across this local/mid
+  radius. Treating the old 0.12 projection as a hard ceiling overcorrected the
+  fix and suppressed desired face/surface fill.
+* The default damage bounds are direct blue-share gain and saturation loss at
+  the protected red cells. Scene-wide/low-frequency veil remains covered by
+  bloom_metrics G2/G6, while the strategy unit test locks coarse mips 3-4 off.
 
 The regular bloom gates remain responsible for halo aliveness and white-pane
 merge. This gate is deliberately one-sided: reducing bloom cannot be called a
@@ -85,8 +90,9 @@ def analyze_frame(
     )
 
     # Radius 1 is the complete nearest-neighbour set: four cardinal plus four
-    # diagonal cells. Radius 3..8 represents the coarse pyramid support the
-    # localized diffuser must not pour back over the target.
+    # diagonal cells. Radius 3..8 is a contrasting surround. It overlaps the
+    # intentional support of retained mip 2 and therefore cannot, by itself,
+    # distinguish useful local diffusion from the removed coarse-pyramid veil.
     near = annulus_means(ideal, 1, 1)
     far = annulus_means(ideal, 3, 8)
     ideal_c = chromaticity(ideal)
@@ -151,7 +157,11 @@ def main() -> int:
                         help="minimal-bloom render with identical geometry")
     parser.add_argument("candidate", type=Path)
     parser.add_argument("-t", "--time", type=float, action="append", required=True)
-    parser.add_argument("--max-far-pull-p90", type=float, default=0.12)
+    parser.add_argument(
+        "--max-far-pull-p90", type=float, default=None,
+        help=("optional legacy diagnostic ceiling; omitted by default because "
+              "radius 3..8 includes intentional mip-2 influence"),
+    )
     parser.add_argument("--max-blue-share-p90", type=float, default=0.055)
     parser.add_argument("--min-saturation-retention-p10", type=float, default=0.55)
     parser.add_argument("--json", type=Path, default=None)
@@ -166,10 +176,9 @@ def main() -> int:
             frame_at(args.candidate, time),
         )
         deficits: dict[str, float] = {}
-        upper_bounds = {
-            "far_pull_p90": args.max_far_pull_p90,
-            "blue_share_delta_p90": args.max_blue_share_p90,
-        }
+        upper_bounds = {"blue_share_delta_p90": args.max_blue_share_p90}
+        if args.max_far_pull_p90 is not None:
+            upper_bounds["far_pull_p90"] = args.max_far_pull_p90
         for metric, ceiling in upper_bounds.items():
             if stats[metric] > ceiling:
                 deficits[metric] = round(float(stats[metric]) - ceiling, 4)

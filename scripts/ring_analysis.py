@@ -25,6 +25,8 @@ from pathlib import Path
 
 import numpy as np
 
+from evaluator_geometry import production_led_positions
+
 try:  # pragma: no cover - optional, mirrors bloom_metrics.py
     import static_ffmpeg  # type: ignore
 
@@ -58,26 +60,34 @@ def luma(rgb: np.ndarray) -> np.ndarray:
 def analyze_frame(rgb: np.ndarray, grid: int) -> dict:
     """Ring statistics for one frame.
 
-    For each grid cell, the dot center is the cell's brightest pixel. The
-    radial profile (median luma per integer radius) must not dip and recover:
-    ring depth = max over radii r_in < r_out of
-    profile[r_out] - min(profile[r_in..r_out]).
+    For each grid cell, the dot center comes from the production preview's
+    point-extent camera fit (production passes no LED diameter). The radial profile
+    (median luma per integer radius) must not dip and recover:
+        ring depth = max over radii r_in < r_out of
+        profile[r_out] - min(profile[r_in..r_out]).
     """
     y = luma(rgb)
     h, w = y.shape
-    pitch = w / grid
+    x_positions = production_led_positions(w, grid)
+    y_positions = production_led_positions(h, grid)
+    pitch = min(float(x_positions[1] - x_positions[0]),
+                float(y_positions[1] - y_positions[0]))
     half = pitch / 2
-    yy, xx = np.mgrid[0:h, 0:w]
 
     depths: list[float] = []
     flagged: list[tuple[int, int, float]] = []
     for gy in range(1, grid - 1):
         for gx in range(1, grid - 1):
-            y0, y1 = int(gy * pitch), int((gy + 1) * pitch)
-            x0, x1 = int(gx * pitch), int((gx + 1) * pitch)
-            cell = y[y0:y1, x0:x1]
-            cy, cx = np.unravel_index(np.argmax(cell), cell.shape)
-            core = float(cell[cy, cx])
+            cya, cxa = float(y_positions[gy]), float(x_positions[gx])
+            r0, r1 = int(np.floor(cya - half - 2)), int(np.ceil(cya + half + 3))
+            c0, c1 = int(np.floor(cxa - half - 2)), int(np.ceil(cxa + half + 3))
+            if r0 < 0 or c0 < 0 or r1 > h or c1 > w:
+                continue
+            patch = y[r0:r1, c0:c1]
+            py, px = np.mgrid[r0:r1, c0:c1]
+            rr = np.hypot(py - cya, px - cxa)
+            core_pixels = patch[rr <= 1.5]
+            core = float(core_pixels.max()) if core_pixels.size else 0.0
             # Skip only dark dots (no glow to ring against). Bright cores
             # stay in: the user sees moats around bright dots in bright
             # fields, and a genuinely merged white-out region profiles flat
@@ -85,13 +95,6 @@ def analyze_frame(rgb: np.ndarray, grid: int) -> dict:
             # excluded most dots of exactly the frames that ring.
             if core < 40:
                 continue
-            cya, cxa = y0 + cy, x0 + cx
-            r0, r1 = int(cya - half - 2), int(cya + half + 3)
-            c0, c1 = int(cxa - half - 2), int(cxa + half + 3)
-            if r0 < 0 or c0 < 0 or r1 > h or c1 > w:
-                continue
-            patch = y[r0:r1, c0:c1]
-            rr = np.hypot(yy[r0:r1, c0:c1] - cya, xx[r0:r1, c0:c1] - cxa)
             # Cap the profile BEFORE neighboring dots can contribute: with
             # pitch p, neighbors sit at r >= p, mid-gap at p/2. Sampling past
             # ~p/2 makes normal inter-dot field structure read as "recovery"
@@ -114,7 +117,7 @@ def analyze_frame(rgb: np.ndarray, grid: int) -> dict:
             depth = float(np.max(profile - running_min))
             depths.append(depth)
             if depth > 8:
-                flagged.append((cxa, cya, depth))
+                flagged.append((int(round(cxa)), int(round(cya)), depth))
 
     if not depths:
         return {"dots": 0, "mean_depth": 0.0, "p95_depth": 0.0,

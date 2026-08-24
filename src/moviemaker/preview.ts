@@ -204,10 +204,10 @@ export function createLedPreview({
         && (hdrBloomCompositeMode === 'gpu-full' || verifiesGpuHdrComposite)
         ? createGpuHdrBloomComposite(renderer, hdrWidth, hdrHeight, hdrBloomStrategy)
         : null;
-    // Strategy-owned spatial support. Acrylic-pane concentrates energy in
-    // UnrealBloom's first two bands and keeps only a restrained third band for
-    // mid-frequency surface fill. Both axes are blurred, so diagonal neighbours
-    // remain part of the PSF; coarse frame-scale mips 4-5 stay disabled.
+    // Strategy-owned spatial support. Acrylic-pane keeps strong energy in
+    // UnrealBloom mips 0-2 for local and mid-frequency surface fill. Both axes
+    // are blurred, so diagonal neighbours remain part of the PSF; coarse
+    // frame-scale mips 3-4 stay disabled.
     setBloomMipWeights(bloom.bloomPass, hdrGpuComposite?.brackets.unrealMipWeights);
     // Strategies flagged customPsf capture their brackets through the owned
     // acrylic PSF pipeline (vec4 emission+coverage fields) instead of
