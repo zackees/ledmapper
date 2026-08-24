@@ -43,6 +43,15 @@ export interface HdrBloomBracketConfig {
      * via the bloomStrength uniform, so the shader alone reproduces a render.
      */
     customPsf?: boolean;
+    /**
+     * Per-mip contribution for UnrealBloom's five spatial bands.
+     *
+     * The first two bands are local (roughly the LED and its immediate
+     * axial/diagonal neighbours at production resolution); levels 3-5 are
+     * coarse, low-frequency fields. Omitted means the historical all-mip
+     * response. Custom-PSF strategies ignore this setting.
+     */
+    unrealMipWeights?: readonly [number, number, number, number, number];
 }
 
 export interface HdrBloomStrategy {
@@ -75,6 +84,7 @@ export const HDR_BLOOM_STRATEGY_NAMES = [
     'norm-surround-hue',
     'legacy-additive',
     'acrylic-overflow',
+    'acrylic-pane-wide',
     'acrylic-pane',
     'acrylic-psf',
     'acrylic-native',
@@ -1751,13 +1761,31 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
         fragmentShader: ACRYLIC_OVERFLOW_SHADER,
         supportsCpuOracle: false,
     },
+    'acrylic-pane-wide': {
+        name: 'acrylic-pane-wide',
+        label: 'acrylic-pane-wide (r6 historical)',
+        description:
+            'Historical acrylic-pane response with all five UnrealBloom mips. '
+            + 'Retained as the reproducible baseline for low-frequency color-wash tests.',
+        brackets: {
+            factors: [0.20, 0.55, 1],
+            strengthScale: 1,
+            radiusScales: [1, 1.6, 3.2],
+            highThresholdDark: 0,
+            highThresholdBright: 0,
+        },
+        fragmentShader: ACRYLIC_PANE_SHADER,
+        supportsCpuOracle: false,
+    },
     'acrylic-pane': {
         name: 'acrylic-pane',
-        label: 'acrylic-pane (r6)',
+        label: 'acrylic-pane (local bloom)',
         description:
             'acrylic-overflow plus drive-dependent core softening: inside hot '
             + 'regions the base blends toward the diffused field, so fully driven '
-            + 'dots merge into one pane instead of staying sharp over a glow.',
+            + 'dots merge into one pane instead of staying sharp over a glow. '
+            + 'Only UnrealBloom mips 1-2 contribute, preventing coarse scene-wide '
+            + 'color wash while retaining axial and diagonal neighbour diffusion.',
         brackets: {
             factors: [0.20, 0.55, 1],
             strengthScale: 1,
@@ -1766,6 +1794,12 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
             radiusScales: [1, 1.6, 3.2],
             highThresholdDark: 0,
             highThresholdBright: 0,
+            // Removing three bands would otherwise discard ~56% of the
+            // historical kernel energy. Re-invest it in the two local bands:
+            // level 1 covers each LED body/immediate skirt; level 2 reaches
+            // the nearest axial and diagonal neighbours without a frame-wide
+            // residual field.
+            unrealMipWeights: [2.85, 1.5, 0, 0, 0],
         },
         fragmentShader: ACRYLIC_PANE_SHADER,
         supportsCpuOracle: false,
@@ -1836,4 +1870,3 @@ export function isHdrBloomStrategyName(value: string): value is HdrBloomStrategy
 export function resolveHdrBloomStrategy(name: HdrBloomStrategyName): HdrBloomStrategy {
     return HDR_BLOOM_STRATEGIES[name];
 }
-

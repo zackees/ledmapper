@@ -48,10 +48,16 @@ void describe('HDR bloom strategies', () => {
     });
 
     void test('strategies are distinct algorithms, not duplicates', () => {
-        const shaders = new Set(
-            HDR_BLOOM_STRATEGY_NAMES.map((name) => resolveHdrBloomStrategy(name).fragmentShader),
+        // Bracket capture is part of the algorithm, not just the shader. The
+        // historical wide and localized acrylic panes intentionally share a
+        // composite while using different spatial support.
+        const identities = new Set(
+            HDR_BLOOM_STRATEGY_NAMES.map((name) => {
+                const strategy = resolveHdrBloomStrategy(name);
+                return `${strategy.fragmentShader}\n${JSON.stringify(strategy.brackets)}`;
+            }),
         );
-        assert.equal(shaders.size, HDR_BLOOM_STRATEGY_NAMES.length);
+        assert.equal(identities.size, HDR_BLOOM_STRATEGY_NAMES.length);
     });
 
     void test('resurrected strategies keep the bracket setup they shipped with', () => {
@@ -83,7 +89,7 @@ void describe('HDR bloom strategies', () => {
             'wide-surround-chroma', 'surround-white-safe', 'norm-tonescale',
             'surround-white-glow', 'norm-tonescale-guarded',
             'norm-tonescale-sharp', 'norm-surround-hue',
-            'legacy-additive', 'acrylic-overflow', 'acrylic-pane', 'acrylic-psf',
+            'legacy-additive', 'acrylic-overflow', 'acrylic-pane-wide', 'acrylic-pane', 'acrylic-psf',
             'acrylic-native', 'hdr-reference',
         ]);
         for (const name of HDR_BLOOM_STRATEGY_NAMES) {
@@ -100,6 +106,14 @@ void describe('HDR bloom strategies', () => {
                 );
             }
         }
+    });
+
+    void test('the acrylic pane limits bloom to local axial and diagonal bands', () => {
+        const { unrealMipWeights } = resolveHdrBloomStrategy('acrylic-pane').brackets;
+        assert.deepEqual(unrealMipWeights, [2.85, 1.5, 0, 0, 0]);
+        assert.ok(unrealMipWeights[0]);
+        assert.ok(unrealMipWeights[1]);
+        assert.ok(unrealMipWeights.slice(2).every((weight) => weight === 0));
     });
 
     void test('name guard rejects unknown strategies', () => {

@@ -40,7 +40,12 @@ def main() -> int:
                         default=[4.6, 10.0, 15.4])
     parser.add_argument("--merge-times", type=float, nargs="*", default=[])
     parser.add_argument("--probes", default=None)
+    parser.add_argument("--source-crop", type=Path, default=None,
+                        help="aligned source crop for the spatial chroma-leak gate")
+    parser.add_argument("--spatial-times", type=float, nargs="*", default=[])
     args = parser.parse_args()
+    if bool(args.source_crop) != bool(args.spatial_times):
+        parser.error("--source-crop and --spatial-times must be supplied together")
 
     verdicts: dict[str, bool] = {}
     report: dict[str, object] = {}
@@ -76,6 +81,31 @@ def main() -> int:
     code, out = run(cmd)
     report["color_profile"] = json.loads(out) if out.strip().startswith("{") else {}
     verdicts["color_profile"] = code == 0
+
+    if args.source_crop and args.spatial_times:
+        cmd = [
+            sys.executable, str(SCRIPTS / "chroma_retention_gate.py"),
+            str(args.source_crop), str(args.candidate),
+        ]
+        for time in args.spatial_times:
+            cmd += ["-t", str(time)]
+        code, out = run(cmd)
+        report["chroma_retention"] = (
+            json.loads(out) if out.strip().startswith("{") else {}
+        )
+        verdicts["chroma_retention"] = code == 0
+
+        cmd = [
+            sys.executable, str(SCRIPTS / "spatial_chroma_leak_gate.py"),
+            str(args.source_crop), str(args.reference), str(args.candidate),
+        ]
+        for time in args.spatial_times:
+            cmd += ["-t", str(time)]
+        code, out = run(cmd)
+        report["spatial_chroma_leak"] = (
+            json.loads(out) if out.strip().startswith("{") else {}
+        )
+        verdicts["spatial_chroma_leak"] = code == 0
 
     report["verdicts"] = verdicts
     report["ALL_GATES_PASS"] = all(verdicts.values())

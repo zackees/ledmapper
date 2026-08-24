@@ -15,6 +15,7 @@ import { WebGLRenderer, Scene, OrthographicCamera, Shape, ShapeGeometry, Mesh, M
 import { createCircleTexture, rebuildPointsMesh } from '../three-utils';
 import type { PointsMeshResult, StripPoint } from '../types/domain';
 import { createAutoBloom } from '../auto-bloom';
+import { setBloomMipWeights } from '../three-bloom';
 import { attachContextLossWatchdog } from '../watchdogs';
 import {
     PREVIEW_AUTO_FLOOR,
@@ -203,6 +204,11 @@ export function createLedPreview({
         && (hdrBloomCompositeMode === 'gpu-full' || verifiesGpuHdrComposite)
         ? createGpuHdrBloomComposite(renderer, hdrWidth, hdrHeight, hdrBloomStrategy)
         : null;
+    // Strategy-owned spatial support. In particular, acrylic-pane deliberately
+    // keeps only UnrealBloom's first two bands: both axes are blurred, so
+    // diagonal neighbours remain part of the PSF, while coarse frame-scale
+    // mips cannot wash one colour family into another.
+    setBloomMipWeights(bloom.bloomPass, hdrGpuComposite?.brackets.unrealMipWeights);
     // Strategies flagged customPsf capture their brackets through the owned
     // acrylic PSF pipeline (vec4 emission+coverage fields) instead of
     // UnrealBloom. Created lazily beside the composite so both share
