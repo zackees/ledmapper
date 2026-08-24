@@ -108,12 +108,13 @@ void describe('HDR bloom strategies', () => {
         }
     });
 
-    void test('the acrylic pane limits bloom to local axial and diagonal bands', () => {
+    void test('the acrylic pane keeps a restrained mid band and disables coarse bands', () => {
         const { unrealMipWeights } = resolveHdrBloomStrategy('acrylic-pane').brackets;
-        assert.deepEqual(unrealMipWeights, [2.85, 1.5, 0, 0, 0]);
+        assert.deepEqual(unrealMipWeights, [2.85, 1.5, 0.25, 0, 0]);
         assert.ok(unrealMipWeights[0]);
         assert.ok(unrealMipWeights[1]);
-        assert.ok(unrealMipWeights.slice(2).every((weight) => weight === 0));
+        assert.ok(unrealMipWeights[2] > 0 && unrealMipWeights[2] < unrealMipWeights[1]);
+        assert.ok(unrealMipWeights.slice(3).every((weight) => weight === 0));
     });
 
     void test('name guard rejects unknown strategies', () => {

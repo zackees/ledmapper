@@ -165,11 +165,22 @@ def main() -> int:
             frame_at(args.control, time),
             frame_at(args.candidate, time),
         )
-        frame_fail = bool(
-            stats["far_pull_p90"] > args.max_far_pull_p90
-            or stats["blue_share_delta_p90"] > args.max_blue_share_p90
-            or stats["saturation_retention_p10"] < args.min_saturation_retention_p10
-        )
+        deficits: dict[str, float] = {}
+        upper_bounds = {
+            "far_pull_p90": args.max_far_pull_p90,
+            "blue_share_delta_p90": args.max_blue_share_p90,
+        }
+        for metric, ceiling in upper_bounds.items():
+            if stats[metric] > ceiling:
+                deficits[metric] = round(float(stats[metric]) - ceiling, 4)
+        if stats["saturation_retention_p10"] < args.min_saturation_retention_p10:
+            deficits["saturation_retention_p10"] = round(
+                args.min_saturation_retention_p10
+                - float(stats["saturation_retention_p10"]),
+                4,
+            )
+        frame_fail = bool(deficits)
+        stats["deficits"] = deficits
         stats["pass"] = not frame_fail
         report[f"t={time:g}"] = stats
         failed = failed or frame_fail

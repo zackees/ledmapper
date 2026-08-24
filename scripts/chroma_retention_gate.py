@@ -97,10 +97,15 @@ def cell_means(rgb: np.ndarray) -> np.ndarray:
     return rgb[: ch * GRID, : cw * GRID].reshape(GRID, ch, GRID, cw, 3).mean(axis=(1, 3))
 
 
+def led_positions(size: int) -> np.ndarray:
+    """Canvas coordinates of the production preview's 64 LED centers."""
+    scale = size / (2 * HALF_EXTENT)
+    return size / 2 + (np.arange(GRID) * UNIT_PITCH - EXTENT / 2) * scale
+
+
 def led_cores(rgb: np.ndarray) -> np.ndarray:
     size = rgb.shape[0]
-    scale = size / (2 * HALF_EXTENT)
-    positions = size / 2 + (np.arange(GRID) * UNIT_PITCH - EXTENT / 2) * scale
+    positions = led_positions(size)
     out = np.zeros((GRID, GRID, 3))
     for gy, py in enumerate(positions):
         for gx, px in enumerate(positions):
@@ -183,19 +188,35 @@ def main() -> int:
         ideal = cell_means(frame_at(args.source_crop, t))
         led = led_cores(frame_at(args.mapped, t))
         stats = analyze_frame(ideal, led, args.min_family_cells)
-        frame_fail = bool(
+        deficits: dict[str, float] = {}
+        if (
             stats["chroma_ratio"] is not None
             and stats["chroma_ratio"] < args.min_chroma_ratio
-        )
-        for fam in stats["families"].values():
-            frame_fail = frame_fail or fam["retention"] < args.min_retention
+        ):
+            deficits["chroma_ratio"] = round(
+                args.min_chroma_ratio - stats["chroma_ratio"], 4
+            )
+        for name, fam in stats["families"].items():
+            if fam["retention"] < args.min_retention:
+                deficits[f"family.{name}.retention"] = round(
+                    args.min_retention - fam["retention"], 4
+                )
+        frame_fail = bool(deficits)
+        stats["deficits"] = deficits
         stats["pass"] = not frame_fail
         report[f"t={t:g}"] = stats
         failed = failed or frame_fail
 
-    print(json.dumps(report, indent=2))
+    report["thresholds"] = {
+        "min_retention": args.min_retention,
+        "min_chroma_ratio": args.min_chroma_ratio,
+        "min_family_cells": args.min_family_cells,
+    }
+    report["ALL_GATES_PASS"] = not failed
+    rendered = json.dumps(report, indent=2)
+    print(rendered)
     if args.json:
-        args.json.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        args.json.write_text(rendered, encoding="utf-8")
     return 1 if failed else 0
 
 
