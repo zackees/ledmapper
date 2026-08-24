@@ -1264,7 +1264,7 @@ void main() {
     // slope amplified frame-to-frame bias jitter into steady-scene flicker
     // (G3 2.4 > 2.0). Bright-frame pools still defend (starburst delta
     // holds inside the G6 bound).
-    added *= mix(mix(0.36, 0.08, globalBloomBias), 1.0, shadowMask);
+    added *= mix(mix(0.46, 0.12, globalBloomBias), 1.0, shadowMask);
 
     // Phase 0 of #496 removed the iris-inversion gain that used to live
     // here: it was compensating for the production profile's 4x strength
@@ -1291,12 +1291,13 @@ void main() {
     // (one mask, no seams): genuinely dark neighborhoods get a strong toe
     // that crushes residual skirt spill back to black, driven regions keep
     // the weak toe that every bright-side gate calibrated (p0b A/B).
-    // UNIFORM toe (user: 'the tone mapper needs to be adjusted'): the
-    // spatially-varying toe painted the shadow mask's coarse mip contours
-    // into the tone response — visible as low-resolution shadows and
-    // banding. Pools are owned entirely by the added-glow attenuation
-    // above; the tone curve is spatially invariant again.
-    float toeK = 0.016;
+    // Adaptive toe REINSTATED (v2): the banding attributed to it turned out
+    // to be the untagged-color bt601 mis-decode (user re-diagnosis after the
+    // tag fix); with correct bt709 tagging plus the output dither, the
+    // spatially-varying toe is clean. Pools get a strong toe that puts their
+    // floor at the reference level, driven regions keep the calibrated weak
+    // toe. Same smooth mask as the lobe attenuation — one mask, no seams.
+    float toeK = mix(0.047, 0.014, shadowMask);
     float toned = (norm * norm) / (norm + toeK);
     // Bloom only ever ADDS: the curve must never take a pixel below its own
     // sharp core (the pool toe was crushing dim LED cores to ~5% of the

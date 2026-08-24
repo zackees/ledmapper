@@ -69,6 +69,14 @@ def main() -> int:
         report["merge_extra"] = json.loads(out) if out.strip().startswith("{") else {}
         verdicts["merge_extra"] = code == 0
 
+    # Color-profile gate always runs: this suite MISSED the untagged-color
+    # desaturation defect (2026-08-24) because no gate examined stream
+    # metadata — locked down per user direction.
+    cmd = [sys.executable, str(SCRIPTS / "color_profile_gate.py"), str(args.candidate)]
+    code, out = run(cmd)
+    report["color_profile"] = json.loads(out) if out.strip().startswith("{") else {}
+    verdicts["color_profile"] = code == 0
+
     report["verdicts"] = verdicts
     report["ALL_GATES_PASS"] = all(verdicts.values())
     print(json.dumps(report, indent=2))
