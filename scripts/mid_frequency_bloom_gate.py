@@ -20,8 +20,14 @@ This evaluator works on the 64x64 LED lattice and measures that deficit:
 The spatial chroma-leak and ordinary veil gates remain the upper bound. This
 gate is deliberately the lower bound: it fails when local diffusion is too
 weak to bridge coherent neighbouring LEDs. The default ratchet was calibrated
-from AQNFgVV... at t=2,7,12,17,22,27: the two-mip baseline fails at t=7,
-t=17, and t=22, while a restrained third mip (weight 0.25) passes all six.
+from AQNFgVV... at t=2,7,12,17,22,27. Restrained third-mip candidates passed
+the earlier floor but remained barely perceptible in side-by-side review. The
+current floor records the corrected model: mips 0-2 stay strong
+(2.85/4.00/1.50), while only coarse mips 3-4 are removed. It rejects the
+overcorrected/de-biased local response. Thresholds use the exact production
+point-extent camera fit (`ledDiameter=null`): across the six AQNF probes the
+approved candidate's weakest lower-quartile fill is 0.0617 versus at most
+0.0188 for the de-biased candidate.
 
 Usage:
   python scripts/mid_frequency_bloom_gate.py SOURCE_CROP.mp4 CONTROL.mp4 \
@@ -37,7 +43,8 @@ from pathlib import Path
 
 import numpy as np
 
-from chroma_retention_gate import cell_means, frame_at, led_positions
+from chroma_retention_gate import cell_means, frame_at
+from evaluator_geometry import production_led_positions
 
 GRID = 64
 MIN_VALUE = 0.08
@@ -120,7 +127,7 @@ def analyze_frame(
 
     control_luma = linear_luma(control_rgb)
     candidate_luma = linear_luma(candidate_rgb)
-    positions = led_positions(candidate_rgb.shape[0])
+    positions = production_led_positions(candidate_rgb.shape[0], GRID)
     control_ratios: list[float] = []
     candidate_ratios: list[float] = []
     diagonal_ratios: list[float] = []
@@ -173,9 +180,9 @@ def main() -> int:
     parser.add_argument("control", type=Path, help="minimal-bloom render")
     parser.add_argument("candidate", type=Path)
     parser.add_argument("-t", "--time", type=float, action="append", required=True)
-    parser.add_argument("--min-fill-ratio-p25", type=float, default=0.16)
-    parser.add_argument("--min-fill-gain-p25", type=float, default=0.12)
-    parser.add_argument("--min-diagonal-fill-ratio-p25", type=float, default=0.08)
+    parser.add_argument("--min-fill-ratio-p25", type=float, default=0.05)
+    parser.add_argument("--min-fill-gain-p25", type=float, default=0.045)
+    parser.add_argument("--min-diagonal-fill-ratio-p25", type=float, default=0.03)
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
 

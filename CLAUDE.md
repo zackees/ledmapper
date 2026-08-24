@@ -336,6 +336,15 @@ bleed that retains hue and local contrast, not a uniformly brighter image.
   before it drives colored highlights toward white, but retain a hue-preserving
   chromatic component with a uniform-vector shoulder and a single headroom
   scale. Never independently clip RGB channels, which desaturates halos.
+- Acrylic-pane pyramid regression memory (AQNF face / AQOQ petals, 2026-08-24):
+  the color-wash defect was caused by the bottom, coarse UnrealBloom mips 3-4.
+  The correct fix is to keep those two weights at zero while preserving strong
+  influence from local/mid mips 0-2. Do not compensate for the removed coarse
+  field by de-biasing mips 0-2 or by applying the old red-petal scalar ceiling
+  to intentional nearest-neighbour hue bleed; that overcorrection restores
+  dark holes around faces and makes the visual improvement imperceptible.
+  Evaluators must distinguish local surface fill from distant/global chroma
+  contamination by spatial support.
 - Favor protecting highlights over brightening shadows. Midtone halos and
   lifted blacks are regressions even if the image appears more luminous.
 - The brightness-modulated iris is ELIMINATED (#496 Phase 0, user
@@ -353,6 +362,13 @@ bleed that retains hue and local contrast, not a uniformly brighter image.
   lower bound). A candidate must stay inside both bounds: removing bloom is
   not a chroma win if complex surfaces fall back to isolated dots. AI picture
   evaluators (prompt in the #496 record) are the perceptual double-check.
+- Production evaluators must use the production camera fit exactly. The
+  unattended renderer passes `ledDiameter=null`, so its camera extent excludes
+  LED visual radius and applies only the `1.05` aesthetic margin to the point
+  extent. Do not add the map's declared diameter, infer equal canvas cells, or
+  locate centers from each cell's brightest pixel: all three misregister the
+  lattice and manufacture false ring/fill/chroma results. Keep evaluator
+  geometry centralized in `scripts/evaluator_geometry.py`.
 
 Record the exact job URL parameters, map, source filename, renderer mode, and
 candidate-versus-baseline observations alongside each visual experiment. This

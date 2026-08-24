@@ -14,14 +14,18 @@ Method, per probe frame:
   - ideal panel A: source-crop frame, mean RGB per LED cell (grid 64);
   - LED output B: mapped render sampled at the true LED positions — the
     production preview insets the lattice by the aesthetic camera margin
-    (preview.ts fitCamera: half-extent = (extent/2 + pitch/2) * 1.05);
+    (preview.ts fitCamera: half-extent = extent/2 * 1.05 because production
+    passes ledDiameter=null);
   - per 60-degree hue family with enough strongly saturated ideal cells
-    (S >= 0.5, V > 0.06): same-cell retention requires that each original
-    cell remains lit, strongly saturated, and within 35 degrees of its ideal
-    hue; unrelated cells cannot replace a lost red/orange target;
+    (S >= 0.5, V > 0.06): same-cell chroma-energy retention is measured
+    continuously as min(actual S*V, ideal S*V) while requiring the actual hue
+    to remain within 35 degrees. Unrelated cells cannot replace a lost target.
+    The old binary count at exactly S=0.5 remains diagnostic only: it made
+    healthy borderline cells flip the gate when stronger local diffusion moved
+    them from S=0.501 to S=0.499.
   - whole-frame chroma mass (sum of S*V over lit cells) ratio B/A.
 
-FAILS when a populated family's strong-cell retention or the frame chroma
+FAILS when a populated family's continuous chroma-energy retention or frame chroma
 ratio falls below the thresholds. The pre-fix render measured red retention
 0.16 and chroma ratio ~0.45; localized mip support must hold the gate green
 without relying on a post-composite saturation boost. Thresholds only ratchet
@@ -29,7 +33,7 @@ up.
 
 Usage:
   python scripts/chroma_retention_gate.py SOURCE_CROP.mp4 MAPPED.mp4
-      -t 4.0 [-t ...] [--min-retention 0.45] [--min-chroma-ratio 0.62]
+      -t 4.0 [-t ...] [--min-retention 0.55] [--min-chroma-ratio 0.62]
       [--json out.json]
 
 Exit code 1 when any probe frame fails.
@@ -45,6 +49,8 @@ from pathlib import Path
 
 import numpy as np
 
+from evaluator_geometry import production_led_positions
+
 try:  # pragma: no cover - optional, mirrors bloom_metrics.py
     import static_ffmpeg  # type: ignore
 
@@ -53,12 +59,6 @@ except ImportError:
     pass
 
 GRID = 64
-# Production preview lattice geometry (keep in sync with preview.ts
-# fitCamera): points at pitch 3 render units, ledDiameter null in production
-# so the visual radius falls back to half a pitch, aesthetic margin 1.05.
-UNIT_PITCH = 3.0
-EXTENT = UNIT_PITCH * (GRID - 1)
-HALF_EXTENT = (EXTENT / 2 + UNIT_PITCH / 2) * 1.05
 
 STRONG_S = 0.5
 LIT_V = 0.06
@@ -97,15 +97,9 @@ def cell_means(rgb: np.ndarray) -> np.ndarray:
     return rgb[: ch * GRID, : cw * GRID].reshape(GRID, ch, GRID, cw, 3).mean(axis=(1, 3))
 
 
-def led_positions(size: int) -> np.ndarray:
-    """Canvas coordinates of the production preview's 64 LED centers."""
-    scale = size / (2 * HALF_EXTENT)
-    return size / 2 + (np.arange(GRID) * UNIT_PITCH - EXTENT / 2) * scale
-
-
 def led_cores(rgb: np.ndarray) -> np.ndarray:
     size = rgb.shape[0]
-    positions = led_positions(size)
+    positions = production_led_positions(size, GRID)
     out = np.zeros((GRID, GRID, 3))
     for gy, py in enumerate(positions):
         for gx, px in enumerate(positions):
@@ -151,17 +145,26 @@ def analyze_frame(ideal: np.ndarray, led: np.ndarray, min_family_cells: int) -> 
         if strong_a < min_family_cells:
             continue
         hue_delta = np.abs((hue_b - hue_a + 180) % 360 - 180)
+        same_hue = lit_b & (hue_delta <= HUE_TOLERANCE_DEG)
         retained = (
             strong_a_mask
-            & lit_b
+            & same_hue
             & (s_b >= STRONG_S)
-            & (hue_delta <= HUE_TOLERANCE_DEG)
         )
         strong_b = int(retained.sum())
+        ideal_chroma = (s_a * v_a)[strong_a_mask]
+        actual_chroma = (s_b * v_b)[strong_a_mask]
+        hue_ok = same_hue[strong_a_mask]
+        retained_chroma = np.minimum(actual_chroma, ideal_chroma) * hue_ok
+        energy_retention = (
+            float(retained_chroma.sum() / ideal_chroma.sum())
+            if ideal_chroma.sum() > 0 else 0.0
+        )
         result["families"][name] = {
             "strong_ideal": strong_a,
             "strong_led_same_cells": strong_b,
-            "retention": round(strong_b / strong_a, 3),
+            "strong_threshold_retention": round(strong_b / strong_a, 3),
+            "retention": round(energy_retention, 3),
             "mean_s_ideal": round(float(s_a[fam_a].mean()), 3),
             "mean_s_led_same_cells": round(float(s_b[fam_a].mean()), 3),
         }
@@ -173,8 +176,8 @@ def main() -> int:
     parser.add_argument("source_crop", type=Path)
     parser.add_argument("mapped", type=Path)
     parser.add_argument("-t", "--time", type=float, action="append", required=True)
-    parser.add_argument("--min-retention", type=float, default=0.45,
-                        help="per-family strong-cell retention floor")
+    parser.add_argument("--min-retention", type=float, default=0.55,
+                        help="per-family continuous same-cell chroma-energy floor")
     parser.add_argument("--min-chroma-ratio", type=float, default=0.62,
                         help="whole-frame S*V mass ratio floor")
     parser.add_argument("--min-family-cells", type=int, default=100,
