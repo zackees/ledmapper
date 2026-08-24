@@ -182,8 +182,14 @@ For iterating on UI/behavior changes: **`.claude/skills/ui-dev-loop/SKILL.md`**.
 ## Agent production-video requests
 
 When asked to take a local MP4 (including a file under `E:\video`), apply a
-screenmap, record it, and show the result, use the unattended production CLI
-instead of trying to drive the interactive recorder. Package exactly the input
+screenmap, record it, and show the result, prefer the one-command wrapper
+`scripts/produce_mapped_video.py` — see `.claude/skills/produce-mapped-video/SKILL.md`.
+It performs the whole packaging/serving/producing/naming/splicing sequence
+described below. Fall back to the manual steps only when the wrapper's options
+do not cover the request.
+
+The manual workflow, which the wrapper automates: use the unattended production
+CLI instead of trying to drive the interactive recorder. Package exactly the input
 MP4 and a file named `screenmap.json` into an input ZIP, serve that ZIP locally,
 run `scripts/produce_video_mapping.py` with `--allow-private-network`, extract
 the output ZIP, and open the emitted MP4 with `Start-Process`.
@@ -285,8 +291,13 @@ new A/B splice after every meaningful change. Judge the result at known
 timestamps rather than from a single still. The target is colorful highlight
 bleed that retains hue and local contrast, not a uniformly brighter image.
 
-- Preserve the unbloomed sharp base. Treat bloom as added light, not as a
-  replacement for source detail.
+- Model the panel as LEDs behind a frosted acrylic diffuser (#493 revised
+  directive). Diffusion grows with drive level: dim/mid content keeps a sharp
+  base with bloom as added light, but a fully driven white region must white
+  out into one continuous pane — separated dots inside full-white content are
+  a defect, not detail preservation. Colored light keeps its hue past
+  threshold (hue-locked norm limiting, never per-channel clipping); unlit
+  panel stays black.
 - Keep the working buffers linear and float/half-float; convert source sRGB
   values to linear once, composite there, and encode display-sRGB exactly once
   at output. A missing or double transfer conversion lifts shadows severely.
@@ -301,15 +312,17 @@ bleed that retains hue and local contrast, not a uniformly brighter image.
   scale. Never independently clip RGB channels, which desaturates halos.
 - Favor protecting highlights over brightening shadows. Midtone halos and
   lifted blacks are regressions even if the image appears more luminous.
-- Do not rely on aggressive global LED-diameter/iris contraction for exposure.
-  Dense grids develop aliasing bands and unstable darkness. Use bloom-bracket
-  selection/strength as the primary control; any diameter modulation must be
-  subtle, geometry-aware, and temporally smoothed.
-- Prime temporal exposure/iris state by feeding repeated copies of the first
-  source frame before capture begins, so frame 0 starts settled rather than
-  briefly over-bright. Use asymmetric smoothing: contraction on sudden
-  brightness should be controlled but not jittery; reopening after a dim scene
-  should be slower.
+- The brightness-modulated iris is ELIMINATED (#496 Phase 0, user
+  direction): bloom capture strength is a fixed geometry-scaled treatment,
+  and diameter no longer breathes. Exposure control lives entirely in the
+  composite's tone curve (toe + shoulder on the norm axis, hue-locked).
+  Never reintroduce scene-brightness modulation of capture strength — it
+  starves exactly the frames that must white out, and every historical
+  composite hack (iris inversion, white-merge risk) existed to fight it.
+- Validate every composite change with scripts/bloom_gates.py (G1 halo, G2
+  veil, G3 temporal, G4 merge, G5 energy, ring detector) against a
+  minimal-bloom reference render; the thresholds are a ratchet. AI picture
+  evaluators (prompt in the #496 record) are the perceptual double-check.
 
 Record the exact job URL parameters, map, source filename, renderer mode, and
 candidate-versus-baseline observations alongside each visual experiment. This

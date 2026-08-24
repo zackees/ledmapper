@@ -57,6 +57,26 @@ export function createBloomComposer({
             composer.renderToScreen = previous;
             return composer.readBuffer.texture;
         },
+        /**
+         * Render the scene WITHOUT bloom through the same composer path.
+         *
+         * The HDR bracket capture subtracts the raw scene from bloomed
+         * brackets. Capturing raw via a direct render disagrees with the
+         * composer's multisampled scene render by up to half a pixel of
+         * coverage at every sprite edge; the clamped subtraction then zeroes
+         * glow in a ring around every dot (#493's black rings). Rendering
+         * the raw frame through the composer makes the two pixel-identical.
+         */
+        renderBaseToTexture() {
+            const previous = composer.renderToScreen;
+            const bloomWasEnabled = bloomPass.enabled;
+            composer.renderToScreen = false;
+            bloomPass.enabled = false;
+            composer.render();
+            bloomPass.enabled = bloomWasEnabled;
+            composer.renderToScreen = previous;
+            return composer.readBuffer.texture;
+        },
         setSize(w: number, h: number) { composer.setSize(w, h); },
         dispose() {
             bloomPass.dispose();

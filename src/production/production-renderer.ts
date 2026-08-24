@@ -47,9 +47,14 @@ export interface ProductionRenderOptions {
     sidecar?: SidecarProductionTransport;
 }
 
-// Full-frame output magnifies the interactive preview considerably. Dense LED
-// grids need a tighter envelope so bloom remains a halo rather than a wash.
-const PRODUCTION_BLOOM_PROFILE = { floor: 0.15, maxDense: 1.0, maxSparse: 1.6 };
+// Phase 0 of #496: production uses the SAME drive envelope as the preview.
+// The old tighter profile ({floor 0.15, maxDense 1.0, maxSparse 1.6}) was a
+// silent 4x handicap: on identical strategy and content the preview measured
+// a healthy 0.978 bright-region merge while production measured 0.39 (the
+// #493 forehead regression), and every composite-side "iris inversion" hack
+// existed to compensate for it. Wash control is the tone curve's job now
+// (toe + shoulder), not a capture-strength cap.
+const PRODUCTION_BLOOM_PROFILE = { floor: 0.6, maxDense: 4, maxSparse: 6 };
 const IRIS_PREROLL_TIME_CONSTANTS = 4;
 
 function productionHdrCompositeMode(): HdrBloomCompositeMode {
@@ -169,6 +174,7 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
                 bloomUseBlowoutRisk: true,
                 enableHdrBloom: true,
                 hdrBloomCompositeMode: productionHdrCompositeMode(),
+                hdrBloomStrategy: config.bloomStrategy,
             });
             preview.setAutoBloom(config.autoBloom);
             preview.setManualBloomStrength(config.bloomStrength);

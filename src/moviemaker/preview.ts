@@ -28,6 +28,12 @@ import { estimateLedSize, resolvePointDiameterPx, STABLE_POINT_DIAMETER_MAX_PX }
 import { createLogger } from '../debug-log';
 import type { BloomProfile } from '../types/domain';
 import { createGpuHdrBloomComposite } from './hdr-bloom-gpu';
+import { createAcrylicPsfPipeline, type AcrylicPsfPipeline } from './acrylic-psf-gpu';
+import {
+    DEFAULT_HDR_BLOOM_STRATEGY,
+    resolveHdrBloomStrategy,
+    type HdrBloomStrategyName,
+} from './hdr-bloom-strategies';
 import { SRGB8_TO_LINEAR } from '../color-space';
 
 const log = createLogger('preview');
@@ -90,6 +96,7 @@ export function createLedPreview({
     bloomUseBlowoutRisk = false,
     enableHdrBloom = false,
     hdrBloomCompositeMode = 'gpu-full',
+    hdrBloomStrategy = DEFAULT_HDR_BLOOM_STRATEGY,
 }: {
     parent: HTMLElement;
     side?: number;
@@ -104,12 +111,26 @@ export function createLedPreview({
     enableHdrBloom?: boolean;
     /** GPU is production; CPU modes retain the v1 oracle and 1024 experiment. */
     hdrBloomCompositeMode?: HdrBloomCompositeMode;
+    /** Which composite algorithm to run. See `hdr-bloom-strategies.ts`. */
+    hdrBloomStrategy?: HdrBloomStrategyName;
 }) {
     // Render to a fixed backing-buffer size (independent of devicePixelRatio) so
     // bloom output is identical across platforms; capped at maxBufferSize. The
     // canvas downsamples to its CSS size, keeping circles crisp.
     const pixelRatio = Math.min(BLOOM_RENDER_PX, maxBufferSize) / side;
 
+    // The CPU composite mirrors the default strategy only. Verifying any other
+    // strategy against it would diff two different algorithms and report a
+    // meaningless mismatch, so refuse the combination outright.
+    if (enableHdrBloom
+        && hdrBloomCompositeMode !== 'gpu-full'
+        && !resolveHdrBloomStrategy(hdrBloomStrategy).supportsCpuOracle) {
+        throw new Error(
+            `HDR bloom strategy '${hdrBloomStrategy}' has no CPU oracle; `
+            + `composite mode '${hdrBloomCompositeMode}' requires `
+            + `'${DEFAULT_HDR_BLOOM_STRATEGY}'.`,
+        );
+    }
     const verifiesGpuHdrComposite = enableHdrBloom && hdrBloomCompositeMode === 'verify-full';
     const usesCpuHdrComposite = enableHdrBloom
         && (hdrBloomCompositeMode === 'cpu-full' || hdrBloomCompositeMode === 'cpu-1024');
@@ -180,8 +201,16 @@ export function createLedPreview({
     const hdrPixels = new Uint8ClampedArray(hdrWorkWidth * hdrWorkHeight * 4);
     const hdrGpuComposite = enableHdrBloom
         && (hdrBloomCompositeMode === 'gpu-full' || verifiesGpuHdrComposite)
-        ? createGpuHdrBloomComposite(renderer, hdrWidth, hdrHeight)
+        ? createGpuHdrBloomComposite(renderer, hdrWidth, hdrHeight, hdrBloomStrategy)
         : null;
+    // Strategies flagged customPsf capture their brackets through the owned
+    // acrylic PSF pipeline (vec4 emission+coverage fields) instead of
+    // UnrealBloom. Created lazily beside the composite so both share
+    // renderer dimensions.
+    const acrylicPsf: AcrylicPsfPipeline | null =
+        hdrGpuComposite?.brackets.customPsf
+            ? createAcrylicPsfPipeline(renderer, hdrWidth, hdrHeight)
+            : null;
     const hdrVerificationCanvas = verifiesGpuHdrComposite ? document.createElement('canvas') : null;
     if (hdrVerificationCanvas) {
         hdrVerificationCanvas.width = hdrWidth;
@@ -434,19 +463,44 @@ export function createLedPreview({
         if (hdrGpuComposite && meshData) {
             // Keep the sharp scene and all bloom brackets in linear RGBA16F.
             // The composite writes display-sRGB to the canvas exactly once.
-            hdrGpuComposite.captureRaw(scene, camera);
+            // Raw must go through the SAME composer path as the brackets:
+            // a direct render disagrees with the composer's multisampled
+            // edges and the clamped bracket-minus-raw subtraction turns that
+            // disagreement into a dark ring around every dot (#493).
+            hdrGpuComposite.captureRawFrom(bloom.renderBaseToTexture());
             hdrGpuComposite.setGlobalBloomBias(globalBloomBias);
             const strength = bloom.bloomPass.strength;
             const threshold = bloom.bloomPass.threshold;
-            const factors = [HDR_BLOOM_LOW, HDR_BLOOM_MID, 1];
+            // Bracket capture belongs to the active strategy: these parameters
+            // co-evolved with each composite shader, so a shader alone does not
+            // reproduce a past render.
+            const {
+                factors, strengthScale, radiusScales, highThresholdDark, highThresholdBright,
+            } = hdrGpuComposite.brackets;
+            const scaledStrength = strength * strengthScale;
+            if (acrylicPsf) {
+                // Owned pipeline: pure emission+coverage fields; the strategy
+                // shader applies strength itself via the uniform.
+                const psfBrackets = acrylicPsf.render(hdrGpuComposite.rawTexture);
+                hdrGpuComposite.captureBloom(1, psfBrackets.low);
+                hdrGpuComposite.captureBloom(2, psfBrackets.mid);
+                hdrGpuComposite.captureBloom(3, psfBrackets.high);
+                hdrGpuComposite.setBloomStrength(scaledStrength);
+                hdrGpuComposite.render();
+                return;
+            }
+            const radius = bloom.bloomPass.radius;
             for (let bracket = 0; bracket < factors.length; bracket++) {
                 // Keep the high bracket at the requested full strength. The
                 // HDR compositor attenuates neutral (white-building) energy
                 // while retaining the high bracket's chromatic spill.
-                bloom.bloomPass.strength = strength * (factors[bracket] ?? 1);
+                bloom.bloomPass.strength = scaledStrength * (factors[bracket] ?? 1);
+                // A strategy may want brackets at different spatial scales, not
+                // just different intensities.
+                bloom.bloomPass.radius = radius * (radiusScales[bracket] ?? 1);
                 bloom.bloomPass.threshold = bracket === 2
-                    ? HDR_HIGHLIGHT_THRESHOLD_DARK
-                        + (HDR_HIGHLIGHT_THRESHOLD_BRIGHT - HDR_HIGHLIGHT_THRESHOLD_DARK) * globalBloomBias
+                    ? highThresholdDark
+                        + (highThresholdBright - highThresholdDark) * globalBloomBias
                     : 0;
                 const texture = bloom.renderToTexture();
                 if (texture) hdrGpuComposite.captureBloom((bracket + 1) as 1 | 2 | 3, texture);
@@ -458,6 +512,7 @@ export function createLedPreview({
             }
             bloom.bloomPass.strength = strength;
             bloom.bloomPass.threshold = threshold;
+            bloom.bloomPass.radius = radius;
             hdrGpuComposite.render();
             if (hdrVerification === null && hdrVerificationContext && (mediaTimeMs ?? 0) >= 2000) {
                 const [raw, low, mid, high] = hdrContexts;

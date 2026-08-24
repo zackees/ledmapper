@@ -202,6 +202,36 @@ describe('HDR bloom composite', () => {
         assert.ok((output[2] ?? 255) <= 6, 'shared neutral haze should remain gated');
     });
 
+    it('characterizes #493: the composite itself keeps white-highlight bloom alive', () => {
+        // Identical bracket lift for a white and a saturated-red pixel, at
+        // full bright-scene metering (globalBloomBias = 1, the fluid_eyes3
+        // t=2.4s condition). Measured result: the per-pixel composite does
+        // NOT kill white bloom — both pixels retain added energy of the same
+        // order. This pins that behavior so #493's dead-white-highlight
+        // failure must be reproduced (and fixed) in the metering/bracket-
+        // capture layer (high-bracket threshold ramp, auto-bloom strength),
+        // not in this pixel composite. The protocol's T2 white-bloom-
+        // aliveness gate remains the authoritative end-to-end detector.
+        const brightSceneBias = 1;
+        const whiteOut = compositeHdrBloomRgba(
+            rgba([200, 200, 200]), rgba([210, 210, 210]), rgba([230, 230, 230]), rgba([255, 255, 255]),
+            undefined, brightSceneBias,
+        );
+        const redOut = compositeHdrBloomRgba(
+            rgba([200, 20, 20]), rgba([210, 26, 26]), rgba([230, 46, 46]), rgba([255, 75, 75]),
+            undefined, brightSceneBias,
+        );
+        const whiteAdded = (whiteOut[0] ?? 0) - 200;
+        const redAdded = (redOut[0] ?? 0) - 200;
+        assert.ok(redAdded > 0, 'the saturated highlight keeps composite bloom');
+        assert.ok(
+            whiteAdded >= redAdded * 0.5,
+            `white bloom must stay the same order as colored bloom in the composite `
+            + `(white +${whiteAdded} vs red +${redAdded}); a drop below half signals a `
+            + 'composite-level regression toward #493 failure mode (b)',
+        );
+    });
+
     it('does not duplicate source chroma into a lifted shadow floor', () => {
         const raw = rgba([80, 30, 5]);
         const output = compositeHdrBloomRgba(

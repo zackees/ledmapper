@@ -26,7 +26,6 @@ import {
     computeAutoBloomRange,
     bloomParamsForLedSize,
     computeDiameterHeadroom,
-    computeIrisDiameterScale,
     combineBloomBlowoutRisk,
     computeGlobalBloomBias,
     stepBloomExposure,
@@ -87,7 +86,6 @@ export function createAutoBloom({
     paramOverrides = {},
     minFloorMode = 'size',
     useBlowoutRisk = false,
-    diameterGain = 0,
 }: AutoBloomOptions) {
     const bloom = createBloomComposer({ renderer, scene, camera, width, height });
     const irisState = { currentBrightness: 0 };
@@ -119,10 +117,12 @@ export function createAutoBloom({
         blowoutRisk = combineBloomBlowoutRisk(params.blowoutRisk, diameterHeadroom);
     }
 
-    /** Geometry-gated diameter response for the current smoothed iris state. */
+    /**
+     * Iris eliminated (#496 Phase 0, user direction): the diameter no longer
+     * breathes with brightness. Exposure control is the tone curve's job.
+     */
     function getDiameterScale() {
-        if (diameterGain <= 0 || !bloomEnabled || !autoEnabled) return 1;
-        return computeIrisDiameterScale(diameterHeadroom, irisState.currentBrightness, diameterGain);
+        return 1;
     }
 
     /** Update the iris/strength from one frame's RGB bytes. */
@@ -140,7 +140,14 @@ export function createAutoBloom({
         const range = useBlowoutRisk
             ? { min: effMin, max: effMax, blowoutRisk }
             : { min: effMin, max: effMax };
-        const override = autoEnabled ? null : manualStrength;
+        // Iris eliminated (#496 Phase 0): auto mode uses the geometry
+        // envelope's ceiling as a FIXED treatment instead of brightness-
+        // modulated strength. Measured basis: at fixed strength the composite
+        // merges driven regions at 0.83-0.97; the brightness modulation was
+        // starving exactly the frames that should white out, and the tone
+        // curve's toe/shoulder now owns wash control. Brightness is still
+        // tracked below for the exposure-bias bracket selector.
+        const override = autoEnabled ? effMax : manualStrength;
         const frameBrightness = updateBloomIris(bloom.bloomPass, irisState, rgbBytes, range, override, nowMs);
         // Manual bloom must be a fixed treatment. A changing global selector
         // would otherwise keep altering the bracket mix despite fixed strength.
@@ -172,6 +179,11 @@ export function createAutoBloom({
     function renderToTexture() {
         if (!bloomEnabled) return null;
         return bloom.renderToTexture();
+    }
+
+    /** Raw scene through the composer path (see three-bloom.ts). */
+    function renderBaseToTexture() {
+        return bloom.renderBaseToTexture();
     }
 
     function setAuto(enabled: boolean) {
@@ -210,6 +222,7 @@ export function createAutoBloom({
         frame,
         render,
         renderToTexture,
+        renderBaseToTexture,
         setAuto,
         setManualStrength,
         setEnabled,
