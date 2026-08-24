@@ -292,6 +292,64 @@ COLOR_TAGS = [
 ]
 
 
+def apply_saturation_boost(source: Path, destination: Path, factor: float) -> None:
+    """Re-encode `source` with HSV saturation scaled by `factor`.
+
+    Hue and value (the max channel) are preserved exactly: each pixel's
+    channels are rescaled about its max so only the spread changes, clamped
+    at full saturation. This is deliberately NOT ffmpeg's eq/vibrance —
+    those work on YUV chroma and can shift hue at the gamut edge, which the
+    hue-locked pipeline forbids.
+    """
+    import numpy as np  # noqa: PLC0415 - only needed when boosting
+
+    ffmpeg, ffprobe = ffmpeg_tools()
+    probe = subprocess.run(
+        [ffprobe, "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height,avg_frame_rate",
+         "-of", "csv=p=0", str(source)],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip().split(",")
+    width, height, fps = int(probe[0]), int(probe[1]), probe[2]
+
+    decoder = subprocess.Popen(
+        [ffmpeg, "-v", "error", "-i", str(source),
+         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+        stdout=subprocess.PIPE,
+    )
+    encoder = subprocess.Popen(
+        [ffmpeg, "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+         "-s", f"{width}x{height}", "-r", fps, "-i", "-",
+         "-an", "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p",
+         *COLOR_TAGS, str(destination)],
+        stdin=subprocess.PIPE,
+    )
+    assert decoder.stdout is not None and encoder.stdin is not None
+    frame_bytes = width * height * 3
+    while True:
+        raw = decoder.stdout.read(frame_bytes)
+        if len(raw) < frame_bytes:
+            break
+        rgb = np.frombuffer(raw, dtype=np.uint8).reshape(height, width, 3)
+        arr = rgb.astype(np.float32)
+        mx = arr.max(axis=-1)
+        spread = mx - arr.min(axis=-1)
+        lit = (mx > 0) & (spread > 0)
+        saturation = np.zeros_like(mx)
+        saturation[lit] = spread[lit] / mx[lit]
+        boosted = np.minimum(saturation * factor, 1.0)
+        scale = np.ones_like(mx)
+        scale[lit] = (boosted[lit] * mx[lit]) / spread[lit]
+        out = mx[..., None] - (mx[..., None] - arr) * scale[..., None]
+        encoder.stdin.write(
+            np.clip(out + 0.5, 0, 255).astype(np.uint8).tobytes()
+        )
+    encoder.stdin.close()
+    decoder.wait()
+    if encoder.wait() != 0:
+        raise ProduceError(f"saturation-boost encode failed for {source.name}")
+
+
 def _font_argument() -> str:
     """An ffmpeg-escaped fontfile= argument, or '' to use drawtext's default."""
     for candidate in (
@@ -558,6 +616,8 @@ def output_name(video: Path, args: argparse.Namespace, grid: str, strategy: str)
         parts.append(f"panel{args.panel_rotation}")
     if args.output_fps:
         parts.append(f"{args.output_fps}fps")
+    if args.saturation_boost != 1:
+        parts.append(f"sat{args.saturation_boost:g}")
     # The strategy is part of the render's identity: two files that differ only
     # by bloom algorithm must not collide.
     parts.append(strategy)
@@ -653,6 +713,12 @@ def produce_one(
                 raise ProduceError(f"expected exactly one MP4 in {package}, found {names}")
             with archive.open(names[0]) as src, mapped.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
+        if args.saturation_boost != 1:
+            # Boost before the duals are built so every artifact inherits it.
+            print(f"saturation boost: x{args.saturation_boost:g}", file=sys.stderr)
+            boosted = mapped.with_name(f"{mapped.stem}-satboost-tmp.mp4")
+            apply_saturation_boost(mapped, boosted, args.saturation_boost)
+            boosted.replace(mapped)
         if args.final_artifact:
             # Final-render mode: the ZIP is a working file and stays in temp.
             # The destination receives the mapped MP4 plus the dual render —
@@ -747,6 +813,10 @@ def run(args: argparse.Namespace) -> int:
                 f"unknown bloom strategy '{strategy}'. Known: {', '.join(STRATEGY_NAMES)}"
             )
     wants_compare = args.compare or len(strategies) > 1
+    if not 0 < args.saturation_boost <= 3:
+        raise ProduceError(
+            f"--saturation-boost {args.saturation_boost:g} is out of range (0, 3]"
+        )
     if args.crop_source and args.video_mode != "mapped-led":
         raise ProduceError(
             "--crop-source pairs the cropped source with the mapped render; "
@@ -923,6 +993,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "(never copied to the destination); the destination receives the "
             "plain mapped MP4 plus a dual side-by-side MP4 (source in the "
             "left third at 512x1024, mapped square 1024x1024 on the right)"
+        ),
+    )
+    parser.add_argument(
+        "--saturation-boost",
+        type=float,
+        default=1.0,
+        help=(
+            "HSV saturation multiplier applied to the mapped render before "
+            "any dual is built (1.0 = off, e.g. 1.1 = +10%%). Hue and "
+            "brightness are preserved exactly; saturation clamps at 1. The "
+            "factor is recorded in the output filename (sat<f>)"
         ),
     )
     parser.add_argument(
