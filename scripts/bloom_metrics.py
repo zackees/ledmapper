@@ -294,7 +294,10 @@ def main() -> int:
     start, end = STEADY_WINDOW
     steady = decode_frames(args.candidate, start, max(int((end - start) * fps), 2), width, height)
     yavg = luma(steady).mean(axis=(1, 2))
-    g3_flicker = float(np.diff(yavg).std())
+    # First delta dropped: the post-seek frame produces a one-off jump
+    # (measured -15.9 outlier followed by sigma ~ 1) that is a decode
+    # artifact, not render flicker.
+    g3_flicker = float(np.diff(yavg)[1:].std())
     head = decode_frames(args.candidate, 0.0, 6, width, height)
     hy = luma(head).mean(axis=(1, 2))
     g3_settle = float(abs(hy[0] - hy[min(5, len(hy) - 1)]))
@@ -372,7 +375,11 @@ def main() -> int:
                 ref_tile = ref_f[ty * th:(ty + 1) * th, tx * tw:(tx + 1) * tw]
                 cand_tile = blurred[ty * th:(ty + 1) * th, tx * tw:(tx + 1) * tw]
                 ref_e = float(luma(ref_tile).sum())
-                if ref_e < th * tw * 4:  # unlit tile: energy ratio undefined
+                # Threshold raised to mean 30 luma: dim pool tiles are where
+                # the shadow directive (G6) DEMANDS less glow than even the
+                # minimal-bloom reference carries — G5's non-destructive
+                # bound governs meaningfully lit content, G6 governs pools.
+                if ref_e < th * tw * 30:
                     continue
                 ratio = float(luma(cand_tile).sum()) / ref_e
                 # Hue is judged only on hue-COHERENT tiles: where a tile
@@ -411,9 +418,49 @@ def main() -> int:
         result["G5_energy"] = {"tiles": 0}
         result["G5_pass"] = True
 
+    # G6: shadow floor (deep-contrast black preservation). Measured failure
+    # case (2026-08-24, user-caught): a colorful deep-contrast clip whose
+    # source holds 20% true blacks rendered with a floor raised to P5=27
+    # luma while the minimal-bloom reference kept P5=2.3 — low-frequency
+    # bloom poisoning the floor. The reference defines what the pipeline's
+    # sampling itself produces; the composite may not raise its dark floor
+    # by more than a skirt allowance, and must keep at least a substantial
+    # fraction of the reference's dark area dark.
+    g6_frames = {}
+    g6_pass = True
+    for key, t in probes.items():
+        ref_f = frame_at(args.reference, t, width, height)
+        ref_y = luma(ref_f)
+        # Scene blacks are dark POOLS, not the micro-texture between lit
+        # LEDs: a wall-to-wall colored frame legitimately renders as a full
+        # pane (frame-reviewed t=11 of the starburst clip), so only
+        # neighborhood-dark pixels count — same lesson as the veil gate.
+        ref_nb = box_blur(ref_y[..., None], 20)[..., 0]
+        # Pool threshold 18 (was 30): micro-pools threaded between blazing
+        # arms legitimately glow through acrylic (frame-reviewed, starburst
+        # t=11); scene blacks are neighborhoods that are truly dark.
+        pool = ref_nb < 18
+        ref_dark_frac = float(((ref_y < 16) & pool).mean())
+        if ref_dark_frac < 0.08:
+            continue
+        cand_y = luma(frame_at(args.candidate, t, width, height))
+        cand_dark_frac = float(((cand_y < 16) & pool).mean())
+        p5_delta = float(np.percentile(cand_y[pool], 5) - np.percentile(ref_y[pool], 5))
+        g6_frames[key] = {"ref_dark": round(ref_dark_frac, 3),
+                          "cand_dark": round(cand_dark_frac, 3),
+                          "p5_delta": round(p5_delta, 1)}
+        # The defect signature is a RAISED FLOOR (t=8 swirl case: +25 luma
+        # with area collapse). Area shifting into dim glow with the floor
+        # essentially held (delta <= 8) is the acrylic pane forming around
+        # dark threads — frame-reviewed as correct.
+        if p5_delta > 14 or (cand_dark_frac < 0.35 * ref_dark_frac and p5_delta > 10):
+            g6_pass = False
+    result["G6_shadow"] = g6_frames
+    result["G6_pass"] = g6_pass
+
     result["gates_pass"] = bool(result["G1_pass"] and result["G2_pass"]
                                 and result["G3_pass"] and result["G4_pass"]
-                                and result["G5_pass"])
+                                and result["G5_pass"] and result["G6_pass"])
 
     print(json.dumps(result, indent=2))
     if args.json:
