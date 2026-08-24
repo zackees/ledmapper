@@ -208,7 +208,7 @@ export function createLedPreview({
     // UnrealBloom. Created lazily beside the composite so both share
     // renderer dimensions.
     const acrylicPsf: AcrylicPsfPipeline | null =
-        hdrGpuComposite && hdrGpuComposite.brackets.customPsf
+        hdrGpuComposite?.brackets.customPsf
             ? createAcrylicPsfPipeline(renderer, hdrWidth, hdrHeight)
             : null;
     const hdrVerificationCanvas = verifiesGpuHdrComposite ? document.createElement('canvas') : null;
@@ -467,9 +467,7 @@ export function createLedPreview({
             // a direct render disagrees with the composer's multisampled
             // edges and the clamped bracket-minus-raw subtraction turns that
             // disagreement into a dark ring around every dot (#493).
-            const baseTexture = bloom.renderBaseToTexture();
-            if (baseTexture) hdrGpuComposite.captureRawFrom(baseTexture);
-            else hdrGpuComposite.captureRaw(scene, camera);
+            hdrGpuComposite.captureRawFrom(bloom.renderBaseToTexture());
             hdrGpuComposite.setGlobalBloomBias(globalBloomBias);
             const strength = bloom.bloomPass.strength;
             const threshold = bloom.bloomPass.threshold;

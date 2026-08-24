@@ -201,20 +201,21 @@ export function createAcrylicPsfPipeline(
     return {
         render(rawFrame) {
             const [l0, l1, l2] = levels;
+            if (!l0 || !l1 || !l2) throw new Error('acrylic PSF pipeline levels missing');
             // Prep pass writes emission+coverage straight into level 0's
             // ping target (downsampling to 1/2 in the same draw).
-            runPass(prepMaterial, rawFrame, l0!.a);
+            runPass(prepMaterial, rawFrame, l0.a);
             // Seed level 0's blur from the prepped half-res field.
-            let seed: Texture = l0!.a.texture;
+            let seed: Texture = l0.a.texture;
             const stepA = blurMaterial.uniforms.texelStep;
-            if (stepA) (stepA.value as Vector2).set(0, l0!.texel.y);
-            runPass(blurMaterial, seed, l0!.b);
-            if (stepA) (stepA.value as Vector2).set(l0!.texel.x, 0);
-            runPass(blurMaterial, l0!.b.texture, l0!.a);
-            seed = l0!.a.texture;
+            if (stepA) (stepA.value as Vector2).set(0, l0.texel.y);
+            runPass(blurMaterial, seed, l0.b);
+            if (stepA) (stepA.value as Vector2).set(l0.texel.x, 0);
+            runPass(blurMaterial, l0.b.texture, l0.a);
+            seed = l0.a.texture;
             const low = seed;
-            const mid = blurLevel(l1!, low);
-            const high = blurLevel(l2!, mid);
+            const mid = blurLevel(l1, low);
+            const high = blurLevel(l2, mid);
             renderer.setRenderTarget(null);
             return { low, mid, high };
         },

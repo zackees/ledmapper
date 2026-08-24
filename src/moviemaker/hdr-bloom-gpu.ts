@@ -124,9 +124,11 @@ export function createGpuHdrBloomComposite(
     const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
     camera.position.z = 1;
 
+    const rawFrameTarget = frames[0];
+    if (!rawFrameTarget) throw new Error('HDR composite raw bracket missing');
     return {
         brackets: strategy.brackets,
-        rawTexture: frames[0]!.texture,
+        rawTexture: rawFrameTarget.texture,
         setBloomStrength(strength) {
             const uniform = material.uniforms.bloomStrength;
             if (uniform) uniform.value = Math.max(strength, 0);

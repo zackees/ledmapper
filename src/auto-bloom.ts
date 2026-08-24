@@ -26,7 +26,6 @@ import {
     computeAutoBloomRange,
     bloomParamsForLedSize,
     computeDiameterHeadroom,
-    computeIrisDiameterScale,
     combineBloomBlowoutRisk,
     computeGlobalBloomBias,
     stepBloomExposure,
@@ -87,7 +86,6 @@ export function createAutoBloom({
     paramOverrides = {},
     minFloorMode = 'size',
     useBlowoutRisk = false,
-    diameterGain = 0,
 }: AutoBloomOptions) {
     const bloom = createBloomComposer({ renderer, scene, camera, width, height });
     const irisState = { currentBrightness: 0 };

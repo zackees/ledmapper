@@ -1227,9 +1227,9 @@ void main() {
     // neighborhoods (the T4 veil), while the splat body and halo skirts live
     // in the tight and mid lobes. Cutting it beats strengthening the toe,
     // which killed the white peak's skirt at every strength tried.
-    vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.62
-        + max(midLinear - rawLinear, vec3(0.0)) * 0.26
-        + max(highLinear - rawLinear, vec3(0.0)) * 0.12;
+    vec3 added = max(lowLinear - rawLinear, vec3(0.0)) * 0.70
+        + max(midLinear - rawLinear, vec3(0.0)) * 0.29
+        + max(highLinear - rawLinear, vec3(0.0)) * 0.14;
 
     // Phase 0 of #496 removed the iris-inversion gain that used to live
     // here: it was compensating for the production profile's 4x strength
@@ -1262,6 +1262,14 @@ void main() {
         ? toned
         : knee + (1.0 - knee) * (1.0 - exp(-(toned - knee) / max(1.0 - knee, 1e-9)));
     vec3 compositeLinear = (scene / norm) * min(toned, 1.0);
+    // Hunt-effect chroma hold at high drive (both AI picture evaluators
+    // flagged saturated orange bleaching to cream as full drive accumulates
+    // neutral energy): restore the chroma vector as the norm approaches the
+    // ceiling. Hue-safe — the chroma vector scales uniformly.
+    float driveLift = v1Smoothstep(0.55, 1.0, toned);
+    float ceilNeutral = minChannel(compositeLinear);
+    vec3 ceilChroma = compositeLinear - vec3(ceilNeutral);
+    compositeLinear = vec3(ceilNeutral) + ceilChroma * (1.0 + 0.35 * driveLift);
 
     gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
 }

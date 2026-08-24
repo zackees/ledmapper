@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures.ts';
+import type { Page } from '@playwright/test';
 import { shouldSkipGpuTest } from '../helpers/gpu-gate.ts';
 import { expandScreenmapBand } from '../helpers/screenmap-band.ts';
 
@@ -35,7 +36,7 @@ interface MergeStats {
     canvasSide: number;
 }
 
-async function measureMerge(page: import('@playwright/test').Page): Promise<MergeStats> {
+async function measureMerge(page: Page): Promise<MergeStats> {
     // Screenshot the visible preview canvas: WebGL canvases render with
     // preserveDrawingBuffer=false, so drawImage scraping reads black — the
     // compositor screenshot is the only faithful pixel source.
