@@ -1264,7 +1264,7 @@ void main() {
     // slope amplified frame-to-frame bias jitter into steady-scene flicker
     // (G3 2.4 > 2.0). Bright-frame pools still defend (starburst delta
     // holds inside the G6 bound).
-    added *= mix(mix(0.48, 0.15, globalBloomBias), 1.0, shadowMask);
+    added *= mix(mix(0.36, 0.08, globalBloomBias), 1.0, shadowMask);
 
     // Phase 0 of #496 removed the iris-inversion gain that used to live
     // here: it was compensating for the production profile's 4x strength
@@ -1291,10 +1291,12 @@ void main() {
     // (one mask, no seams): genuinely dark neighborhoods get a strong toe
     // that crushes residual skirt spill back to black, driven regions keep
     // the weak toe that every bright-side gate calibrated (p0b A/B).
-    // Pools must land AT the minimal-bloom floor, not below it — G5 caught
-    // tiles at 60% of reference energy. Half the crush suffices for G6's
-    // wide margins.
-    float toeK = mix(0.042, 0.010, shadowMask);
+    // UNIFORM toe (user: 'the tone mapper needs to be adjusted'): the
+    // spatially-varying toe painted the shadow mask's coarse mip contours
+    // into the tone response — visible as low-resolution shadows and
+    // banding. Pools are owned entirely by the added-glow attenuation
+    // above; the tone curve is spatially invariant again.
+    float toeK = 0.016;
     float toned = (norm * norm) / (norm + toeK);
     // Bloom only ever ADDS: the curve must never take a pixel below its own
     // sharp core (the pool toe was crushing dim LED cores to ~5% of the
@@ -1321,7 +1323,15 @@ void main() {
     driveLift *= v1Smoothstep(0.08, 0.22, ceilPurity);
     compositeLinear = vec3(ceilNeutral) + ceilChroma * (1.0 + 0.35 * driveLift);
 
-    gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);
+    // Deterministic 4x4 ordered dither at the quantization boundary:
+    // crushed shadow gradients otherwise collapse into visible 8-bit bands.
+    // +-0.5/255 in display space, hue-neutral, reproducible frame to frame.
+    vec2 cell = floor(mod(gl_FragCoord.xy, 4.0));
+    float bayer = mod(cell.x * 5.0 + cell.y * 3.0 + cell.x * cell.y, 16.0) / 16.0;
+    vec3 display = clamp(linearToSrgb(compositeLinear), 0.0, 1.0);
+    display += (bayer - 0.5) / 255.0;
+
+    gl_FragColor = vec4(clamp(display, 0.0, 1.0), 1.0);
 }
 `;
 
