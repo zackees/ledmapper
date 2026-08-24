@@ -1269,6 +1269,12 @@ void main() {
     float driveLift = v1Smoothstep(0.55, 1.0, toned);
     float ceilNeutral = minChannel(compositeLinear);
     vec3 ceilChroma = compositeLinear - vec3(ceilNeutral);
+    // Purity gate (both round-2 AI evaluators flagged a lavender cast at
+    // whited-out cores): boosting the chroma of a near-neutral pixel tints
+    // noise. Only meaningfully colored pixels get the Hunt hold; true white
+    // stays white.
+    float ceilPurity = maxChannel(ceilChroma) / max(maxChannel(compositeLinear), 1e-6);
+    driveLift *= v1Smoothstep(0.08, 0.22, ceilPurity);
     compositeLinear = vec3(ceilNeutral) + ceilChroma * (1.0 + 0.35 * driveLift);
 
     gl_FragColor = vec4(clamp(linearToSrgb(compositeLinear), 0.0, 1.0), 1.0);

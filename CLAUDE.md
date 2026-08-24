@@ -312,15 +312,17 @@ bleed that retains hue and local contrast, not a uniformly brighter image.
   scale. Never independently clip RGB channels, which desaturates halos.
 - Favor protecting highlights over brightening shadows. Midtone halos and
   lifted blacks are regressions even if the image appears more luminous.
-- Do not rely on aggressive global LED-diameter/iris contraction for exposure.
-  Dense grids develop aliasing bands and unstable darkness. Use bloom-bracket
-  selection/strength as the primary control; any diameter modulation must be
-  subtle, geometry-aware, and temporally smoothed.
-- Prime temporal exposure/iris state by feeding repeated copies of the first
-  source frame before capture begins, so frame 0 starts settled rather than
-  briefly over-bright. Use asymmetric smoothing: contraction on sudden
-  brightness should be controlled but not jittery; reopening after a dim scene
-  should be slower.
+- The brightness-modulated iris is ELIMINATED (#496 Phase 0, user
+  direction): bloom capture strength is a fixed geometry-scaled treatment,
+  and diameter no longer breathes. Exposure control lives entirely in the
+  composite's tone curve (toe + shoulder on the norm axis, hue-locked).
+  Never reintroduce scene-brightness modulation of capture strength — it
+  starves exactly the frames that must white out, and every historical
+  composite hack (iris inversion, white-merge risk) existed to fight it.
+- Validate every composite change with scripts/bloom_gates.py (G1 halo, G2
+  veil, G3 temporal, G4 merge, G5 energy, ring detector) against a
+  minimal-bloom reference render; the thresholds are a ratchet. AI picture
+  evaluators (prompt in the #496 record) are the perceptual double-check.
 
 Record the exact job URL parameters, map, source filename, renderer mode, and
 candidate-versus-baseline observations alongside each visual experiment. This
