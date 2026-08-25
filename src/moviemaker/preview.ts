@@ -42,6 +42,7 @@ import { SRGB8_TO_LINEAR } from '../color-space';
 import {
     createBloomFrequencyController,
     createBloomFrequencyTopology,
+    createLocalBloomBiasController,
     type BloomFrequencyMode,
     type BloomFrequencyTopology,
 } from '../bloom-frequency';
@@ -226,6 +227,9 @@ export function createLedPreview({
             blendOverride: bloomFrequencyBlend,
         })
         : null;
+    const localBloomBiasController = hdrGpuComposite && hdrBloomStrategy === 'acrylic-pane'
+        ? createLocalBloomBiasController()
+        : null;
     // Strategy-owned spatial support. Acrylic-pane keeps strong energy in
     // UnrealBloom mips 0-2 for local and mid-frequency surface fill. Both axes
     // are blurred, so diagonal neighbours remain part of the PSF; coarse
@@ -258,6 +262,7 @@ export function createLedPreview({
     let ledWorldRadius = 0.5;
     let ledSpacing = 1;
     let sceneExtent = 1;
+    let localBloomCameraExtentScale = AESTHETIC_MARGIN;
     // Base dot size (CSS px) before the iris diameter modulation is applied.
     let baseLedPx = 0.75;
 
@@ -322,6 +327,7 @@ export function createLedPreview({
         ledWorldRadius = dia / 2;
         frequencyTopology = createBloomFrequencyTopology(localPts, cachedPointChannelOffsets ?? []);
         frequencyController?.reset();
+        localBloomBiasController?.reset();
         rebuildShapes(shapes);
     }
 
@@ -359,6 +365,7 @@ export function createLedPreview({
         const cy = (ymin + ymax) / 2;
         const extent = Math.max(xmax - xmin, ymax - ymin, 1e-6);
         const half = Math.max((extent / 2 + (ledDiameter !== null ? ledWorldRadius : 0)) * AESTHETIC_MARGIN, 1e-6);
+        localBloomCameraExtentScale = half * 2 / orientedPanelExtent;
 
         // Store scene extent so auto-bloom range can use it.
         sceneExtent = Math.max(xmax - xmin, ymax - ymin, 1e-6);
@@ -503,6 +510,20 @@ export function createLedPreview({
             }
         }
 
+        // Rank-mapped control texels assume the point grid owns the camera
+        // bounds. EL shapes enlarge/recenter those bounds independently; turn
+        // the field off for mixed maps until a separate point-grid transform
+        // is uploaded, rather than spatially misregistering the local bias.
+        const localBloomBias = localBloomBiasController
+            && frequencyTopology
+            && shapes.length === 0
+            ? localBloomBiasController.update(
+                src,
+                frequencyTopology,
+                mediaTimeMs ?? performance.now(),
+            )
+            : null;
+
         const globalBloomBias = bloom.frame(src, mediaTimeMs);
         // Modest geometry-gated diameter modulation; dense layouts remain
         // stable to avoid subpixel aliasing bands across the LED lattice.
@@ -522,6 +543,21 @@ export function createLedPreview({
             hdrGpuComposite.captureRawFrom(bloom.renderBaseToTexture());
             hdrGpuComposite.setGlobalBloomBias(globalBloomBias);
             hdrGpuComposite.setBloomFrequencyBlend(bloomFrequencyBlendValue);
+            hdrGpuComposite.setLocalBloomBias(
+                localBloomBias?.data ?? null,
+                localBloomBias?.width,
+                localBloomBias?.height,
+                rotate,
+                frequencyTopology?.gridAspect,
+                localBloomCameraExtentScale,
+            );
+            if (localBloomBias && dbgFrames % 300 === 1) {
+                log.debug('local-bloom-bias', {
+                    activeCoverage: Number(localBloomBias.activeCoverage.toFixed(4)),
+                    mean: Number(localBloomBias.mean.toFixed(4)),
+                    peak: Number(localBloomBias.peak.toFixed(4)),
+                });
+            }
             const strength = bloom.bloomPass.strength;
             const threshold = bloom.bloomPass.threshold;
             // Bracket capture belongs to the active strategy: these parameters

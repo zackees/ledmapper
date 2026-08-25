@@ -198,6 +198,12 @@ uniform sampler2D highFrame;
 uniform float globalBloomBias;
 uniform float bloomFrequencyBlend;
 uniform float bloomStrength;
+uniform sampler2D localBloomBias;
+uniform float localBloomBiasEnabled;
+uniform vec4 localBloomGridSample;
+uniform vec2 localBloomPanelAspect;
+uniform vec2 localBloomRotation;
+uniform float localBloomCameraExtentScale;
 varying vec2 vUv;
 
 float v1Smoothstep(float edge0, float edge1, float value) {
@@ -221,6 +227,23 @@ float srgbToLinear(float value) {
 
 float maxChannel(vec3 value) { return max(max(value.r, value.g), value.b); }
 float minChannel(vec3 value) { return min(min(value.r, value.g), value.b); }
+
+float localBloomBiasAt(vec2 canvasUv) {
+    // Canvas -> unrotated panel coordinates. The camera is y-down, hence the
+    // y flip. Grid texel centres are inset by half a texel so LED centres,
+    // including the boundary LEDs, interpolate at their exact positions.
+    vec2 screen = vec2(canvasUv.x - 0.5, 0.5 - canvasUv.y)
+        * localBloomCameraExtentScale;
+    vec2 panelVector = vec2(
+        localBloomRotation.x * screen.x + localBloomRotation.y * screen.y,
+        -localBloomRotation.y * screen.x + localBloomRotation.x * screen.y
+    );
+    vec2 panelUv = panelVector / max(localBloomPanelAspect, vec2(1e-6)) + 0.5;
+    float inside = step(0.0, panelUv.x) * step(panelUv.x, 1.0)
+        * step(0.0, panelUv.y) * step(panelUv.y, 1.0);
+    vec2 gridUv = panelUv * localBloomGridSample.xy + localBloomGridSample.zw;
+    return texture2D(localBloomBias, gridUv).r * localBloomBiasEnabled * inside;
+}
 `;
 
 /** The white-merge detector shared by the three historical strategies. */
@@ -1329,7 +1352,34 @@ void main() {
     float brightFullSplatDrive = mix(${ACRYLIC_FULL_SPLAT_BRIGHT_LOW_FREQUENCY.toFixed(2)}, ${ACRYLIC_FULL_SPLAT_BRIGHT_HIGH_FREQUENCY.toFixed(2)}, splatHighFrequency);
     float fullSplatDrive = mix(darkFullSplatDrive, brightFullSplatDrive, splatSceneLight);
     float shadowMask = v1Smoothstep(0.26, fullSplatDrive, nearDrive);
-    vec3 added = lowAdded * 0.70
+    // Spatial low/mid admission layer (AQNFgVV neck piece, t~=9). The global
+    // frequency controller must stay conservative because one scalar cannot
+    // distinguish a dim blue surface from bright face highlights or the t=14
+    // hair-shadow counterexample. A temporally filtered 64x64 control texture
+    // now asks for extra mip-2/local-pyramid support only where the RAW LED
+    // lattice finds a visible, coherent low/mid neighbourhood. Bright cells
+    // are pinned by the final max-channel guard and therefore keep the current
+    // global biases; true black and discontinuous shadow detail remain on the
+    // old mask. A coherent saturated primary may still request same-hue light
+    // in the negative space around its protected core.
+    // This does not restore coarse mips 3-4. It only relaxes admission of the
+    // already-approved mips 0-2, using a continuous field so there is no new
+    // splat geometry, threshold ring, or per-pixel hysteresis.
+    float localMidtoneBias = localBloomBiasAt(vUv)
+        * (1.0 - 0.85 * bloomFrequencyBlend);
+    // The field may interpolate across a bright core on its way between dim
+    // neighbours. Re-apply both luminance and max-channel drive ceilings in
+    // the composite: saturated red/blue can have low Rec.709 luminance while
+    // still being fully driven, and must remain pinned to the old profile.
+    float rawLuma = dot(rawLinear, vec3(0.2126, 0.7152, 0.0722));
+    float rawDrive = maxChannel(linearToSrgb(rawLinear));
+    float localBrightProtection = (1.0 - v1Smoothstep(0.22, 0.35, rawLuma))
+        * (1.0 - v1Smoothstep(0.999, 0.9999, rawDrive));
+    localMidtoneBias *= localBrightProtection;
+    // The field mostly strengthens the tight Gaussian and only modestly opens
+    // mid/high admission; AQNF t=14 remains the hard hair-shadow ceiling.
+    shadowMask += (1.0 - shadowMask) * localMidtoneBias * 0.20;
+    vec3 added = lowAdded * (0.70 + 0.24 * localMidtoneBias)
         + (max(midLinear - rawLinear, vec3(0.0)) * 0.29
             + max(highLinear - rawLinear, vec3(0.0)) * 0.14) * shadowMask;
     // The tight bracket still carries the same five-mip far tail (UnrealBloom

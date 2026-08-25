@@ -9,6 +9,7 @@ import {
     computeBloomFrequencyFeatures,
     createBloomFrequencyController,
     createBloomFrequencyTopology,
+    createLocalBloomBiasController,
     interpolateBloomMipWeights,
     stepBloomFrequencyBlend,
 } from '../../src/bloom-frequency';
@@ -45,6 +46,10 @@ describe('bloom source-frequency classifier', () => {
         const topology = createBloomFrequencyTopology(points, channels);
         assert.equal(topology.edges.length, 210);
         assert.equal(topology.channels[0], 63);
+        assert.equal(topology.gridWidth, 8);
+        assert.equal(topology.gridHeight, 8);
+        assert.equal(topology.isCompleteGrid, true);
+        assert.deepEqual(topology.gridAspect, [1, 1]);
     });
 
     it('does not bridge large coordinate gaps between separate local panels', () => {
@@ -60,6 +65,22 @@ describe('bloom source-frequency classifier', () => {
             assert.ok(Math.abs(a[0] - b[0]) <= 1);
             assert.ok(Math.abs(a[1] - b[1]) <= 1);
         }
+    });
+
+    it('describes non-square regular grids and disables complete non-uniform grids', () => {
+        const regular: StripPoint[] = Array.from({ length: 15 }, (_unused, index) => [
+            (index % 5) * 2,
+            Math.floor(index / 5),
+        ]);
+        const topology = createBloomFrequencyTopology(regular);
+        assert.equal(topology.isCompleteGrid, true);
+        assert.deepEqual(topology.gridAspect, [1, 0.25]);
+
+        const nonUniform: StripPoint[] = [];
+        for (const y of [0, 1, 2]) {
+            for (const x of [0, 1, 3]) nonUniform.push([x, y]);
+        }
+        assert.equal(createBloomFrequencyTopology(nonUniform).isCompleteGrid, false);
     });
 
     it('separates flat/coherent fields from luma and chroma high-frequency fields', () => {
@@ -78,6 +99,70 @@ describe('bloom source-frequency classifier', () => {
         assert.ok(chroma.score > 0.5, `chroma score ${String(chroma.score)}`);
         assert.equal(bloomFrequencyTarget(flat.score), 0);
         assert.ok(bloomFrequencyTarget(chroma.score) > 0.5);
+    });
+});
+
+describe('spatial low/mid bloom-bias field', () => {
+    it('activates coherent blue low/mids but not black, bright, or chromatic noise', () => {
+        const topology = createBloomFrequencyTopology(grid());
+        const mean = (data: Uint8Array) => data.reduce((sum, value) => sum + value, 0) / data.length / 255;
+        const coherent = createLocalBloomBiasController().update(
+            pixels(8, () => [35, 75, 150]), topology, 0,
+        );
+        const black = createLocalBloomBiasController().update(
+            pixels(8, () => [0, 0, 0]), topology, 0,
+        );
+        const bright = createLocalBloomBiasController().update(
+            pixels(8, () => [80, 170, 255]), topology, 0,
+        );
+        const noisy = createLocalBloomBiasController().update(
+            pixels(8, (x, y) => (x + y) % 2 ? [35, 75, 150] : [150, 35, 75]),
+            topology,
+            0,
+        );
+        assert.ok(coherent && black && bright && noisy);
+        assert.ok(mean(coherent.data) > 0.25);
+        assert.equal(mean(black.data), 0);
+        assert.ok(mean(bright.data) < 0.02);
+        assert.ok(mean(noisy.data) < mean(coherent.data) * 0.2);
+    });
+
+    it('retains coherent primary support for surrounding gaps at a bright boundary', () => {
+        const topology = createBloomFrequencyTopology(grid());
+        const field = createLocalBloomBiasController().update(
+            pixels(8, (x, y) => x === 4 && y === 4 ? [0, 0, 255] : [35, 75, 150]),
+            topology,
+            0,
+        )!;
+        // The shader's max-channel guard protects the core; the control field
+        // remains available so its same-hue Gaussian can occupy negative space.
+        assert.ok(field.data[4 * 8 + 4]! > 0);
+        assert.ok(field.data[4 * 8 + 3]! > 0);
+    });
+
+    it('opens conservatively, closes quickly, holds timestamps, and resets on seeks', () => {
+        const topology = createBloomFrequencyTopology(grid());
+        const lowMid = pixels(8, () => [35, 75, 150]);
+        const black = pixels(8, () => [0, 0, 0]);
+        const controller = createLocalBloomBiasController();
+        const first = controller.update(black, topology, 0)!;
+        assert.equal(first.peak, 0);
+        const attacked = controller.update(lowMid, topology, 100)!;
+        assert.ok(attacked.peak > 0 && attacked.peak < 1);
+        const held = controller.update(lowMid, topology, 100)!;
+        assert.ok(Math.abs(held.peak - attacked.peak) < 1e-7);
+        const decayed = controller.update(black, topology, 200)!;
+        assert.ok(decayed.peak > 0 && decayed.peak < attacked.peak);
+        const sought = controller.update(black, topology, 50)!;
+        assert.equal(sought.peak, 0);
+    });
+
+    it('disables the field for incomplete/non-grid topology', () => {
+        const topology = createBloomFrequencyTopology(grid().slice(0, -1));
+        assert.equal(topology.isCompleteGrid, false);
+        assert.equal(createLocalBloomBiasController().update(
+            pixels(8, () => [35, 75, 150]), topology, 0,
+        ), null);
     });
 });
 

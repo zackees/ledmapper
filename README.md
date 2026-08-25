@@ -110,3 +110,24 @@ The gate requires positive axial and diagonal midpoint-fill gains across the
 dark sequence while bounding the worst individual-frame regression. Always run
 it alongside the AQNF hair-shadow ceiling and AQP high-frequency chroma gate;
 none of the three is a substitute for another.
+
+Coherent low/mid regions also use a spatial 64x64 bloom-bias texture. It is
+computed from raw LED luma/chromaticity agreement, interpolated across axial
+and diagonal neighbours, and filtered independently per cell (0.22 s opening,
+0.10 s protective close). It modestly strengthens the already-approved local
+mip 0-2 Gaussian field; bright cores stay on the global profile while their
+coherent same-hue field may still fill surrounding negative space, and coarse
+mips 3-4 remain disabled. AQNFgVV's blue neck piece at 9 seconds is the fill
+floor, paired with the 14-second hair-shadow ceiling:
+
+```powershell
+uv run python scripts/local_midtone_bias_gate.py SOURCE-CROP.mp4 `
+  PREVIOUS-APPROVED.mp4 CANDIDATE.mp4 -t 9 --roi .22 .68 .75 1
+uv run python scripts/shadow_structure_gate.py SOURCE-CROP.mp4 CANDIDATE.mp4 `
+  --reference MINIMAL-BLOOM.mp4 -t 14 --roi 0 0 .58 .92
+```
+
+The local gate reports the old deficit explicitly (`baseline_underfilled_fraction`)
+and ratchets lower-quartile and diagonal midpoint gains while bounding changes
+to bright LED cores. A whole-frame midpoint score is not a substitute: the
+bright face can hide an under-filled blue neck region.

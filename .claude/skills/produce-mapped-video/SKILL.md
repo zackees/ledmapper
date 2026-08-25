@@ -111,6 +111,19 @@ For dark colored detail, additionally run
 inter-LED gaps even when the cores retain correct ordering. Do not loosen the
 shadow ceiling to satisfy the coherent-fill floor; both must pass.
 
+For spatial low/mid bloom changes, AQNFgVV at 9 seconds is a distinct ROI
+ratchet from whole-face fill. Run:
+
+```powershell
+uv run python scripts/local_midtone_bias_gate.py SOURCE-CROP.mp4 `
+  PREVIOUS-APPROVED.mp4 CANDIDATE.mp4 -t 9 --roi .22 .68 .75 1
+```
+
+Pair it with the AQNF t=14 shadow gate. The runtime's 64x64 local-bias texture
+may strengthen only the already-approved mip 0-2 Gaussian field; bright cores
+stay max-channel-pinned while coherent same-hue light may fill their gaps;
+coarse mips 3-4 must remain zero.
+
 | Strategy | What it does |
 |---|---|
 | `chroma-shoulder` | Historical hue-locked shoulder baseline retained for comparisons. |
