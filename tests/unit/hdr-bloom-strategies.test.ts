@@ -3,10 +3,19 @@ import { describe, test } from 'node:test';
 
 import { HDR_BLOOM_COMPOSITE_FRAGMENT_SHADER } from '../../src/moviemaker/hdr-bloom-gpu';
 import {
+    ACRYLIC_FULL_SPLAT_BRIGHT_HIGH_FREQUENCY,
+    ACRYLIC_FULL_SPLAT_BRIGHT_LOW_FREQUENCY,
+    ACRYLIC_FULL_SPLAT_DARK_HIGH_FREQUENCY,
+    ACRYLIC_FULL_SPLAT_DARK,
+    ACRYLIC_SPLAT_LIGHT_FULL,
+    ACRYLIC_SPLAT_LIGHT_KNEE,
+    ACRYLIC_SPLAT_HIGH_FREQUENCY_FULL,
+    ACRYLIC_SPLAT_HIGH_FREQUENCY_KNEE,
     CPU_ORACLE_HDR_BLOOM_STRATEGY,
     DEFAULT_HDR_BLOOM_STRATEGY,
     HDR_BLOOM_STRATEGIES,
     HDR_BLOOM_STRATEGY_NAMES,
+    acrylicFullSplatDrive,
     isHdrBloomStrategyName,
     resolveHdrBloomStrategy,
 } from '../../src/moviemaker/hdr-bloom-strategies';
@@ -115,6 +124,44 @@ void describe('HDR bloom strategies', () => {
         assert.ok(unrealMipWeights[1]);
         assert.ok(unrealMipWeights[2] >= 1);
         assert.ok(unrealMipWeights.slice(3).every((weight) => weight === 0));
+    });
+
+    void test('acrylic full-splat drive rises continuously with global scene light', () => {
+        assert.equal(acrylicFullSplatDrive(0), ACRYLIC_FULL_SPLAT_DARK);
+        assert.equal(acrylicFullSplatDrive(1), ACRYLIC_FULL_SPLAT_BRIGHT_LOW_FREQUENCY);
+        assert.equal(acrylicFullSplatDrive(-1), ACRYLIC_FULL_SPLAT_DARK);
+        assert.equal(acrylicFullSplatDrive(2), ACRYLIC_FULL_SPLAT_BRIGHT_LOW_FREQUENCY);
+        assert.equal(acrylicFullSplatDrive(ACRYLIC_SPLAT_LIGHT_KNEE), ACRYLIC_FULL_SPLAT_DARK);
+        assert.equal(
+            acrylicFullSplatDrive(ACRYLIC_SPLAT_LIGHT_FULL),
+            ACRYLIC_FULL_SPLAT_BRIGHT_LOW_FREQUENCY,
+        );
+        assert.equal(
+            acrylicFullSplatDrive(ACRYLIC_SPLAT_LIGHT_FULL, 1),
+            ACRYLIC_FULL_SPLAT_BRIGHT_HIGH_FREQUENCY,
+        );
+        assert.equal(
+            acrylicFullSplatDrive(ACRYLIC_SPLAT_LIGHT_KNEE, 1),
+            ACRYLIC_FULL_SPLAT_DARK,
+        );
+        assert.equal(ACRYLIC_FULL_SPLAT_DARK_HIGH_FREQUENCY, ACRYLIC_FULL_SPLAT_DARK);
+        assert.equal(
+            acrylicFullSplatDrive(1, ACRYLIC_SPLAT_HIGH_FREQUENCY_KNEE),
+            ACRYLIC_FULL_SPLAT_BRIGHT_LOW_FREQUENCY,
+        );
+        assert.equal(
+            acrylicFullSplatDrive(1, ACRYLIC_SPLAT_HIGH_FREQUENCY_FULL),
+            ACRYLIC_FULL_SPLAT_BRIGHT_HIGH_FREQUENCY,
+        );
+        const steps = Array.from({ length: 21 }, (_unused, index) => (
+            acrylicFullSplatDrive(index / 20)
+        ));
+        assert.ok(steps.every((value, index) => (
+            index === 0 || value >= (steps[index - 1] ?? value)
+        )));
+        assert.ok(acrylicFullSplatDrive(0.5) < 0.70);
+        assert.ok(acrylicFullSplatDrive(0.70) > 0.82);
+        assert.ok(acrylicFullSplatDrive(0.70, 1) < acrylicFullSplatDrive(0.70, 0));
     });
 
     void test('name guard rejects unknown strategies', () => {

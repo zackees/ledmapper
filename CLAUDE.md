@@ -209,6 +209,12 @@ source duration; they do not perform motion interpolation.
 Auto bloom is enabled by default in production (`autoBloom=1` implicitly). Do
 not add `autoBloom=0` unless the user explicitly asks to turn bloom off.
 
+For `acrylic-pane`, per-frame source-frequency adaptation is also enabled by
+default. The wrapper exposes `--bloom-frequency-mode auto|low|high` and
+`--bloom-frequency-blend 0..1`; use `low`, `high`, or a scalar only for
+deterministic evaluator/A-B sweeps. The production URL equivalents are
+`bloomFrequencyMode` and `bloomFrequencyBlend`.
+
 ### Final one-third source / two-thirds mapped artifact
 
 When the user wants the original to occupy one-third of the viewport and the
@@ -346,6 +352,15 @@ bleed that retains hue and local contrast, not a uniformly brighter image.
   dark holes around faces and makes the visual improvement imperceptible.
   Evaluators must distinguish local surface fill from distant/global chroma
   contamination by spatial support.
+- Frequency-adaptive extension (#507): classify the raw LED lattice before
+  bloom and continuously rebias only local mips 0–2. Coherent/face-like frames
+  retain stronger mip-2 surface bridging; fine or chromatically discontinuous
+  frames move energy toward mips 0–1. The transition uses media-time
+  exponential filtering (0.14 s attack toward detail protection, 0.85 s decay
+  toward broader fill; approximately 0.10/0.32 s and 0.59/1.96 s to reach
+  50%/90%). Repeated timestamps do not advance state and seeks reset it. This
+  controller changes spatial distribution only: never connect it to capture
+  strength, exposure, LED diameter, or the eliminated brightness iris.
 - Favor protecting highlights over brightening shadows. Midtone halos and
   lifted blacks are regressions even if the image appears more luminous.
 - The brightness-modulated iris is ELIMINATED (#496 Phase 0, user
@@ -363,6 +378,47 @@ bleed that retains hue and local contrast, not a uniformly brighter image.
   lower bound). A candidate must stay inside both bounds: removing bloom is
   not a chroma win if complex surfaces fall back to isolated dots. AI picture
   evaluators (prompt in the #496 record) are the perceptual double-check.
+- For frequency-adaptive changes, pass `--frequency-baseline` and
+  `--frequency-times` to `scripts/bloom_gates.py`, or run
+  `scripts/frequency_adaptive_bloom_gate.py` directly. Lock high-frequency
+  structure/chroma and low-frequency coherent fill as separate strata; both
+  candidate scores must improve, and the worst frame may not hide in a mean.
+  Also run `scripts/frequency_temporal_bloom_gate.py TEMPORAL-SOURCE-CROP
+  PINNED-LOW PINNED-HIGH TEMPORAL-ADAPTIVE`; it fits the observed encoded blend
+  between same-frame endpoint renders, then measures attack/decay crossing
+  times and one-frame-impulse rejection. Never infer temporal correctness only
+  from the source-side controller trace: a production-path reset or ignored
+  controller can otherwise pass on endpoint frame quality alone.
+- AQNFgVV at 14 s is the dark-structure counterexample to the face-fill floor.
+  The LED cores retained correct luma ordering while bloom raised the
+  inter-LED hair gaps enough to erase visible shadow layers. Run
+  `scripts/shadow_structure_gate.py SOURCE-CROP CANDIDATE --reference MINIMAL
+  -t 14 --roi 0 0 0.58 0.92`, or pass the same values through
+  `bloom_gates.py --shadow-times 14 --shadow-roi 0 0 0.58 0.92`. The gate
+  measures edge polarity and depth at the cores plus p75/p90 negative-space
+  fill. Do not let core-only correlation stand in for preserved shadows.
+- Keep the shadow ceiling and coherent-surface fill floor separate. The
+  mid-frequency gate excludes source values below 0.18 so its lower quartile
+  cannot reward filling blue-black hair; the shadow gate owns that regime.
+  A drive/luma-dependent one-hue Gaussian splat was investigated as a possible
+  physical model. Narrow splats passed the hair ceiling but lost 20–40 points
+  of coherent-face quality; energy-restored splats gained up to 8.1 face
+  points but overfilled the hair. Do not ship that geometry without a curve
+  that passes both ratchets and the ring/temporal gates—earlier geometry
+  changes also produced aliasing.
+- AQPoUmw is the globally-dark/coherent splat-overlap counterexample. Its
+  source-grid mean linear luma is approximately 0.03-0.13, yet dim axial and
+  diagonal neighbours should read as overlapping acrylic light rather than
+  isolated dots. The acrylic composite therefore maps the already-filtered
+  global bloom bias through a consumer-specific 0.45-0.75 knee: full local
+  overlap occurs at drive 0.62 in dark scenes, versus 0.88 in bright coherent
+  scenes. Only a nearly fully high-frequency classification (0.90-0.99) moves
+  the bright endpoint toward 0.72 for the AQP red/blue edge case. Do not retune
+  the shared light evaluator, capture strength, LED diameter, or mip weights to
+  obtain this result. Run `scripts/low_light_splat_gate.py SOURCE-CROP BASELINE
+  CANDIDATE -t .5 -t 1.5 -t 2.5 -t 3.5 -t 4.5 -t 5.5 -t 6.5 -t 7.5` and keep
+  its axial/diagonal fill floor paired with the AQNF shadow and AQP chroma
+  ceilings.
 - Production evaluators must use the production camera fit exactly. The
   unattended renderer passes `ledDiameter=null`, so its camera extent excludes
   LED visual radius and applies only the `1.05` aesthetic margin to the point

@@ -1,7 +1,7 @@
 import { parseScreenmapMultiStrip } from '../common';
 import { createBlurPipeline } from '../moviemaker/blur-pipeline';
 import { extractGatherToRgb } from '../moviemaker/offline-capture-frame';
-import { createLedPreview } from '../moviemaker/preview';
+import { createLedPreview, type PreviewShape } from '../moviemaker/preview';
 import { buildVideoChannelMap, scaleToMaxDimension, transformToCenter } from '../moviemaker/transforms';
 import { buildFledArtifact, embedFps } from '../moviemaker/recording';
 import { PixelFormat, prependFledHeader } from '../render/rgb-video';
@@ -34,6 +34,16 @@ export interface ProductionRenderResult {
         fps: number;
         frameCount: number;
         hdrBloomVerification?: ReturnType<ReturnType<typeof createLedPreview>['getHdrBloomVerification']>;
+        bloomFrequency?: {
+            frames: number;
+            scoreMin: number;
+            scoreMean: number;
+            scoreMax: number;
+            blendMin: number;
+            blendMean: number;
+            blendMax: number;
+            finalWeights: readonly number[];
+        };
     };
 }
 
@@ -68,6 +78,41 @@ function productionHdrCompositeMode(): HdrBloomCompositeMode {
 /** Unrecorded frames needed to settle the opening exposure by >98%. */
 export function productionIrisPrerollFrames(outputFps: number): number {
     return Math.ceil(IRIS_PREROLL_TIME_CONSTANTS * IRIS_ATTACK_TAU * Math.max(outputFps, 1));
+}
+
+/**
+ * Stable empty topology metadata for the lifetime of one production preview.
+ *
+ * Preview uses collection identity to detect a changed screenmap. Allocating
+ * fresh `[]` values per decoded frame therefore rebuilds its topology and
+ * resets the temporal bloom controller on every frame, silently reducing the
+ * adaptive curve to a frame-local classifier.
+ */
+export function createProductionPreviewTopologyArgs(): {
+    pointChannelOffsets: number[];
+    shapes: PreviewShape[];
+} {
+    return { pointChannelOffsets: [], shapes: [] };
+}
+
+/** Route every production preview frame through the stable topology bundle. */
+export function renderProductionPreviewFrame(
+    preview: Pick<ReturnType<typeof createLedPreview>, 'render'> | null,
+    points: Parameters<ReturnType<typeof createLedPreview>['render']>[0],
+    panelRotation: number,
+    displaySample: Parameters<ReturnType<typeof createLedPreview>['render']>[2],
+    topology: ReturnType<typeof createProductionPreviewTopologyArgs>,
+    mediaTimeMs: number,
+): void {
+    preview?.render(
+        points,
+        panelRotation,
+        displaySample,
+        null,
+        topology.pointChannelOffsets,
+        topology.shapes,
+        mediaTimeMs,
+    );
 }
 
 /** Constant-rate timestamps covered by one decoded source sample. */
@@ -175,6 +220,8 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
                 enableHdrBloom: true,
                 hdrBloomCompositeMode: productionHdrCompositeMode(),
                 hdrBloomStrategy: config.bloomStrategy,
+                bloomFrequencyMode: config.bloomFrequencyMode,
+                bloomFrequencyBlend: config.bloomFrequencyBlend,
             });
             preview.setAutoBloom(config.autoBloom);
             preview.setManualBloomStrength(config.bloomStrength);
@@ -189,6 +236,17 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
         let done = 0;
         let mp4FrameCount = 0;
         let irisSettled = false;
+        const previewTopology = createProductionPreviewTopologyArgs();
+        const frequencySummary = {
+            frames: 0,
+            scoreSum: 0,
+            scoreMin: 1,
+            scoreMax: 0,
+            blendSum: 0,
+            blendMin: 1,
+            blendMax: 0,
+            finalWeights: [] as number[],
+        };
         // MP4 cadence is scheduled independently of decoded-source cadence.
         // This makes outputFps=60 exact for 25, 30, 50, or variable-rate input.
         let nextMp4Timestamp = 0;
@@ -216,8 +274,12 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
                     if (!irisSettled) {
                         const intervalMs = 1000 / Math.max(outputFps, 1);
                         for (let preRoll = productionIrisPrerollFrames(outputFps); preRoll > 0; preRoll--) {
-                            preview?.render(
-                                points, panelRotation, displaySample, null, [], [],
+                            renderProductionPreviewFrame(
+                                preview,
+                                points,
+                                panelRotation,
+                                displaySample,
+                                previewTopology,
                                 timestamp * 1000 - preRoll * intervalMs,
                             );
                         }
@@ -226,7 +288,25 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
                     // Sampling and output layout are independent: a diamond
                     // panel can show an upright source video without rotating
                     // its capture coordinates.
-                    preview?.render(points, panelRotation, displaySample, null, [], [], timestamp * 1000);
+                    renderProductionPreviewFrame(
+                        preview,
+                        points,
+                        panelRotation,
+                        displaySample,
+                        previewTopology,
+                        timestamp * 1000,
+                    );
+                    const frequency = preview?.getBloomFrequencyTelemetry();
+                    if (frequency) {
+                        frequencySummary.frames++;
+                        frequencySummary.scoreSum += frequency.score;
+                        frequencySummary.scoreMin = Math.min(frequencySummary.scoreMin, frequency.score);
+                        frequencySummary.scoreMax = Math.max(frequencySummary.scoreMax, frequency.score);
+                        frequencySummary.blendSum += frequency.blend;
+                        frequencySummary.blendMin = Math.min(frequencySummary.blendMin, frequency.blend);
+                        frequencySummary.blendMax = Math.max(frequencySummary.blendMax, frequency.blend);
+                        frequencySummary.finalWeights = [...frequency.weights];
+                    }
                     drawProductionFrame({
                         context: compositionContext,
                         source: sourceCanvas,
@@ -299,6 +379,18 @@ export async function renderProduction(options: ProductionRenderOptions): Promis
                 fps,
                 frameCount: done,
                 ...(hdrVerification ? { hdrBloomVerification: hdrVerification } : {}),
+                ...(frequencySummary.frames > 0 ? {
+                    bloomFrequency: {
+                        frames: frequencySummary.frames,
+                        scoreMin: frequencySummary.scoreMin,
+                        scoreMean: frequencySummary.scoreSum / frequencySummary.frames,
+                        scoreMax: frequencySummary.scoreMax,
+                        blendMin: frequencySummary.blendMin,
+                        blendMean: frequencySummary.blendSum / frequencySummary.frames,
+                        blendMax: frequencySummary.blendMax,
+                        finalWeights: frequencySummary.finalWeights,
+                    },
+                } : {}),
             },
         };
     } finally {

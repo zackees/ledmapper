@@ -87,7 +87,10 @@ export function runOfflineCaptureWorker(scope: OfflineWorkerScope, deps: Offline
                     const now = workerDeps.now?.() ?? performance.now();
                     if (now - lastProgress >= Math.max(100, start.config.previewIntervalMs)) {
                         const preview = extracted.rgbPts.slice();
-                        post(scope, { type: 'progress', jobId: start.jobId, done, total, previewBuffer: preview.buffer, avgBrightness: extracted.avgBri, oobCount: extracted.oobCount }, [preview.buffer]);
+                        const mediaTimeSeconds = Number.isFinite(sample.timestamp) && sample.timestamp >= 0
+                            ? sample.timestamp
+                            : (done - 1) / fps;
+                        post(scope, { type: 'progress', jobId: start.jobId, done, total, mediaTimeSeconds, previewBuffer: preview.buffer, avgBrightness: extracted.avgBri, oobCount: extracted.oobCount }, [preview.buffer]);
                         lastProgress = now;
                     }
                 } finally {

@@ -54,6 +54,22 @@ available for the legacy behavior that uses `rotation` for both transforms.
 
 For example, append `&videoMode=mapped-led` to a valid MP4 or `both` job URL. To disable the default bloom explicitly, append `&autoBloom=0`.
 
+`acrylic-pane` also adapts its local bloom distribution to the raw LED
+lattice's spatial/chromatic frequency by default. `bloomFrequencyMode=auto` is
+the production setting. `bloomFrequencyMode=low|high` pins a tuned endpoint,
+and `bloomFrequencyBlend=0..1` pins an exact intermediate curve position for
+reproducible evaluator sweeps. The scalar override takes precedence over the
+mode. All positions use only mips 0–2; coarse mips 3–4 remain disabled.
+
+The acrylic overlap threshold is also continuous and scene-light aware. Dark
+scenes reach complete local overlap earlier so dim coherent neighbours do not
+fall back to isolated dots; bright coherent scenes reach it later to avoid
+AQNFgVV-style t=18 threshold chatter and to retain t=14 hair shadows. This is a
+splat-composite curve driven by the existing filtered global-light value. It
+does not restore coarse mips, change the shared exposure calculation, or vary
+LED geometry. Validate dark footage with `scripts/low_light_splat_gate.py` and
+run the shadow/frequency gates at the same time.
+
 ## Direct versus sidecar transport
 
 Direct Playwright transport is the default and the recommended option whenever the

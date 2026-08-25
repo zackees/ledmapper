@@ -30,6 +30,7 @@ source-left / mapped-right splice, and opens the result.
 | Cadence | source timing preserved | `--output-fps 30\|60` |
 | Auto bloom | on | `--no-auto-bloom` |
 | Bloom strategy | `acrylic-pane` | `--strategy <name>` (repeatable) |
+| Frequency bias | temporal `auto` for `acrylic-pane` | `--bloom-frequency-mode low\|high` or `--bloom-frequency-blend 0..1` |
 | Final review layout | off | `--final-artifact` (source 1/3, mapped 2/3) |
 | Splice | built | `--no-stitch` |
 | Output | `E:\video\short_out` | `--output-dir <path>` |
@@ -55,6 +56,10 @@ Pass `--version v3-<what-changed>` on every experiment so the review history in
 - **A/B of two renders** — run twice with different `--version` tags and
   `--no-stitch`, then splice the two mapped MP4s (baseline left, candidate
   right) per the HDR-bloom protocol in `CLAUDE.md`.
+- **Frequency-controller A/B** — leave the candidate at the default `auto` and
+  pin the baseline/diagnostic renders with `--bloom-frequency-mode low|high`
+  or `--bloom-frequency-blend 0..1`. These pins are evaluator controls, not
+  normal production defaults. Mips 3–4 remain zero at every curve position.
 
 For a full final-artifact regeneration of `E:\video\short`, run the wrapper once
 per `.mp4` with `--video-mode mapped-led --panel-rotation 0 --strategy
@@ -82,6 +87,29 @@ Two or more `--strategy` values imply `--compare`; the grid holds the source
 plus at most three strategies (2 tiles stack horizontally, 3–4 form the 2x2).
 Every tile is labelled and letterboxed to a common cell, so a 9:16 source and a
 1:1 panel stay directly comparable.
+
+For adaptive bloom, score the aligned source crop, fixed-mip baseline, and
+candidate with `uv run python scripts/frequency_adaptive_bloom_gate.py ...`.
+Temporal validation requires four aligned artifacts:
+`frequency_temporal_bloom_gate.py SOURCE-CROP PINNED-LOW PINNED-HIGH ADAPTIVE`.
+It derives the observed encoded blend from the endpoint renders; do not replace
+those inputs with a source-only controller reconstruction.
+For globally dark coherent footage, additionally run
+`uv run python scripts/low_light_splat_gate.py SOURCE-CROP BASELINE CANDIDATE
+-t .5 -t 1.5 -t 2.5 -t 3.5 -t 4.5 -t 5.5 -t 6.5 -t 7.5`. This protects the
+AQPoUmw axial/diagonal overlap floor. Pair it with the AQNFgVV t=14
+`shadow_structure_gate.py` ceiling and the AQP high-frequency gate: lowering
+the dark-scene overlap threshold must not reopen bright-scene hair fill or
+cross-hue contamination. The filtered global-light signal may shape this
+overlap threshold only; it must not modulate exposure, capture strength, LED
+diameter, or reopen mips 3-4.
+Use `--regime high` for fine/chromatically discontinuous samples and `--regime
+low` for coherent faces/surfaces. Do not combine the strata into a clip mean.
+For dark colored detail, additionally run
+`uv run python scripts/shadow_structure_gate.py SOURCE-CROP CANDIDATE
+--reference MINIMAL -t 14 --roi 0 0 0.58 0.92`. This gate detects bloom-filled
+inter-LED gaps even when the cores retain correct ordering. Do not loosen the
+shadow ceiling to satisfy the coherent-fill floor; both must pass.
 
 | Strategy | What it does |
 |---|---|

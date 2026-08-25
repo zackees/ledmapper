@@ -7,8 +7,8 @@ color, but leaves midtone surfaces as isolated dots separated by black gaps.
 
 This evaluator works on the 64x64 LED lattice and measures that deficit:
 
-* source cells select coherent midtone neighbour pairs (horizontal, vertical,
-  and diagonal) that represent one continuous surface;
+* source cells select coherent, visibly driven midtone neighbour pairs
+  (horizontal, vertical, and diagonal) that represent one continuous surface;
 * a minimal-bloom render supplies the non-bloom control;
 * the candidate is sampled at each LED core and at the midpoint between the
   pair, in linear-light luminance;
@@ -17,17 +17,22 @@ This evaluator works on the 64x64 LED lattice and measures that deficit:
   than letting already-filled highlights dominate the median;
 * ``fill_gain`` compares the candidate and control lower quartiles.
 
+Dark colored pairs are deliberately excluded: AQNFgVV t=14 proved that a low
+quartile spanning blue-black hair rewards exactly the fill that erases its
+shadow layers. ``shadow_structure_gate.py`` owns that negative-space regime;
+this gate owns visibly driven continuous surfaces such as faces and petals.
+
 The spatial chroma-leak and ordinary veil gates remain the upper bound. This
 gate is deliberately the lower bound: it fails when local diffusion is too
 weak to bridge coherent neighbouring LEDs. The default ratchet was calibrated
 from AQNFgVV... at t=2,7,12,17,22,27. Restrained third-mip candidates passed
 the earlier floor but remained barely perceptible in side-by-side review. The
-current floor records the corrected model: mips 0-2 stay strong
-(2.85/4.00/1.50), while only coarse mips 3-4 are removed. It rejects the
-overcorrected/de-biased local response. Thresholds use the exact production
-point-extent camera fit (`ledDiameter=null`): across the six AQNF probes the
-approved candidate's weakest lower-quartile fill is 0.0617 versus at most
-0.0188 for the de-biased candidate.
+current floor records the corrected model: mips 0-2 stay strong, while only
+coarse mips 3-4 are removed. It rejects the overcorrected/de-biased local
+response. Thresholds use the exact production point-extent camera fit
+(`ledDiameter=null`) and linear Rec.709 source luminance. After separating the
+shadow population, the approved AQNF probes retain at least 0.46 lower-
+quartile fill and 0.40 diagonal fill.
 
 Usage:
   uv run python scripts/mid_frequency_bloom_gate.py SOURCE_CROP.mp4 CONTROL.mp4 \
@@ -42,14 +47,17 @@ import sys
 from pathlib import Path
 
 import numpy as np
-
 from chroma_retention_gate import cell_means, frame_at
 from evaluator_geometry import production_led_positions
 
 GRID = 64
-MIN_VALUE = 0.08
-MAX_VALUE = 0.85
-MIN_VALUE_SIMILARITY = 0.45
+# Keep this population disjoint from shadow_structure_gate.py, whose source
+# mask ends at 0.16 linear Rec.709 luminance.  The former HSV max-channel test
+# admitted saturated blue-black hair into both gates: a pixel could be "bright"
+# here because B was high while still being a deep luminance shadow there.
+MIN_LINEAR_LUMA = 0.18
+MAX_LINEAR_LUMA = 0.85
+MIN_LUMA_SIMILARITY = 0.45
 MAX_CHROMATICITY_DISTANCE = 0.10
 OFFSETS = ((0, 1), (1, 0), (1, 1), (1, -1))
 
@@ -75,7 +83,7 @@ def chromaticity(rgb: np.ndarray) -> np.ndarray:
 
 
 def patch_mean_luma(luma: np.ndarray, x: float, y: float, radius: int = 2) -> float:
-    row, col = int(round(y)), int(round(x))
+    row, col = round(y), round(x)
     patch = luma[
         max(0, row - radius):row + radius + 1,
         max(0, col - radius):col + radius + 1,
@@ -85,7 +93,7 @@ def patch_mean_luma(luma: np.ndarray, x: float, y: float, radius: int = 2) -> fl
 
 def coherent_pairs(ideal: np.ndarray) -> list[tuple[int, int, int, int, bool]]:
     """Return spatially coherent midtone pairs and whether each is diagonal."""
-    value = ideal.max(axis=-1) / 255.0
+    luma = linear_luma(ideal)
     chroma = chromaticity(ideal)
     pairs: list[tuple[int, int, int, int, bool]] = []
     for dy, dx in OFFSETS:
@@ -97,10 +105,10 @@ def coherent_pairs(ideal: np.ndarray) -> list[tuple[int, int, int, int, bool]]:
                 nx = x + dx
                 if not 0 <= nx < GRID:
                     continue
-                va, vb = value[y, x], value[ny, nx]
-                if min(va, vb) < MIN_VALUE or max(va, vb) > MAX_VALUE:
+                va, vb = luma[y, x], luma[ny, nx]
+                if min(va, vb) < MIN_LINEAR_LUMA or max(va, vb) > MAX_LINEAR_LUMA:
                     continue
-                if min(va, vb) / max(va, vb) < MIN_VALUE_SIMILARITY:
+                if min(va, vb) / max(va, vb) < MIN_LUMA_SIMILARITY:
                     continue
                 if np.linalg.norm(chroma[y, x] - chroma[ny, nx]) > MAX_CHROMATICITY_DISTANCE:
                     continue
@@ -180,9 +188,9 @@ def main() -> int:
     parser.add_argument("control", type=Path, help="minimal-bloom render")
     parser.add_argument("candidate", type=Path)
     parser.add_argument("-t", "--time", type=float, action="append", required=True)
-    parser.add_argument("--min-fill-ratio-p25", type=float, default=0.05)
-    parser.add_argument("--min-fill-gain-p25", type=float, default=0.045)
-    parser.add_argument("--min-diagonal-fill-ratio-p25", type=float, default=0.03)
+    parser.add_argument("--min-fill-ratio-p25", type=float, default=0.46)
+    parser.add_argument("--min-fill-gain-p25", type=float, default=0.45)
+    parser.add_argument("--min-diagonal-fill-ratio-p25", type=float, default=0.40)
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
 

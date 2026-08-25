@@ -18,7 +18,7 @@ export function isOfflineCaptureWorkerSupported(): boolean {
 
 export async function runOfflineCapture({ file, captureFrame, onProgress, isCancelled }: {
     file: File;
-    captureFrame: (frame: VideoFrame) => Promise<Uint8Array | null>;
+    captureFrame: (frame: VideoFrame, mediaTimeSeconds: number) => Promise<Uint8Array | null>;
     onProgress: (done: number, total: number) => void;
     isCancelled: () => boolean;
 }): Promise<OfflineCaptureResult | null> {
@@ -39,7 +39,10 @@ export async function runOfflineCapture({ file, captureFrame, onProgress, isCanc
             try {
                 if (isCancelled()) { cancelled = true; break; }
                 videoFrame = sample.toVideoFrame();
-                const bytes = await captureFrame(videoFrame);
+                const timestamp = Number.isFinite(sample.timestamp) && sample.timestamp >= 0
+                    ? sample.timestamp
+                    : frames.length / fps;
+                const bytes = await captureFrame(videoFrame, timestamp);
                 if (!bytes) throw new Error('offline capture readback unavailable');
                 frames.push(bytes);
             } finally {

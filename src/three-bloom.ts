@@ -21,8 +21,7 @@ import {
     IRIS_LIGHT_LATENCY,
 } from './bloom-utils';
 import type { IrisState, BloomStrengthRange, FrameBrightnessResult } from './types/domain';
-
-export type BloomMipWeights = readonly [number, number, number, number, number];
+import type { BloomMipWeights } from './bloom-frequency';
 
 /**
  * Select which UnrealBloom spatial bands contribute to the final field.

@@ -1111,7 +1111,7 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
                     dom_btn_toggle_record.value = `Rendering ${String(message.done)}/${String(message.total)} — click to cancel`;
                     if (message.previewBuffer) {
                         const rgb = new Uint8Array(message.previewBuffer);
-                        preview.render(visibleLedPoints, dom_chk_preview_rotate.checked ? curr_rotate : 0, { rgbPts: rgb, avgBri: message.avgBrightness ?? 0, oobCount: message.oobCount ?? 0 }, previewLedDiameter, ledPointChannelOffsets, recordShapes);
+                        preview.render(visibleLedPoints, dom_chk_preview_rotate.checked ? curr_rotate : 0, { rgbPts: rgb, avgBri: message.avgBrightness ?? 0, oobCount: message.oobCount ?? 0 }, previewLedDiameter, ledPointChannelOffsets, recordShapes, message.mediaTimeSeconds * 1000);
                     }
                 },
             });
@@ -1142,7 +1142,7 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
         try {
             const result = await runOfflineCapture({
                 file,
-                captureFrame: async (frame) => {
+                captureFrame: async (frame, mediaTimeSeconds) => {
                     const s = await blurPipeline.captureFrameSample(frame);
                     if (s?.numPts !== screenmap_pts.length) return null;
                     if (offlineSampleBuf?.length !== s.numPts * 3) {
@@ -1152,7 +1152,7 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
                     // Drive the LED preview from the offline pass so the user
                     // watches the actual render progress.
                     const previewRotate = dom_chk_preview_rotate.checked ? curr_rotate : 0;
-                    preview.render(visibleLedPoints, previewRotate, es, previewLedDiameter, ledPointChannelOffsets, recordShapes);
+                    preview.render(visibleLedPoints, previewRotate, es, previewLedDiameter, ledPointChannelOffsets, recordShapes, mediaTimeSeconds * 1000);
                     const rec = toRecordingSample(es, s.numPts);
                     return new Uint8Array(rec.rgbPts);
                 },
@@ -1661,7 +1661,10 @@ export function init(container: HTMLElement, nav?: SpaHistory) {
 
     drawMoviemakerOverlay(overlayCtx, visibleLedPoints, curr_rotate, curr_zoom, curr_translate[0], curr_translate[1], lastSample, videoWidth, videoHeight, fps, dom_chk_show_leds.checked, overlayLedStrips, previewLedDiameter, recording.isActive ? recording.getStats() : null, videoSource.sourceType !== null ? frame_rate : null, dom_chk_show_labels.checked, displayWidth, displayHeight, recordShapes);
         const previewRotate = dom_chk_preview_rotate.checked ? curr_rotate : 0;
-        preview.render(visibleLedPoints, previewRotate, lastSample, previewLedDiameter, ledPointChannelOffsets, recordShapes);
+        const previewMediaTimeMs = videoSource.sourceType === 'video'
+            ? videoPlayer.currentTime * 1000
+            : performance.now();
+        preview.render(visibleLedPoints, previewRotate, lastSample, previewLedDiameter, ledPointChannelOffsets, recordShapes, previewMediaTimeMs);
 
         // While recording MP4, blit the just-rendered preview canvas into the
         // recorder's intermediate. No-op when not recording.

@@ -95,6 +95,59 @@ export const HDR_BLOOM_STRATEGY_NAMES = [
 export type HdrBloomStrategyName = (typeof HDR_BLOOM_STRATEGY_NAMES)[number];
 
 /**
+ * Local drive at which acrylic-pane admits the complete three-lobe splat.
+ * Dark scenes need earlier overlap to avoid isolated dots; bright populated
+ * scenes need a later edge so moving midtones do not flicker between partial
+ * and full spread. `globalBloomBias` is already media-time filtered.
+ */
+export const ACRYLIC_FULL_SPLAT_DARK = 0.62;
+export const ACRYLIC_FULL_SPLAT_BRIGHT_LOW_FREQUENCY = 0.88;
+export const ACRYLIC_FULL_SPLAT_BRIGHT_HIGH_FREQUENCY = 0.72;
+export const ACRYLIC_FULL_SPLAT_DARK_HIGH_FREQUENCY = 0.62;
+export const ACRYLIC_SPLAT_LIGHT_KNEE = 0.45;
+export const ACRYLIC_SPLAT_LIGHT_FULL = 0.75;
+export const ACRYLIC_SPLAT_HIGH_FREQUENCY_KNEE = 0.90;
+export const ACRYLIC_SPLAT_HIGH_FREQUENCY_FULL = 0.99;
+
+function smoothstepNumber(edge0: number, edge1: number, value: number): number {
+    const t = Math.min(Math.max((value - edge0) / (edge1 - edge0), 0), 1);
+    return t * t * (3 - 2 * t);
+}
+
+export function acrylicFullSplatDrive(
+    globalBloomBias: number,
+    frequencyBlend = 0,
+): number {
+    // The shared bias is intentionally sensitive enough to bracket selection
+    // that a populated low-light clip such as AQPoUmw still reads 0.06-0.51.
+    // Splat overlap needs a darker interpretation: keep that clip at the dark
+    // endpoint, and reserve the late full-overlap edge for AQNFgVV's genuinely
+    // bright 0.70-0.93 frames. Do not retune the shared exposure meter to fix
+    // this one consumer.
+    const light = smoothstepNumber(
+        ACRYLIC_SPLAT_LIGHT_KNEE,
+        ACRYLIC_SPLAT_LIGHT_FULL,
+        globalBloomBias,
+    );
+    // Mixed-frequency dark footage (AQPoUmw) must not be mistaken for the
+    // pathological AQPahgl9 high-frequency regime. Keep threshold selection
+    // on the coherent branch until the already-filtered classifier is nearly
+    // fully high; mip-weight interpolation itself remains continuous from 0.
+    const frequency = smoothstepNumber(
+        ACRYLIC_SPLAT_HIGH_FREQUENCY_KNEE,
+        ACRYLIC_SPLAT_HIGH_FREQUENCY_FULL,
+        frequencyBlend,
+    );
+    const darkDrive = ACRYLIC_FULL_SPLAT_DARK
+        + (ACRYLIC_FULL_SPLAT_DARK_HIGH_FREQUENCY
+            - ACRYLIC_FULL_SPLAT_DARK) * frequency;
+    const brightDrive = ACRYLIC_FULL_SPLAT_BRIGHT_LOW_FREQUENCY
+        + (ACRYLIC_FULL_SPLAT_BRIGHT_HIGH_FREQUENCY
+            - ACRYLIC_FULL_SPLAT_BRIGHT_LOW_FREQUENCY) * frequency;
+    return darkDrive + (brightDrive - darkDrive) * light;
+}
+
+/**
  * The shipped composite.
  *
  * Promoted after the issue #493 frosted-acrylic directive: the panel must
@@ -143,6 +196,7 @@ uniform sampler2D lowFrame;
 uniform sampler2D midFrame;
 uniform sampler2D highFrame;
 uniform float globalBloomBias;
+uniform float bloomFrequencyBlend;
 uniform float bloomStrength;
 varying vec2 vUv;
 
@@ -1254,10 +1308,27 @@ void main() {
     // flooding perimeter blacks through this exact path).
     // Softened (0.34 -> 0.24 onset): the first cut was too harsh — glow
     // died too abruptly at pool borders (user review of the dataset run).
-    // Wide, gradual band: the harshness was the ABRUPT transition, not the
-    // pool depth — onset eased to 0.26 but full glow only by 0.72, so the
-    // cut is a long gentle ramp while deep pools stay defended.
-    float shadowMask = v1Smoothstep(0.26, 0.72, nearDrive);
+    // AQNFgVV t=18 exposed temporal speckle as moving pixels crossed the old
+    // fixed 0.72 full-admission edge, while the low-light AQPoUmw clip still
+    // needs early complete overlap to avoid isolated dots. Use the filtered
+    // mapped-scene light meter through a splat-specific 0.45..0.75 knee and
+    // move only the upper edge: dark scenes reach a full splat at 0.62,
+    // bright coherent scenes at 0.88. Bright high-frequency scenes use 0.72
+    // because their local mip distribution already limits spatial reach and the
+    // AQPahgl9 edge/chroma ratchet shows that a later edge starves detail.
+    // Globally dark scenes stay at 0.62 regardless of frequency: global light
+    // is the physical reason dim neighbouring splats must overlap early. The
+    // coherent bright endpoint remains above the old ~0.70 transition that
+    // jittered at AQNFgVV t=18. At local drive
+    // 0.70 a bright scene is only partly admitted instead of ~99%, while a
+    // genuinely dark scene retains full overlap. The onset remains fixed and
+    // the smoothstep stays continuous—no per-pixel binary threshold.
+    float splatSceneLight = v1Smoothstep(${ACRYLIC_SPLAT_LIGHT_KNEE.toFixed(2)}, ${ACRYLIC_SPLAT_LIGHT_FULL.toFixed(2)}, globalBloomBias);
+    float splatHighFrequency = v1Smoothstep(${ACRYLIC_SPLAT_HIGH_FREQUENCY_KNEE.toFixed(2)}, ${ACRYLIC_SPLAT_HIGH_FREQUENCY_FULL.toFixed(2)}, bloomFrequencyBlend);
+    float darkFullSplatDrive = mix(${ACRYLIC_FULL_SPLAT_DARK.toFixed(2)}, ${ACRYLIC_FULL_SPLAT_DARK_HIGH_FREQUENCY.toFixed(2)}, splatHighFrequency);
+    float brightFullSplatDrive = mix(${ACRYLIC_FULL_SPLAT_BRIGHT_LOW_FREQUENCY.toFixed(2)}, ${ACRYLIC_FULL_SPLAT_BRIGHT_HIGH_FREQUENCY.toFixed(2)}, splatHighFrequency);
+    float fullSplatDrive = mix(darkFullSplatDrive, brightFullSplatDrive, splatSceneLight);
+    float shadowMask = v1Smoothstep(0.26, fullSplatDrive, nearDrive);
     vec3 added = lowAdded * 0.70
         + (max(midLinear - rawLinear, vec3(0.0)) * 0.29
             + max(highLinear - rawLinear, vec3(0.0)) * 0.14) * shadowMask;
@@ -1268,13 +1339,15 @@ void main() {
     // Bias-scaled: the brighter the frame, the harder its mip tails flood,
     // so deep-shadow pools defend proportionally (physical acrylic scatters
     // at pitch scale — frame-wide spread is kernel artifact, not physics).
-    // Dark-frame floor gentler (0.15 -> 0.38): a dim frame's spill is weak
-    // by construction, and the white peak's halo skirt lives in pool
-    // territory of exactly such frames (G1 measured 42 -> 0.96 at 0.15).
-    // Bias slope softened (dark end 0.38, bright end 0.06): the steeper
-    // slope amplified frame-to-frame bias jitter into steady-scene flicker
-    // (G3 2.4 > 2.0). Bright-frame pools still defend (starburst delta
-    // holds inside the G6 bound).
+    // AQNFgVV t=14 exposed a blind spot in the core-only evaluators: core
+    // ordering survived, but inter-LED fill in blue-black hair reached
+    // p75=0.197 and erased the visible shadow layers. Uniformly lowering this
+    // floor to 0.32/0.08 was tested and rejected: the normalized hair fill
+    // barely moved (0.197 -> 0.194) while the low-frequency quality ratchet
+    // regressed. The defect is spatial support, not total bloom energy.
+    // shadow_structure_gate.py now guards that upper bound, while
+    // frequency_adaptive_bloom_gate.py guards the opposite failure (isolated
+    // dots / insufficient face fill). Do not tune either side in isolation.
     added *= mix(mix(0.46, 0.12, globalBloomBias), 1.0, shadowMask);
 
     // Chroma guard at lit LED cores. The restrained third mip is useful in
@@ -1825,6 +1898,11 @@ export const HDR_BLOOM_STRATEGIES: Record<HdrBloomStrategyName, HdrBloomStrategy
             // mips strong: mip 0 covers the LED body/skirt, mip 1 covers axial
             // and diagonal neighbours, and mip 2 bridges coherent local surfaces.
             // Only mips 3-4 are the prohibited full-frame low-frequency field.
+            // This tuple remains the historical/static construction value.
+            // The #507 raw-lattice frequency controller replaces it before
+            // every acrylic capture with an energy-normalized point on the
+            // low/high curve. It may redistribute mips 0-2, but it must never
+            // reopen prohibited coarse mips 3-4 or modulate bloom strength.
             unrealMipWeights: [2.85, 4.00, 1.50, 0, 0],
         },
         fragmentShader: ACRYLIC_PANE_SHADER,
