@@ -288,6 +288,10 @@ COLOR_TAGS = [
     # ffmpeg composition must match it.
     "-colorspace", "bt709", "-color_primaries", "bt709",
     "-color_trc", "bt709", "-color_range", "tv",
+    # The older static-ffmpeg/libx264 bundle accepts the generic flags above
+    # but silently writes unknown transfer/primaries. Force the matching H.264
+    # VUI fields as well; color_profile_gate.py caught this on final duals.
+    "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709:range=limited",
 ]
 
 
