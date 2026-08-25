@@ -14,6 +14,7 @@ import { createFrameSequencer } from './frame-pacing';
 import { download_binary_as_file } from '../common';
 import { saveVideo } from '../video-store';
 import { prependFledHeader, PixelFormat } from '../render/rgb-video';
+import { buildVideoColor } from '../render/fled-color';
 import { createLogger } from '../debug-log';
 import { createZeroReadbackWatchdog } from '../watchdogs';
 import type Swal from 'sweetalert2';
@@ -33,14 +34,18 @@ export interface CaptureStats {
 }
 
 /**
- * Embed the recording frame rate into the FLED metadata JSON as the
- * spec-defined optional `video.fps` key (docs/fled-format.md "JSON
- * payload"). The metadata is a superset of the screenmap object; screenmap
- * parsers (v1/v2, FastLED's ScreenMap::ParseJson) ignore unknown keys.
- * Falls back to the raw screenmap text if it doesn't parse (never blocks
+ * Embed the recording frame rate and source color declaration into the FLED
+ * metadata JSON as the spec-defined optional `video.fps` / `video.color` keys
+ * (docs/fled-format.md). The metadata is a superset of the screenmap object;
+ * screenmap parsers (v1/v2, FastLED's ScreenMap::ParseJson) ignore unknown
+ * keys. Falls back to the raw screenmap text if it doesn't parse (never blocks
  * a save).
+ *
+ * The color block comes from `buildVideoColor(pixelFormat)` rather than a
+ * literal, so the declaration is derived from the payload format and cannot
+ * drift from the bytes it describes.
  */
-export function embedFps(screenmapJson: string, fps: number): string {
+export function embedFps(screenmapJson: string, fps: number, pixelFormat: number = PixelFormat.rgb8): string {
     try {
         const obj = JSON.parse(screenmapJson) as unknown;
         if (obj !== null && typeof obj === 'object' && !Array.isArray(obj)) {
@@ -52,12 +57,7 @@ export function embedFps(screenmapJson: string, fps: number): string {
             // rgb8 payload bytes are display-referred. This makes their
             // transfer and primaries explicit without changing the v1 binary
             // header or breaking consumers that already treat them as RGB8.
-            video.color = {
-                primaries: 'bt709',
-                transfer: 'srgb',
-                matrix: 'rgb',
-                range: 'full',
-            };
+            video.color = buildVideoColor(pixelFormat);
             rec.video = video;
             return JSON.stringify(rec);
         }
