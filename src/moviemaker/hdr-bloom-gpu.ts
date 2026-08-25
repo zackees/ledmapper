@@ -1,4 +1,5 @@
 import {
+    DataTexture,
     HalfFloatType,
     LinearFilter,
     LinearSRGBColorSpace,
@@ -7,6 +8,10 @@ import {
     PlaneGeometry,
     Scene,
     ShaderMaterial,
+    RedFormat,
+    UnsignedByteType,
+    Vector2,
+    Vector4,
     WebGLRenderTarget,
     type Camera,
     type Texture,
@@ -72,6 +77,15 @@ export interface GpuHdrBloomComposite {
     captureBloom: (bracket: 1 | 2 | 3, source: Texture) => void;
     setGlobalBloomBias: (bias: number) => void;
     setBloomFrequencyBlend: (blend: number) => void;
+    /** Upload the per-LED low/mid bloom-admission field. */
+    setLocalBloomBias: (
+        data: Uint8Array | null,
+        width?: number,
+        height?: number,
+        rotationDegrees?: number,
+        gridAspect?: readonly [number, number],
+        cameraExtentScale?: number,
+    ) => void;
     /** Composite the four linear brackets and write display-sRGB to canvas. */
     render: () => void;
     dispose: () => void;
@@ -84,6 +98,13 @@ export function createGpuHdrBloomComposite(
     strategyName: HdrBloomStrategyName = DEFAULT_HDR_BLOOM_STRATEGY,
 ): GpuHdrBloomComposite {
     const strategy = resolveHdrBloomStrategy(strategyName);
+    let localBloomBiasTexture = new DataTexture(
+        new Uint8Array([0]), 1, 1, RedFormat, UnsignedByteType,
+    );
+    localBloomBiasTexture.minFilter = LinearFilter;
+    localBloomBiasTexture.magFilter = LinearFilter;
+    localBloomBiasTexture.generateMipmaps = false;
+    localBloomBiasTexture.needsUpdate = true;
     const frames = Array.from({ length: 4 }, () => {
         const target = new WebGLRenderTarget(width, height, {
             type: HalfFloatType,
@@ -111,6 +132,12 @@ export function createGpuHdrBloomComposite(
             globalBloomBias: { value: 0 },
             bloomFrequencyBlend: { value: 0 },
             bloomStrength: { value: 1 },
+            localBloomBias: { value: localBloomBiasTexture },
+            localBloomBiasEnabled: { value: 0 },
+            localBloomGridSample: { value: new Vector4(0, 0, 0.5, 0.5) },
+            localBloomPanelAspect: { value: new Vector2(1, 1) },
+            localBloomRotation: { value: new Vector2(1, 0) },
+            localBloomCameraExtentScale: { value: 1.05 },
         },
         vertexShader,
         fragmentShader: strategy.fragmentShader,
@@ -162,6 +189,53 @@ export function createGpuHdrBloomComposite(
             const uniform = material.uniforms.bloomFrequencyBlend;
             if (uniform) uniform.value = Math.min(Math.max(blend, 0), 1);
         },
+        setLocalBloomBias(
+            data,
+            width = 1,
+            height = 1,
+            rotationDegrees = 0,
+            gridAspect = [1, 1],
+            cameraExtentScale = 1.05,
+        ) {
+            const enabled = material.uniforms.localBloomBiasEnabled;
+            if (!data || width < 2 || height < 2 || data.length !== width * height) {
+                if (enabled) enabled.value = 0;
+                return;
+            }
+            const image = localBloomBiasTexture.image;
+            if (image.width !== width || image.height !== height) {
+                localBloomBiasTexture.dispose();
+                localBloomBiasTexture = new DataTexture(
+                    data, width, height, RedFormat, UnsignedByteType,
+                );
+                localBloomBiasTexture.minFilter = LinearFilter;
+                localBloomBiasTexture.magFilter = LinearFilter;
+                localBloomBiasTexture.generateMipmaps = false;
+                const textureUniform = material.uniforms.localBloomBias;
+                if (textureUniform) textureUniform.value = localBloomBiasTexture;
+            } else {
+                localBloomBiasTexture.image.data = data;
+            }
+            localBloomBiasTexture.needsUpdate = true;
+            const sample = material.uniforms.localBloomGridSample;
+            if (sample) (sample.value as Vector4).set(
+                (width - 1) / width,
+                (height - 1) / height,
+                0.5 / width,
+                0.5 / height,
+            );
+            const aspect = material.uniforms.localBloomPanelAspect;
+            if (aspect) (aspect.value as Vector2).set(
+                Math.max(gridAspect[0], 1e-6),
+                Math.max(gridAspect[1], 1e-6),
+            );
+            const radians = rotationDegrees * Math.PI / 180;
+            const rotation = material.uniforms.localBloomRotation;
+            if (rotation) (rotation.value as Vector2).set(Math.cos(radians), Math.sin(radians));
+            const extent = material.uniforms.localBloomCameraExtentScale;
+            if (extent) extent.value = Math.max(cameraExtentScale, 1e-6);
+            if (enabled) enabled.value = 1;
+        },
         render() {
             renderer.setRenderTarget(null);
             renderer.render(compositeScene, camera);
@@ -171,6 +245,7 @@ export function createGpuHdrBloomComposite(
             geometry.dispose();
             copyMaterial.dispose();
             material.dispose();
+            localBloomBiasTexture.dispose();
         },
     };
 }

@@ -18,6 +18,12 @@ export type BloomFrequencyEdge = readonly [number, number];
 export interface BloomFrequencyTopology {
     edges: readonly BloomFrequencyEdge[];
     channels: readonly number[];
+    /** Spatial-grid metadata used by the local bloom-bias texture. */
+    gridWidth: number;
+    gridHeight: number;
+    gridIndices: readonly number[];
+    gridAspect: readonly [number, number];
+    isCompleteGrid: boolean;
 }
 
 export interface BloomFrequencyFeatures {
@@ -33,6 +39,15 @@ export interface BloomFrequencyTelemetry extends BloomFrequencyFeatures {
     weights: BloomMipWeights;
 }
 
+export interface LocalBloomBiasTelemetry {
+    data: Uint8Array;
+    width: number;
+    height: number;
+    activeCoverage: number;
+    mean: number;
+    peak: number;
+}
+
 /** Approved coherent-surface endpoint: slightly more mip-2 fill than #506. */
 export const BLOOM_FREQUENCY_LOW_WEIGHTS: BloomMipWeights = [2.85, 4.00, 1.75, 0, 0];
 /** Fine/chromatically-discontinuous endpoint: energy moves from mip 2 to 0-1. */
@@ -45,6 +60,10 @@ export const BLOOM_FREQUENCY_HIGH_EDGE = 0.65;
 export const BLOOM_FREQUENCY_ATTACK_TAU = 0.14;
 export const BLOOM_FREQUENCY_DECAY_TAU = 0.85;
 export const BLOOM_FREQUENCY_MAX_DT = 0.25;
+
+/** Open fill conservatively; close it quickly when structure turns shadowy. */
+export const LOCAL_BLOOM_BIAS_ATTACK_TAU = 0.22;
+export const LOCAL_BLOOM_BIAS_DECAY_TAU = 0.10;
 
 // Effective constant-field/impulse contribution of each UnrealBloom band at
 // the production radius.  These are deliberately not treated as equal-area
@@ -88,6 +107,14 @@ export function createBloomFrequencyTopology(
     };
     const xPitch = nominalPitch(xs);
     const yPitch = nominalPitch(ys);
+    const hasUniformPitch = (values: readonly number[], pitch: number | null): boolean => {
+        if (pitch === null) return false;
+        return values.slice(1).every((value, index) => {
+            const previous = values[index];
+            if (previous === undefined) return false;
+            return Math.abs((value - previous) - pitch) <= Math.max(pitch * 0.10, 1e-6);
+        });
+    };
     const isLocalStep = (values: readonly number[], index: number, delta: number, pitch: number | null): boolean => {
         if (delta === 0) return true;
         const next = index + delta;
@@ -123,7 +150,215 @@ export function createBloomFrequencyTopology(
     return {
         edges,
         channels: points.map((_point, index) => channelOffsets[index] ?? index),
+        gridWidth: xs.length,
+        gridHeight: ys.length,
+        gridIndices: points.map((point) => {
+            const gx = xIndex.get(point[0]);
+            const gy = yIndex.get(point[1]);
+            return gx === undefined || gy === undefined ? -1 : gy * xs.length + gx;
+        }),
+        gridAspect: (() => {
+            const spanX = Math.max((xs.at(-1) ?? 0) - (xs[0] ?? 0), 0);
+            const spanY = Math.max((ys.at(-1) ?? 0) - (ys[0] ?? 0), 0);
+            const extent = Math.max(spanX, spanY, 1e-9);
+            return [spanX / extent, spanY / extent] as const;
+        })(),
+        isCompleteGrid: grid.size === points.length
+            && grid.size === xs.length * ys.length
+            && xs.length > 1
+            && ys.length > 1
+            // The texture is sampled uniformly between ranked grid cells.
+            // Non-uniform physical coordinates need a coordinate texture, so
+            // disable this simpler path rather than spatially misregister it.
+            && hasUniformPitch(xs, xPitch)
+            && hasUniformPitch(ys, yPitch),
     };
+}
+
+/**
+ * Build a temporally stable, spatially sampled request for extra local fill.
+ *
+ * This is intentionally a separate data layer from the global frequency
+ * classifier.  It finds coherent low/mid LED neighborhoods that can accept a
+ * little more mip-2 support (AQNFgVV neck piece at t~=9), while bright pixels
+ * remain exactly on the global profile and black/deep-discontinuous structure
+ * stays protected (AQNFgVV hair at t=14).  Mips 3-4 are never involved.
+ */
+export function createLocalBloomBiasController() {
+    let filtered: Float32Array | null = null;
+    let bytes = new Uint8Array(0);
+    let pointLuma = new Float32Array(0);
+    let pointMax = new Float32Array(0);
+    let chromaR = new Float32Array(0);
+    let chromaG = new Float32Array(0);
+    let chromaB = new Float32Array(0);
+    let neighbourCount = new Uint8Array(0);
+    let coherentCount = new Uint8Array(0);
+    let target = new Float32Array(0);
+    let spatial = new Float32Array(0);
+    let lastMediaTimeMs: number | null = null;
+
+    function update(
+        rgbBytes: Uint8Array | number[],
+        topology: BloomFrequencyTopology,
+        mediaTimeMs: number,
+    ): LocalBloomBiasTelemetry | null {
+        if (!topology.isCompleteGrid) return null;
+        const count = topology.gridWidth * topology.gridHeight;
+        if (filtered?.length !== count) {
+            filtered = new Float32Array(count);
+            bytes = new Uint8Array(count);
+            target = new Float32Array(count);
+            spatial = new Float32Array(count);
+            lastMediaTimeMs = null;
+        }
+        const pointCount = topology.channels.length;
+        if (pointLuma.length !== pointCount) {
+            pointLuma = new Float32Array(pointCount);
+            pointMax = new Float32Array(pointCount);
+            chromaR = new Float32Array(pointCount);
+            chromaG = new Float32Array(pointCount);
+            chromaB = new Float32Array(pointCount);
+            neighbourCount = new Uint8Array(pointCount);
+            coherentCount = new Uint8Array(pointCount);
+        } else {
+            neighbourCount.fill(0);
+            coherentCount.fill(0);
+        }
+        target.fill(0);
+        spatial.fill(0);
+        for (let point = 0; point < topology.channels.length; point++) {
+            const channel = topology.channels[point] ?? point;
+            const offset = channel * 3;
+            const r8 = rgbBytes[offset] ?? 0;
+            const g8 = rgbBytes[offset + 1] ?? 0;
+            const b8 = rgbBytes[offset + 2] ?? 0;
+            const sum = Math.max(r8 + g8 + b8, 1);
+            pointLuma[point] = 0.2126 * (SRGB8_TO_LINEAR[r8] ?? 0)
+                + 0.7152 * (SRGB8_TO_LINEAR[g8] ?? 0)
+                + 0.0722 * (SRGB8_TO_LINEAR[b8] ?? 0);
+            pointMax[point] = Math.max(r8, g8, b8) / 255;
+            chromaR[point] = r8 / sum;
+            chromaG[point] = g8 / sum;
+            chromaB[point] = b8 / sum;
+        }
+        for (const [first, second] of topology.edges) {
+            const firstLuma = pointLuma[first] ?? 0;
+            const secondLuma = pointLuma[second] ?? 0;
+            const lumaDistance = Math.abs(firstLuma - secondLuma)
+                / Math.max(firstLuma + secondLuma + 0.02, 0.02);
+            const chromaDistance = Math.hypot(
+                (chromaR[first] ?? 0) - (chromaR[second] ?? 0),
+                (chromaG[first] ?? 0) - (chromaG[second] ?? 0),
+                (chromaB[first] ?? 0) - (chromaB[second] ?? 0),
+            );
+            neighbourCount[first] = (neighbourCount[first] ?? 0) + 1;
+            neighbourCount[second] = (neighbourCount[second] ?? 0) + 1;
+            if (lumaDistance < 0.24 && chromaDistance < 0.11) {
+                coherentCount[first] = (coherentCount[first] ?? 0) + 1;
+                coherentCount[second] = (coherentCount[second] ?? 0) + 1;
+            }
+        }
+        for (let point = 0; point < topology.channels.length; point++) {
+            const gridIndex = topology.gridIndices[point] ?? -1;
+            if (gridIndex < 0) continue;
+            const luma = pointLuma[point] ?? 0;
+            const drive = pointMax[point] ?? 0;
+            const coherence = (coherentCount[point] ?? 0)
+                / Math.max(neighbourCount[point] ?? 0, 1);
+            // Perceptually blue low/mids have much lower Rec.709 luminance
+            // than skin. The max-channel floor admits them, while the luma
+            // shoulder makes bright neutral face/highlight pixels zero. A
+            // saturated primary is core-protected later in the composite.
+            const visible = smoothstep(0.008, 0.035, luma)
+                * (1 - smoothstep(0.16, 0.30, luma));
+            // Keep the field open through saturated blue midtones, then taper
+            // the REQUEST as it approaches full primary drive. The composite
+            // independently pins genuinely clipped cores. The evaluator
+            // starts measuring bright-core deltas at 0.70, so this behavior is
+            // bounded without reviving the old premature splat cutoff.
+            const driven = smoothstep(0.10, 0.28, drive)
+                * (1 - smoothstep(0.70, 0.92, drive));
+            // A chromatic checker retains same-colour diagonal neighbours
+            // (coherence ~= 0.5); require more than that so high-frequency
+            // detail cannot masquerade as a surface. The following grid blur
+            // carries the interior request smoothly across a real boundary.
+            const supported = smoothstep(0.52, 0.78, coherence);
+            target[gridIndex] = clamp01(visible * driven * supported);
+        }
+        // One axial+diagonal grid blur turns per-vertex requests into a smooth
+        // scalar field. It is a control texture, not emitted light: the actual
+        // Gaussian bloom remains GPU-generated and ring-free.
+        for (let y = 0; y < topology.gridHeight; y++) {
+            for (let x = 0; x < topology.gridWidth; x++) {
+                const index = y * topology.gridWidth + x;
+                let sum = (target[index] ?? 0) * 4;
+                let weight = 4;
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        if (nx < 0 || nx >= topology.gridWidth || ny < 0 || ny >= topology.gridHeight) continue;
+                        const sampleWeight = dx === 0 || dy === 0 ? 2 : 1;
+                        sum += (target[ny * topology.gridWidth + nx] ?? 0) * sampleWeight;
+                        weight += sampleWeight;
+                    }
+                }
+                spatial[index] = sum / weight;
+            }
+        }
+
+        const reset = lastMediaTimeMs === null
+            || !Number.isFinite(mediaTimeMs)
+            || mediaTimeMs < lastMediaTimeMs;
+        const dt = reset ? 0 : Math.min(Math.max(
+            (mediaTimeMs - (lastMediaTimeMs ?? mediaTimeMs)) / 1000,
+            0,
+        ), BLOOM_FREQUENCY_MAX_DT);
+        let sum = 0;
+        let active = 0;
+        let peak = 0;
+        for (let index = 0; index < count; index++) {
+            const desired = spatial[index] ?? 0;
+            const current = filtered[index] ?? 0;
+            const tau = desired > current
+                ? LOCAL_BLOOM_BIAS_ATTACK_TAU
+                : LOCAL_BLOOM_BIAS_DECAY_TAU;
+            const next = reset ? desired : desired + (current - desired) * Math.exp(-dt / tau);
+            filtered[index] = next;
+            bytes[index] = Math.round(clamp01(next) * 255);
+            sum += next;
+            if (next >= 0.20) active++;
+            peak = Math.max(peak, next);
+        }
+        lastMediaTimeMs = mediaTimeMs;
+        return {
+            data: bytes,
+            width: topology.gridWidth,
+            height: topology.gridHeight,
+            activeCoverage: active / count,
+            mean: sum / count,
+            peak,
+        };
+    }
+
+    function reset(): void {
+        filtered = null;
+        bytes = new Uint8Array(0);
+        pointLuma = new Float32Array(0);
+        pointMax = new Float32Array(0);
+        chromaR = new Float32Array(0);
+        chromaG = new Float32Array(0);
+        chromaB = new Float32Array(0);
+        neighbourCount = new Uint8Array(0);
+        coherentCount = new Uint8Array(0);
+        target = new Float32Array(0);
+        spatial = new Float32Array(0);
+        lastMediaTimeMs = null;
+    }
+
+    return { update, reset };
 }
 
 /** Classify fine luma/chroma variation already present on the raw LED grid. */

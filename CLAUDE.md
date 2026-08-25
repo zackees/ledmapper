@@ -419,6 +419,20 @@ bleed that retains hue and local contrast, not a uniformly brighter image.
   CANDIDATE -t .5 -t 1.5 -t 2.5 -t 3.5 -t 4.5 -t 5.5 -t 6.5 -t 7.5` and keep
   its axial/diagonal fill floor paired with the AQNF shadow and AQP chroma
   ceilings.
+- AQNFgVV t~=9 is the spatial low/mid counterexample: the whole-frame
+  mid-frequency gate can pass while the blue neck piece and its upper boundary
+  remain under-filled (the approved baseline had 93.6% of selected ROI pairs
+  below 0.50 midpoint/core fill). Acrylic-pane therefore has a separate 64x64
+  local control texture derived from raw axial+diagonal luma/chroma coherence.
+  It interpolates over the grid and uses media-time filtering (0.22 s to open,
+  0.10 s to close) to modestly scale only the existing mip 0-2 local Gaussian
+  field. Bright cores are max-channel-pinned to the global profile, while a
+  coherent primary may still request same-hue light in surrounding gaps; mips
+  3-4 remain hard-zero. Run `uv run python
+  scripts/local_midtone_bias_gate.py SOURCE-CROP PREVIOUS-APPROVED CANDIDATE
+  -t 9 --roi .22 .68 .75 1` together with the
+  AQNF t=14 hair-shadow ceiling. Never raise this local floor by weakening the
+  shadow ceiling or by restoring a frame-wide coarse mip.
 - Production evaluators must use the production camera fit exactly. The
   unattended renderer passes `ledDiameter=null`, so its camera extent excludes
   LED visual radius and applies only the `1.05` aesthetic margin to the point

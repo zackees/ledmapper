@@ -16,6 +16,7 @@ Usage:
       [--spatial-times 11] [--mid-frequency-times 2 7 12 17 22 27]
       [--frequency-baseline BASELINE.mp4] [--frequency-times 4]
       [--low-light-baseline BASELINE.mp4] [--low-light-times .5 1.5]
+      [--local-midtone-baseline BASELINE.mp4] [--local-midtone-times 9]
       [--shadow-times 14 --shadow-roi 0 0 0.58 0.92]
       [--ring-times 4.6 10.0 15.4] [--merge-times ...] [--probes ...]
 """
@@ -68,6 +69,21 @@ def main() -> int:
     )
     parser.add_argument("--low-light-times", type=float, nargs="*", default=[])
     parser.add_argument(
+        "--local-midtone-baseline",
+        type=Path,
+        default=None,
+        help="previous approved render for spatial low/mid fill gain",
+    )
+    parser.add_argument("--local-midtone-times", type=float, nargs="*", default=[])
+    parser.add_argument(
+        "--local-midtone-roi",
+        type=float,
+        nargs=4,
+        metavar=("X0", "Y0", "X1", "Y1"),
+        default=[0.22, 0.68, 0.75, 1.0],
+        help="normalized AQNF neck-piece ROI used by the calibrated local gate",
+    )
+    parser.add_argument(
         "--frequency-regime", choices=("auto", "low", "high"), default="auto"
     )
     parser.add_argument("--shadow-times", type=float, nargs="*", default=[])
@@ -87,6 +103,7 @@ def main() -> int:
             + args.frequency_times
             + args.shadow_times
             + args.low_light_times
+            + args.local_midtone_times
         )
     )
     if bool(args.source_crop) != bool(quality_times):
@@ -103,6 +120,11 @@ def main() -> int:
         parser.error(
             "--low-light-baseline and at least one --low-light-times value "
             "must be supplied together"
+        )
+    if bool(args.local_midtone_baseline) != bool(args.local_midtone_times):
+        parser.error(
+            "--local-midtone-baseline and at least one --local-midtone-times "
+            "value must be supplied together"
         )
 
     verdicts: dict[str, bool] = {}
@@ -244,6 +266,24 @@ def main() -> int:
                 json.loads(out) if out.strip().startswith("{") else {}
             )
             verdicts["low_light_splat"] = code == 0
+
+        if args.local_midtone_baseline and args.local_midtone_times:
+            cmd = [
+                sys.executable,
+                str(SCRIPTS / "local_midtone_bias_gate.py"),
+                str(args.source_crop),
+                str(args.local_midtone_baseline),
+                str(args.candidate),
+                "--roi",
+                *(str(value) for value in args.local_midtone_roi),
+            ]
+            for time in args.local_midtone_times:
+                cmd += ["-t", str(time)]
+            code, out = run(cmd)
+            report["local_midtone_bias"] = (
+                json.loads(out) if out.strip().startswith("{") else {}
+            )
+            verdicts["local_midtone_bias"] = code == 0
 
     report["verdicts"] = verdicts
     report["ALL_GATES_PASS"] = all(verdicts.values())
