@@ -23,6 +23,29 @@ const PIXEL_FORMAT_NAMES = {
 };
 const BYTES_PER_LED = { 0x00: 3, 0x01: 1, 0x02: 4, 0x03: 4, 0x04: 2, 0x05: 6 };
 
+// Rule 1 + rule 7 for `primaries`: a recognized name, or a custom object with
+// four finite CIE xy pairs. Anything else is rejected - including non-string
+// scalars, which an earlier version of this script let through.
+function xyOk(v) {
+    return Array.isArray(v) && v.length === 2
+        && typeof v[0] === 'number' && Number.isFinite(v[0])
+        && typeof v[1] === 'number' && Number.isFinite(v[1]);
+}
+function isCustomPrimariesObject(v) {
+    return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+function primariesOk(v) {
+    if (typeof v === 'string') return ['bt709', 'display-p3', 'bt2020'].includes(v);
+    if (!isCustomPrimariesObject(v)) return false;
+    return ['red', 'green', 'blue', 'white'].every((k) => xyOk(v[k]));
+}
+function primariesError(v) {
+    if (isCustomPrimariesObject(v)) {
+        return 'primaries object needs red/green/blue/white, each an [x, y] pair of finite numbers.';
+    }
+    return `primaries ${JSON.stringify(v)} is not a recognized name or a custom xy object.`;
+}
+
 function hex(bytes, n = 32) {
     return [...bytes.subarray(0, n)].map((b) => b.toString(16).padStart(2, '0')).join(' ');
 }
@@ -175,11 +198,10 @@ console.log(`derived LED count: ${ledCount}`);
             reject(`matrix ${JSON.stringify(color.matrix)} is reserved; v1 defines only "rgb".`);
         } else if (color.range !== undefined && color.range !== 'full') {
             reject(`range ${JSON.stringify(color.range)} is reserved; v1 defines only "full".`);
-        } else if (color.primaries !== undefined && typeof color.primaries === 'string'
-                   && !['bt709', 'display-p3', 'bt2020'].includes(color.primaries)) {
-            reject(`primaries ${JSON.stringify(color.primaries)} is not a recognized name.`);
+        } else if (color.primaries !== undefined && !primariesOk(color.primaries)) {
+            reject(primariesError(color.primaries));
         } else {
-            const primaries = typeof color.primaries === 'object' ? 'custom xy'
+            const primaries = isCustomPrimariesObject(color.primaries) ? 'custom xy'
                 : (color.primaries ?? 'bt709');
             console.log(`video.color:   {${primaries}, ${transfer}, ${color.matrix ?? 'rgb'}, ${color.range ?? 'full'}} (declared)`);
         }

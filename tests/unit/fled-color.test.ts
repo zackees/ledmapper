@@ -175,11 +175,18 @@ describe('reserved values', () => {
             'limited-range-unsupported', 'limited range');
     });
 
-    test('non-rgb matrix values are rejected', () => {
+    test('reserved YCbCr matrix names are rejected as reserved', () => {
         for (const matrix of ['bt709', 'bt2020ncl', 'ycbcr']) {
             assertRejects(() => validateFledColor({ matrix }, PixelFormat.rgb8),
                 'matrix-unsupported', `matrix ${matrix}`);
         }
+    });
+
+    test("a typo'd matrix reads as unknown, not reserved", () => {
+        // Telling someone a typo is "reserved" sends them to look for a spec
+        // section that will never mention it.
+        assertRejects(() => validateFledColor({ matrix: 'rbg' }, PixelFormat.rgb8),
+            'unknown-matrix', 'typo matrix');
     });
 });
 
@@ -267,6 +274,15 @@ describe('readVideoColor over an envelope', () => {
             assert.equal(c.declared, false, `json=${String(json)}`);
             assert.equal(c.transfer, 'srgb');
         }
+    });
+
+    test('an explicit null color is treated as absent', () => {
+        // Omitting the key and setting it to null must not have opposite
+        // outcomes; many serializers emit null for an unset optional.
+        const json = JSON.stringify({ video: { fps: 30, color: null } });
+        const c = readVideoColor(json, PixelFormat.rgb8);
+        assert.equal(c.declared, false);
+        assert.equal(c.transfer, 'srgb');
     });
 
     test('a present but invalid block throws rather than being reinterpreted', () => {

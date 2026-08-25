@@ -23,7 +23,11 @@
       "ScreenmapShape",
       "readVideoColor",
       "validateFledColor",
-      "FledColorError"
+      "FledColorError",
+      "buildVideoColor",
+      "defaultColorForFormat",
+      "pixelFormatHasDefaultTuple",
+      "DEFAULT_COLOR_TUPLE"
     ],
     "./fled": [
       "createGfxFromFled",
@@ -33,7 +37,11 @@
       "readVideoFps",
       "readVideoColor",
       "validateFledColor",
-      "FledColorError"
+      "FledColorError",
+      "buildVideoColor",
+      "defaultColorForFormat",
+      "pixelFormatHasDefaultTuple",
+      "DEFAULT_COLOR_TUPLE"
     ],
     "./worker": [
       "runGfxWorker",

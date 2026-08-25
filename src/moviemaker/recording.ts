@@ -54,10 +54,15 @@ export function embedFps(screenmapJson: string, fps: number, pixelFormat: number
                 ? rec.video as Record<string, unknown>
                 : {};
             video.fps = fps;
-            // rgb8 payload bytes are display-referred. This makes their
-            // transfer and primaries explicit without changing the v1 binary
-            // header or breaking consumers that already treat them as RGB8.
-            video.color = buildVideoColor(pixelFormat);
+            // Derived from the payload format so the declaration cannot drift
+            // from the bytes it describes. A format with no default tuple
+            // (gray8/rgbw8) throws - write the fps anyway rather than letting
+            // a color problem silently cost us the playback rate too.
+            try {
+                video.color = buildVideoColor(pixelFormat);
+            } catch {
+                log.warn(`no default color tuple for pixel_format 0x${pixelFormat.toString(16).padStart(2, '0')}; writing video.fps without video.color`);
+            }
             rec.video = video;
             return JSON.stringify(rec);
         }

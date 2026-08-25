@@ -146,7 +146,7 @@ function unresolved.
 |--------------|-------------|---------------|------------|
 | `rgb8`, `rgba8`, `rgb565le` | display-encoded RGB | `{bt709, srgb, rgb, full}` | `transfer` must be `srgb` or `bt709` |
 | `rgb16_linear` | linear-light RGB | `{bt709, linear, rgb, full}` | `transfer` must be `linear` |
-| `gray8`, `rgbw8` | no defined tuple | none | `video.color` must declare all four keys or be absent |
+| `gray8`, `rgbw8` | no defined tuple | none | `video.color` must declare all four keys; absent or partial is unresolvable |
 
 `gray8` carries no chromaticity and `rgbw8`'s white is a device primary that RGB
 primaries cannot describe, so neither format inherits a default tuple. Scoping
@@ -169,13 +169,40 @@ A conforming producer must not write, and a conforming validator must reject:
 7. `video.color` present but not a JSON object, or a custom `primaries` object
    missing a key or carrying a malformed xy pair.
 
+An explicit JSON `null` for `video.color` is treated as **absent**, not as a
+malformed object: many serializers emit `null` for an unset optional, and
+omitting the key must not have a different outcome from nulling it.
+
 `pq` and `hlg` are reserved transfer names, rejected in v1: a 16-bit linear
 integer payload cannot faithfully carry PQ-decoded content, so HDR transfers
 wait for a payload format and working domain that can.
 
 An **absent** declaration is never an error for a format with a default tuple —
-every pre-`video.color` recording must keep playing. Only a declaration that is
-present and invalid is rejected.
+every pre-`video.color` recording must keep playing. A declaration is rejected
+when it is present and invalid, or absent on a format that defines no default
+tuple (`gray8`, `rgbw8`), where there is simply nothing to resolve. That second
+case is *unresolvable*, not *malformed*: implementations report it distinctly
+(`no-default-tuple` / `NoDefaultTuple`) so a consumer can decide whether it
+cares, rather than treating the file as corrupt.
+
+### Declaration verdicts vs. consumer policy
+
+Rejecting a *declaration* is not the same as refusing a *file*, and the two must
+not be conflated:
+
+- On the display-encoded RGB formats the declaration is **advisory**. A consumer
+  that cannot resolve it — an unrecognized name from a future minor, say — may
+  fall back to the default tuple and surface a diagnostic. That is what keeps a
+  newer reader from being strictly worse than an older one on the same file,
+  which is the whole point of "advisory".
+- On a format whose color semantics are **mandatory** (`rgb16_linear`), an
+  unresolvable declaration means the payload cannot be interpreted at all, and
+  the consumer must refuse rather than guess.
+
+Producers and validation tooling always take the strict reading: a producer must
+never write a declaration the rules reject, and `validateFledColor` /
+`inspect-fled.mjs` report every violation. The latitude above is for playback
+consumers only.
 
 ### Forward compatibility
 

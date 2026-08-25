@@ -85,12 +85,12 @@ export class FledColorError extends Error {
 }
 
 /** The canonical default tuple. Absent metadata means exactly this. */
-export const DEFAULT_COLOR_TUPLE = {
+export const DEFAULT_COLOR_TUPLE = Object.freeze({
     primaries: 'bt709',
     transfer: 'srgb',
     matrix: 'rgb',
     range: 'full',
-} as const;
+} as const);
 
 const NAMED_PRIMARIES: readonly FledColorPrimariesName[] = ['bt709', 'display-p3', 'bt2020'];
 
@@ -99,6 +99,15 @@ const NAMED_PRIMARIES: readonly FledColorPrimariesName[] = ['bt709', 'display-p3
 const RESERVED_TRANSFERS: readonly string[] = ['pq', 'hlg'];
 
 const VALID_TRANSFERS: readonly FledColorTransfer[] = ['srgb', 'bt709', 'linear'];
+
+/** Matrix names standard video metadata defines but v1 reserves: they name
+ *  YCbCr coefficient sets, and no v1 pixel format carries YCbCr. Kept
+ *  separate from outright-unknown values so the diagnostic can say
+ *  "reserved" (go read the spec) rather than "unrecognized" (you typoed). */
+const RESERVED_MATRICES: readonly string[] = [
+    'bt709', 'bt601', 'bt470bg', 'smpte170m', 'bt2020ncl', 'bt2020cl',
+    'ycbcr', 'ycgco', 'fcc',
+];
 
 /** Formats whose bytes are display-encoded RGB. */
 const DISPLAY_ENCODED_RGB: readonly number[] = [
@@ -294,11 +303,17 @@ export function validateFledColor(value: unknown, pixelFormat: number): FledColo
             );
         }
         if (raw !== 'rgb') {
-            // Recognized-but-reserved YCbCr coefficient sets land here too:
-            // a YCbCr payload needs a pixel format that does not exist yet.
+            if (RESERVED_MATRICES.includes(raw)) {
+                // A YCbCr payload needs a pixel format that does not exist yet.
+                throw new FledColorError(
+                    'matrix-unsupported',
+                    `video.color.matrix "${raw}" is reserved; v1 defines only "rgb".`,
+                    'matrix',
+                );
+            }
             throw new FledColorError(
-                'matrix-unsupported',
-                `video.color.matrix "${raw}" is reserved; v1 defines only "rgb".`,
+                'unknown-matrix',
+                `video.color.matrix "${raw}" is not a recognized value.`,
                 'matrix',
             );
         }
@@ -347,7 +362,12 @@ export function readVideoColor(embeddedJson: string | null, pixelFormat: number)
     if (embeddedJson) {
         try {
             const meta = JSON.parse(embeddedJson) as { video?: unknown };
-            if (isPlainObject(meta.video)) raw = meta.video.color;
+            // An explicit null means "not set" for most serializers. Treat it
+            // as absent: omitting the key and nulling it must not have
+            // opposite outcomes.
+            if (isPlainObject(meta.video) && meta.video.color !== null) {
+                raw = meta.video.color;
+            }
         } catch {
             /* not JSON — treat as undeclared, same as a legacy file */
         }
