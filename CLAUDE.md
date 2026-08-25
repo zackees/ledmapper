@@ -440,6 +440,29 @@ bleed that retains hue and local contrast, not a uniformly brighter image.
   locate centers from each cell's brightest pixel: all three misregister the
   lattice and manufacture false ring/fill/chroma results. Keep evaluator
   geometry centralized in `scripts/evaluator_geometry.py`.
+- DYNLe with `panelRotation=45` is the blue-core/bright-halo counterexample.
+  Frame 0 is the neutral gray-field case; at t=1 a yellow contour raises the
+  immediate Gaussian annulus around a dark-blue neck LED while the blue core
+  stays dark. A whole-frame energy metric misses the latter because the yellow
+  contour makes the aggregate brighter. Run `uv run python
+  scripts/core_halo_consistency_gate.py MAPPED --reference PREVIOUS-APPROVED-MAPPED
+  -t 0 -t 1 --panel-rotation 45`
+  and preserve its default 0.050 maximum. The gate reports the ambient class,
+  hue delta, and core/halo luma ratio. The approved reference selects the fixed
+  blue-core population, so a candidate cannot evade the ratchet by changing a
+  bad core's hue, saturation, or value. Neutral haze is fully weighted, a
+  saturated cross-hue halo has its own mismatch term, and a same-hue blue
+  Gaussian is allowed to be brighter than its core. Independent core-fidelity
+  ceilings compare candidate hue, saturation, and two-sided value/luma drift back to the
+  reference. The approved
+  correction for both frames recolors only an existing neutral/opponent,
+  already-admitted mip-0/1/2 Gaussian toward the local source-blue hue while
+  preserving its max-channel energy: spread the dark halo, never add gray/yellow
+  neighborhood or core light. Linear RGB still owns halo energy/falloff; the hue
+  guide changes only the channel ratio. Same-hue blue Gaussian energy is left
+  unchanged. Do not
+  weaken the cross-hue guard globally, alter negative-space bloom, or restore
+  mips 3-4 to fix this local discontinuity.
 
 Record the exact job URL parameters, map, source filename, renderer mode, and
 candidate-versus-baseline observations alongside each visual experiment. This

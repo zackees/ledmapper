@@ -131,3 +131,36 @@ The local gate reports the old deficit explicitly (`baseline_underfilled_fractio
 and ratchets lower-quartile and diagonal midpoint gains while bounding changes
 to bright LED cores. A whole-frame midpoint score is not a substitute: the
 bright face can hide an under-filled blue neck region.
+
+Rare core/halo color mismatches have a separate radial ratchet. A dim blue LED
+can become a dark, highly saturated pin inside a brighter halo when surrounding
+energy reaches the Gaussian annulus but is rejected at the core. DYNLe locks
+both the gray-field case at frame 0 and the yellow-outline case at 1 second;
+the latter cannot be found by whole-frame energy because the yellow contour
+makes that aggregate brighter. Run the gate with the render's actual panel
+rotation:
+
+```powershell
+uv run python scripts/core_halo_consistency_gate.py MAPPED.mp4 `
+  --reference PREVIOUS-APPROVED-MAPPED.mp4 `
+  -t 0 -t 1 --panel-rotation 45
+```
+
+The approved reference selects a fixed population of blue cores; the candidate
+cannot escape judgment by brightening, desaturating, or recoloring those cells.
+The gate reports the worst LED grid/pixel coordinate, core/halo luma ratio,
+hue separation, and whether the ambient is neutral, opponent-warm, or another
+cross-hue field. It multiplies halo-over-core luma inversion by the larger of
+saturation loss and cross-hue chroma mismatch. Neutral haze remains fully
+weighted because its hue is undefined; a saturated opponent halo cannot score
+zero merely because it retained saturation, while hue-consistent blue diffusion
+is explicitly not an error. Independent reference-relative ceilings on core
+hue drift, saturation loss, and two-sided value/luma drift prevent a fix from hiding
+the halo defect by altering the LED core itself. Both fixes recolor only an
+existing neutral/opponent, already-admitted
+mip-0/1/2 Gaussian toward the local source-blue hue while preserving that field's
+max-channel energy. They therefore spread the dark halo instead of adding
+gray/yellow light to the neighborhood or core. Linear RGB still owns halo
+energy and falloff; the hue guide changes only the channel ratio. Same-hue blue
+Gaussian energy is left unchanged, cross-hue chromatic spill remains guarded,
+and coarse mips 3-4 remain disabled.

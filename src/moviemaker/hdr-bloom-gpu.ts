@@ -8,7 +8,7 @@ import {
     PlaneGeometry,
     Scene,
     ShaderMaterial,
-    RedFormat,
+    RGBAFormat,
     UnsignedByteType,
     Vector2,
     Vector4,
@@ -99,7 +99,7 @@ export function createGpuHdrBloomComposite(
 ): GpuHdrBloomComposite {
     const strategy = resolveHdrBloomStrategy(strategyName);
     let localBloomBiasTexture = new DataTexture(
-        new Uint8Array([0]), 1, 1, RedFormat, UnsignedByteType,
+        new Uint8Array([0, 0, 0, 0]), 1, 1, RGBAFormat, UnsignedByteType,
     );
     localBloomBiasTexture.minFilter = LinearFilter;
     localBloomBiasTexture.magFilter = LinearFilter;
@@ -198,7 +198,7 @@ export function createGpuHdrBloomComposite(
             cameraExtentScale = 1.05,
         ) {
             const enabled = material.uniforms.localBloomBiasEnabled;
-            if (!data || width < 2 || height < 2 || data.length !== width * height) {
+            if (!data || width < 2 || height < 2 || data.length !== width * height * 4) {
                 if (enabled) enabled.value = 0;
                 return;
             }
@@ -206,7 +206,7 @@ export function createGpuHdrBloomComposite(
             if (image.width !== width || image.height !== height) {
                 localBloomBiasTexture.dispose();
                 localBloomBiasTexture = new DataTexture(
-                    data, width, height, RedFormat, UnsignedByteType,
+                    data, width, height, RGBAFormat, UnsignedByteType,
                 );
                 localBloomBiasTexture.minFilter = LinearFilter;
                 localBloomBiasTexture.magFilter = LinearFilter;

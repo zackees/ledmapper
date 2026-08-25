@@ -544,7 +544,7 @@ export function createLedPreview({
             hdrGpuComposite.setGlobalBloomBias(globalBloomBias);
             hdrGpuComposite.setBloomFrequencyBlend(bloomFrequencyBlendValue);
             hdrGpuComposite.setLocalBloomBias(
-                localBloomBias?.data ?? null,
+                localBloomBias?.textureData ?? null,
                 localBloomBias?.width,
                 localBloomBias?.height,
                 rotate,

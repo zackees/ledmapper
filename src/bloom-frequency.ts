@@ -40,7 +40,10 @@ export interface BloomFrequencyTelemetry extends BloomFrequencyFeatures {
 }
 
 export interface LocalBloomBiasTelemetry {
+    /** Scalar low/mid support request, retained for evaluator diagnostics. */
     data: Uint8Array;
+    /** RGBA upload: mip bias, blue-halo support, and source R/B + G/B. */
+    textureData: Uint8Array;
     width: number;
     height: number;
     activeCoverage: number;
@@ -186,16 +189,25 @@ export function createBloomFrequencyTopology(
  */
 export function createLocalBloomBiasController() {
     let filtered: Float32Array | null = null;
+    let blueFiltered = new Float32Array(0);
     let bytes = new Uint8Array(0);
+    let textureBytes = new Uint8Array(0);
     let pointLuma = new Float32Array(0);
     let pointMax = new Float32Array(0);
+    let linearR = new Float32Array(0);
+    let linearG = new Float32Array(0);
+    let linearB = new Float32Array(0);
+    let pointWarm = new Float32Array(0);
     let chromaR = new Float32Array(0);
     let chromaG = new Float32Array(0);
     let chromaB = new Float32Array(0);
     let neighbourCount = new Uint8Array(0);
     let coherentCount = new Uint8Array(0);
+    let warmNeighbour = new Float32Array(0);
     let target = new Float32Array(0);
     let spatial = new Float32Array(0);
+    let blueTarget = new Float32Array(0);
+    let blueSpatial = new Float32Array(0);
     let lastMediaTimeMs: number | null = null;
 
     function update(
@@ -207,26 +219,38 @@ export function createLocalBloomBiasController() {
         const count = topology.gridWidth * topology.gridHeight;
         if (filtered?.length !== count) {
             filtered = new Float32Array(count);
+            blueFiltered = new Float32Array(count);
             bytes = new Uint8Array(count);
+            textureBytes = new Uint8Array(count * 4);
             target = new Float32Array(count);
             spatial = new Float32Array(count);
+            blueTarget = new Float32Array(count);
+            blueSpatial = new Float32Array(count);
             lastMediaTimeMs = null;
         }
         const pointCount = topology.channels.length;
         if (pointLuma.length !== pointCount) {
             pointLuma = new Float32Array(pointCount);
             pointMax = new Float32Array(pointCount);
+            linearR = new Float32Array(pointCount);
+            linearG = new Float32Array(pointCount);
+            linearB = new Float32Array(pointCount);
+            pointWarm = new Float32Array(pointCount);
             chromaR = new Float32Array(pointCount);
             chromaG = new Float32Array(pointCount);
             chromaB = new Float32Array(pointCount);
             neighbourCount = new Uint8Array(pointCount);
             coherentCount = new Uint8Array(pointCount);
+            warmNeighbour = new Float32Array(pointCount);
         } else {
             neighbourCount.fill(0);
             coherentCount.fill(0);
+            warmNeighbour.fill(0);
         }
         target.fill(0);
         spatial.fill(0);
+        blueTarget.fill(0);
+        blueSpatial.fill(0);
         for (let point = 0; point < topology.channels.length; point++) {
             const channel = topology.channels[point] ?? point;
             const offset = channel * 3;
@@ -234,13 +258,28 @@ export function createLocalBloomBiasController() {
             const g8 = rgbBytes[offset + 1] ?? 0;
             const b8 = rgbBytes[offset + 2] ?? 0;
             const sum = Math.max(r8 + g8 + b8, 1);
-            pointLuma[point] = 0.2126 * (SRGB8_TO_LINEAR[r8] ?? 0)
-                + 0.7152 * (SRGB8_TO_LINEAR[g8] ?? 0)
-                + 0.0722 * (SRGB8_TO_LINEAR[b8] ?? 0);
+            linearR[point] = SRGB8_TO_LINEAR[r8] ?? 0;
+            linearG[point] = SRGB8_TO_LINEAR[g8] ?? 0;
+            linearB[point] = SRGB8_TO_LINEAR[b8] ?? 0;
+            pointLuma[point] = 0.2126 * (linearR[point] ?? 0)
+                + 0.7152 * (linearG[point] ?? 0)
+                + 0.0722 * (linearB[point] ?? 0);
             pointMax[point] = Math.max(r8, g8, b8) / 255;
             chromaR[point] = r8 / sum;
             chromaG[point] = g8 / sum;
             chromaB[point] = b8 / sum;
+            const maximum = Math.max(
+                linearR[point] ?? 0,
+                linearG[point] ?? 0,
+                linearB[point] ?? 0,
+                1e-9,
+            );
+            const yellowDominance = (Math.min(
+                linearR[point] ?? 0,
+                linearG[point] ?? 0,
+            ) - (linearB[point] ?? 0)) / maximum;
+            pointWarm[point] = smoothstep(0.08, 0.35, yellowDominance)
+                * smoothstep(0.08, 0.25, pointMax[point] ?? 0);
         }
         for (const [first, second] of topology.edges) {
             const firstLuma = pointLuma[first] ?? 0;
@@ -258,6 +297,14 @@ export function createLocalBloomBiasController() {
                 coherentCount[first] = (coherentCount[first] ?? 0) + 1;
                 coherentCount[second] = (coherentCount[second] ?? 0) + 1;
             }
+            warmNeighbour[first] = Math.max(
+                warmNeighbour[first] ?? 0,
+                pointWarm[second] ?? 0,
+            );
+            warmNeighbour[second] = Math.max(
+                warmNeighbour[second] ?? 0,
+                pointWarm[first] ?? 0,
+            );
         }
         for (let point = 0; point < topology.channels.length; point++) {
             const gridIndex = topology.gridIndices[point] ?? -1;
@@ -285,6 +332,26 @@ export function createLocalBloomBiasController() {
             // carries the interior request smoothly across a real boundary.
             const supported = smoothstep(0.52, 0.78, coherence);
             target[gridIndex] = clamp01(visible * driven * supported);
+            const maximum = Math.max(
+                linearR[point] ?? 0,
+                linearG[point] ?? 0,
+                linearB[point] ?? 0,
+                1e-9,
+            );
+            const blueDominance = ((linearB[point] ?? 0)
+                - Math.max(linearR[point] ?? 0, linearG[point] ?? 0)) / maximum;
+            // This field is intentionally independent of neighbourhood
+            // coherence: a yellow/blue boundary is precisely where a blue
+            // emitter's already-existing Gaussian may need hue correction.
+            // It never opens bloom energy; the shader uses it only to recolor
+            // mismatched tight-lobe energy in negative space.
+            const blueEmitter = smoothstep(0.08, 0.18, drive)
+                * (1 - smoothstep(0.65, 0.90, drive));
+            blueTarget[gridIndex] = clamp01(
+                blueEmitter
+                * smoothstep(0.18, 0.50, blueDominance)
+                * smoothstep(0.05, 0.25, warmNeighbour[point] ?? 0),
+            );
         }
         // One axial+diagonal grid blur turns per-vertex requests into a smooth
         // scalar field. It is a control texture, not emitted light: the actual
@@ -306,6 +373,11 @@ export function createLocalBloomBiasController() {
                     }
                 }
                 spatial[index] = sum / weight;
+                // Keep ownership on the blue emitter texel. The GPU's linear
+                // sampler spreads this continuous control across that LED's
+                // own sub-pitch halo; a CPU neighbour blur would leak the mask
+                // onto a yellow/red texel and pair it with the wrong hue.
+                blueSpatial[index] = blueTarget[index] ?? 0;
             }
         }
 
@@ -328,13 +400,54 @@ export function createLocalBloomBiasController() {
             const next = reset ? desired : desired + (current - desired) * Math.exp(-dt / tau);
             filtered[index] = next;
             bytes[index] = Math.round(clamp01(next) * 255);
+            const blueDesired = blueSpatial[index] ?? 0;
+            const blueCurrent = blueFiltered[index] ?? 0;
+            const blueTau = blueDesired > blueCurrent
+                ? LOCAL_BLOOM_BIAS_ATTACK_TAU
+                : LOCAL_BLOOM_BIAS_DECAY_TAU;
+            blueFiltered[index] = reset
+                ? blueDesired
+                : blueDesired + (blueCurrent - blueDesired) * Math.exp(-dt / blueTau);
             sum += next;
             if (next >= 0.20) active++;
             peak = Math.max(peak, next);
         }
+        // Keep color out of the scalar temporal filter: it is sampled from the
+        // same current source frame as the Gaussian brackets. Hardware linear
+        // interpolation between grid texels supplies a smooth source-hue field
+        // in the gaps. R is the attack/decay-filtered general mip-bias mask; G
+        // is an independently filtered blue-halo recolor mask. Since G only
+        // admits blue-dominant texels, B/A can store R/B and G/B with blue
+        // implied as 1, preserving the source hue needed by the narrow repair.
+        textureBytes.fill(0);
+        for (let point = 0; point < topology.gridIndices.length; point++) {
+            const gridIndex = topology.gridIndices[point] ?? -1;
+            if (gridIndex < 0) continue;
+            const maximum = Math.max(
+                linearR[point] ?? 0,
+                linearG[point] ?? 0,
+                linearB[point] ?? 0,
+            );
+            const offset = gridIndex * 4;
+            textureBytes[offset] = bytes[gridIndex] ?? 0;
+            const blueWeight = clamp01(blueFiltered[gridIndex] ?? 0);
+            textureBytes[offset + 1] = Math.round(blueWeight * 255);
+            if (maximum > 1e-9) {
+                // Premultiply hue ratios by ownership before interpolation.
+                // The shader divides by sampled G, so a zero-weight yellow
+                // neighbour cannot inject its hue into a blue emitter's halo.
+                textureBytes[offset + 2] = Math.round(
+                    (linearR[point] ?? 0) / maximum * blueWeight * 255,
+                );
+                textureBytes[offset + 3] = Math.round(
+                    (linearG[point] ?? 0) / maximum * blueWeight * 255,
+                );
+            }
+        }
         lastMediaTimeMs = mediaTimeMs;
         return {
             data: bytes,
+            textureData: textureBytes,
             width: topology.gridWidth,
             height: topology.gridHeight,
             activeCoverage: active / count,
@@ -345,16 +458,25 @@ export function createLocalBloomBiasController() {
 
     function reset(): void {
         filtered = null;
+        blueFiltered = new Float32Array(0);
         bytes = new Uint8Array(0);
+        textureBytes = new Uint8Array(0);
         pointLuma = new Float32Array(0);
         pointMax = new Float32Array(0);
+        linearR = new Float32Array(0);
+        linearG = new Float32Array(0);
+        linearB = new Float32Array(0);
+        pointWarm = new Float32Array(0);
         chromaR = new Float32Array(0);
         chromaG = new Float32Array(0);
         chromaB = new Float32Array(0);
         neighbourCount = new Uint8Array(0);
         coherentCount = new Uint8Array(0);
+        warmNeighbour = new Float32Array(0);
         target = new Float32Array(0);
         spatial = new Float32Array(0);
+        blueTarget = new Float32Array(0);
+        blueSpatial = new Float32Array(0);
         lastMediaTimeMs = null;
     }
 

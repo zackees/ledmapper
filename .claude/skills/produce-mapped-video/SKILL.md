@@ -124,6 +124,27 @@ may strengthen only the already-approved mip 0-2 Gaussian field; bright cores
 stay max-channel-pinned while coherent same-hue light may fill their gaps;
 coarse mips 3-4 must remain zero.
 
+For a dim blue core inside a brighter disagreeing halo, run
+`uv run python scripts/core_halo_consistency_gate.py MAPPED
+--reference PREVIOUS-APPROVED-MAPPED -t 0 -t 1
+--panel-rotation ROTATION`. DYNLe at 45 degrees is the locked fixture: frame 0
+is gray/blue and t=1 is the opponent-yellow outline around the dark-blue neck.
+The approved reference fixes the judged blue-core population so the candidate
+cannot evade the ratchet by changing its own eligibility. The default maximum
+anomaly score is 0.050. The report distinguishes neutral and opponent-warm
+ambient fields because their safe fixes differ; saturated cross-hue inversion
+has an independent mismatch term, while a brighter same-hue blue Gaussian is
+allowed and must not trip the gate. Separate reference-relative core hue,
+saturation, and two-sided value/luma ceilings reject brighten, darken,
+desaturate, and recolor evasions.
+The correction
+for both frames recolors only an existing neutral/opponent, already-admitted
+mip-0/1/2 Gaussian toward the local source-blue hue while preserving max-channel
+energy. This spreads the dark halo without brightening the area or core with
+gray/yellow light; linear RGB still owns energy/falloff and already-blue
+Gaussian energy is untouched. Do not pour opponent yellow
+into the core, weaken cross-hue protection globally, or reopen mips 3-4.
+
 | Strategy | What it does |
 |---|---|
 | `chroma-shoulder` | Historical hue-locked shoulder baseline retained for comparisons. |
