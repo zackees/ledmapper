@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 
 import { HDR_BLOOM_COMPOSITE_FRAGMENT_SHADER } from '../../src/moviemaker/hdr-bloom-gpu';
 import {
+    ACRYLIC_DARK_BLUE_HALO_SPREAD,
     ACRYLIC_FULL_SPLAT_BRIGHT_HIGH_FREQUENCY,
     ACRYLIC_FULL_SPLAT_BRIGHT_LOW_FREQUENCY,
     ACRYLIC_FULL_SPLAT_DARK_HIGH_FREQUENCY,
@@ -15,6 +16,8 @@ import {
     DEFAULT_HDR_BLOOM_STRATEGY,
     HDR_BLOOM_STRATEGIES,
     HDR_BLOOM_STRATEGY_NAMES,
+    acrylicDarkBlueHaloSpread,
+    recolorHaloMaxChannel,
     acrylicFullSplatDrive,
     isHdrBloomStrategyName,
     resolveHdrBloomStrategy,
@@ -31,6 +34,12 @@ void describe('HDR bloom strategies', () => {
             assert.equal(strategy.brackets.factors.length, 3);
             assert.equal(strategy.brackets.radiusScales.length, 3);
         }
+    });
+
+    void test('keeps halo max-channel energy through a partial opponent-hue recolor', () => {
+        const recolored = recolorHaloMaxChannel([1, 1, 0], [0, 0, 1], 0.5);
+        assert.ok(Math.abs(Math.max(...recolored) - 1) < 1e-12);
+        assert.deepEqual(recolored, [1, 1, 1]);
     });
 
     void test('the legacy export stays bound to the CPU-oracle strategy', () => {
@@ -124,6 +133,27 @@ void describe('HDR bloom strategies', () => {
         assert.ok(unrealMipWeights[1]);
         assert.ok(unrealMipWeights[2] >= 1);
         assert.ok(unrealMipWeights.slice(3).every((weight) => weight === 0));
+    });
+
+    void test('dark halo spread is local, blue-only, mismatch-gated, and energy-neutral', () => {
+        assert.equal(
+            acrylicDarkBlueHaloSpread(1, 0, 0.60, 0.50, 1, 0.50),
+            ACRYLIC_DARK_BLUE_HALO_SPREAD,
+        );
+        assert.equal(
+            acrylicDarkBlueHaloSpread(1, 0, 0.60, 0, 0, 0.50),
+            ACRYLIC_DARK_BLUE_HALO_SPREAD,
+        );
+        assert.equal(acrylicDarkBlueHaloSpread(0, 0, 0.60, 0.50, 1, 0.50), 0);
+        assert.equal(acrylicDarkBlueHaloSpread(1, 0, 0, 0.50, 1, 0.50), 0);
+        assert.equal(acrylicDarkBlueHaloSpread(1, 0, 0.60, 0, 1, 0.50), 0);
+        assert.equal(acrylicDarkBlueHaloSpread(1, 0, 0.60, 0.50, 1, 0.10), 0);
+        assert.equal(
+            acrylicDarkBlueHaloSpread(1, 1, 0.60, 0.50, 1, 0.50),
+            acrylicDarkBlueHaloSpread(1, 0, 0.60, 0.50, 1, 0.50),
+        );
+        const partial = acrylicDarkBlueHaloSpread(0.5, 0.5, 0.34, 0.20, 0.60, 0.31);
+        assert.ok(partial > 0 && partial < ACRYLIC_DARK_BLUE_HALO_SPREAD);
     });
 
     void test('acrylic full-splat drive rises continuously with global scene light', () => {

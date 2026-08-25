@@ -108,10 +108,51 @@ export const ACRYLIC_SPLAT_LIGHT_KNEE = 0.45;
 export const ACRYLIC_SPLAT_LIGHT_FULL = 0.75;
 export const ACRYLIC_SPLAT_HIGH_FREQUENCY_KNEE = 0.90;
 export const ACRYLIC_SPLAT_HIGH_FREQUENCY_FULL = 0.99;
+/** Maximum admitted local-halo recolor toward a dark-blue source hue. */
+export const ACRYLIC_DARK_BLUE_HALO_SPREAD = 1.0;
 
 function smoothstepNumber(edge0: number, edge1: number, value: number): number {
     const t = Math.min(Math.max((value - edge0) / (edge1 - edge0), 0), 1);
     return t * t * (3 - 2 * t);
+}
+
+/** CPU mirror of the dark-blue Gaussian-halo spread selector. */
+export function acrylicDarkBlueHaloSpread(
+    localBias: number,
+    _frequencyBlend: number,
+    blueDominance: number,
+    haloBlueDeficit: number,
+    haloPurity: number,
+    cellDistance: number,
+): number {
+    const blue = smoothstepNumber(0.18, 0.50, blueDominance);
+    const opponentWarm = smoothstepNumber(0.05, 0.35, haloBlueDeficit);
+    const neutral = 1 - smoothstepNumber(0.12, 0.45, haloPurity);
+    const mismatch = Math.max(opponentWarm, neutral);
+    const negativeSpace = smoothstepNumber(0.24, 0.38, cellDistance);
+    return ACRYLIC_DARK_BLUE_HALO_SPREAD
+        * Math.min(Math.max(localBias, 0), 1)
+        * blue
+        * mismatch
+        * negativeSpace;
+}
+
+/** CPU mirror of max-channel-neutral hue interpolation used by the shader. */
+export function recolorHaloMaxChannel(
+    halo: readonly [number, number, number],
+    targetHue: readonly [number, number, number],
+    amount: number,
+): [number, number, number] {
+    const haloMax = Math.max(...halo);
+    const clampedAmount = Math.min(Math.max(amount, 0), 1);
+    if (haloMax <= 1e-12 || clampedAmount <= 0) return [...halo];
+    const haloDirection = halo.map((channel) => channel / haloMax);
+    const mixedDirection = haloDirection.map(
+        (channel, index) => channel * (1 - clampedAmount) + targetHue[index] * clampedAmount,
+    );
+    const mixedMax = Math.max(...mixedDirection);
+    if (mixedMax <= 1e-12) return [...halo];
+    return mixedDirection.map((channel) => channel * haloMax / mixedMax) as [number, number, number];
 }
 
 export function acrylicFullSplatDrive(
@@ -228,7 +269,7 @@ float srgbToLinear(float value) {
 float maxChannel(vec3 value) { return max(max(value.r, value.g), value.b); }
 float minChannel(vec3 value) { return min(min(value.r, value.g), value.b); }
 
-float localBloomBiasAt(vec2 canvasUv) {
+vec2 localBloomPanelUvAt(vec2 canvasUv) {
     // Canvas -> unrotated panel coordinates. The camera is y-down, hence the
     // y flip. Grid texel centres are inset by half a texel so LED centres,
     // including the boundary LEDs, interpolate at their exact positions.
@@ -238,11 +279,26 @@ float localBloomBiasAt(vec2 canvasUv) {
         localBloomRotation.x * screen.x + localBloomRotation.y * screen.y,
         -localBloomRotation.y * screen.x + localBloomRotation.x * screen.y
     );
-    vec2 panelUv = panelVector / max(localBloomPanelAspect, vec2(1e-6)) + 0.5;
+    return panelVector / max(localBloomPanelAspect, vec2(1e-6)) + 0.5;
+}
+
+vec4 localBloomSampleAt(vec2 canvasUv) {
+    vec2 panelUv = localBloomPanelUvAt(canvasUv);
     float inside = step(0.0, panelUv.x) * step(panelUv.x, 1.0)
         * step(0.0, panelUv.y) * step(panelUv.y, 1.0);
     vec2 gridUv = panelUv * localBloomGridSample.xy + localBloomGridSample.zw;
-    return texture2D(localBloomBias, gridUv).r * localBloomBiasEnabled * inside;
+    return texture2D(localBloomBias, gridUv) * localBloomBiasEnabled * inside;
+}
+
+float localBloomCellDistanceAt(vec2 canvasUv) {
+    vec2 panelUv = localBloomPanelUvAt(canvasUv);
+    vec2 gridUv = panelUv * localBloomGridSample.xy + localBloomGridSample.zw;
+    vec2 gridSize = vec2(1.0) / max(
+        vec2(1.0) - localBloomGridSample.xy,
+        vec2(1e-6)
+    );
+    vec2 texel = gridUv * gridSize;
+    return length(fract(texel) - 0.5);
 }
 `;
 
@@ -1365,7 +1421,8 @@ void main() {
     // This does not restore coarse mips 3-4. It only relaxes admission of the
     // already-approved mips 0-2, using a continuous field so there is no new
     // splat geometry, threshold ring, or per-pixel hysteresis.
-    float localMidtoneBias = localBloomBiasAt(vUv)
+    vec4 localBloomSample = localBloomSampleAt(vUv);
+    float localMidtoneBias = localBloomSample.r
         * (1.0 - 0.85 * bloomFrequencyBlend);
     // The field may interpolate across a bright core on its way between dim
     // neighbours. Re-apply both luminance and max-channel drive ceilings in
@@ -1376,6 +1433,25 @@ void main() {
     float localBrightProtection = (1.0 - v1Smoothstep(0.22, 0.35, rawLuma))
         * (1.0 - v1Smoothstep(0.999, 0.9999, rawDrive));
     localMidtoneBias *= localBrightProtection;
+    // DYNLe t=1: the yellow outline's neutral/warm Gaussian raised the local
+    // annulus above a dark-blue LED. Brightening the core from that field
+    // fixes the numeric inversion but drifts from the source. Instead, the
+    // RGBA control texture carries an attack/decay-filtered blue ownership
+    // weight plus premultiplied source R/B and G/B ratios. Normalizing after
+    // interpolation prevents a zero-weight yellow neighbour injecting hue.
+    // Where a midtone-blue emitter has a warm axial/diagonal neighbour,
+    // recolor only the already-admitted local Gaussian toward that blue hue.
+    // Its spatial envelope and max-channel energy remain the real mip-0/1/2 PSF:
+    // this spreads a dark blue halo into the gap without adding gray/yellow
+    // light, redrawing circles, changing the sharp core, or opening mips 3-4.
+    float localBlueHaloWeight = localBloomSample.g;
+    float localBlueHaloBias = v1Smoothstep(0.05, 0.35, localBlueHaloWeight);
+    vec3 localHue = vec3(
+        localBloomSample.b / max(localBlueHaloWeight, 1e-6),
+        localBloomSample.a / max(localBlueHaloWeight, 1e-6),
+        1.0
+    );
+    float localBlueDominance = localHue.b - max(localHue.r, localHue.g);
     // The field mostly strengthens the tight Gaussian and only modestly opens
     // mid/high admission; AQNF t=14 remains the hard hair-shadow ceiling.
     shadowMask += (1.0 - shadowMask) * localMidtoneBias * 0.20;
@@ -1400,12 +1476,49 @@ void main() {
     // dots / insufficient face fill). Do not tune either side in isolation.
     added *= mix(mix(0.46, 0.12, globalBloomBias), 1.0, shadowMask);
 
+    // Recolor the final admitted mip-0/1/2 field, not just lowAdded: leaving
+    // the mid bracket neutral still creates the gray annulus. This is an
+    // energy-neutral hybrid composite. The linear bloom stack has already
+    // chosen the halo energy and PSF; source hue controls only its RGB ratio.
+    float haloMax = maxChannel(added);
+    vec3 haloHue = haloMax > 1e-9 ? added / haloMax : vec3(0.0);
+    float haloBlueDeficit = max(haloHue.r, haloHue.g) - haloHue.b;
+    float haloPurity = haloMax > 1e-9
+        ? 1.0 - minChannel(added) / haloMax
+        : 1.0;
+    float haloMismatch = max(
+        v1Smoothstep(0.05, 0.35, haloBlueDeficit),
+        1.0 - v1Smoothstep(0.12, 0.45, haloPurity)
+    );
+    // Coherent blue hair already has a blue Gaussian and therefore gets a
+    // zero mismatch. Only a neutral/warm lobe adjacent to a blue emitter is
+    // changed, and only outside the core's smooth sub-pitch radius.
+    float darkBlueHaloSpread = ${ACRYLIC_DARK_BLUE_HALO_SPREAD.toFixed(2)}
+        * localBlueHaloBias
+        * v1Smoothstep(0.18, 0.50, localBlueDominance)
+        * haloMismatch
+        * v1Smoothstep(0.24, 0.38, localBloomCellDistanceAt(vUv));
+    // Interpolate color ratios and renormalize afterward. A direct RGB mix can
+    // lower the maximum at partial spread (yellow -> blue passes through gray),
+    // carving exactly the dark annulus this correction exists to remove.
+    vec3 mixedHaloHue = mix(haloHue, localHue, darkBlueHaloSpread);
+    float mixedHaloMax = maxChannel(mixedHaloHue);
+    if (haloMax > 1e-9 && mixedHaloMax > 1e-9) {
+        added = mixedHaloHue * (haloMax / mixedHaloMax);
+    }
+
     // Chroma guard at lit LED cores. The restrained third mip is useful in
     // negative space, but its mid-frequency field can still land blue/cyan
     // energy on a red or magenta core. Preserve bloom parallel to the core's
     // own RGB direction and attenuate only the hue-disagreeing remainder.
     // Gaps have rawLinear == 0, so their newly restored neighbour fill is
     // untouched; neutral and low-purity cores also bypass the guard.
+    // DYNLe frame 0 and t=1 prove that neutral/warm ambient must never be
+    // transferred into a dark-blue core: doing so brightens the area and
+    // flattens unrelated blue hair shadows. Both cases are handled upstream by
+    // recoloring only an existing mismatched admitted mip-0/1/2 field toward
+    // source blue.
+    // core_halo_consistency_gate locks both timestamps; mips 3-4 stay zero.
     float coreMax = maxChannel(rawLinear);
     if (coreMax > 1e-6) {
         float corePurity = 1.0 - minChannel(rawLinear) / coreMax;

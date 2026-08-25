@@ -140,6 +140,26 @@ describe('spatial low/mid bloom-bias field', () => {
         assert.ok(field.data[4 * 8 + 3]! > 0);
     });
 
+    it('packs separate mip/blue masks and current blue-normalized hue into RGBA', () => {
+        const topology = createBloomFrequencyTopology(grid(2));
+        const field = createLocalBloomBiasController().update(
+            pixels(2, (x, y) => {
+                if (x === 0 && y === 0) return [35, 75, 150] as const;
+                if (x === 1 && y === 0) return [150, 150, 35] as const;
+                return [0, 0, 0] as const;
+            }),
+            topology,
+            0,
+        )!;
+        assert.equal(field.textureData.length, 2 * 2 * 4);
+        assert.equal(field.textureData[0], field.data[0]);
+        assert.ok(field.textureData[1]! > 0);
+        assert.ok(field.textureData[2]! < field.textureData[3]!);
+        assert.equal(field.textureData[4], field.data[1]);
+        assert.deepEqual(Array.from(field.textureData.slice(5, 8)), [0, 0, 0]);
+        assert.deepEqual(Array.from(field.textureData.slice(8, 12)), [0, 0, 0, 0]);
+    });
+
     it('opens conservatively, closes quickly, holds timestamps, and resets on seeks', () => {
         const topology = createBloomFrequencyTopology(grid());
         const lowMid = pixels(8, () => [35, 75, 150]);
