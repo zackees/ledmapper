@@ -3,6 +3,7 @@ import {
     HDR_BLOOM_STRATEGY_NAMES,
     type HdrBloomStrategyName,
 } from '../moviemaker/hdr-bloom-strategies';
+import type { BloomFrequencyMode } from '../bloom-frequency';
 
 export const PRODUCTION_CONTRACT_VERSION = 1 as const;
 export const MAX_PRODUCTION_QUERY_LENGTH = 8_192;
@@ -36,6 +37,10 @@ export interface ProductionConfig {
     bloomStrength: number;
     /** Which HDR bloom composite algorithm to render with. */
     bloomStrategy: HdrBloomStrategyName;
+    /** Automatic temporal classifier or deterministic endpoint override. */
+    bloomFrequencyMode: BloomFrequencyMode;
+    /** Optional deterministic point on the continuous low/high curve. */
+    bloomFrequencyBlend: number | null;
     previewRotate: boolean;
     aspect: ProductionAspect;
     videoMode: ProductionVideoMode;
@@ -54,6 +59,7 @@ export type ProductionContractErrorCode =
     | 'INVALID_BOOLEAN'
     | 'INVALID_NUMBER'
     | 'NUMBER_OUT_OF_RANGE'
+    | 'INVALID_COMBINATION'
     | 'INVALID_INPUT_URL'
     | 'INPUT_URL_TOO_LONG'
     | 'INPUT_URL_CREDENTIALS';
@@ -75,6 +81,7 @@ const ALLOWED_KEYS = new Set([
     'blurRadius', 'blurSigma', 'brightness', 'gamma', 'limitBrightness',
     'maxBrightness', 'maxResolution', 'autoBloom', 'bloomStrength',
     'previewRotate', 'aspect', 'videoMode', 'outputFps', 'hidden', 'bloomStrategy',
+    'bloomFrequencyMode', 'bloomFrequencyBlend',
 ]);
 
 function required(params: URLSearchParams, name: string): string {
@@ -109,6 +116,15 @@ function strictBoolean(params: URLSearchParams, name: string, fallback: boolean)
     if (raw === '0') return false;
     if (raw === '1') return true;
     throw new ProductionContractError('INVALID_BOOLEAN', `Parameter '${name}' must be 0 or 1`, name);
+}
+
+function optionalStrictNumber(
+    params: URLSearchParams,
+    name: string,
+    min: number,
+    max: number,
+): number | null {
+    return params.has(name) ? strictNumber(params, name, min, min, max) : null;
 }
 
 function strictEnum<T extends string>(params: URLSearchParams, name: string, values: readonly T[], fallback?: T): T {
@@ -159,6 +175,29 @@ export function parseProductionQuery(search: string): ProductionConfig {
     if (![0, 240, 360, 480, 720, 960].includes(maxResolution)) {
         throw new ProductionContractError('INVALID_ENUM', "Parameter 'maxResolution' has an unsupported value", 'maxResolution');
     }
+    const bloomStrategy = strictEnum(
+        params,
+        'bloomStrategy',
+        HDR_BLOOM_STRATEGY_NAMES,
+        DEFAULT_HDR_BLOOM_STRATEGY,
+    );
+    const bloomFrequencyMode = strictEnum(
+        params,
+        'bloomFrequencyMode',
+        ['auto', 'low', 'high'],
+        'auto',
+    );
+    const bloomFrequencyBlend = optionalStrictNumber(params, 'bloomFrequencyBlend', 0, 1);
+    if (
+        bloomStrategy !== 'acrylic-pane'
+        && (bloomFrequencyMode !== 'auto' || bloomFrequencyBlend !== null)
+    ) {
+        throw new ProductionContractError(
+            'INVALID_COMBINATION',
+            "Bloom-frequency overrides require bloomStrategy 'acrylic-pane'",
+            'bloomStrategy',
+        );
+    }
 
     return {
         v: PRODUCTION_CONTRACT_VERSION,
@@ -178,12 +217,9 @@ export function parseProductionQuery(search: string): ProductionConfig {
         maxResolution: maxResolution as ProductionConfig['maxResolution'],
         autoBloom: strictBoolean(params, 'autoBloom', true),
         bloomStrength: strictNumber(params, 'bloomStrength', 2.475, 0.3, 9),
-        bloomStrategy: strictEnum(
-            params,
-            'bloomStrategy',
-            HDR_BLOOM_STRATEGY_NAMES,
-            DEFAULT_HDR_BLOOM_STRATEGY,
-        ),
+        bloomStrategy,
+        bloomFrequencyMode,
+        bloomFrequencyBlend,
         previewRotate: strictBoolean(params, 'previewRotate', false),
         aspect: strictEnum(params, 'aspect', ['square', 'portrait', 'landscape'], 'square'),
         videoMode: strictEnum(params, 'videoMode', ['side-by-side', 'mapped-led'], 'side-by-side'),

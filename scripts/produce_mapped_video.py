@@ -617,6 +617,10 @@ def output_name(video: Path, args: argparse.Namespace, grid: str, strategy: str)
         parts.append(f"{args.output_fps}fps")
     if args.saturation_boost != 1:
         parts.append(f"sat{args.saturation_boost:g}")
+    if args.bloom_frequency_mode != "auto":
+        parts.append(f"freq-{args.bloom_frequency_mode}")
+    if args.bloom_frequency_blend is not None:
+        parts.append(f"freq{args.bloom_frequency_blend:g}")
     # The strategy is part of the render's identity: two files that differ only
     # by bloom algorithm must not collide.
     parts.append(strategy)
@@ -669,6 +673,10 @@ def produce_one(
         options["blurSigma"] = f"{args.blur_sigma:g}"
     if strategy != DEFAULT_STRATEGY:
         options["bloomStrategy"] = strategy
+    if args.bloom_frequency_mode != "auto":
+        options["bloomFrequencyMode"] = args.bloom_frequency_mode
+    if args.bloom_frequency_blend is not None:
+        options["bloomFrequencyBlend"] = f"{args.bloom_frequency_blend:g}"
 
     with tempfile.TemporaryDirectory(prefix="ledmapper-job-") as tmp:
         tmp_path = Path(tmp)
@@ -811,10 +819,23 @@ def run(args: argparse.Namespace) -> int:
             raise ProduceError(
                 f"unknown bloom strategy '{strategy}'. Known: {', '.join(STRATEGY_NAMES)}"
             )
+    has_frequency_override = (
+        args.bloom_frequency_mode != "auto"
+        or args.bloom_frequency_blend is not None
+    )
+    if has_frequency_override and any(strategy != "acrylic-pane" for strategy in strategies):
+        raise ProduceError(
+            "--bloom-frequency-mode/--bloom-frequency-blend require every "
+            "--strategy to be acrylic-pane"
+        )
     wants_compare = args.compare or len(strategies) > 1
     if not 0 < args.saturation_boost <= 3:
         raise ProduceError(
             f"--saturation-boost {args.saturation_boost:g} is out of range (0, 3]"
+        )
+    if args.bloom_frequency_blend is not None and not 0 <= args.bloom_frequency_blend <= 1:
+        raise ProduceError(
+            f"--bloom-frequency-blend {args.bloom_frequency_blend:g} is out of range [0, 1]"
         )
     if args.crop_source and args.video_mode != "mapped-led":
         raise ProduceError(
@@ -992,6 +1013,24 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "(never copied to the destination); the destination receives the "
             "plain mapped MP4 plus a dual side-by-side MP4 (source in the "
             "left third at 512x1024, mapped square 1024x1024 on the right)"
+        ),
+    )
+    parser.add_argument(
+        "--bloom-frequency-mode",
+        choices=("auto", "low", "high"),
+        default="auto",
+        help=(
+            "temporal source-frequency controller for acrylic-pane: auto "
+            "classifies each raw LED frame; low/high pin deterministic endpoints"
+        ),
+    )
+    parser.add_argument(
+        "--bloom-frequency-blend",
+        type=float,
+        default=None,
+        help=(
+            "pin an exact point in the acrylic low/high mip-bias curve [0,1]; "
+            "intended for evaluator sweeps and overrides --bloom-frequency-mode"
         ),
     )
     parser.add_argument(

@@ -38,6 +38,8 @@ describe('production v1 query contract', () => {
             autoBloom: true,
             bloomStrength: 2.475,
             bloomStrategy: 'acrylic-pane',
+            bloomFrequencyMode: 'auto',
+            bloomFrequencyBlend: null,
             previewRotate: false,
             aspect: 'square',
             videoMode: 'side-by-side',
@@ -69,6 +71,32 @@ describe('production v1 query contract', () => {
         assert.equal(
             parseProductionQuery(`${REQUIRED}&bloomStrategy=chroma-shoulder`).bloomStrategy,
             'chroma-shoulder',
+        );
+    });
+
+    void test('accepts deterministic bloom-frequency evaluator overrides', () => {
+        const endpoint = parseProductionQuery(`${REQUIRED}&bloomFrequencyMode=high`);
+        assert.equal(endpoint.bloomFrequencyMode, 'high');
+        assert.equal(endpoint.bloomFrequencyBlend, null);
+        const curve = parseProductionQuery(`${REQUIRED}&bloomFrequencyBlend=.375`);
+        assert.equal(curve.bloomFrequencyMode, 'auto');
+        assert.equal(curve.bloomFrequencyBlend, 0.375);
+        assert.equal(contractError(`${REQUIRED}&bloomFrequencyMode=nope`).code, 'INVALID_ENUM');
+        assert.equal(contractError(`${REQUIRED}&bloomFrequencyBlend=1.01`).code, 'NUMBER_OUT_OF_RANGE');
+    });
+
+    void test('rejects frequency overrides for strategies that do not consume them', () => {
+        assert.equal(
+            contractError(`${REQUIRED}&bloomStrategy=white-core-chroma&bloomFrequencyMode=high`).code,
+            'INVALID_COMBINATION',
+        );
+        assert.equal(
+            contractError(`${REQUIRED}&bloomStrategy=chroma-shoulder&bloomFrequencyBlend=.5`).code,
+            'INVALID_COMBINATION',
+        );
+        assert.equal(
+            parseProductionQuery(`${REQUIRED}&bloomStrategy=white-core-chroma`).bloomFrequencyMode,
+            'auto',
         );
     });
 

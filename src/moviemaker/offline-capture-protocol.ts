@@ -24,7 +24,7 @@ export type OfflineCaptureHostMessage =
 
 export type OfflineCaptureWorkerMessage =
     | { type: 'started'; jobId: string; total: number; fps: number }
-    | { type: 'progress'; jobId: string; done: number; total: number; previewBuffer?: ArrayBuffer; avgBrightness?: number; oobCount?: number }
+    | { type: 'progress'; jobId: string; done: number; total: number; mediaTimeSeconds: number; previewBuffer?: ArrayBuffer; avgBrightness?: number; oobCount?: number }
     | { type: 'fallback'; jobId: string; target: 'main-thread' | 'realtime'; reason: string }
     | { type: 'complete'; jobId: string; payloadBuffer: ArrayBuffer; fps: number; total: number; elapsedMs: number }
     | { type: 'cancelled'; jobId: string; done: number; total: number; elapsedMs: number }

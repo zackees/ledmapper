@@ -12,7 +12,10 @@
  */
 
 import { WebGLRenderer, Scene, OrthographicCamera, Shape, ShapeGeometry, Mesh, MeshBasicMaterial, DoubleSide } from 'three';
-import { createCircleTexture, rebuildPointsMesh } from '../three-utils';
+import {
+    createCircleTexture,
+    rebuildPointsMesh,
+} from '../three-utils';
 import type { PointsMeshResult, StripPoint } from '../types/domain';
 import { createAutoBloom } from '../auto-bloom';
 import { setBloomMipWeights } from '../three-bloom';
@@ -36,6 +39,12 @@ import {
     type HdrBloomStrategyName,
 } from './hdr-bloom-strategies';
 import { SRGB8_TO_LINEAR } from '../color-space';
+import {
+    createBloomFrequencyController,
+    createBloomFrequencyTopology,
+    type BloomFrequencyMode,
+    type BloomFrequencyTopology,
+} from '../bloom-frequency';
 
 const log = createLogger('preview');
 
@@ -86,6 +95,7 @@ const PREVIEW_PROFILE = {
  *   setAutoBloom: (enabled: boolean) => void,
  *   setManualBloomStrength: (strength: number) => void,
  *   getCurrentBloomStrength: () => number,
+ *   getBloomFrequencyTelemetry: Function,
  * }}
  */
 export function createLedPreview({
@@ -98,6 +108,8 @@ export function createLedPreview({
     enableHdrBloom = false,
     hdrBloomCompositeMode = 'gpu-full',
     hdrBloomStrategy = DEFAULT_HDR_BLOOM_STRATEGY,
+    bloomFrequencyMode = 'auto',
+    bloomFrequencyBlend = null,
 }: {
     parent: HTMLElement;
     side?: number;
@@ -114,6 +126,10 @@ export function createLedPreview({
     hdrBloomCompositeMode?: HdrBloomCompositeMode;
     /** Which composite algorithm to run. See `hdr-bloom-strategies.ts`. */
     hdrBloomStrategy?: HdrBloomStrategyName;
+    /** Dynamic acrylic mip selection, with deterministic evaluator pins. */
+    bloomFrequencyMode?: BloomFrequencyMode;
+    /** Debug/evaluator override for a precise point on the continuous curve. */
+    bloomFrequencyBlend?: number | null;
 }) {
     // Render to a fixed backing-buffer size (independent of devicePixelRatio) so
     // bloom output is identical across platforms; capped at maxBufferSize. The
@@ -204,6 +220,12 @@ export function createLedPreview({
         && (hdrBloomCompositeMode === 'gpu-full' || verifiesGpuHdrComposite)
         ? createGpuHdrBloomComposite(renderer, hdrWidth, hdrHeight, hdrBloomStrategy)
         : null;
+    const frequencyController = hdrBloomStrategy === 'acrylic-pane'
+        ? createBloomFrequencyController({
+            mode: bloomFrequencyMode,
+            blendOverride: bloomFrequencyBlend,
+        })
+        : null;
     // Strategy-owned spatial support. Acrylic-pane keeps strong energy in
     // UnrealBloom mips 0-2 for local and mid-frequency surface fill. Both axes
     // are blurred, so diagonal neighbours remain part of the PSF; coarse
@@ -232,6 +254,7 @@ export function createLedPreview({
     let shapeMeshes: { mesh: Mesh; material: MeshBasicMaterial; offset: number }[] = [];
     let cachedRotate: number | null = null;
     let cachedLedDiameter: number | null = null;
+    let frequencyTopology: BloomFrequencyTopology | null = null;
     let ledWorldRadius = 0.5;
     let ledSpacing = 1;
     let sceneExtent = 1;
@@ -297,6 +320,8 @@ export function createLedPreview({
             ? ledDiameter
             : ledSpacing;
         ledWorldRadius = dia / 2;
+        frequencyTopology = createBloomFrequencyTopology(localPts, cachedPointChannelOffsets ?? []);
+        frequencyController?.reset();
         rebuildShapes(shapes);
     }
 
@@ -384,7 +409,7 @@ export function createLedPreview({
      *        spacing heuristic.
      */
     let dbgFrames = 0;
-    function render(localPts: StripPoint[], rotate: number, lastSample: { rgbPts: Uint8Array; linearRgbPts?: Float32Array; [key: string]: unknown } | null, ledDiameter: number | null = null, pointChannelOffsets: number[] = [], shapes: PreviewShape[] = [], mediaTimeMs?: number) {
+    function render(localPts: StripPoint[], rotate: number, lastSample: { rgbPts: Uint8Array; linearRgbPts?: Float32Array } | null, ledDiameter: number | null = null, pointChannelOffsets: number[] = [], shapes: PreviewShape[] = [], mediaTimeMs?: number) {
         if ((localPts.length === 0 && shapes.length === 0) || !lastSample) {
             if (dbgFrames < 3) { dbgFrames++; log.debug('render-skip', { pts: localPts.length, shapes: shapes.length, hasSample: !!lastSample }); }
             renderer.clear();
@@ -457,6 +482,27 @@ export function createLedPreview({
             );
         }
 
+        let bloomFrequencyBlendValue = 0;
+        if (frequencyController && frequencyTopology) {
+            const frequency = frequencyController.update(
+                src,
+                frequencyTopology,
+                mediaTimeMs ?? performance.now(),
+            );
+            setBloomMipWeights(bloom.bloomPass, frequency.weights);
+            bloomFrequencyBlendValue = frequency.blend;
+            if (dbgFrames % 300 === 1) {
+                log.debug('bloom-frequency', {
+                    score: Number(frequency.score.toFixed(4)),
+                    target: Number(frequency.target.toFixed(4)),
+                    blend: Number(frequency.blend.toFixed(4)),
+                    lumaDisagreement: Number(frequency.lumaDisagreement.toFixed(4)),
+                    chromaDisagreement: Number(frequency.chromaDisagreement.toFixed(4)),
+                    weights: frequency.weights.map((weight) => Number(weight.toFixed(4))),
+                });
+            }
+        }
+
         const globalBloomBias = bloom.frame(src, mediaTimeMs);
         // Modest geometry-gated diameter modulation; dense layouts remain
         // stable to avoid subpixel aliasing bands across the LED lattice.
@@ -475,6 +521,7 @@ export function createLedPreview({
             // disagreement into a dark ring around every dot (#493).
             hdrGpuComposite.captureRawFrom(bloom.renderBaseToTexture());
             hdrGpuComposite.setGlobalBloomBias(globalBloomBias);
+            hdrGpuComposite.setBloomFrequencyBlend(bloomFrequencyBlendValue);
             const strength = bloom.bloomPass.strength;
             const threshold = bloom.bloomPass.threshold;
             // Bracket capture belongs to the active strategy: these parameters
@@ -640,6 +687,10 @@ export function createLedPreview({
         return hdrVerification;
     }
 
+    function getBloomFrequencyTelemetry() {
+        return frequencyController?.getTelemetry() ?? null;
+    }
+
     function dispose() {
         if (meshData) {
             scene.remove(meshData.mesh);
@@ -661,5 +712,15 @@ export function createLedPreview({
         hdrOutputCanvas?.remove();
     }
 
-    return { render, dispose, domElement: hdrOutputCanvas ?? renderer.domElement, setAutoBloom, setBloomEnabled, setManualBloomStrength, getCurrentBloomStrength, getHdrBloomVerification };
+    return {
+        render,
+        dispose,
+        domElement: hdrOutputCanvas ?? renderer.domElement,
+        setAutoBloom,
+        setBloomEnabled,
+        setManualBloomStrength,
+        getCurrentBloomStrength,
+        getHdrBloomVerification,
+        getBloomFrequencyTelemetry,
+    };
 }

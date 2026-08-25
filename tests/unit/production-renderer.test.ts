@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildFledArtifact } from '../../src/moviemaker/recording';
 import { productionComposition, productionOutputDimensions } from '../../src/production/compositor';
-import { productionIrisPrerollFrames, scheduleProductionFrames } from '../../src/production/production-renderer';
+import {
+    createProductionPreviewTopologyArgs,
+    productionIrisPrerollFrames,
+    renderProductionPreviewFrame,
+    scheduleProductionFrames,
+} from '../../src/production/production-renderer';
 
 void test('buildFledArtifact validates and wraps RGB payload', () => {
     const artifact = buildFledArtifact(new Uint8Array(2 * 3 * 3), {
@@ -73,4 +78,24 @@ void test('60 FPS scheduling doubles 30 FPS source frames without changing durat
 void test('iris preroll covers four attack time constants at the output cadence', () => {
     assert.equal(productionIrisPrerollFrames(60), 48);
     assert.equal(productionIrisPrerollFrames(30), 24);
+});
+
+void test('production reuses preview topology metadata across temporal frames', () => {
+    const topology = createProductionPreviewTopologyArgs();
+    const calls: unknown[][] = [];
+    const preview = {
+        render: (...args: unknown[]) => calls.push(args),
+    } as unknown as Parameters<typeof renderProductionPreviewFrame>[0];
+    const points = [[0, 0], [1, 0]] as Parameters<typeof renderProductionPreviewFrame>[1];
+    const sample = { rgbPts: new Uint8Array(6) };
+    renderProductionPreviewFrame(preview, points, 0, sample, topology, 1000);
+    renderProductionPreviewFrame(preview, points, 0, sample, topology, 1033);
+    assert.equal(calls.length, 2);
+    const [first, second] = calls as [unknown[], unknown[]];
+    assert.equal(first[4], topology.pointChannelOffsets);
+    assert.equal(second[4], topology.pointChannelOffsets);
+    assert.equal(first[5], topology.shapes);
+    assert.equal(second[5], topology.shapes);
+    assert.equal(first[6], 1000);
+    assert.equal(second[6], 1033);
 });

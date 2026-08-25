@@ -71,6 +71,7 @@ export interface GpuHdrBloomComposite {
     /** Copy one linear RGBA16F bloom result into its persistent bracket. */
     captureBloom: (bracket: 1 | 2 | 3, source: Texture) => void;
     setGlobalBloomBias: (bias: number) => void;
+    setBloomFrequencyBlend: (blend: number) => void;
     /** Composite the four linear brackets and write display-sRGB to canvas. */
     render: () => void;
     dispose: () => void;
@@ -108,6 +109,7 @@ export function createGpuHdrBloomComposite(
             midFrame: { value: frames[2]?.texture },
             highFrame: { value: frames[3]?.texture },
             globalBloomBias: { value: 0 },
+            bloomFrequencyBlend: { value: 0 },
             bloomStrength: { value: 1 },
         },
         vertexShader,
@@ -155,6 +157,10 @@ export function createGpuHdrBloomComposite(
         setGlobalBloomBias(bias) {
             const uniform = material.uniforms.globalBloomBias;
             if (uniform) uniform.value = Math.min(Math.max(bias, 0), 1);
+        },
+        setBloomFrequencyBlend(blend) {
+            const uniform = material.uniforms.bloomFrequencyBlend;
+            if (uniform) uniform.value = Math.min(Math.max(blend, 0), 1);
         },
         render() {
             renderer.setRenderTarget(null);
