@@ -28,6 +28,7 @@ export const PixelFormat = {
     rgba8: 0x02,
     rgbw8: 0x03,
     rgb565le: 0x04,
+    rgb16_linear: 0x05,
 } as const;
 export type PixelFormatCode = (typeof PixelFormat)[keyof typeof PixelFormat];
 
@@ -37,6 +38,7 @@ const BYTES_PER_LED: Record<number, number> = {
     [PixelFormat.rgba8]: 4,
     [PixelFormat.rgbw8]: 4,
     [PixelFormat.rgb565le]: 2,
+    [PixelFormat.rgb16_linear]: 6,
 };
 
 /** Bytes per LED for a `pixel_format` enum value, or `null` if unknown. */

@@ -5,6 +5,8 @@ export { createFramePacer } from './gfx/frame-pacer.js';
 export { parseRgbFrames, hasFledMagic, readVideoFps } from './render/rgb-video.js';
 export { PixelFormat, bytesPerLed, isSupportedFormat, prependFledHeader } from './render/rgb-video.js';
 export { FledStreamError, streamFled } from './render/fled-stream.js';
+export { FledColorError, validateFledColor, readVideoColor, buildVideoColor, defaultColorForFormat, pixelFormatHasDefaultTuple, DEFAULT_COLOR_TUPLE } from './render/fled-color.js';
+export type { FledColorMetadata, FledColorErrorCode, FledColorTransfer, FledColorMatrix, FledColorRange, FledColorPrimariesName, FledCustomPrimaries, FledChromaticity } from './render/fled-color.js';
 export type { FledStreamMetadata, FledStreamOptions, FledStreamResult } from './render/fled-stream.js';
 export { parse_screenmap_data_json, parseScreenmapMultiStrip, centerAndFitPoints, getStripColors, stripStartEndLabels } from './common.js';
 export { resolveLedDiameter, computeFitScale } from './bloom-utils.js';

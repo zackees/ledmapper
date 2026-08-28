@@ -19,8 +19,32 @@ const PIXEL_FORMAT_NAMES = {
     0x02: 'rgba8 (4 B/LED)',
     0x03: 'rgbw8 (4 B/LED)',
     0x04: 'rgb565le (2 B/LED)',
+    0x05: 'rgb16_linear (6 B/LED)',
 };
-const BYTES_PER_LED = { 0x00: 3, 0x01: 1, 0x02: 4, 0x03: 4, 0x04: 2 };
+const BYTES_PER_LED = { 0x00: 3, 0x01: 1, 0x02: 4, 0x03: 4, 0x04: 2, 0x05: 6 };
+
+// Rule 1 + rule 7 for `primaries`: a recognized name, or a custom object with
+// four finite CIE xy pairs. Anything else is rejected - including non-string
+// scalars, which an earlier version of this script let through.
+function xyOk(v) {
+    return Array.isArray(v) && v.length === 2
+        && typeof v[0] === 'number' && Number.isFinite(v[0])
+        && typeof v[1] === 'number' && Number.isFinite(v[1]);
+}
+function isCustomPrimariesObject(v) {
+    return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+function primariesOk(v) {
+    if (typeof v === 'string') return ['bt709', 'display-p3', 'bt2020'].includes(v);
+    if (!isCustomPrimariesObject(v)) return false;
+    return ['red', 'green', 'blue', 'white'].every((k) => xyOk(v[k]));
+}
+function primariesError(v) {
+    if (isCustomPrimariesObject(v)) {
+        return 'primaries object needs red/green/blue/white, each an [x, y] pair of finite numbers.';
+    }
+    return `primaries ${JSON.stringify(v)} is not a recognized name or a custom xy object.`;
+}
 
 function hex(bytes, n = 32) {
     return [...bytes.subarray(0, n)].map((b) => b.toString(16).padStart(2, '0')).join(' ');
@@ -132,6 +156,57 @@ for (const [name, strip] of stripEntries) {
 }
 console.log(`screenmap shape: ${isV2 ? 'v2' : 'v1'} (${stripEntries.length} ${isV2 ? 'segment(s)' : 'strip(s)'})`);
 console.log(`derived LED count: ${ledCount}`);
+
+// --- video.color (docs/fled-format.md "Source color metadata") ---
+// Deliberately re-implemented here, like every other branch in this script,
+// so the diagnostic runs on plain node with no build step. Keep in sync with
+// validateFledColor() in packages/gfx/src/render/fled-color.ts.
+{
+    const DISPLAY_RGB = [0x00, 0x02, 0x04];
+    const LINEAR_RGB = [0x05];
+    const hasTuple = DISPLAY_RGB.includes(pixelFormat) || LINEAR_RGB.includes(pixelFormat);
+    const color = parsed?.video?.color;
+    const reject = (msg) => {
+        console.log(`video.color:   INVALID: ${msg}`);
+        console.log('  A conforming consumer rejects this file rather than guessing.');
+        exitCode = 11;
+    };
+    if (color === undefined) {
+        if (hasTuple) {
+            const transfer = LINEAR_RGB.includes(pixelFormat) ? 'linear' : 'srgb';
+            console.log(`video.color:   absent -> default tuple {bt709, ${transfer}, rgb, full}`);
+        } else {
+            reject('absent, and this pixel_format defines no default tuple. Declare all four keys.');
+        }
+    } else if (color === null || typeof color !== 'object' || Array.isArray(color)) {
+        reject('video.color must be a JSON object.');
+    } else {
+        const keys = ['primaries', 'transfer', 'matrix', 'range'];
+        const present = keys.filter((k) => color[k] !== undefined);
+        const transfer = color.transfer ?? (LINEAR_RGB.includes(pixelFormat) ? 'linear' : 'srgb');
+        if (!hasTuple && present.length !== keys.length) {
+            reject('this pixel_format defines no default tuple: declare all four keys or none.');
+        } else if (['pq', 'hlg'].includes(transfer)) {
+            reject(`transfer "${transfer}" is reserved; no v1 pixel format can carry it.`);
+        } else if (!['srgb', 'bt709', 'linear'].includes(transfer)) {
+            reject(`transfer ${JSON.stringify(transfer)} is not a recognized transfer function.`);
+        } else if (DISPLAY_RGB.includes(pixelFormat) && transfer === 'linear') {
+            reject('this pixel_format is display-encoded and must not carry linear-light samples.');
+        } else if (LINEAR_RGB.includes(pixelFormat) && transfer !== 'linear') {
+            reject('this pixel_format holds linear-light samples and requires transfer: "linear".');
+        } else if (color.matrix !== undefined && color.matrix !== 'rgb') {
+            reject(`matrix ${JSON.stringify(color.matrix)} is reserved; v1 defines only "rgb".`);
+        } else if (color.range !== undefined && color.range !== 'full') {
+            reject(`range ${JSON.stringify(color.range)} is reserved; v1 defines only "full".`);
+        } else if (color.primaries !== undefined && !primariesOk(color.primaries)) {
+            reject(primariesError(color.primaries));
+        } else {
+            const primaries = isCustomPrimariesObject(color.primaries) ? 'custom xy'
+                : (color.primaries ?? 'bt709');
+            console.log(`video.color:   {${primaries}, ${transfer}, ${color.matrix ?? 'rgb'}, ${color.range ?? 'full'}} (declared)`);
+        }
+    }
+}
 const frameSize = ledCount * bpl;
 console.log(`expected frame size: ${ledCount} LEDs x ${bpl} bytes/LED = ${frameSize} bytes`);
 console.log();

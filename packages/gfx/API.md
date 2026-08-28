@@ -17,6 +17,17 @@ Version 0.1.1 preserves an optional v2 segment `electrical_group` as
 `ScreenmapShape.electricalGroup`. It declares logical/electrical linkage only;
 each shape remains independently positioned and rendered.
 
+`@fastled/gfx/core` and `@fastled/gfx/fled` export the `.fled` source-color
+contract: `validateFledColor` / `readVideoColor` resolve a container's
+`video.color` block against its `pixel_format`, returning the
+`{primaries, transfer, matrix, range}` tuple and throwing `FledColorError`
+(with a `code` and, where field-scoped, a `field`) for any declaration
+`docs/fled-format.md` rejects. An **absent** declaration is not an error: a
+format with a default tuple resolves to it, which is what keeps every
+pre-`video.color` recording playable. Adding a recognized value to the named
+primaries/transfer sets is a minor release; tightening an accepted value into
+a rejected one is breaking.
+
 Worker messages carry `protocolVersion`. A worker must reject an unsupported
 version with `code: "protocol-mismatch"`; a host must reject a `ready` message
 with an unsupported version. Capability names are additive and consumers must

@@ -42,7 +42,8 @@ bytes). Total payload size is `frame_count × ledCount × bytesPerLed`.
 | `0x02` | `rgba8`     | 4         | R, G, B, A                | Canvas-native; alpha = effect.     |
 | `0x03` | `rgbw8`     | 4         | R, G, B, W                | SK6812 RGBW strips.                |
 | `0x04` | `rgb565le`  | 2         | RRRRR GGGGGG BBBBB (LE)   | 16-bit packed, little-endian.      |
-| `0x05`–`0xFF` |       | —         | —                         | Reserved.                          |
+| `0x05` | `rgb16_linear` | 6      | R, G, B (`u16` LE each)   | Linear-light. Requires `transfer: "linear"`. |
+| `0x06`–`0xFF` |       | —         | —                         | Reserved.                          |
 
 Consumers **must** reject unknown `pixel_format` values with a clear error
 ("video format `0xNN` is not supported by this player"). They must **not**
@@ -75,16 +76,145 @@ consumers can slice frames without parsing JSON at all.
 |---------------|----------|-----------------------------------------------------------------|
 | `map`         | yes      | Standard `ScreenMap` schema. LED count derives from the total point count across all strips. |
 | `video.fps`   | no       | Playback frame rate. Consumers default to 30 if absent (the rate every ledmapper recording used before the key was written; issue #256). The Mapped Video Maker writes the detected source rate. |
-| `video.color` | no       | Color encoding of RGB payloads. New `rgb8` recordings declare BT.709/sRGB primaries, the sRGB transfer function, RGB channel encoding (no YUV matrix), and full range. Absent metadata retains the historical interpretation of display-encoded RGB8. |
+| `video.color` | no       | Color encoding of the payload. See "Source color metadata" below. Absent metadata retains the historical interpretation of display-encoded RGB8. |
 
 `rgb8` is display-encoded, not linear-light data. Producers that process video
 in linear light must apply the declared transfer function and quantize once
-when writing the payload. A future linear or higher-precision payload requires
-a new `pixel_format` enum value; it must not be silently stored as `rgb8`.
+when writing the payload. A linear or higher-precision payload uses
+`rgb16_linear` (or a future enum value); it must not be silently stored as
+`rgb8`.
 
 Authors **must not** write `video.format` — it would be a redundant second
 source of truth. Consumers **must** ignore any `video.format` key if
 present (a v1 reader cannot trust JSON over the header).
+
+## Source color metadata
+
+`video.color` describes how the payload's numbers encode color. It describes
+the **encoded payload only** — independently of LED layout, output chipset, and
+the physical emitter profile of the strip that will display it.
+
+This section is machine-enforced. The reference implementation is
+`packages/gfx/src/render/fled-color.ts` (`validateFledColor`), its test suite is
+`tests/unit/fled-color.test.ts`, and the FastLED consumer mirrors the same rules
+in `src/fl/fled/color.h` with tests in `tests/fl/fled/fled_color.cpp`. A rule
+stated here without a test on both sides is a bug in this document.
+
+The four fields are independent and must never be collapsed into a single
+ambiguous label such as "BT.709":
+
+| field | v1 values | meaning |
+|-------|-----------|---------|
+| `primaries` | `bt709`, `display-p3`, `bt2020`, or a custom object | Chromaticities + white point. `bt709` means the BT.709/sRGB primaries with D65 white. |
+| `transfer` | `srgb`, `bt709`, `linear` | The transfer function. `srgb` is the piecewise sRGB function — it is **not** the BT.709 camera OETF and must not be approximated by an unnamed power law. |
+| `matrix` | `rgb` | The payload carries direct RGB components; the identity/no-matrix case. YCbCr coefficient sets are reserved. |
+| `range` | `full` | All codes are image values: for 8-bit, `0` is black and `255` is full channel. `limited` is reserved. |
+
+A custom `primaries` object carries CIE xy pairs:
+
+```json
+"primaries": {
+  "red":   [0.640, 0.330],
+  "green": [0.300, 0.600],
+  "blue":  [0.150, 0.060],
+  "white": [0.3127, 0.3290]
+}
+```
+
+`"none"` is not a valid `transfer` value — it is ambiguous. Producers with
+genuinely linear-light samples declare `transfer: "linear"` and use a pixel
+format whose semantics permit linear data (`rgb16_linear`).
+
+### Default tuple
+
+The canonical default tuple is:
+
+```json
+{ "primaries": "bt709", "transfer": "srgb", "matrix": "rgb", "range": "full" }
+```
+
+When `video.color` is **absent**, a payload whose pixel format defines a default
+tuple is interpreted as that tuple — for the display-encoded RGB formats this
+preserves the historical interpretation of `.fled` RGB8 data. Individual missing
+keys inherit from the same tuple, but **only** for pixel formats that define
+one. Do not describe this default as merely "BT.709"; that leaves the transfer
+function unresolved.
+
+### Color classes by pixel format
+
+| pixel_format | color class | default tuple | constraint |
+|--------------|-------------|---------------|------------|
+| `rgb8`, `rgba8`, `rgb565le` | display-encoded RGB | `{bt709, srgb, rgb, full}` | `transfer` must be `srgb` or `bt709` |
+| `rgb16_linear` | linear-light RGB | `{bt709, linear, rgb, full}` | `transfer` must be `linear` |
+| `gray8`, `rgbw8` | no defined tuple | none | `video.color` must declare all four keys; absent or partial is unresolvable |
+
+`gray8` carries no chromaticity and `rgbw8`'s white is a device primary that RGB
+primaries cannot describe, so neither format inherits a default tuple. Scoping
+inheritance this way is what stops a future YCbCr format from silently
+inheriting `matrix: "rgb"`.
+
+### Validation rules
+
+A conforming producer must not write, and a conforming validator must reject:
+
+1. any unrecognized value in any of the four fields — reject with a clear
+   diagnostic naming the field and value; never silently fall back;
+2. `transfer` of `linear`, `pq`, or `hlg` on a display-encoded RGB format;
+3. `rgb16_linear` with any `transfer` other than `linear`;
+4. `range: "limited"` on any v1 format — reserved for explicitly labeled
+   future/imported payloads;
+5. any `matrix` other than `rgb` in v1 — a YCbCr payload needs a pixel format
+   that does not exist yet, and must then declare its coefficients explicitly;
+6. a partial `video.color` on a pixel format with no default tuple;
+7. `video.color` present but not a JSON object, or a custom `primaries` object
+   missing a key or carrying a malformed xy pair.
+
+An explicit JSON `null` for `video.color` is treated as **absent**, not as a
+malformed object: many serializers emit `null` for an unset optional, and
+omitting the key must not have a different outcome from nulling it.
+
+`pq` and `hlg` are reserved transfer names, rejected in v1: a 16-bit linear
+integer payload cannot faithfully carry PQ-decoded content, so HDR transfers
+wait for a payload format and working domain that can.
+
+An **absent** declaration is never an error for a format with a default tuple —
+every pre-`video.color` recording must keep playing. A declaration is rejected
+when it is present and invalid, or absent on a format that defines no default
+tuple (`gray8`, `rgbw8`), where there is simply nothing to resolve. That second
+case is *unresolvable*, not *malformed*: implementations report it distinctly
+(`no-default-tuple` / `NoDefaultTuple`) so a consumer can decide whether it
+cares, rather than treating the file as corrupt.
+
+### Declaration verdicts vs. consumer policy
+
+Rejecting a *declaration* is not the same as refusing a *file*, and the two must
+not be conflated:
+
+- On the display-encoded RGB formats the declaration is **advisory**. A consumer
+  that cannot resolve it — an unrecognized name from a future minor, say — may
+  fall back to the default tuple and surface a diagnostic. That is what keeps a
+  newer reader from being strictly worse than an older one on the same file,
+  which is the whole point of "advisory".
+- On a format whose color semantics are **mandatory** (`rgb16_linear`), an
+  unresolvable declaration means the payload cannot be interpreted at all, and
+  the consumer must refuse rather than guess.
+
+Producers and validation tooling always take the strict reading: a producer must
+never write a declaration the rules reject, and `validateFledColor` /
+`inspect-fled.mjs` report every violation. The latitude above is for playback
+consumers only.
+
+### Forward compatibility
+
+`video.color` is **advisory** for the display-encoded RGB formats. A reader that
+predates this section ignores the key and lands on exactly the default tuple, so
+old readers degrade to reduced fidelity, never to wrong data. That is why adding
+`video.color` is not a version bump.
+
+Payloads whose color semantics are **mandatory** rather than advisory gate on a
+new `pixel_format` value instead: `rgb16_linear` is meaningless without its
+declaration, and readers that predate it already reject unknown pixel formats.
+Mandatory-ness is a property of the payload format, not a version flag.
 
 ## Versioning
 
@@ -114,7 +244,9 @@ produced before this spec) should magic-check before assuming the format:
 
 The canonical reference vectors live in
 `tests/unit/rgb-video.test.ts` (ledmapper) and the equivalent FastLED
-tests. A minimal valid file is:
+tests; the `video.color` contract has its own vectors in
+`tests/unit/fled-color.test.ts` and `tests/fl/fled/fled_color.cpp`.
+A minimal valid file is:
 
 - header: `46 4C 45 44 01 00 00 00 <json_length_u32_LE>`
 - JSON:   `{"map":{"a":{"x":[0],"y":[0]}}}` (31 bytes UTF-8)

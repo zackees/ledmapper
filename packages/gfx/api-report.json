@@ -1,9 +1,52 @@
 {
   "version": 1,
   "entries": {
-    ".": ["createGfx", "createGfxCore", "createGfxFromFled", "createGfxInWorker", "createPlayer", "createFramePacer", "normalizeScreenmap", "wireBloomUi", "pushFramePayload", "ScreenmapShape"],
-    "./core": ["createGfxCore", "normalizeScreenmap", "createFramePacer", "parseRgbFrames", "hasFledMagic", "readVideoFps", "ScreenmapShape"],
-    "./fled": ["createGfxFromFled", "createPlayer", "parseRgbFrames", "hasFledMagic", "readVideoFps"],
-    "./worker": ["runGfxWorker", "GFX_PROTOCOL_VERSION", "GFX_CAPABILITIES"]
+    ".": [
+      "createGfx",
+      "createGfxCore",
+      "createGfxFromFled",
+      "createGfxInWorker",
+      "createPlayer",
+      "createFramePacer",
+      "normalizeScreenmap",
+      "wireBloomUi",
+      "pushFramePayload",
+      "ScreenmapShape"
+    ],
+    "./core": [
+      "createGfxCore",
+      "normalizeScreenmap",
+      "createFramePacer",
+      "parseRgbFrames",
+      "hasFledMagic",
+      "readVideoFps",
+      "ScreenmapShape",
+      "readVideoColor",
+      "validateFledColor",
+      "FledColorError",
+      "buildVideoColor",
+      "defaultColorForFormat",
+      "pixelFormatHasDefaultTuple",
+      "DEFAULT_COLOR_TUPLE"
+    ],
+    "./fled": [
+      "createGfxFromFled",
+      "createPlayer",
+      "parseRgbFrames",
+      "hasFledMagic",
+      "readVideoFps",
+      "readVideoColor",
+      "validateFledColor",
+      "FledColorError",
+      "buildVideoColor",
+      "defaultColorForFormat",
+      "pixelFormatHasDefaultTuple",
+      "DEFAULT_COLOR_TUPLE"
+    ],
+    "./worker": [
+      "runGfxWorker",
+      "GFX_PROTOCOL_VERSION",
+      "GFX_CAPABILITIES"
+    ]
   }
 }
