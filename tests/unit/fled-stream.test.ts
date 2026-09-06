@@ -51,6 +51,23 @@ test('streamFled emits frames across arbitrary header, JSON, and frame chunk bou
     assert.deepEqual([...result.header], [...header]);
 });
 
+test('streamFled preserves fragmented rgb16_linear frames as six-byte samples', async () => {
+    const header = buildFledHeader(METADATA, PixelFormat.rgb16_linear);
+    const payload = new Uint8Array([0x00, 0x12, 0x01, 0x12, 0x02, 0x12]);
+    const frames: Uint8Array[] = [];
+    const result = await streamFled(chunkStream(concat(header, payload), 2), {
+        onMetadata: (metadata) => {
+            assert.equal(metadata.pixelFormat, PixelFormat.rgb16_linear);
+            assert.equal(metadata.bytesPerPixel, 6);
+            return 6;
+        },
+        onFrame: (frame) => { frames.push(frame); },
+    });
+
+    assert.equal(result.frameCount, 1);
+    assert.deepEqual([...frames[0] ?? []], [...payload]);
+});
+
 test('streamFled rejects a known payload length that is not frame-aligned before emitting frames', async () => {
     const header = buildFledHeader(METADATA, PixelFormat.rgb8);
     const payload = new Uint8Array([1, 2, 3, 4]);

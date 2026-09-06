@@ -37,7 +37,7 @@ bytes). Total payload size is `frame_count × ledCount × bytesPerLed`.
 
 | value  | name        | bytes/LED | channel order             | notes                              |
 |--------|-------------|-----------|---------------------------|------------------------------------|
-| `0x00` | `rgb8`      | 3         | R, G, B                   | Default. Phase 1 generator emits only this. |
+| `0x00` | `rgb8`      | 3         | R, G, B                   | Default display-encoded payload. |
 | `0x01` | `gray8`     | 1         | V                         | Brightness or effect mask.         |
 | `0x02` | `rgba8`     | 4         | R, G, B, A                | Canvas-native; alpha = effect.     |
 | `0x03` | `rgbw8`     | 4         | R, G, B, W                | SK6812 RGBW strips.                |
@@ -48,6 +48,13 @@ bytes). Total payload size is `frame_count × ledCount × bytesPerLed`.
 Consumers **must** reject unknown `pixel_format` values with a clear error
 ("video format `0xNN` is not supported by this player"). They must **not**
 attempt to fall back to `rgb8` on unknown values.
+
+Producers that write `rgb16_linear` serialize `Uint16` components directly as
+the six `u16le` payload bytes for each LED; they must not quantize through RGB8
+or expose host-endian typed-array storage as wire bytes. An RGB8-only renderer
+must reject this mandatory format before it hands any frame to an RGB8 draw
+entry point. A typed color-management consumer may preserve and convert the
+samples later.
 
 ## JSON payload
 

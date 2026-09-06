@@ -17,6 +17,16 @@ Version 0.1.1 preserves an optional v2 segment `electrical_group` as
 `ScreenmapShape.electricalGroup`. It declares logical/electrical linkage only;
 each shape remains independently positioned and rendered.
 
+## 0.2.0
+
+`@fastled/gfx/core` and `@fastled/gfx/fled` add
+`encodeRgb16Linear(Uint16Array)`. It serializes each component directly as the
+FLED `rgb16_linear` `u16le` wire payload; it does not pass through RGB8 or
+depend on host byte order. The parser and progressive stream reader preserve
+known RGB16 payload bytes and reject unknown format bytes. `createGfxFromFled`
+remains an RGB8 renderer and rejects RGB16 before calling `pushFrame`; a typed
+color-management playback consumer must own that conversion.
+
 `@fastled/gfx/core` and `@fastled/gfx/fled` export the `.fled` source-color
 contract: `validateFledColor` / `readVideoColor` resolve a container's
 `video.color` block against its `pixel_format`, returning the

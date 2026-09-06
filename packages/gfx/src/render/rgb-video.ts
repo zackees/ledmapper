@@ -21,7 +21,7 @@ const FLED_MAGIC: readonly [number, number, number, number] = [0x46, 0x4C, 0x45,
 const FLED_VERSION = 1;
 const HEADER_BYTES = 12;
 
-/** Pixel format byte. Generator emits only `rgb8` in Phase 1. */
+/** Pixel format byte on the stable FLED v1 wire. */
 export const PixelFormat = {
     rgb8: 0x00,
     gray8: 0x01,
@@ -46,8 +46,21 @@ export function bytesPerLed(format: number): number | null {
     return BYTES_PER_LED[format] ?? null;
 }
 
-/** Whether the format byte is one this build knows how to consume. Phase
- * 1 only `rgb8` is wired through movieplayer; the others are reserved.
+/** Encode linear RGB16 components as FLED's explicit little-endian payload.
+ * This intentionally accepts Uint16 values directly: no RGB8 quantization or
+ * host-endian typed-array view reaches the container boundary. */
+export function encodeRgb16Linear(samples: Uint16Array): Uint8Array {
+    const bytes = new Uint8Array(samples.length * 2);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let index = 0; index < samples.length; index++) {
+        view.setUint16(index * 2, samples[index] ?? 0, true);
+    }
+    return bytes;
+}
+
+/** Whether this RGB8 renderer can consume the format without reinterpretation.
+ * Known wider formats remain parseable and serializable, but rendering them
+ * requires the typed color-management path rather than a byte reinterpretation.
  */
 export function isSupportedFormat(format: number): boolean {
     return format === PixelFormat.rgb8;

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildFledArtifact } from '../../src/moviemaker/recording';
+import { PixelFormat, encodeRgb16Linear } from '../../src/render/rgb-video';
 import { productionComposition, productionOutputDimensions } from '../../src/production/compositor';
 import {
     createProductionPreviewTopologyArgs,
@@ -29,6 +30,33 @@ void test('buildFledArtifact rejects payload mismatch', () => {
         ledCount: 3,
         screenmapJson: '{}',
     }), /payload length mismatch/);
+});
+
+void test('buildFledArtifact writes rgb16_linear with LE payload and mandatory metadata', () => {
+    const payload = encodeRgb16Linear(new Uint16Array([0x1200, 0x1201, 0x1202]));
+    const artifact = buildFledArtifact(payload, {
+        frameCount: 1,
+        fps: 30,
+        ledCount: 1,
+        screenmapJson: JSON.stringify({ map: {} }),
+        pixelFormat: PixelFormat.rgb16_linear,
+    });
+    assert.equal(artifact.bytes[5], PixelFormat.rgb16_linear);
+    assert.deepEqual([...artifact.bytes.slice(-6)], [...payload]);
+    const json = JSON.parse(new TextDecoder().decode(artifact.bytes.slice(12, -6))) as {
+        video: { color: { transfer: string } };
+    };
+    assert.equal(json.video.color.transfer, 'linear');
+    assert.throws(
+        () => buildFledArtifact(new Uint8Array(5), {
+            frameCount: 1,
+            fps: 30,
+            ledCount: 1,
+            screenmapJson: '{}',
+            pixelFormat: PixelFormat.rgb16_linear,
+        }),
+        /payload length mismatch/,
+    );
 });
 
 void test('productionComposition places source and preview side by side', () => {
