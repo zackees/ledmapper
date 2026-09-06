@@ -7,7 +7,7 @@
  * `pushFrame` from its own RAF loop.
  */
 
-import { parseRgbFrames } from '../render/rgb-video.js';
+import { isSupportedFormat, parseRgbFrames } from '../render/rgb-video.js';
 import { createGfx } from './gfx-core.js';
 import { createPlayer } from './player.js';
 import type { CreateGfxFromFledOptions, GfxWithPlayer } from './types.js';
@@ -35,6 +35,9 @@ export async function createGfxFromFled(opts: CreateGfxFromFledOptions): Promise
         throw new Error('createGfxFromFled: embedded screenmap has zero output channels');
     }
     const parsed = parseRgbFrames(bytes, channelCount);
+    if (parsed.pixelFormat === null || !isSupportedFormat(parsed.pixelFormat)) {
+        throw new Error(`createGfxFromFled: pixel format ${String(parsed.pixelFormat)} requires typed playback`);
+    }
     if (parsed.frames.length === 0) {
         throw new Error('createGfxFromFled: no frames in payload (notMultiple=' + String(parsed.notMultiple) + ')');
     }

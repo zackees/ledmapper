@@ -4,12 +4,15 @@ import assert from 'node:assert/strict';
 import {
     PixelFormat,
     bytesPerLed,
+    encodeRgb16Linear,
     buildFledHeader,
     prependFledHeader,
     parseRgbFrames,
     hasFledMagic,
+    isSupportedFormat,
     readVideoFps,
 } from '../../src/render/rgb-video';
+import { createGfxFromFled } from '../../packages/gfx/src/gfx/gfx-fled';
 
 // Reference JSON used by the round-trip + reference-vector tests.
 // 31 UTF-8 bytes — see docs/fled-format.md test vector.
@@ -78,6 +81,34 @@ test('round-trip: prepend + parse recovers JSON and frames byte-exact', () => {
         assert.equal(frame.length, ledCount * 3);
         for (const b of frame) assert.equal(b, 0xab);
     }
+});
+
+test('rgb16_linear preserves full-precision little-endian samples without RGB8 conversion', () => {
+    const samples = new Uint16Array([0x1200, 0x1201, 0x1202]);
+    const payload = encodeRgb16Linear(samples);
+    assert.deepEqual([...payload], [0x00, 0x12, 0x01, 0x12, 0x02, 0x12]);
+
+    const parsed = parseRgbFrames(
+        prependFledHeader(payload, REF_JSON, PixelFormat.rgb16_linear), 1,
+    );
+    assert.equal(parsed.fledError, null);
+    assert.equal(parsed.pixelFormat, PixelFormat.rgb16_linear);
+    assert.deepEqual([...parsed.frames[0] ?? []], [...payload]);
+    assert.equal(isSupportedFormat(PixelFormat.rgb16_linear), false,
+        'RGB8 renderer must not consume mandatory RGB16 samples');
+});
+
+test('gfx FLED playback rejects RGB16 before reaching the RGB8 renderer', async () => {
+    const payload = encodeRgb16Linear(new Uint16Array([0x1200, 0x1201, 0x1202]));
+    const fled = prependFledHeader(payload, REF_JSON, PixelFormat.rgb16_linear);
+    await assert.rejects(
+        createGfxFromFled({
+            fled,
+            // RGB16 is rejected before gfx construction, so no DOM is needed.
+            parent: null as unknown as HTMLElement,
+        }),
+        /requires typed playback/,
+    );
 });
 
 test('reference vector: 1-LED 1-frame red round-trips through known bytes', () => {

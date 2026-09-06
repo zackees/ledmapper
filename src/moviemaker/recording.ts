@@ -13,7 +13,7 @@ import { flattenColorFrames } from './transforms';
 import { createFrameSequencer } from './frame-pacing';
 import { download_binary_as_file } from '../common';
 import { saveVideo } from '../video-store';
-import { prependFledHeader, PixelFormat } from '../render/rgb-video';
+import { bytesPerLed, prependFledHeader, PixelFormat, type PixelFormatCode } from '../render/rgb-video';
 import { buildVideoColor } from '../render/fled-color';
 import { createLogger } from '../debug-log';
 import { createZeroReadbackWatchdog } from '../watchdogs';
@@ -78,24 +78,36 @@ export interface FledArtifact {
     mimeType: 'application/vnd.fastled.video';
 }
 
-/** Build and validate a self-contained RGB8 FLED artifact without I/O. */
+/** Build and validate a self-contained FLED artifact without I/O. */
 export function buildFledArtifact(payload: Uint8Array, meta: {
     frameCount: number;
     fps: number;
     ledCount: number;
     screenmapJson: string;
+    pixelFormat?: PixelFormatCode;
 }): FledArtifact {
     if (!Number.isInteger(meta.frameCount) || meta.frameCount <= 0
         || !Number.isInteger(meta.ledCount) || meta.ledCount <= 0
         || !Number.isFinite(meta.fps) || meta.fps <= 0) {
         throw new Error('invalid FLED artifact metadata');
     }
-    const expected = meta.frameCount * meta.ledCount * 3;
+    const pixelFormat = meta.pixelFormat ?? PixelFormat.rgb8;
+    if (pixelFormat !== PixelFormat.rgb8 && pixelFormat !== PixelFormat.rgb16_linear) {
+        throw new Error(`unsupported FLED artifact pixel format: ${String(pixelFormat)}`);
+    }
+    const bytesPerPixel = bytesPerLed(pixelFormat);
+    if (bytesPerPixel === null) {
+        throw new Error(`unknown FLED artifact pixel format: ${String(pixelFormat)}`);
+    }
+    const expected = meta.frameCount * meta.ledCount * bytesPerPixel;
+    if (!Number.isSafeInteger(expected)) {
+        throw new Error('FLED payload length exceeds safe integer range');
+    }
     if (payload.byteLength !== expected) {
         throw new Error(`FLED payload length mismatch: ${String(payload.byteLength)} !== ${String(expected)}`);
     }
     return {
-        bytes: prependFledHeader(payload, embedFps(meta.screenmapJson, meta.fps), PixelFormat.rgb8),
+        bytes: prependFledHeader(payload, embedFps(meta.screenmapJson, meta.fps, pixelFormat), pixelFormat),
         frameCount: meta.frameCount,
         fps: meta.fps,
         ledCount: meta.ledCount,
