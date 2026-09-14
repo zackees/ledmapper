@@ -12,8 +12,8 @@ on:
     types: [labeled, synchronize, reopened]
 
 concurrency:
-  group: integration-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   mobile-safety:
